@@ -23,6 +23,24 @@ fn load_vaults(app: &AppHandle) -> Vec<Vault> {
     vaults
 }
 
+fn spawn_reconcile(app: &AppHandle, vault: &Vault) {
+    let db_path = app.path().app_data_dir().unwrap().join("limestone.db");
+    let vault_path = vault.path.clone();
+    let vault_id = vault.id.to_string();
+    std::thread::spawn(move || {
+        let db = match crate::open_db(&db_path) {
+            Ok(db) => db,
+            Err(e) => {
+                eprintln!("reconcile db open failed: {e}");
+                return;
+            }
+        };
+        if let Err(e) = services::reconcile_vault(&vault_path, &vault_id, &db, &["md"]) {
+            eprintln!("reconcile failed: {e}");
+        }
+    });
+}
+
 fn save_vaults(app: &AppHandle, vaults: &[Vault]) -> Result<(), String> {
     vaults_store(app)
         .save(&Vaults {
@@ -46,6 +64,7 @@ pub fn create_vault(
     save_vaults(&app, &vaults)?;
 
     services::open_vault(&app, &app_data.active_vault, vault.clone());
+    spawn_reconcile(&app, &vault);
 
     Ok(vault)
 }
@@ -65,6 +84,7 @@ pub fn set_active_vault(
         .clone();
 
     services::open_vault(&app, &app_data.active_vault, vault.clone());
+    spawn_reconcile(&app, &vault);
 
     // update accessed_at
     let active = app_data.active_vault.lock().unwrap();
@@ -97,4 +117,12 @@ pub fn get_active_vault(app_data: State<AppData>) -> Option<Vault> {
 #[tauri::command]
 pub fn get_vault_by_id(app: AppHandle, id: Uuid) -> Option<Vault> {
     load_vaults(&app).into_iter().find(|v| v.id == id)
+}
+
+#[tauri::command]
+pub fn clear_cache(app: AppHandle) -> Result<(), String> {
+    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("limestone.db");
+    let db = crate::open_db(&db_path).map_err(|e| e.to_string())?;
+    db.execute_batch("delete from document_groups; delete from documents; delete from groups;")
+        .map_err(|e| e.to_string())
 }
