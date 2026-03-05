@@ -27,4 +27,9 @@ uuid = { version = "1.19.0", features = ["v4"] }
 tauri-plugin-sql = { version = "2.3.1", features = ["sqlite"] }
 chrono = { version = "0.4.42", features = ["serde"] }
 tauri-plugin-fs = "2"
+jwalk = "0.8"
+rayon = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde_yml = "0.0.12"
+globset = "0.4.18"
 

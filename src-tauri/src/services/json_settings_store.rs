@@ -25,6 +25,9 @@ impl JsonSettingsStore {
 
     /// Save entire struct to file
     pub fn save<T: Serialize>(&self, value: &T) -> io::Result<()> {
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         AtomicFile::new(&self.path, AllowOverwrite)
             .write(|f| f.write_all(serde_json::to_string_pretty(value)?.as_bytes()))?;
         Ok(())
@@ -82,6 +85,9 @@ impl JsonSettingsStore {
             .ok_or_else(|| io::Error::other("config root not an object"))?
             .insert(key.to_string(), serde_json::to_value(value)?);
 
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         AtomicFile::new(path, AllowOverwrite)
             .write(|f| f.write_all(serde_json::to_string_pretty(&json)?.as_bytes()))?;
 

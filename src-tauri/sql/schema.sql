@@ -13,8 +13,8 @@ create table if not exists vaults (
     path text not null,
     created_at text not null default (datetime('now')),
     updated_at text not null default (datetime('now')),
-    accessed_at text not null default (datetime('now')),
-    ) strict;
+    accessed_at text not null default (datetime('now'))
+) strict;
 
 create table if not exists documents (
     id text primary key not null,
@@ -24,6 +24,7 @@ create table if not exists documents (
     created_at text not null default (datetime('now')),
     updated_at text not null default (datetime('now')),
     accessed_at text not null default (datetime('now')),
+    mtime integer,
     deleted_at text,
     properties text not null default '{}'
 ) strict;
@@ -50,6 +51,7 @@ create table if not exists document_groups (
 -------------
 
 create index if not exists idx_documents_vault on documents(vault_id);
+create index if not exists idx_documents_rel_path on documents(vault_id, rel_path);
 create index if not exists idx_documents_updated_at on documents(updated_at);
 create index if not exists idx_groups_vault on groups(vault_id);
 create index if not exists idx_groups_parent on groups(parent_group_id);

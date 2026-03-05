@@ -5,4 +5,4 @@ mod vault;
 
 pub use json_settings_store::JsonSettingsStore;
 pub use user::User;
-pub use vault::{create_vault, open_vault, Vault, Vaults};
+pub use vault::{create_vault, open_vault, reconcile_vault, Vault, Vaults};
