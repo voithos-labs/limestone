@@ -126,3 +126,18 @@ pub fn clear_cache(app: AppHandle) -> Result<(), String> {
     db.execute_batch("delete from document_groups; delete from documents; delete from groups;")
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn search_documents(
+    app: AppHandle,
+    app_data: State<AppData>,
+    query: String,
+) -> Result<Vec<services::title_search::SearchResult>, String> {
+    let vault = {
+        let active = app_data.active_vault.lock().unwrap();
+        active.clone().ok_or("no active vault")?
+    };
+    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("limestone.db");
+    let db = crate::open_db(&db_path).map_err(|e| e.to_string())?;
+    Ok(services::title_search::search(&db, &vault.id.to_string(), &query, 15))
+}

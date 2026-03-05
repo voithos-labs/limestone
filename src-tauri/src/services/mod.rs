@@ -1,5 +1,6 @@
 pub mod filesystem;
 mod json_settings_store;
+pub mod title_search;
 mod user;
 mod vault;
 

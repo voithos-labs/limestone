@@ -107,6 +107,7 @@ pub fn run() {
             commands::vault_commands::create_vault,
             commands::vault_commands::set_active_vault,
             commands::vault_commands::clear_cache,
+            commands::vault_commands::search_documents,
             commands::settings_commands::get_setting,
             commands::settings_commands::set_setting_vault,
             commands::settings_commands::set_setting_global,
