@@ -6,7 +6,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-pub struct JsonStore {
+pub struct JsonSettingsStore {
     /// default static string
     pub default_json: Option<String>,
     /// path to global settings json file
@@ -15,7 +15,7 @@ pub struct JsonStore {
     pub override_path: Option<PathBuf>,
 }
 
-impl JsonStore {
+impl JsonSettingsStore {
     /// Load entire file as typed struct
     pub fn load<T: DeserializeOwned>(&self) -> Option<T> {
         fs::read_to_string(&self.path)

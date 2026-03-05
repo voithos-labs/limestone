@@ -1,5 +1,0 @@
-- [ ] FTS (via tantivy)
-- [ ] File watcher
-- [ ] Markdown document editor (via codemirror)
-- [ ] Groups
-- [ ] Views

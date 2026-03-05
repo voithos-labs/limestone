@@ -31,7 +31,7 @@ pub fn run() {
         .setup(move |app| {
             let global_data_path = app.path().app_data_dir()?;
 
-            let user_store = services::JsonStore {
+            let user_store = services::JsonSettingsStore {
                 path: global_data_path.join("user.json"),
                 default_json: None,
                 override_path: None,
@@ -45,7 +45,7 @@ pub fn run() {
 
             // Load vaults
             let vaults_path = global_data_path.join("vaults.json");
-            let mut vaults = services::JsonStore {
+            let mut vaults = services::JsonSettingsStore {
                 path: vaults_path,
                 default_json: None,
                 override_path: None,

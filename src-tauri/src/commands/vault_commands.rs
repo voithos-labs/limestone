@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
-use crate::services::{self, JsonStore, Vault, Vaults};
+use crate::services::{self, JsonSettingsStore, Vault, Vaults};
 use crate::AppData;
 
-fn vaults_store(app: &AppHandle) -> JsonStore {
-    JsonStore {
+fn vaults_store(app: &AppHandle) -> JsonSettingsStore {
+    JsonSettingsStore {
         path: app.path().app_data_dir().unwrap().join("vaults.json"),
         default_json: None,
         override_path: None,

@@ -1,9 +1,12 @@
-use crate::services::JsonStore;
+use crate::services::JsonSettingsStore;
 use crate::AppData;
 use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
 
-fn get_settings_store(app: &AppHandle, app_data: &State<AppData>) -> Result<JsonStore, String> {
+fn get_settings_store(
+    app: &AppHandle,
+    app_data: &State<AppData>,
+) -> Result<JsonSettingsStore, String> {
     let path = app
         .path()
         .app_data_dir()
@@ -17,7 +20,7 @@ fn get_settings_store(app: &AppHandle, app_data: &State<AppData>) -> Result<Json
         .as_ref()
         .map(|v| v.path.join("settings.json"));
 
-    Ok(JsonStore {
+    Ok(JsonSettingsStore {
         path,
         default_json: None,
         override_path,

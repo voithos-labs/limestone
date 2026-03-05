@@ -13,7 +13,7 @@ VAULT/
 │       ├── tantivy/
 │       └── thumbnails/
 ├── assets/
-├── views/
+├── views/ # could move into .limestone
 │   ├── your-view.view.json
 │   └── my-view.view.json
 ├── [folders]/

@@ -21,12 +21,12 @@ export interface DocumentJSON {
 /**
  *
  *
- * Update watching
- *
  *
  * todo
  * - [ ] Think about splitting this into Document (parent to) and FileDocument, where FileDocument extends Document
- * to add fs operations. Allow virtual / unsaved documents 0-0 hmm yes I will this. Move FS watching there too
+ * to add fs operations.
+ *
+ * Allow virtual / unsaved documents? 0-0 hmm yes I will this. Move FS watching there too
  *
  */
 class Document {
