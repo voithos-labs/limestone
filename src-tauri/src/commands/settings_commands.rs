@@ -1,30 +1,16 @@
 use crate::services::JsonSettingsStore;
 use crate::AppData;
 use serde_json::Value;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
-fn get_settings_store(
-    app: &AppHandle,
-    app_data: &State<AppData>,
-) -> Result<JsonSettingsStore, String> {
-    let path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("settings.json");
-
-    let override_path = app_data
+fn settings_store(app: &AppHandle, app_data: &AppData) -> JsonSettingsStore {
+    let vault_path = app_data
         .active_vault
         .lock()
         .unwrap()
         .as_ref()
-        .map(|v| v.path.join("settings.json"));
-
-    Ok(JsonSettingsStore {
-        path,
-        default_json: None,
-        override_path,
-    })
+        .map(|v| v.path.clone());
+    JsonSettingsStore::for_app(app, vault_path.as_deref())
 }
 
 #[tauri::command]
@@ -40,15 +26,9 @@ pub fn set_setting_vault(
     key: String,
     value: Value,
 ) -> Result<(), String> {
-    let store = get_settings_store(&app, &app_data)?;
+    let store = settings_store(&app, &app_data);
     store.set_vault(&key, &value).map_err(|e| e.to_string())?;
-    // Reload global settings
-    let settings_path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("settings.json");
-    app_data.reload_settings(&settings_path);
+    *app_data.settings.lock().unwrap() = store.load_merged();
     Ok(())
 }
 
@@ -59,14 +39,8 @@ pub fn set_setting_global(
     key: String,
     value: Value,
 ) -> Result<(), String> {
-    let store = get_settings_store(&app, &app_data)?;
+    let store = settings_store(&app, &app_data);
     store.set_global(&key, value).map_err(|e| e.to_string())?;
-    // Write-through: reload merged settings into cache
-    let settings_path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("settings.json");
-    app_data.reload_settings(&settings_path);
+    *app_data.settings.lock().unwrap() = store.load_merged();
     Ok(())
 }

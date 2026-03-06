@@ -6,10 +6,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_fs::FsExt;
+use super::JsonSettingsStore;
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -45,12 +45,12 @@ pub fn open_vault(app: &AppHandle, app_data: &crate::AppData, mut vault: Vault) 
     // Note: previously opened vaults remain accessible until app restart (no way to remove perm)
     let _ = app.fs_scope().allow_directory(&vault.path, true);
 
+    let vault_path = vault.path.clone();
     vault.accessed_at = Utc::now();
     *app_data.active_vault.lock().unwrap() = Some(vault);
 
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        app_data.reload_settings(&data_dir.join("settings.json"));
-    }
+    let merged = JsonSettingsStore::for_app(app, Some(&vault_path)).load_merged();
+    *app_data.settings.lock().unwrap() = merged;
 }
 
 pub fn create_vault(title: Option<String>, path: PathBuf) -> Result<Vault, std::io::Error> {

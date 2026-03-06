@@ -1,5 +1,5 @@
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
@@ -19,27 +19,6 @@ pub struct AppData {
     pub user: services::User,
     pub active_vault: Mutex<Option<services::Vault>>,
     pub settings: Mutex<Value>,
-}
-
-// cooked way to do this
-impl AppData {
-    pub fn reload_settings(&self, global_settings_path: &Path) {
-        let vault_override_path = self
-            .active_vault
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|v| v.path.join("settings.json"));
-
-        let store = services::JsonSettingsStore {
-            path: global_settings_path.to_path_buf(),
-            default_json: None,
-            override_path: vault_override_path,
-        };
-
-        let merged = store.load_merged();
-        *self.settings.lock().unwrap() = merged;
-    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -96,15 +75,8 @@ pub fn run() {
 
             let active_vault = vaults.first().cloned();
 
-            // Setup settings
-            let settings_path = global_data_path.join("settings.json");
-            let vault_override = active_vault.as_ref().map(|v| v.path.join("settings.json"));
-            let initial_settings = services::JsonSettingsStore {
-                path: settings_path,
-                default_json: None,
-                override_path: vault_override,
-            }
-            .load_merged();
+            let vault_path = active_vault.as_ref().map(|v| v.path.as_path());
+            let initial_settings = services::JsonSettingsStore::for_app(app.handle(), vault_path).load_merged();
 
             app.manage(AppData {
                 user,

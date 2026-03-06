@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use tauri::Manager;
 
 pub struct JsonSettingsStore {
     /// default static string
@@ -16,6 +17,14 @@ pub struct JsonSettingsStore {
 }
 
 impl JsonSettingsStore {
+    pub fn for_app(app: &tauri::AppHandle, vault_path: Option<&Path>) -> Self {
+        Self {
+            path: app.path().app_data_dir().unwrap().join("settings.json"),
+            default_json: None,
+            override_path: vault_path.map(|p| p.join("settings.json")),
+        }
+    }
+
     /// Load entire file as typed struct
     pub fn load<T: DeserializeOwned>(&self) -> Option<T> {
         fs::read_to_string(&self.path)
