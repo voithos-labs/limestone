@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
 use crate::services::{self, JsonSettingsStore, Vault, Vaults};
@@ -27,6 +27,7 @@ fn spawn_reconcile(app: &AppHandle, vault: &Vault) {
     let db_path = app.path().app_data_dir().unwrap().join("limestone.db");
     let vault_path = vault.path.clone();
     let vault_id = vault.id.to_string();
+    let app_handle = app.clone();
     std::thread::spawn(move || {
         let db = match crate::open_db(&db_path) {
             Ok(db) => db,
@@ -38,6 +39,8 @@ fn spawn_reconcile(app: &AppHandle, vault: &Vault) {
         if let Err(e) = services::reconcile_vault(&vault_path, &vault_id, &db, &["md"]) {
             eprintln!("reconcile failed: {e}");
         }
+        // probably want to type w/ json body these later, e.g. emit content update type and then specify what kind
+        let _ = app_handle.emit("vault-reconciled", &vault_id);
     });
 }
 

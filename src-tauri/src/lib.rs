@@ -1,7 +1,7 @@
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
 
 mod commands;
@@ -116,6 +116,7 @@ pub fn run() {
 
             if let Some(vault) = active_vault {
                 let db_path = global_data_path.join("limestone.db");
+                let app_handle = app.handle().clone();
                 std::thread::spawn(move || {
                     let db = match open_db(&db_path) {
                         Ok(db) => db,
@@ -129,6 +130,7 @@ pub fn run() {
                     {
                         eprintln!("Reconciliation failed: {e}");
                     }
+                    let _ = app_handle.emit("vault-reconciled", &vault_id);
                 });
             }
 
