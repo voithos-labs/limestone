@@ -28,9 +28,9 @@ fn get_settings_store(
 }
 
 #[tauri::command]
-pub fn get_setting(app: AppHandle, app_data: State<AppData>, key: String) -> Option<Value> {
-    let store = get_settings_store(&app, &app_data).ok()?;
-    store.get(&key)
+pub fn get_setting(app_data: State<AppData>, key: String) -> Option<Value> {
+    let settings = app_data.settings.lock().unwrap();
+    settings.get(&key).cloned()
 }
 
 #[tauri::command]
@@ -41,7 +41,15 @@ pub fn set_setting_vault(
     value: Value,
 ) -> Result<(), String> {
     let store = get_settings_store(&app, &app_data)?;
-    store.set_vault(&key, &value).map_err(|e| e.to_string())
+    store.set_vault(&key, &value).map_err(|e| e.to_string())?;
+    // Reload global settings
+    let settings_path = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("settings.json");
+    app_data.reload_settings(&settings_path);
+    Ok(())
 }
 
 #[tauri::command]
@@ -52,5 +60,13 @@ pub fn set_setting_global(
     value: Value,
 ) -> Result<(), String> {
     let store = get_settings_store(&app, &app_data)?;
-    store.set_global(&key, value).map_err(|e| e.to_string())
+    store.set_global(&key, value).map_err(|e| e.to_string())?;
+    // Write-through: reload merged settings into cache
+    let settings_path = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("settings.json");
+    app_data.reload_settings(&settings_path);
+    Ok(())
 }

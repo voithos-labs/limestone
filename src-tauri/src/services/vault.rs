@@ -8,7 +8,7 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
@@ -40,15 +40,17 @@ pub struct Vaults {
     pub vaults: Vec<Vault>,
 }
 
-pub fn open_vault(app: &AppHandle, active_vault: &Mutex<Option<Vault>>, mut vault: Vault) {
-    let mut active = active_vault.lock().unwrap();
-
+pub fn open_vault(app: &AppHandle, app_data: &crate::AppData, mut vault: Vault) {
     // Allow access to new vault
     // Note: previously opened vaults remain accessible until app restart (no way to remove perm)
     let _ = app.fs_scope().allow_directory(&vault.path, true);
 
     vault.accessed_at = Utc::now();
-    *active = Some(vault);
+    *app_data.active_vault.lock().unwrap() = Some(vault);
+
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        app_data.reload_settings(&data_dir.join("settings.json"));
+    }
 }
 
 pub fn create_vault(title: Option<String>, path: PathBuf) -> Result<Vault, std::io::Error> {
@@ -496,14 +498,21 @@ pub fn reconcile_vault(
         "insert or ignore into vaults (id, title, path) values (?1, ?2, ?3)",
         rusqlite::params![
             vault_id,
-            vault_path.file_name().and_then(|n| n.to_str()).unwrap_or("Untitled"),
+            vault_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Untitled"),
             vault_path.to_string_lossy()
         ],
     )?;
 
     let t0 = Instant::now();
     let fs_entries = walk_vault(vault_path, extensions);
-    eprintln!("[reconcile] walk: {}ms ({} files)", t0.elapsed().as_millis(), fs_entries.len());
+    eprintln!(
+        "[reconcile] walk: {}ms ({} files)",
+        t0.elapsed().as_millis(),
+        fs_entries.len()
+    );
 
     let t1 = Instant::now();
     let mut stmt = db.prepare(
@@ -525,12 +534,19 @@ pub fn reconcile_vault(
         })?
         .filter_map(|r| r.ok())
         .collect();
-    eprintln!("[reconcile] db load: {}ms ({} cached)", t1.elapsed().as_millis(), db_entries.len());
+    eprintln!(
+        "[reconcile] db load: {}ms ({} cached)",
+        t1.elapsed().as_millis(),
+        db_entries.len()
+    );
 
     let diff = diff_against_db(&db_entries, &fs_entries);
     eprintln!(
         "[reconcile] diff: new={}, modified={}, unchanged={}, missing={}",
-        diff.new_paths.len(), diff.modified.len(), diff.unchanged.len(), diff.missing.len()
+        diff.new_paths.len(),
+        diff.modified.len(),
+        diff.unchanged.len(),
+        diff.missing.len()
     );
 
     let t2 = Instant::now();
@@ -541,13 +557,21 @@ pub fn reconcile_vault(
         .chain(diff.modified.iter().map(|(p, _)| p.clone()))
         .collect();
     let frontmatter = extract_frontmatter(vault_path, &paths_to_read);
-    eprintln!("[reconcile] frontmatter: {}ms ({} files read)", t2.elapsed().as_millis(), paths_to_read.len());
+    eprintln!(
+        "[reconcile] frontmatter: {}ms ({} files read)",
+        t2.elapsed().as_millis(),
+        paths_to_read.len()
+    );
 
     let operations = resolve_changes(diff, &frontmatter, &db_id_to_path);
 
     let t3 = Instant::now();
     apply_operations(&operations, &frontmatter, vault_id, db)?;
-    eprintln!("[reconcile] apply: {}ms ({} ops)", t3.elapsed().as_millis(), operations.len());
+    eprintln!(
+        "[reconcile] apply: {}ms ({} ops)",
+        t3.elapsed().as_millis(),
+        operations.len()
+    );
 
     eprintln!("[reconcile] total: {}ms", t_total.elapsed().as_millis());
     Ok(())

@@ -63,7 +63,7 @@ pub fn create_vault(
     vaults.push(vault.clone());
     save_vaults(&app, &vaults)?;
 
-    services::open_vault(&app, &app_data.active_vault, vault.clone());
+    services::open_vault(&app, &app_data, vault.clone());
     spawn_reconcile(&app, &vault);
 
     Ok(vault)
@@ -83,7 +83,7 @@ pub fn set_active_vault(
         .ok_or_else(|| format!("vault {id} not found"))?
         .clone();
 
-    services::open_vault(&app, &app_data.active_vault, vault.clone());
+    services::open_vault(&app, &app_data, vault.clone());
     spawn_reconcile(&app, &vault);
 
     // update accessed_at
@@ -121,7 +121,11 @@ pub fn get_vault_by_id(app: AppHandle, id: Uuid) -> Option<Vault> {
 
 #[tauri::command]
 pub fn clear_cache(app: AppHandle) -> Result<(), String> {
-    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("limestone.db");
+    let db_path = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("limestone.db");
     let db = crate::open_db(&db_path).map_err(|e| e.to_string())?;
     db.execute_batch("delete from document_groups; delete from documents; delete from groups;")
         .map_err(|e| e.to_string())
@@ -132,12 +136,21 @@ pub fn search_documents(
     app: AppHandle,
     app_data: State<AppData>,
     query: String,
-) -> Result<Vec<services::title_search::SearchResult>, String> {
+) -> Result<Vec<services::search::SearchResult>, String> {
     let vault = {
         let active = app_data.active_vault.lock().unwrap();
         active.clone().ok_or("no active vault")?
     };
-    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("limestone.db");
+    let db_path = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("limestone.db");
     let db = crate::open_db(&db_path).map_err(|e| e.to_string())?;
-    Ok(services::title_search::search(&db, &vault.id.to_string(), &query, 15))
+    Ok(services::search::search(
+        &db,
+        &vault.id.to_string(),
+        &query,
+        15,
+    ))
 }

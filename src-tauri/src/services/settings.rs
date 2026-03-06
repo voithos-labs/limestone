@@ -33,6 +33,34 @@ impl JsonSettingsStore {
         Ok(())
     }
 
+    /// Load to memory for cahcing
+    pub fn load_merged(&self) -> Value {
+        // Default
+        let mut merged = self
+            .default_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str::<Value>(s).ok())
+            .unwrap_or(Value::Object(Default::default()));
+
+        // Global
+        if let Ok(contents) = fs::read_to_string(&self.path) {
+            if let Ok(global) = serde_json::from_str::<Value>(&contents) {
+                json_merge(&mut merged, &global);
+            }
+        }
+
+        // Vault
+        if let Some(ref override_path) = self.override_path {
+            if let Ok(contents) = fs::read_to_string(override_path) {
+                if let Ok(vault) = serde_json::from_str::<Value>(&contents) {
+                    json_merge(&mut merged, &vault);
+                }
+            }
+        }
+
+        merged
+    }
+
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
         // try load from os, vault -> global -> compiled defaults
         let paths: Vec<&Path> = self
@@ -74,7 +102,7 @@ impl JsonSettingsStore {
         self.write_to(&self.path, key, value)
     }
 
-    /// Update value by key on fs
+    /// Update value by key on fs. Returns the written Value for cache update.
     pub fn write_to<T: Serialize>(&self, path: &Path, key: &str, value: T) -> io::Result<()> {
         let mut json: Value = fs::read_to_string(path)
             .ok()
@@ -92,5 +120,14 @@ impl JsonSettingsStore {
             .write(|f| f.write_all(serde_json::to_string_pretty(&json)?.as_bytes()))?;
 
         Ok(())
+    }
+}
+
+/// Merge `source` object into `target`.
+fn json_merge(target: &mut Value, source: &Value) {
+    if let (Some(t), Some(s)) = (target.as_object_mut(), source.as_object()) {
+        for (k, v) in s {
+            t.insert(k.clone(), v.clone());
+        }
     }
 }
