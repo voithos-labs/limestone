@@ -1,3 +1,4 @@
+use super::JsonSettingsStore;
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use rusqlite::Connection;
@@ -9,7 +10,6 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tauri::AppHandle;
 use tauri_plugin_fs::FsExt;
-use super::JsonSettingsStore;
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -50,7 +50,7 @@ pub fn open_vault(app: &AppHandle, app_data: &crate::AppData, mut vault: Vault) 
     *app_data.active_vault.lock().unwrap() = Some(vault);
 
     let merged = JsonSettingsStore::for_app(app, Some(&vault_path)).load_merged();
-    *app_data.settings.lock().unwrap() = merged;
+    *app_data.settings.write().unwrap() = merged;
 }
 
 pub fn create_vault(title: Option<String>, path: PathBuf) -> Result<Vault, std::io::Error> {
@@ -501,7 +501,7 @@ pub fn reconcile_vault(
             vault_path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .unwrap_or("Untitled"),
+                .unwrap_or("Untitled"), // this maybe should behave differently
             vault_path.to_string_lossy()
         ],
     )?;

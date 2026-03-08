@@ -1,6 +1,6 @@
 use serde_json::Value;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock};
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
 
@@ -18,7 +18,7 @@ pub fn open_db(path: &Path) -> rusqlite::Result<rusqlite::Connection> {
 pub struct AppData {
     pub user: services::User,
     pub active_vault: Mutex<Option<services::Vault>>,
-    pub settings: Mutex<Value>,
+    pub settings: RwLock<Value>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -81,7 +81,7 @@ pub fn run() {
             app.manage(AppData {
                 user,
                 active_vault: Mutex::new(active_vault.clone()),
-                settings: Mutex::new(initial_settings),
+                settings: RwLock::new(initial_settings),
             });
 
             // ── Not Blocking!1 ───────────────────────────────────────────────────────
