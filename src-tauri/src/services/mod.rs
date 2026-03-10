@@ -4,6 +4,6 @@ mod settings;
 mod user;
 mod vault;
 
-pub use settings::JsonSettingsStore;
+pub use settings::{dot_get, JsonSettingsStore};
 pub use user::User;
 pub use vault::{create_vault, open_vault, reconcile_vault, Vault, Vaults};

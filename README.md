@@ -1,5 +1,7 @@
 # LIMESTONE (V4)
 
+I use https://plugins.jetbrains.com/plugin/24705-code-divider for sections
+
 ## Vaults
 
 So here's what I'm thinking:

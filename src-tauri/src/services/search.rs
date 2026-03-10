@@ -12,6 +12,28 @@ pub struct SearchResult {
     pub match_indices: Vec<u32>,
 }
 
+pub struct SearchConfig {
+    pub max_results: usize,
+    pub prefix_candidate_pool: usize,
+    pub fuzzy_threshold: usize,
+    pub recency_weight: f64,
+    pub recency_multiplier: f64,
+    pub recency_default_days: f64,
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            max_results: 15,
+            prefix_candidate_pool: 50,
+            fuzzy_threshold: 2,
+            recency_weight: 0.5,
+            recency_multiplier: 100.0,
+            recency_default_days: 365.0,
+        }
+    }
+}
+
 struct DocEntry {
     id: String,
     title: String,
@@ -55,7 +77,7 @@ fn load_docs(db: &Connection, vault_id: &str, limit: Option<usize>) -> Vec<DocEn
     result
 }
 
-fn days_since(accessed_at: &Option<String>) -> f64 {
+fn days_since(accessed_at: &Option<String>, default_days: f64) -> f64 {
     let now = chrono::Utc::now();
     accessed_at
         .as_deref()
@@ -65,7 +87,7 @@ fn days_since(accessed_at: &Option<String>) -> f64 {
             let duration = now.signed_duration_since(accessed);
             duration.num_hours().max(0) as f64 / 24.0
         })
-        .unwrap_or(365.0)
+        .unwrap_or(default_days)
 }
 
 fn to_result(doc: &DocEntry) -> SearchResult {
@@ -85,17 +107,17 @@ fn search_recents(db: &Connection, vault_id: &str, limit: usize) -> Vec<SearchRe
         .collect()
 }
 
-fn search_prefix(db: &Connection, vault_id: &str, query: &str, limit: usize) -> Vec<SearchResult> {
+fn search_prefix(db: &Connection, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
     let query_lower = query.to_lowercase();
-    load_docs(db, vault_id, Some(50))
+    load_docs(db, vault_id, Some(cfg.prefix_candidate_pool))
         .iter()
         .filter(|doc| doc.title.to_lowercase().contains(&query_lower))
-        .take(limit)
+        .take(cfg.max_results)
         .map(to_result)
         .collect()
 }
 
-fn search_fuzzy(db: &Connection, vault_id: &str, query: &str, limit: usize) -> Vec<SearchResult> {
+fn search_fuzzy(db: &Connection, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
     let docs = load_docs(db, vault_id, None);
     if docs.is_empty() {
         return Vec::new();
@@ -127,14 +149,14 @@ fn search_fuzzy(db: &Connection, vault_id: &str, query: &str, limit: usize) -> V
     let mut results: Vec<(usize, f64)> = scored
         .iter()
         .map(|&(i, nucleo_score)| {
-            let recency_bonus = 100.0 / (1.0 + days_since(&docs[i].accessed_at));
-            let composite = nucleo_score as f64 + (recency_bonus * 0.5);
+            let recency_bonus = cfg.recency_multiplier / (1.0 + days_since(&docs[i].accessed_at, cfg.recency_default_days));
+            let composite = nucleo_score as f64 + (recency_bonus * cfg.recency_weight);
             (i, composite)
         })
         .collect();
 
     results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    results.truncate(limit);
+    results.truncate(cfg.max_results);
 
     // Get match indices for top results only
     results
@@ -158,11 +180,11 @@ fn search_fuzzy(db: &Connection, vault_id: &str, query: &str, limit: usize) -> V
         .collect()
 }
 
-pub fn search(db: &Connection, vault_id: &str, query: &str, limit: usize) -> Vec<SearchResult> {
+pub fn search(db: &Connection, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
     let query = query.trim();
     match query.len() {
-        0 => search_recents(db, vault_id, limit),
-        1..=2 => search_prefix(db, vault_id, query, limit),
-        _ => search_fuzzy(db, vault_id, query, limit),
+        0 => search_recents(db, vault_id, cfg.max_results),
+        n if n <= cfg.fuzzy_threshold => search_prefix(db, vault_id, query, cfg),
+        _ => search_fuzzy(db, vault_id, query, cfg),
     }
 }

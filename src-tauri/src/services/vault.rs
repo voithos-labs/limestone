@@ -231,24 +231,25 @@ pub fn diff_against_db(
     diff
 }
 
-/// Read first 1kb and parse frontmatter
+/// Read first N bytes and parse frontmatter
 pub fn extract_frontmatter(
     vault_path: &Path,
     paths: &[String],
+    buffer_size: usize,
 ) -> Vec<(String, Option<Frontmatter>)> {
     paths
         .par_iter()
         .map(|rel_path| {
             let full_path = vault_path.join(rel_path);
-            let fm = read_frontmatter(&full_path);
+            let fm = read_frontmatter(&full_path, buffer_size);
             (rel_path.clone(), fm)
         })
         .collect()
 }
 
-fn read_frontmatter(path: &Path) -> Option<Frontmatter> {
+fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<Frontmatter> {
     let mut file = fs::File::open(path).ok()?;
-    let mut buf = vec![0u8; 1024];
+    let mut buf = vec![0u8; buffer_size];
     let n = file.read(&mut buf).ok()?;
     let content = std::str::from_utf8(&buf[..n]).ok()?;
 
@@ -489,6 +490,7 @@ pub fn reconcile_vault(
     vault_id: &str,
     db: &Connection,
     extensions: &[&str],
+    frontmatter_buffer_size: usize,
 ) -> rusqlite::Result<()> {
     use std::time::Instant;
     let t_total = Instant::now();
@@ -556,7 +558,7 @@ pub fn reconcile_vault(
         .map(|(p, _)| p.clone())
         .chain(diff.modified.iter().map(|(p, _)| p.clone()))
         .collect();
-    let frontmatter = extract_frontmatter(vault_path, &paths_to_read);
+    let frontmatter = extract_frontmatter(vault_path, &paths_to_read, frontmatter_buffer_size);
     eprintln!(
         "[reconcile] frontmatter: {}ms ({} files read)",
         t2.elapsed().as_millis(),

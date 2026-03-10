@@ -78,6 +78,10 @@ pub fn run() {
             let vault_path = active_vault.as_ref().map(|v| v.path.as_path());
             let initial_settings = services::JsonSettingsStore::for_app(app.handle(), vault_path).load_merged();
 
+            let fm_buf_size = services::dot_get(&initial_settings, "indexing.frontmatter_read_buffer_size")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(512) as usize;
+
             app.manage(AppData {
                 user,
                 active_vault: Mutex::new(active_vault.clone()),
@@ -98,7 +102,7 @@ pub fn run() {
                         }
                     };
                     let vault_id = vault.id.to_string();
-                    if let Err(e) = services::reconcile_vault(&vault.path, &vault_id, &db, &["md"])
+                    if let Err(e) = services::reconcile_vault(&vault.path, &vault_id, &db, &["md"], fm_buf_size)
                     {
                         eprintln!("Reconciliation failed: {e}");
                     }
