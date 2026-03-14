@@ -2,6 +2,7 @@
     import type { Snippet } from "svelte";
     import { invoke } from "@tauri-apps/api/core";
     import { loadAndApplyTheme } from "$lib/theme";
+    import "../app.css";
 
     interface Vault {
         id: string;
