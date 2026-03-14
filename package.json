@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:editor": "tsc -p tsconfig.editor-test.json && node --test .tmp/editor-test/src/lib/editor/test/text-buffer.test.js"
   },
   "license": "MIT",
   "dependencies": {
