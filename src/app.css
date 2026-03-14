@@ -1,4 +1,10 @@
 
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 :root {
 
     /* ── Default Theme ───────────────────────────────────────────────────────────── */
@@ -14,4 +20,9 @@
 
     --color-accent-primary: #567B67;
 
+}
+
+body {
+    background: var(--color-bg);
+    color: var(--color-text-primary);
 }
