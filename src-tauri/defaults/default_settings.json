@@ -1,4 +1,8 @@
 {
+  "documents": {
+    "use_yaml_frontmatter": true,
+    "add_yaml_frontmatter_to_existing_documents": false
+  },
   "indexing": {
     "frontmatter_read_buffer_size": 512
   },

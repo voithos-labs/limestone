@@ -39,6 +39,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .setup(move |app| {
             // ── Blocking Shi ─────────────────────────────────────────────────────────
 
