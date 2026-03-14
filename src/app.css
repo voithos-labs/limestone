@@ -1,0 +1,17 @@
+
+:root {
+
+    /* ── Default Theme ───────────────────────────────────────────────────────────── */
+
+    --color-bg: #26282B;
+    --color-surface: #1A1C1D;
+
+    --color-text-primary: #FFFFFF;
+    --color-text-secondary: #E6E5E5;
+
+    --color-ui-dulled: #AFB1B3;
+    --color-ui-muted: #666666;
+
+    --color-accent-primary: #567B67;
+
+}
