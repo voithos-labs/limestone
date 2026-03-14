@@ -77,16 +77,20 @@ pub fn create_vault(title: Option<String>, path: PathBuf) -> Result<Vault, std::
 // Reconciliation types
 // ---------------------
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Frontmatter {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
-    #[serde(default)]
-    pub properties: HashMap<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub accessed_at: Option<String>,
+    #[serde(default, flatten)]
+    pub properties: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug)]

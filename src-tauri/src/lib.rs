@@ -1,5 +1,6 @@
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use serde_json::Value;
-use std::path::Path;
 use std::sync::{Mutex, RwLock};
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
@@ -9,16 +10,21 @@ mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
 
-pub fn open_db(path: &Path) -> rusqlite::Result<rusqlite::Connection> {
-    let db = rusqlite::Connection::open(path)?;
-    db.execute_batch(SCHEMA)?;
-    Ok(db)
+pub type DbPool = Pool<SqliteConnectionManager>;
+
+pub fn create_pool(path: &std::path::Path) -> Result<DbPool, Box<dyn std::error::Error>> {
+    let manager = SqliteConnectionManager::file(path);
+    let pool = Pool::builder().max_size(4).build(manager)?;
+    // Run schema on one connection
+    pool.get()?.execute_batch(SCHEMA)?;
+    Ok(pool)
 }
 
 pub struct AppData {
     pub user: services::User,
     pub active_vault: Mutex<Option<services::Vault>>,
     pub settings: RwLock<Value>,
+    pub db: DbPool,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -83,22 +89,26 @@ pub fn run() {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(512) as usize;
 
+            let db_path = global_data_path.join("limestone.db");
+            let pool = create_pool(&db_path)
+                .map_err(|e| Box::<dyn std::error::Error>::from(format!("failed to create db pool: {e}")))?;
+
             app.manage(AppData {
                 user,
                 active_vault: Mutex::new(active_vault.clone()),
                 settings: RwLock::new(initial_settings),
+                db: pool.clone(),
             });
 
             // ── Not Blocking!1 ───────────────────────────────────────────────────────
 
             if let Some(vault) = active_vault {
-                let db_path = global_data_path.join("limestone.db");
                 let app_handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    let db = match open_db(&db_path) {
+                    let db = match pool.get() {
                         Ok(db) => db,
                         Err(e) => {
-                            eprintln!("Failed to open db for reconciliation: {e}");
+                            eprintln!("Failed to get db connection for reconciliation: {e}");
                             return;
                         }
                     };
@@ -124,6 +134,8 @@ pub fn run() {
             commands::settings_commands::get_setting,
             commands::settings_commands::set_setting_vault,
             commands::settings_commands::set_setting_global,
+            commands::document_commands::get_document,
+            commands::document_commands::save_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
