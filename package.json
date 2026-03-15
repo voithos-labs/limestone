@@ -10,7 +10,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
-    "test:editor": "tsc -p tsconfig.editor-test.json && node --test .tmp/editor-test/src/lib/editor/test/text-buffer.test.js"
+    "test:editor": "tsc -p tsconfig.editor-test.json && node --test .tmp/editor-test/src/lib/editor/test/text-buffer.test.js .tmp/editor-test/src/lib/editor/test/parser-poc.test.js .tmp/editor-test/src/lib/editor/test/cst-poc.test.js .tmp/editor-test/src/lib/editor/test/parser-validation.test.js .tmp/editor-test/src/lib/editor/test/input-harness-poc.test.js .tmp/editor-test/src/lib/editor/test/view-projection-poc.test.js"
   },
   "license": "MIT",
   "dependencies": {

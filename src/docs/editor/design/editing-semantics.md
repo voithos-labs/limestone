@@ -117,6 +117,7 @@ Each entry specifies context, behavior, source effect, selection result, and bla
 - **Source effect**: splice newline into code body range
 - **Selection**: cursor at start of new line within code body
 - **Blast radius**: the code fence block
+- **Note**: Enter does not exit the code fence; exiting requires a different gesture (e.g., arrow-down past the closing fence, or a dedicated command)
 
 ### Enter in blockquote
 

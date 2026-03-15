@@ -7,12 +7,22 @@ It should be updated whenever a meaningful editor milestone lands.
 ## Current status
 
 - [x] Read and review the full editor design set
-- [x] Confirm the first implementation slice should begin in the Phase 1 source-fidelity core, not the UI layer
+- [x] Confirm implementation should begin with the Phase 0 proof-of-concept gates before broader editor work
 - [x] Create the initial editor module scaffold under `src/lib/editor/`
 - [x] Implement `TextBuffer` with a flat-string backend and line-start indexing
 - [x] Implement file metadata helpers for BOM, preferred newline style, and final newline handling
+- [x] Implement a narrow two-pass parser proof of concept against a mixed markdown fixture
+- [x] Prove exact parse -> serialize round-trip on the mixed Phase 0 fixture
+- [x] Implement CST proof-of-concept ownership, delimiter-accounting, and recovery examples
 - [x] Add a dedicated editor test path with `npm run test:editor`
 - [x] Add initial tests for text buffer behavior and file metadata behavior
+- [x] Add initial tests for the Phase 0 parser proof of concept and round-trip harness
+- [x] Add focused Phase 0 CST invariant and recovery tests
+- [x] Add fixture-driven parser validation for selected supported, preserve-only, and malformed fallback cases
+- [x] Expand the parser validation corpus with grouped CommonMark- and GFM-aligned fixtures plus metadata assertions
+- [x] Add a headless input harness proof of concept for logical selection mapping, invalid-selection repair, image atoms, IME composition, and paste smoke tests
+- [x] Add a read-only view projection proof of concept for flat block descriptors, inline runs, container context, and atomic image runs
+- [x] Add a browser-backed Svelte editor harness prototype that renders the projection PoC and maps DOM selection through block and run keys
 - [x] Resolve the first design concerns identified during implementation review
 
 ## Design concerns resolved
@@ -26,25 +36,25 @@ It should be updated whenever a meaningful editor milestone lands.
 
 ## Current recommendation
 
-The next implementation slice should be the smallest testable part of the remaining Phase 1 core:
+The next implementation slice should connect the current headless proofs to a browser-backed harness:
 
-- [ ] Define transaction primitives around source ranges and inverse splices
-- [ ] Define selection data structures anchored by source offsets
-- [ ] Add document/session state for `dirty`, `loadedVersion`, and `lastSavedVersion`
+- [x] Render the projection proof of concept through a narrow Svelte editor harness
+- [x] Build DOM node mapping from projection block and run keys
+- [ ] Prove browser selection round-trip for paragraph, heading, list item, fenced code, and image atom cases
 
-These three pieces set up the parser and history layers without forcing early UI work.
+The remaining Phase 0 gates still derisk correctness before broader editor and transaction work begins. A browser-backed harness prototype now exists, but the broader gate stays open until the selection cases above are manually validated in the live UI.
 
 ## Phase checklist
 
-## Phase 0: proof-of-concept gates
+### Phase 0: proof-of-concept gates
 
-- [ ] Custom two-pass parser proof of concept against a mixed GFM fixture
-- [ ] Byte-for-byte parse -> CST -> serialize round-trip proof
-- [ ] CST examples for trivia ownership, delimiter accounting, and malformed regions
+- [x] Custom two-pass parser proof of concept against a mixed GFM fixture
+- [x] Byte-for-byte parse -> CST -> serialize round-trip proof
+- [x] CST examples for trivia ownership, delimiter accounting, and malformed regions
 - [ ] Validation against CommonMark and GFM spec fixtures for supported syntax
 - [ ] Narrow input harness for logical selection, DOM mapping, and IME smoke tests
 
-## Phase 1: source fidelity core
+### Phase 1: source fidelity core
 
 - [x] `TextBuffer` abstraction with flat string backend
 - [x] File metadata envelope for newline style, BOM, and final newline
@@ -55,14 +65,16 @@ These three pieces set up the parser and history layers without forcing early UI
 - [ ] Round-trip and localized patch tests
 - [ ] CommonMark and GFM spec test suite integration
 
-## Phase 2: read-only rendered projection
+### Phase 2: read-only rendered projection
 
 - [ ] Block projection
 - [ ] Inline projection
 - [ ] Svelte renderer for supported v1 shapes
 - [ ] Minimal or opaque rendering for preserve-only constructs
 
-## Phase 2.5: input harness
+Headless PoC coverage now exists for flat block descriptors, inline runs, container context, and atomic image rendering, and a narrow Svelte harness now consumes that projection. The checklist remains open until the renderer is validated across the broader supported v1 surface.
+
+### Phase 2.5: input harness
 
 - [ ] Paragraph editable island
 - [ ] Heading editable island
@@ -73,7 +85,9 @@ These three pieces set up the parser and history layers without forcing early UI
 - [ ] IME smoke tests
 - [ ] Clipboard smoke tests
 
-## Phase 3: minimal editing interactions
+Headless PoC coverage now exists for the Phase 2.5 cases above, and a browser-backed prototype now exposes the paragraph, heading, list item, fenced code, and image atom cases. The checklist remains open until those paths are manually validated and extended to IME and clipboard behavior in the live UI.
+
+### Phase 3: minimal editing interactions
 
 - [ ] Text insertion and deletion in supported text blocks
 - [ ] Caret movement
@@ -83,7 +97,7 @@ These three pieces set up the parser and history layers without forcing early UI
 - [ ] Atomic image selection and replacement flows
 - [ ] Thin host feedback loop for load -> edit -> save
 
-## Phase 4: structural markdown commands
+### Phase 4: structural markdown commands
 
 - [ ] Ordered / unordered list commands
 - [ ] Task list toggles
@@ -93,7 +107,7 @@ These three pieces set up the parser and history layers without forcing early UI
 - [ ] Hard break insertion behavior
 - [ ] Autolink handling
 
-## Phase 5: host integration
+### Phase 5: host integration
 
 - [ ] Host save flow
 - [ ] Diagnostics and decorations
@@ -101,7 +115,7 @@ These three pieces set up the parser and history layers without forcing early UI
 - [ ] Asset resolution and image import hooks
 - [ ] Document replacement flow and save conflict handling
 
-## Phase 6: preserve-only syntax polish
+### Phase 6: preserve-only syntax polish
 
 - [ ] Better minimal rendering for tables, footnotes, details, alerts, and math
 - [ ] Cleaner raw-edit fallback UX for opaque regions

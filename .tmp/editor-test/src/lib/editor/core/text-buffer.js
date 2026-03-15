@@ -1,5 +1,6 @@
 export class TextBuffer {
     text;
+    // Line starts are kept eagerly in sync because source offsets are the editor's primary anchor.
     lineStarts;
     constructor(text = "") {
         this.text = text;

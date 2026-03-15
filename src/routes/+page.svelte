@@ -1,6 +1,7 @@
 <script lang="ts">
     import {invoke} from "@tauri-apps/api/core";
     import {listen} from "@tauri-apps/api/event";
+    import EditorBrowserHarness from "$lib/editor/ui/EditorBrowserHarness.svelte";
 
     interface Vault {
         id: string;
@@ -137,6 +138,16 @@
     {#if loading}
         <div class="loading">working...</div>
     {/if}
+
+    <section>
+        <h3>editor harness</h3>
+        <p class="muted">
+            Browser-backed projection and selection prototype for the editor module.
+        </p>
+        <div class="editor-harness-panel">
+            <EditorBrowserHarness/>
+        </div>
+    </section>
 </main>
 
 <style>
@@ -203,11 +214,6 @@
         cursor: default;
     }
 
-    button.small {
-        font-size: 0.8rem;
-        padding: 0.2rem 0.5rem;
-    }
-
     ul {
         list-style: none;
         padding: 0;
@@ -267,5 +273,9 @@
         background: var(--color-surface);
         padding: 0.4rem 0.8rem;
         border-radius: 4px;
+    }
+
+    .editor-harness-panel {
+        margin-top: 0.75rem;
     }
 </style>
