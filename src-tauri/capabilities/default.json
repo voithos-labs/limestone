@@ -13,7 +13,6 @@
     "fs:allow-mkdir",
     "fs:allow-remove",
     "fs:allow-rename",
-    "sql:default",
-    "store:default"
+"store:default"
   ]
 }

@@ -23,23 +23,18 @@ pub struct AppData {
     pub db: SqlitePool,
 }
 
+impl AppData {
+    pub fn get_active_vault(&self) -> Result<(std::path::PathBuf, String), String> {
+        let active = self.active_vault.lock().unwrap();
+        let vault = active.as_ref().ok_or("no active vault")?;
+        Ok((vault.path.clone(), vault.id.to_string()))
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(
-            tauri_plugin_sql::Builder::new()
-                .add_migrations(
-                    "sqlite:limestone.db",
-                    vec![tauri_plugin_sql::Migration {
-                        version: 1,
-                        description: "initial schema",
-                        sql: include_str!("../sql/schema.sql"),
-                        kind: tauri_plugin_sql::MigrationKind::Up,
-                    }],
-                )
-                .build(),
-        )
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(move |app| {
@@ -134,6 +129,10 @@ pub fn run() {
             commands::settings_commands::set_setting_vault,
             commands::settings_commands::set_setting_global,
             commands::document_commands::write_document,
+            commands::document_commands::rename_document,
+            commands::document_commands::move_document,
+            commands::db_commands::sql_select,
+            commands::db_commands::sql_execute,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -28,7 +28,6 @@ create table if not exists documents (
     mtime integer,
     deleted_at text,
     properties text not null default '{}'
-
 ) strict;
 
 create table if not exists groups (

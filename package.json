@@ -16,9 +16,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-opener": "^2",
-    "@tauri-apps/plugin-sql": "^2.3.1",
     "@tauri-apps/plugin-store": "^2.4.2",
-    "kysely": "^0.28.9",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
