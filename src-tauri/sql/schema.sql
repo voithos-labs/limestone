@@ -19,7 +19,8 @@ create table if not exists vaults (
 create table if not exists documents (
     id text primary key not null,
     vault_id text not null references vaults(id) on delete cascade,
-    rel_path text,
+    document_type text not null default 'md',
+    rel_path text not null,
     title text not null,
     created_at text not null default (datetime('now')),
     updated_at text not null default (datetime('now')),
@@ -38,6 +39,8 @@ create table if not exists groups (
     created_at text not null default (datetime('now')),
     updated_at text not null default (datetime('now')),
     accessed_at text not null default (datetime('now'))
+    -- okay to get the full prop flexibillity potential (like notion) you need props with default values per-group
+    -- can just define in a basic json, schema will have to be enforced in code on-parse
 ) strict;
 
 create table if not exists document_groups (

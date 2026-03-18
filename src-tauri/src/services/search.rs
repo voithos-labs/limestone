@@ -1,7 +1,7 @@
 use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use rusqlite::Connection;
 use serde::Serialize;
+use sqlx::SqlitePool;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResult {
@@ -41,40 +41,36 @@ struct DocEntry {
     accessed_at: Option<String>,
 }
 
-fn load_docs(db: &Connection, vault_id: &str, limit: Option<usize>) -> Vec<DocEntry> {
-    let sql = match limit {
-        Some(_) => "select id, title, rel_path, accessed_at from documents where vault_id = ?1 and deleted_at is null order by accessed_at desc limit ?2",
-        None => "select id, title, rel_path, accessed_at from documents where vault_id = ?1 and deleted_at is null",
-    };
-
-    let mut stmt = match db.prepare(sql) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
-
-    let map_row = |row: &rusqlite::Row| -> rusqlite::Result<DocEntry> {
-        Ok(DocEntry {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            rel_path: row.get(2)?,
-            accessed_at: row.get(3)?,
-        })
-    };
-
-    let result = match limit {
+async fn load_docs(db: &SqlitePool, vault_id: &str, limit: Option<usize>) -> Vec<DocEntry> {
+    let rows: Vec<(String, String, Option<String>, Option<String>)> = match limit {
         Some(n) => {
-            let rows = stmt.query_map(rusqlite::params![vault_id, n as i64], map_row);
-            rows.map(|r| r.filter_map(|e| e.ok()).collect())
-                .unwrap_or_default()
+            sqlx::query_as(
+                "SELECT id, title, rel_path, accessed_at FROM documents WHERE vault_id = ?1 AND deleted_at IS NULL ORDER BY accessed_at DESC LIMIT ?2",
+            )
+            .bind(vault_id)
+            .bind(n as i64)
+            .fetch_all(db)
+            .await
         }
         None => {
-            let rows = stmt.query_map(rusqlite::params![vault_id], map_row);
-            rows.map(|r| r.filter_map(|e| e.ok()).collect())
-                .unwrap_or_default()
+            sqlx::query_as(
+                "SELECT id, title, rel_path, accessed_at FROM documents WHERE vault_id = ?1 AND deleted_at IS NULL",
+            )
+            .bind(vault_id)
+            .fetch_all(db)
+            .await
         }
-    };
+    }
+    .unwrap_or_default();
 
-    result
+    rows.into_iter()
+        .map(|(id, title, rel_path, accessed_at)| DocEntry {
+            id,
+            title,
+            rel_path,
+            accessed_at,
+        })
+        .collect()
 }
 
 fn days_since(accessed_at: &Option<String>, default_days: f64) -> f64 {
@@ -100,16 +96,18 @@ fn to_result(doc: &DocEntry) -> SearchResult {
     }
 }
 
-fn search_recents(db: &Connection, vault_id: &str, limit: usize) -> Vec<SearchResult> {
+async fn search_recents(db: &SqlitePool, vault_id: &str, limit: usize) -> Vec<SearchResult> {
     load_docs(db, vault_id, Some(limit))
+        .await
         .iter()
         .map(to_result)
         .collect()
 }
 
-fn search_prefix(db: &Connection, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+async fn search_prefix(db: &SqlitePool, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
     let query_lower = query.to_lowercase();
     load_docs(db, vault_id, Some(cfg.prefix_candidate_pool))
+        .await
         .iter()
         .filter(|doc| doc.title.to_lowercase().contains(&query_lower))
         .take(cfg.max_results)
@@ -117,8 +115,8 @@ fn search_prefix(db: &Connection, vault_id: &str, query: &str, cfg: &SearchConfi
         .collect()
 }
 
-fn search_fuzzy(db: &Connection, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
-    let docs = load_docs(db, vault_id, None);
+async fn search_fuzzy(db: &SqlitePool, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+    let docs = load_docs(db, vault_id, None).await;
     if docs.is_empty() {
         return Vec::new();
     }
@@ -180,11 +178,11 @@ fn search_fuzzy(db: &Connection, vault_id: &str, query: &str, cfg: &SearchConfig
         .collect()
 }
 
-pub fn search(db: &Connection, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+pub async fn search(db: &SqlitePool, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
     let query = query.trim();
     match query.len() {
-        0 => search_recents(db, vault_id, cfg.max_results),
-        n if n <= cfg.fuzzy_threshold => search_prefix(db, vault_id, query, cfg),
-        _ => search_fuzzy(db, vault_id, query, cfg),
+        0 => search_recents(db, vault_id, cfg.max_results).await,
+        n if n <= cfg.fuzzy_threshold => search_prefix(db, vault_id, query, cfg).await,
+        _ => search_fuzzy(db, vault_id, query, cfg).await,
     }
 }

@@ -1,28 +1,27 @@
-
-*, *::before, *::after {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+*,
+*::before,
+*::after {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
 }
 
 :root {
+	/* ── Default Theme ───────────────────────────────────────────────────────────── */
 
-    /* ── Default Theme ───────────────────────────────────────────────────────────── */
+	--color-bg: #26282b;
+	--color-surface: #1a1c1d;
 
-    --color-bg: #26282B;
-    --color-surface: #1A1C1D;
+	--color-text-primary: #ffffff;
+	--color-text-secondary: #e6e5e5;
 
-    --color-text-primary: #FFFFFF;
-    --color-text-secondary: #E6E5E5;
+	--color-ui-dulled: #afb1b3;
+	--color-ui-muted: #666666;
 
-    --color-ui-dulled: #AFB1B3;
-    --color-ui-muted: #666666;
-
-    --color-accent-primary: #567B67;
-
+	--color-accent-primary: #567b67;
 }
 
 body {
-    background: var(--color-bg);
-    color: var(--color-text-primary);
+	background: var(--color-bg);
+	color: var(--color-text-primary);
 }

@@ -1,5 +1,5 @@
 use serde_json::Value;
-use std::path::Path;
+use sqlx::SqlitePool;
 use std::sync::{Mutex, RwLock};
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
@@ -9,35 +9,32 @@ mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
 
-pub fn open_db(path: &Path) -> rusqlite::Result<rusqlite::Connection> {
-    let db = rusqlite::Connection::open(path)?;
-    db.execute_batch(SCHEMA)?;
-    Ok(db)
+pub async fn create_pool(path: &std::path::Path) -> Result<SqlitePool, Box<dyn std::error::Error>> {
+    let url = format!("sqlite:{}?mode=rwc", path.display());
+    let pool = SqlitePool::connect(&url).await?;
+    sqlx::raw_sql(SCHEMA).execute(&pool).await?;
+    Ok(pool)
 }
 
 pub struct AppData {
     pub user: services::User,
     pub active_vault: Mutex<Option<services::Vault>>,
     pub settings: RwLock<Value>,
+    pub db: SqlitePool,
+}
+
+impl AppData {
+    pub fn get_active_vault(&self) -> Result<(std::path::PathBuf, String), String> {
+        let active = self.active_vault.lock().unwrap();
+        let vault = active.as_ref().ok_or("no active vault")?;
+        Ok((vault.path.clone(), vault.id.to_string()))
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(
-            tauri_plugin_sql::Builder::new()
-                .add_migrations(
-                    "sqlite:limestone.db",
-                    vec![tauri_plugin_sql::Migration {
-                        version: 1,
-                        description: "initial schema",
-                        sql: include_str!("../sql/schema.sql"),
-                        kind: tauri_plugin_sql::MigrationKind::Up,
-                    }],
-                )
-                .build(),
-        )
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(move |app| {
@@ -77,33 +74,40 @@ pub fn run() {
             let active_vault = vaults.first().cloned();
 
             let vault_path = active_vault.as_ref().map(|v| v.path.as_path());
-            let initial_settings = services::JsonSettingsStore::for_app(app.handle(), vault_path).load_merged();
+            let initial_settings =
+                services::JsonSettingsStore::for_app(app.handle(), vault_path).load_merged();
 
-            let fm_buf_size = services::dot_get(&initial_settings, "indexing.frontmatter_read_buffer_size")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(512) as usize;
+            let fm_buf_size =
+                services::dot_get(&initial_settings, "indexing.frontmatter_read_buffer_size")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(512) as usize;
+
+            let db_path = global_data_path.join("limestone.db");
+            let pool = tauri::async_runtime::block_on(create_pool(&db_path)).map_err(|e| {
+                Box::<dyn std::error::Error>::from(format!("failed to create db pool: {e}"))
+            })?;
 
             app.manage(AppData {
                 user,
                 active_vault: Mutex::new(active_vault.clone()),
                 settings: RwLock::new(initial_settings),
+                db: pool.clone(),
             });
 
             // ── Not Blocking!1 ───────────────────────────────────────────────────────
 
             if let Some(vault) = active_vault {
-                let db_path = global_data_path.join("limestone.db");
                 let app_handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    let db = match open_db(&db_path) {
-                        Ok(db) => db,
-                        Err(e) => {
-                            eprintln!("Failed to open db for reconciliation: {e}");
-                            return;
-                        }
-                    };
+                tauri::async_runtime::spawn(async move {
                     let vault_id = vault.id.to_string();
-                    if let Err(e) = services::reconcile_vault(&vault.path, &vault_id, &db, &["md"], fm_buf_size)
+                    if let Err(e) = services::reconcile_vault(
+                        &vault.path,
+                        &vault_id,
+                        &pool,
+                        &["md"],
+                        fm_buf_size,
+                    )
+                    .await
                     {
                         eprintln!("Reconciliation failed: {e}");
                     }
@@ -124,6 +128,11 @@ pub fn run() {
             commands::settings_commands::get_setting,
             commands::settings_commands::set_setting_vault,
             commands::settings_commands::set_setting_global,
+            commands::document_commands::write_document,
+            commands::document_commands::rename_document,
+            commands::document_commands::move_document,
+            commands::db_commands::sql_select,
+            commands::db_commands::sql_execute,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

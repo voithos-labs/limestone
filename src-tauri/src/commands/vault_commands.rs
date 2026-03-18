@@ -24,7 +24,7 @@ fn load_vaults(app: &AppHandle) -> Vec<Vault> {
 }
 
 fn spawn_reconcile(app: &AppHandle, vault: &Vault, app_data: &AppData) {
-    let db_path = app.path().app_data_dir().unwrap().join("limestone.db");
+    let pool = app_data.db.clone();
     let vault_path = vault.path.clone();
     let vault_id = vault.id.to_string();
     let app_handle = app.clone();
@@ -33,18 +33,10 @@ fn spawn_reconcile(app: &AppHandle, vault: &Vault, app_data: &AppData) {
         .and_then(|v| v.as_u64())
         .unwrap_or(512) as usize;
     drop(settings);
-    std::thread::spawn(move || {
-        let db = match crate::open_db(&db_path) {
-            Ok(db) => db,
-            Err(e) => {
-                eprintln!("reconcile db open failed: {e}");
-                return;
-            }
-        };
-        if let Err(e) = services::reconcile_vault(&vault_path, &vault_id, &db, &["md"], fm_buf_size) {
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = services::reconcile_vault(&vault_path, &vault_id, &pool, &["md"], fm_buf_size).await {
             eprintln!("reconcile failed: {e}");
         }
-        // probably want to type w/ json body these later, e.g. emit content update type and then specify what kind
         let _ = app_handle.emit("vault-reconciled", &vault_id);
     });
 }
@@ -128,15 +120,12 @@ pub fn get_vault_by_id(app: AppHandle, id: Uuid) -> Option<Vault> {
 }
 
 #[tauri::command]
-pub fn clear_cache(app: AppHandle) -> Result<(), String> {
-    let db_path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("limestone.db");
-    let db = crate::open_db(&db_path).map_err(|e| e.to_string())?;
-    db.execute_batch("delete from document_groups; delete from documents; delete from groups;")
-        .map_err(|e| e.to_string())
+pub async fn clear_cache(app_data: State<'_, AppData>) -> Result<(), String> {
+    sqlx::raw_sql("DELETE FROM document_groups; DELETE FROM documents; DELETE FROM groups;")
+        .execute(&app_data.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn search_config_from_settings(settings: &serde_json::Value) -> services::search::SearchConfig {
@@ -167,29 +156,23 @@ fn search_config_from_settings(settings: &serde_json::Value) -> services::search
 }
 
 #[tauri::command]
-pub fn search_documents(
-    app: AppHandle,
-    app_data: State<AppData>,
+pub async fn search_documents(
+    app_data: State<'_, AppData>,
     query: String,
 ) -> Result<Vec<services::search::SearchResult>, String> {
-    let vault = {
+    let vault_id = {
         let active = app_data.active_vault.lock().unwrap();
-        active.clone().ok_or("no active vault")?
+        active.as_ref().ok_or("no active vault")?.id.to_string()
     };
     let search_cfg = {
         let settings = app_data.settings.read().unwrap();
         search_config_from_settings(&settings)
     };
-    let db_path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("limestone.db");
-    let db = crate::open_db(&db_path).map_err(|e| e.to_string())?;
     Ok(services::search::search(
-        &db,
-        &vault.id.to_string(),
+        &app_data.db,
+        &vault_id,
         &query,
         &search_cfg,
-    ))
+    )
+    .await)
 }

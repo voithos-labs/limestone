@@ -1024,18 +1024,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fallible-iterator"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
-
-[[package]]
-name = "fallible-streaming-iterator"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
-
-[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2149,15 +2137,14 @@ dependencies = [
  "jwalk",
  "nucleo-matcher",
  "rayon",
- "rusqlite",
  "serde",
  "serde_json",
  "serde_yml",
+ "sqlx",
  "tauri",
  "tauri-build",
  "tauri-plugin-fs",
  "tauri-plugin-opener",
- "tauri-plugin-sql",
  "tauri-plugin-store",
  "uuid",
 ]
@@ -3361,20 +3348,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusqlite"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b838eba278d213a8beaf485bd313fd580ca4505a00d5871caeb1457c55322cae"
-dependencies = [
- "bitflags 2.10.0",
- "fallible-iterator",
- "fallible-streaming-iterator",
- "hashlink",
- "libsqlite3-sys",
- "smallvec",
-]
-
-[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3914,7 +3887,6 @@ dependencies = [
  "smallvec",
  "sqlformat",
  "thiserror 1.0.69",
- "time",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -3998,7 +3970,6 @@ dependencies = [
  "sqlx-core",
  "stringprep",
  "thiserror 1.0.69",
- "time",
  "tracing",
  "whoami",
 ]
@@ -4037,7 +4008,6 @@ dependencies = [
  "sqlx-core",
  "stringprep",
  "thiserror 1.0.69",
- "time",
  "tracing",
  "whoami",
 ]
@@ -4061,7 +4031,6 @@ dependencies = [
  "serde",
  "serde_urlencoded",
  "sqlx-core",
- "time",
  "tracing",
  "url",
 ]
@@ -4416,25 +4385,6 @@ dependencies = [
  "url",
  "windows",
  "zbus",
-]
-
-[[package]]
-name = "tauri-plugin-sql"
-version = "2.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a593f08c357091ba802a388d1161e99f05751278fb7204faeb08520da579a7c"
-dependencies = [
- "futures-core",
- "indexmap 2.13.0",
- "log",
- "serde",
- "serde_json",
- "sqlx",
- "tauri",
- "tauri-plugin",
- "thiserror 2.0.17",
- "time",
- "tokio",
 ]
 
 [[package]]
