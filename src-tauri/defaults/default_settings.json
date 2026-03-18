@@ -1,16 +1,16 @@
 {
-  "documents": {
-    "use_yaml_frontmatter": true
-  },
-  "indexing": {
-    "frontmatter_read_buffer_size": 512
-  },
-  "search": {
-    "max_results": 15,
-    "prefix_candidate_pool": 50,
-    "fuzzy_threshold": 2,
-    "recency_weight": 0.5,
-    "recency_multiplier": 100.0,
-    "recency_default_days": 365.0
-  }
+	"documents": {
+		"use_yaml_frontmatter": true
+	},
+	"indexing": {
+		"frontmatter_read_buffer_size": 512
+	},
+	"search": {
+		"max_results": 15,
+		"prefix_candidate_pool": 50,
+		"fuzzy_threshold": 2,
+		"recency_weight": 0.5,
+		"recency_multiplier": 100.0,
+		"recency_default_days": 365.0
+	}
 }

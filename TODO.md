@@ -15,7 +15,7 @@
 
 ### Markdown document editor
 
-*Blocks*
+_Blocks_
 
 - [ ] Markdown Block
 
