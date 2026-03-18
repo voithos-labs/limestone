@@ -122,7 +122,9 @@
                     <tbody>
                     {#each searchResults as result}
                         <tr>
-                            <td>{@html highlightTitle(result.title, result.match_indices)}</td>
+                            <td>
+                                <a href="/document/{result.id}">{@html highlightTitle(result.title, result.match_indices)}</a>
+                            </td>
                             <td class="mono">{result.rel_path ?? '-'}</td>
                         </tr>
                     {/each}
@@ -162,6 +164,11 @@
 
     section {
         margin-bottom: 2rem;
+    }
+
+    a {
+        color: var(--color-text-primary);
+        text-decoration: none;
     }
 
     .row {
