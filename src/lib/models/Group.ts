@@ -71,6 +71,16 @@ class Group {
         return new Group(row);
     }
 
+    static async fromSlugs(slugs: string[], vaultId: string): Promise<Group[]> {
+        if (slugs.length === 0) return [];
+        const placeholders = slugs.map((_, i) => `?${i + 2}`).join(', ');
+        const rows = await select<GroupRow>(
+            `SELECT * FROM groups WHERE vault_id = ?1 AND slug IN (${placeholders})`,
+            [vaultId, ...slugs],
+        );
+        return rows.map((r) => new Group(r));
+    }
+
     static async fromID(id: string): Promise<Group> {
         const [row] = await select<GroupRow>(
             `SELECT *

@@ -2,11 +2,15 @@
 
 // External
 import {v4 as uuidv4} from 'uuid';
+import {readTextFile} from '@tauri-apps/plugin-fs';
+import {invoke} from '@tauri-apps/api/core';
+import yaml from 'js-yaml';
 
 // Internal
 import {select, execute} from '$lib/db';
 import {getActiveVault} from './Vault';
 import Group, {type GroupRow} from './Group';
+import {getSetting} from './Settings';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
@@ -70,7 +74,6 @@ class Document {
     updatedAt: Date;
     accessedAt: Date;
     deletedAt?: Date;
-
 
     constructor(row: DocumentRow) {
         this.id = row.id;
@@ -169,19 +172,104 @@ class Document {
     }
 
 
+    // ── Serialization ────────────────────────────────────────────────────────────────
+
+    /**
+     * Build the frontmatter from doc state
+     */
+    toFrontmatter(): DocumentFrontmatter {
+        return {
+            id: this.id,
+            tags: this.groups.map((g) => g.slug),
+            created_at: this.createdAt,
+            updated_at: this.updatedAt,
+            ...this.properties,
+        };
+    }
+
+    /**
+     * Serialize frontmatter + body into a full file string.
+     */
+    async serialize(body: string): Promise<string> {
+        const useFrontmatter = await getSetting<boolean>('documents.use_yaml_frontmatter');
+        if (useFrontmatter === false) return body;
+
+        const fm = this.toFrontmatter();
+        const fmStr = yaml.dump(fm, {lineWidth: -1, sortKeys: false});
+        return `---\n${fmStr}---\n${body}`;
+    }
+
+    /**
+     * Parse a raw file string into { frontmatter, body }
+     * todo: probably want to extract tags from body for obsid compat
+     */
+    static deserialize(raw: string): { frontmatter: DocumentFrontmatter | null; body: string } {
+        const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+        if (!match) return {frontmatter: null, body: raw};
+
+        const parsed = yaml.load(match[1]) as Record<string, any> ?? {};
+        const frontmatter: DocumentFrontmatter = {
+            id: parsed.id ?? '',
+            tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+            created_at: parsed.created_at ? new Date(parsed.created_at) : new Date(),
+            updated_at: parsed.updated_at ? new Date(parsed.updated_at) : new Date(),
+            ...parsed,
+        };
+
+        return {frontmatter, body: match[2]};
+    }
+
+
     // ── Fs ───────────────────────────────────────────────────────────────────────────
 
-    async moveToPath(newPath: string) {
+    /**
+     * Read file from disk, parse frontmatter, return contents
+     */
+    async loadContent(): Promise<string> {
+        const vault = await getActiveVault();
+        const raw = await readTextFile(`${vault.path}/${this._relPath}`);
+        const {frontmatter, body} = Document.deserialize(raw);
 
+        if (frontmatter) {
+            const {id, tags, created_at, updated_at, ...remaining} = frontmatter;
+            if (id) (this as { id: string }).id = id;
+            if (created_at) this.createdAt = new Date(created_at);
+            if (updated_at) this.updatedAt = new Date(updated_at);
+            this.properties = remaining;
+            this.groups = await Group.fromSlugs(tags, vault.id);
+        }
+
+        // update accessed_at
+        await execute(
+            `UPDATE documents
+             SET accessed_at = datetime('now')
+             WHERE id = ?1`,
+            [this.id],
+        );
+        this.accessedAt = new Date();
+
+        return body;
     }
 
-    async save(): Promise<void> {
-        // todo
+    /**
+     * Serialize and use atomic write via the rust command
+     */
+    async saveContent(body: string): Promise<void> {
+        const contents = await this.serialize(body);
+        await invoke('write_document', {relPath: this._relPath, contents});
     }
 
-    async reload() {
-        // todo
+    async moveToPath(newRelPath: string): Promise<void> {
+        await invoke('move_document', {relPath: this._relPath, newRelPath});
+        this._relPath = newRelPath;
     }
+
+    async rename(newName: string): Promise<void> {
+        const newRel: string = await invoke('rename_document', {relPath: this._relPath, newName});
+        this._relPath = newRel;
+        this.title = newName.replace(/\.[^.]+$/, '');
+    }
+
 
     // ── Util ─────────────────────────────────────────────────────────────────────────
 
