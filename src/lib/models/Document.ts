@@ -19,14 +19,12 @@ export interface DocumentJSON {
 }
 
 /**
- *
- *
+ * Document
  *
  * todo
- * - [ ] Think about splitting this into Document (parent to) and FileDocument, where FileDocument extends Document
- * to add fs operations.
- *
- * Allow virtual / unsaved documents? 0-0 hmm yes I will this. Move FS watching there too
+ * As is, since for most of development we will simply be using this to represent markdown documents, the features for
+ * such will remain here. Later, when we distinguish the different kinds of documents, I will likely separate out some
+ * of the functionality to MarkdownDocument or FileDocument.
  *
  */
 class Document {
@@ -74,6 +72,8 @@ class Document {
     /**
      *
      * @param updateUpdatedAt update updatedAt value if true, default: true
+     *
+     * For markdown, should we handle this here or in rust?
      */
     async save(updateUpdatedAt: boolean = true): Promise<void> {
         // todo

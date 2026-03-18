@@ -29,11 +29,9 @@ chrono = { version = "0.4.42", features = ["serde"] }
 tauri-plugin-fs = "2"
 jwalk = "0.8"
 rayon = "1"
-rusqlite = { version = "0.31", features = ["bundled"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 serde_yml = "0.0.12"
 globset = "0.4.18"
 nucleo-matcher = "0.3.1"
 tauri-plugin-store = "2.4.2"
-r2d2 = "0.8.10"
-r2d2_sqlite = { version = "0.24", features = ["bundled"] }
 

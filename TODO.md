@@ -6,6 +6,7 @@
 - [ ] FTS (via tantivy)
 - [ ] File watcher
 - [ ] Executable code blocks (with env config)
+- [ ] Asset handling (e.g. when you paste an image in a doc)
 
 ## UI Components
 

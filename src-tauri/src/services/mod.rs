@@ -1,4 +1,3 @@
-pub mod document;
 pub mod fs;
 pub mod search;
 mod settings;
@@ -7,4 +6,4 @@ mod vault;
 
 pub use settings::{dot_get, JsonSettingsStore};
 pub use user::User;
-pub use vault::{create_vault, open_vault, reconcile_vault, Frontmatter, Vault, Vaults};
+pub use vault::{create_vault, open_vault, reconcile_vault, Vault, Vaults};
