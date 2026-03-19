@@ -12,16 +12,16 @@ pub struct JsonSettingsStore {
     pub default_json: Option<String>,
     /// path to global settings json file
     pub path: PathBuf,
-    /// vault override path to json
+    /// source override path to json
     pub override_path: Option<PathBuf>,
 }
 
 impl JsonSettingsStore {
-    pub fn for_app(app: &tauri::AppHandle, vault_path: Option<&Path>) -> Self {
+    pub fn for_app(app: &tauri::AppHandle, source_path: Option<&Path>) -> Self {
         Self {
             path: app.path().app_data_dir().unwrap().join("settings.json"),
             default_json: Some(include_str!("../../defaults/default_settings.json").to_string()),
-            override_path: vault_path.map(|p| p.join("settings.json")),
+            override_path: source_path.map(|p| p.join("settings.json")),
         }
     }
 
@@ -58,11 +58,11 @@ impl JsonSettingsStore {
             }
         }
 
-        // Vault
+        // Source
         if let Some(ref override_path) = self.override_path {
             if let Ok(contents) = fs::read_to_string(override_path) {
-                if let Ok(vault) = serde_json::from_str::<Value>(&contents) {
-                    json_merge(&mut merged, &vault);
+                if let Ok(source) = serde_json::from_str::<Value>(&contents) {
+                    json_merge(&mut merged, &source);
                 }
             }
         }
@@ -71,7 +71,7 @@ impl JsonSettingsStore {
     }
 
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
-        // try load from os, vault -> global -> compiled defaults
+        // try load from os, source -> global -> compiled defaults
         let paths: Vec<&Path> = self
             .override_path
             .iter()
@@ -97,12 +97,12 @@ impl JsonSettingsStore {
             .and_then(|v| serde_json::from_value(v).ok())
     }
 
-    /// Set vault-level settings override for specified key
-    pub fn set_vault<T: Serialize>(&self, key: &str, value: T) -> io::Result<()> {
+    /// Set source-level settings override for specified key
+    pub fn set_source<T: Serialize>(&self, key: &str, value: T) -> io::Result<()> {
         let path = self
             .override_path
             .as_ref()
-            .ok_or_else(|| io::Error::other("no vault path configured"))?;
+            .ok_or_else(|| io::Error::other("no source path configured"))?;
         self.write_to(path, key, value)
     }
 

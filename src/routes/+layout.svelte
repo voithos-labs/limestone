@@ -4,7 +4,7 @@
 	import { loadAndApplyTheme } from '$lib/theme';
 	import '../app.css';
 
-	interface Vault {
+	interface Source {
 		id: string;
 		path: string;
 	}
@@ -12,9 +12,9 @@
 	let { children }: { children: Snippet } = $props();
 
 	async function init() {
-		const vault = await invoke<Vault | null>('get_active_vault');
-		if (vault) {
-			await loadAndApplyTheme(vault.path);
+		const source = await invoke<Source | null>('get_active_source');
+		if (source) {
+			await loadAndApplyTheme(source.path);
 		}
 	}
 

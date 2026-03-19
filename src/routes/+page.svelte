@@ -2,7 +2,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
 
-	interface Vault {
+	interface Source {
 		id: string;
 		title: string;
 		path: string;
@@ -18,42 +18,42 @@
 		match_indices: number[];
 	}
 
-	let vaults = $state<Vault[]>([]);
-	let activeVault = $state<Vault | null>(null);
-	let newVaultPath = $state('');
-	let newVaultTitle = $state('');
+	let sources = $state<Source[]>([]);
+	let activeSource = $state<Source | null>(null);
+	let newSourcePath = $state('');
+	let newSourceTitle = $state('');
 	let loading = $state(false);
 
 	let searchQuery = $state('');
 	let searchResults = $state<SearchResult[]>([]);
 
-	async function loadVaults() {
-		vaults = await invoke('get_vaults');
-		activeVault = await invoke('get_active_vault');
-		if (activeVault) {
+	async function loadSources() {
+		sources = await invoke('get_sources');
+		activeSource = await invoke('get_active_source');
+		if (activeSource) {
 			await doSearch();
 		}
 	}
 
 	async function doSearch() {
-		if (!activeVault) return;
+		if (!activeSource) return;
 		searchResults = await invoke('search_documents', { query: searchQuery });
 	}
 
-	async function createVault() {
-		if (!newVaultPath) return;
-		await invoke('create_vault', {
-			path: newVaultPath,
-			title: newVaultTitle || newVaultPath.split(/[\\/]/).pop() || 'Untitled'
+	async function createSource() {
+		if (!newSourcePath) return;
+		await invoke('create_source', {
+			path: newSourcePath,
+			title: newSourceTitle || newSourcePath.split(/[\\/]/).pop() || 'Untitled'
 		});
-		newVaultPath = '';
-		newVaultTitle = '';
-		await loadVaults();
+		newSourcePath = '';
+		newSourceTitle = '';
+		await loadSources();
 	}
 
-	async function switchVault(id: string) {
-		await invoke('set_active_vault', { id });
-		await loadVaults();
+	async function switchSource(id: string) {
+		await invoke('set_active_source', { id });
+		await loadSources();
 	}
 
 	function highlightTitle(title: string, indices: number[]): string {
@@ -63,9 +63,9 @@
 		return chars.map((ch, i) => (set.has(i) ? `<mark>${ch}</mark>` : ch)).join('');
 	}
 
-	loadVaults();
+	loadSources();
 
-	listen('vault-reconciled', () => {
+	listen('source-reconciled', () => {
 		doSearch();
 	});
 </script>
@@ -74,33 +74,33 @@
 	<h2>limestone</h2>
 
 	<section>
-		<h3>create vault</h3>
+		<h3>create source</h3>
 		<div class="row">
-			<input bind:value={newVaultTitle} placeholder="title (optional)" />
-			<input bind:value={newVaultPath} placeholder="/path/to/vault" />
-			<button onclick={createVault} disabled={loading || !newVaultPath}>create</button>
+			<input bind:value={newSourceTitle} placeholder="title (optional)" />
+			<input bind:value={newSourcePath} placeholder="/path/to/source" />
+			<button onclick={createSource} disabled={loading || !newSourcePath}>create</button>
 		</div>
 	</section>
 
 	<section>
-		<h3>vaults</h3>
-		{#if vaults.length === 0}
-			<p class="muted">no vaults</p>
+		<h3>sources</h3>
+		{#if sources.length === 0}
+			<p class="muted">no sources</p>
 		{:else}
 			<ul>
-				{#each vaults as vault}
-					<li class:active={activeVault?.id === vault.id}>
-						<button onclick={() => switchVault(vault.id)} disabled={loading}>
-							{vault.title}
+				{#each sources as source}
+					<li class:active={activeSource?.id === source.id}>
+						<button onclick={() => switchSource(source.id)} disabled={loading}>
+							{source.title}
 						</button>
-						<span class="path">{vault.path}</span>
+						<span class="path">{source.path}</span>
 					</li>
 				{/each}
 			</ul>
 		{/if}
 	</section>
 
-	{#if activeVault}
+	{#if activeSource}
 		<section>
 			<h3>search</h3>
 			<input

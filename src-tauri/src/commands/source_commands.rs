@@ -3,30 +3,30 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
-use crate::services::{self, dot_get, JsonSettingsStore, Vault, Vaults};
+use crate::services::{self, dot_get, JsonSettingsStore, Source, Sources};
 use crate::AppData;
 
-fn vaults_store(app: &AppHandle) -> JsonSettingsStore {
+fn sources_store(app: &AppHandle) -> JsonSettingsStore {
     JsonSettingsStore {
-        path: app.path().app_data_dir().unwrap().join("vaults.json"),
+        path: app.path().app_data_dir().unwrap().join("sources.json"),
         default_json: None,
         override_path: None,
     }
 }
 
-fn load_vaults(app: &AppHandle) -> Vec<Vault> {
-    let mut vaults = vaults_store(app)
-        .load::<Vaults>()
+fn load_sources(app: &AppHandle) -> Vec<Source> {
+    let mut sources = sources_store(app)
+        .load::<Sources>()
         .unwrap_or_default()
-        .vaults;
-    vaults.sort_by_key(|v| std::cmp::Reverse(v.accessed_at));
-    vaults
+        .sources;
+    sources.sort_by_key(|v| std::cmp::Reverse(v.accessed_at));
+    sources
 }
 
-fn spawn_reconcile(app: &AppHandle, vault: &Vault, app_data: &AppData) {
+fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
     let pool = app_data.db.clone();
-    let vault_path = vault.path.clone();
-    let vault_id = vault.id.to_string();
+    let source_path = source.path.clone();
+    let source_id = source.id.to_string();
     let app_handle = app.clone();
     let settings = app_data.settings.read().unwrap();
     let fm_buf_size = dot_get(&settings, "indexing.frontmatter_read_buffer_size")
@@ -34,62 +34,62 @@ fn spawn_reconcile(app: &AppHandle, vault: &Vault, app_data: &AppData) {
         .unwrap_or(512) as usize;
     drop(settings);
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = services::reconcile_vault(&vault_path, &vault_id, &pool, &["md"], fm_buf_size).await {
+        if let Err(e) = services::reconcile_source(&source_path, &source_id, &pool, &["md"], fm_buf_size).await {
             eprintln!("reconcile failed: {e}");
         }
-        let _ = app_handle.emit("vault-reconciled", &vault_id);
+        let _ = app_handle.emit("source-reconciled", &source_id);
     });
 }
 
-fn save_vaults(app: &AppHandle, vaults: &[Vault]) -> Result<(), String> {
-    vaults_store(app)
-        .save(&Vaults {
-            vaults: vaults.to_vec(),
+fn save_sources(app: &AppHandle, sources: &[Source]) -> Result<(), String> {
+    sources_store(app)
+        .save(&Sources {
+            sources: sources.to_vec(),
         })
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn create_vault(
+pub fn create_source(
     app: AppHandle,
     app_data: State<AppData>,
     path: String,
     title: String,
-) -> Result<Vault, String> {
-    let vault =
-        services::create_vault(Some(title), PathBuf::from(&path)).map_err(|e| e.to_string())?;
+) -> Result<Source, String> {
+    let source =
+        services::create_source(Some(title), PathBuf::from(&path)).map_err(|e| e.to_string())?;
 
-    let mut vaults = load_vaults(&app);
-    vaults.push(vault.clone());
-    save_vaults(&app, &vaults)?;
+    let mut sources = load_sources(&app);
+    sources.push(source.clone());
+    save_sources(&app, &sources)?;
 
-    services::open_vault(&app, &app_data, vault.clone());
-    spawn_reconcile(&app, &vault, &app_data);
+    services::open_source(&app, &app_data, source.clone());
+    spawn_reconcile(&app, &source, &app_data);
 
-    Ok(vault)
+    Ok(source)
 }
 
 #[tauri::command]
-pub fn set_active_vault(
+pub fn set_active_source(
     app: AppHandle,
     app_data: State<AppData>,
     id: Uuid,
-) -> Result<Vault, String> {
-    let mut vaults = load_vaults(&app);
+) -> Result<Source, String> {
+    let mut sources = load_sources(&app);
 
-    let vault = vaults
+    let source = sources
         .iter_mut()
         .find(|v| v.id == id)
-        .ok_or_else(|| format!("vault {id} not found"))?
+        .ok_or_else(|| format!("source {id} not found"))?
         .clone();
 
-    services::open_vault(&app, &app_data, vault.clone());
-    spawn_reconcile(&app, &vault, &app_data);
+    services::open_source(&app, &app_data, source.clone());
+    spawn_reconcile(&app, &source, &app_data);
 
     // update accessed_at
-    let active = app_data.active_vault.lock().unwrap();
+    let active = app_data.active_source.lock().unwrap();
     if let Some(updated) = active.as_ref() {
-        for v in &mut vaults {
+        for v in &mut sources {
             if v.id == id {
                 v.accessed_at = updated.accessed_at;
                 break;
@@ -98,25 +98,25 @@ pub fn set_active_vault(
     }
     drop(active);
 
-    save_vaults(&app, &vaults)?;
+    save_sources(&app, &sources)?;
 
-    Ok(vaults.into_iter().find(|v| v.id == id).unwrap())
+    Ok(sources.into_iter().find(|v| v.id == id).unwrap())
 }
 
 #[tauri::command]
-pub fn get_vaults(app: AppHandle) -> Vec<Vault> {
-    load_vaults(&app)
+pub fn get_sources(app: AppHandle) -> Vec<Source> {
+    load_sources(&app)
 }
 
 #[tauri::command]
-pub fn get_active_vault(app_data: State<AppData>) -> Option<Vault> {
-    let active = app_data.active_vault.lock().unwrap();
+pub fn get_active_source(app_data: State<AppData>) -> Option<Source> {
+    let active = app_data.active_source.lock().unwrap();
     active.clone()
 }
 
 #[tauri::command]
-pub fn get_vault_by_id(app: AppHandle, id: Uuid) -> Option<Vault> {
-    load_vaults(&app).into_iter().find(|v| v.id == id)
+pub fn get_source_by_id(app: AppHandle, id: Uuid) -> Option<Source> {
+    load_sources(&app).into_iter().find(|v| v.id == id)
 }
 
 #[tauri::command]
@@ -160,9 +160,9 @@ pub async fn search_documents(
     app_data: State<'_, AppData>,
     query: String,
 ) -> Result<Vec<services::search::SearchResult>, String> {
-    let vault_id = {
-        let active = app_data.active_vault.lock().unwrap();
-        active.as_ref().ok_or("no active vault")?.id.to_string()
+    let source_id = {
+        let active = app_data.active_source.lock().unwrap();
+        active.as_ref().ok_or("no active source")?.id.to_string()
     };
     let search_cfg = {
         let settings = app_data.settings.read().unwrap();
@@ -170,7 +170,7 @@ pub async fn search_documents(
     };
     Ok(services::search::search(
         &app_data.db,
-        &vault_id,
+        &source_id,
         &query,
         &search_cfg,
     )

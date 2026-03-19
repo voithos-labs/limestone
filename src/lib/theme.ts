@@ -37,18 +37,18 @@ export function applyTheme(theme: Theme) {
 	}
 }
 
-export async function loadAndApplyTheme(vaultPath: string) {
-	const state = await loadState(vaultPath);
+export async function loadAndApplyTheme(sourcePath: string) {
+	const state = await loadState(sourcePath);
 	const s = await getStore();
 	const theme = await s.get<Theme>(state.activeTheme);
 	applyTheme(theme ?? DEFAULT_THEME);
 }
 
-export async function setActiveTheme(vaultPath: string, name: string) {
+export async function setActiveTheme(sourcePath: string, name: string) {
 	const s = await getStore();
 	const theme = await s.get<Theme>(name);
 	if (!theme) return;
-	await updateState(vaultPath, { activeTheme: name });
+	await updateState(sourcePath, { activeTheme: name });
 	applyTheme(theme);
 }
 

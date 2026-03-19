@@ -2,8 +2,8 @@ pub mod fs;
 pub mod search;
 mod settings;
 mod user;
-mod vault;
+mod source;
 
 pub use settings::{dot_get, JsonSettingsStore};
 pub use user::User;
-pub use vault::{create_vault, open_vault, reconcile_vault, Vault, Vaults};
+pub use source::{create_source, open_source, reconcile_source, Source, Sources};

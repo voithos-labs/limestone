@@ -8,7 +8,7 @@ import yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '$lib/db';
-import { getActiveVault } from './Vault';
+import { getActiveSource } from './Source';
 import Group, { type GroupRow } from './Group';
 import { getSetting } from './Settings';
 
@@ -17,7 +17,7 @@ import { getSetting } from './Settings';
 /**
  * create table if not exists documents (
  *     id text primary key not null,
- *     vault_id text not null references vaults(id) on delete cascade,
+ *     source_id text not null references sources(id) on delete cascade,
  *     document_type text not null default 'md',
  *     rel_path text not null,
  *     title text not null,
@@ -31,7 +31,7 @@ import { getSetting } from './Settings';
  */
 export interface DocumentRow {
 	id: string;
-	vault_id: string;
+	source_id: string;
 	document_type: string;
 	rel_path: string;
 	title: string;
@@ -64,7 +64,7 @@ export interface DocumentFrontmatter {
 class Document {
 	// db fields *not all, just what is needed
 	readonly id: string; // primary id
-	private _relPath: string; // path relative to vault root
+	private _relPath: string; // path relative to source root
 
 	title: string;
 	groups: Group[];
@@ -94,13 +94,13 @@ class Document {
 		properties: Record<string, unknown> = {}
 	): Promise<Document> {
 		const id = uuidv4();
-		const vault = await getActiveVault();
+		const source = await getActiveSource();
 
 		// insert new doc stub
 		await execute(
-			`INSERT INTO documents (id, vault_id, rel_path, title, properties)
+			`INSERT INTO documents (id, source_id, rel_path, title, properties)
              VALUES (?1, ?2, ?3, ?4, ?5)`,
-			[id, vault.id, relPath, title, JSON.stringify(properties)]
+			[id, source.id, relPath, title, JSON.stringify(properties)]
 		);
 		// reselect for db defaults
 		const [row] = await select<DocumentRow>(
@@ -223,8 +223,8 @@ class Document {
 	 * Read file from disk, parse frontmatter, return contents
 	 */
 	async loadContent(): Promise<string> {
-		const vault = await getActiveVault();
-		const raw = await readTextFile(`${vault.path}/${this._relPath}`);
+		const source = await getActiveSource();
+		const raw = await readTextFile(`${source.path}/${this._relPath}`);
 		const { frontmatter, body } = Document.deserialize(raw);
 
 		if (frontmatter) {
@@ -233,7 +233,7 @@ class Document {
 			if (created_at) this.createdAt = new Date(created_at);
 			if (updated_at) this.updatedAt = new Date(updated_at);
 			this.properties = remaining;
-			this.groups = await Group.fromSlugs(tags, vault.id);
+			this.groups = await Group.fromSlugs(tags, source.id);
 		}
 
 		// update accessed_at

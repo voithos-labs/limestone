@@ -13,7 +13,7 @@ use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Clone)]
-pub struct Vault {
+pub struct Source {
     pub title: String,
     pub path: PathBuf,
     pub id: Uuid,
@@ -21,7 +21,7 @@ pub struct Vault {
     pub accessed_at: DateTime<Utc>,
 }
 
-impl Vault {
+impl Source {
     pub fn new(title: String, path: PathBuf) -> Self {
         let now = Utc::now();
         Self {
@@ -35,25 +35,25 @@ impl Vault {
 }
 
 #[derive(Deserialize, Serialize, Default)]
-pub struct Vaults {
+pub struct Sources {
     #[serde(default)]
-    pub vaults: Vec<Vault>,
+    pub sources: Vec<Source>,
 }
 
-pub fn open_vault(app: &AppHandle, app_data: &crate::AppData, mut vault: Vault) {
-    // Allow access to new vault
-    // Note: previously opened vaults remain accessible until app restart (no way to remove perm)
-    let _ = app.fs_scope().allow_directory(&vault.path, true);
+pub fn open_source(app: &AppHandle, app_data: &crate::AppData, mut source: Source) {
+    // Allow access to new source
+    // Note: previously opened sources remain accessible until app restart (no way to remove perm)
+    let _ = app.fs_scope().allow_directory(&source.path, true);
 
-    let vault_path = vault.path.clone();
-    vault.accessed_at = Utc::now();
-    *app_data.active_vault.lock().unwrap() = Some(vault);
+    let source_path = source.path.clone();
+    source.accessed_at = Utc::now();
+    *app_data.active_source.lock().unwrap() = Some(source);
 
-    let merged = JsonSettingsStore::for_app(app, Some(&vault_path)).load_merged();
+    let merged = JsonSettingsStore::for_app(app, Some(&source_path)).load_merged();
     *app_data.settings.write().unwrap() = merged;
 }
 
-pub fn create_vault(title: Option<String>, path: PathBuf) -> Result<Vault, std::io::Error> {
+pub fn create_source(title: Option<String>, path: PathBuf) -> Result<Source, std::io::Error> {
     fs::create_dir_all(&path)?;
     let title = title.unwrap_or_else(|| {
         path.file_name()
@@ -70,7 +70,7 @@ pub fn create_vault(title: Option<String>, path: PathBuf) -> Result<Vault, std::
         );
     }
 
-    Ok(Vault::new(title, path))
+    Ok(Source::new(title, path))
 }
 
 // ---------------------
@@ -124,11 +124,11 @@ pub enum DbOperation {
     },
 }
 
-// ── Vault Scan ───────────────────────────────────────────────────────────────────────
+// ── Source Scan ──────────────────────────────────────────────────────────────────────
 
-/// Load .limestoneignore in vault root
-fn load_ignore_patterns(vault_path: &Path) -> Option<globset::GlobSet> {
-    let ignore_path = vault_path.join(".limestoneignore");
+/// Load .limestoneignore in source root
+fn load_ignore_patterns(source_path: &Path) -> Option<globset::GlobSet> {
+    let ignore_path = source_path.join(".limestoneignore");
     let content = fs::read_to_string(&ignore_path).ok()?;
     let mut builder = globset::GlobSetBuilder::new();
 
@@ -148,12 +148,12 @@ fn load_ignore_patterns(vault_path: &Path) -> Option<globset::GlobSet> {
     builder.build().ok()
 }
 
-/// Walk the vault directory and collect (rel_path, mtime) for files w/ ignore
-pub fn walk_vault(vault_path: &Path, extensions: &[&str]) -> Vec<(String, i64)> {
-    let ignore = load_ignore_patterns(vault_path);
+/// Walk the source directory and collect (rel_path, mtime) for files w/ ignore
+pub fn walk_source(source_path: &Path, extensions: &[&str]) -> Vec<(String, i64)> {
+    let ignore = load_ignore_patterns(source_path);
     let mut entries = Vec::new();
 
-    for entry in jwalk::WalkDir::new(vault_path).sort(true) {
+    for entry in jwalk::WalkDir::new(source_path).sort(true) {
         let entry = match entry {
             Ok(e) => e,
             Err(_) => continue,
@@ -173,7 +173,7 @@ pub fn walk_vault(vault_path: &Path, extensions: &[&str]) -> Vec<(String, i64)> 
             continue;
         }
 
-        let rel_path = match path.strip_prefix(vault_path) {
+        let rel_path = match path.strip_prefix(source_path) {
             Ok(r) => r.to_string_lossy().replace('\\', "/"),
             Err(_) => continue,
         };
@@ -238,14 +238,14 @@ pub fn diff_against_db(
 
 /// Read first N bytes and parse frontmatter
 pub fn extract_frontmatter(
-    vault_path: &Path,
+    source_path: &Path,
     paths: &[String],
     buffer_size: usize,
 ) -> Vec<(String, Option<serde_json::Value>)> {
     paths
         .par_iter()
         .map(|rel_path| {
-            let full_path = vault_path.join(rel_path);
+            let full_path = source_path.join(rel_path);
             let fm = read_frontmatter(&full_path, buffer_size);
             (rel_path.clone(), fm)
         })
@@ -348,7 +348,7 @@ pub fn resolve_changes(
 pub async fn apply_operations(
     operations: &[DbOperation],
     frontmatter: &[(String, Option<serde_json::Value>)],
-    vault_id: &str,
+    source_id: &str,
     db: &SqlitePool,
 ) -> sqlx::Result<()> {
     let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
@@ -390,11 +390,11 @@ pub async fn apply_operations(
                     .map(|s| s.to_string());
 
                 sqlx::query(
-                    "INSERT INTO documents (id, vault_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
+                    "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, coalesce(?7, datetime('now')), coalesce(?8, datetime('now')), coalesce(?9, datetime('now')))",
                 )
                 .bind(&doc_id)
-                .bind(vault_id)
+                .bind(source_id)
                 .bind(rel_path)
                 .bind(title)
                 .bind(mtime)
@@ -416,7 +416,7 @@ pub async fn apply_operations(
                                 .collect()
                         })
                         .unwrap_or_default();
-                    sync_tags(&mut tx, vault_id, &doc_id, &tags).await?;
+                    sync_tags(&mut tx, source_id, &doc_id, &tags).await?;
                 }
             }
 
@@ -426,11 +426,11 @@ pub async fn apply_operations(
                 mtime,
             } => {
                 sqlx::query(
-                    "UPDATE documents SET rel_path = ?1, mtime = ?2, updated_at = datetime('now') WHERE vault_id = ?3 AND rel_path = ?4",
+                    "UPDATE documents SET rel_path = ?1, mtime = ?2, updated_at = datetime('now') WHERE source_id = ?3 AND rel_path = ?4",
                 )
                 .bind(new_path)
                 .bind(mtime)
-                .bind(vault_id)
+                .bind(source_id)
                 .bind(old_path)
                 .execute(&mut *tx)
                 .await?;
@@ -452,13 +452,13 @@ pub async fn apply_operations(
 
                 sqlx::query(
                     "UPDATE documents SET mtime = ?1, properties = ?2, updated_at = coalesce(?3, datetime('now')), accessed_at = coalesce(?4, datetime('now'))
-                     WHERE vault_id = ?5 AND rel_path = ?6",
+                     WHERE source_id = ?5 AND rel_path = ?6",
                 )
                 .bind(mtime)
                 .bind(&properties)
                 .bind(&updated_at)
                 .bind(&accessed_at)
-                .bind(vault_id)
+                .bind(source_id)
                 .bind(rel_path)
                 .execute(&mut *tx)
                 .await?;
@@ -475,21 +475,21 @@ pub async fn apply_operations(
                         })
                         .unwrap_or_default();
                     let doc_id: Option<String> = sqlx::query_scalar(
-                        "SELECT id FROM documents WHERE vault_id = ?1 AND rel_path = ?2",
+                        "SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2",
                     )
-                    .bind(vault_id)
+                    .bind(source_id)
                     .bind(rel_path)
                     .fetch_optional(&mut *tx)
                     .await?;
                     if let Some(doc_id) = doc_id {
-                        sync_tags(&mut tx, vault_id, &doc_id, &tags).await?;
+                        sync_tags(&mut tx, source_id, &doc_id, &tags).await?;
                     }
                 }
             }
 
             DbOperation::Delete { rel_path } => {
-                sqlx::query("DELETE FROM documents WHERE vault_id = ?1 AND rel_path = ?2")
-                    .bind(vault_id)
+                sqlx::query("DELETE FROM documents WHERE source_id = ?1 AND rel_path = ?2")
+                    .bind(source_id)
                     .bind(rel_path)
                     .execute(&mut *tx)
                     .await?;
@@ -503,36 +503,36 @@ pub async fn apply_operations(
 /// Sync tags from frontmatter into groups
 async fn sync_tags(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    vault_id: &str,
+    source_id: &str,
     doc_id: &str,
     tags: &[String],
 ) -> sqlx::Result<()> {
     // Clear existing tag associations for this document
     sqlx::query(
-        "DELETE FROM document_groups WHERE document_id = ?1 AND group_id IN (SELECT id FROM groups WHERE vault_id = ?2 AND group_type = 'tag')",
+        "DELETE FROM document_groups WHERE document_id = ?1 AND group_id IN (SELECT id FROM groups WHERE source_id = ?2 AND group_type = 'tag')",
     )
     .bind(doc_id)
-    .bind(vault_id)
+    .bind(source_id)
     .execute(&mut **tx)
     .await?;
 
     for tag in tags {
         // Upsert group
         sqlx::query(
-            "INSERT INTO groups (id, vault_id, slug, group_type) VALUES (?1, ?2, ?3, 'tag')
+            "INSERT INTO groups (id, source_id, slug, group_type) VALUES (?1, ?2, ?3, 'tag')
              ON CONFLICT(id) DO NOTHING",
         )
         .bind(Uuid::new_v4().to_string())
-        .bind(vault_id)
+        .bind(source_id)
         .bind(tag)
         .execute(&mut **tx)
         .await?;
 
         // Get group id by slug
         let group_id: String = sqlx::query_scalar(
-            "SELECT id FROM groups WHERE vault_id = ?1 AND slug = ?2 AND group_type = 'tag'",
+            "SELECT id FROM groups WHERE source_id = ?1 AND slug = ?2 AND group_type = 'tag'",
         )
-        .bind(vault_id)
+        .bind(source_id)
         .bind(tag)
         .fetch_one(&mut **tx)
         .await?;
@@ -551,9 +551,9 @@ async fn sync_tags(
 }
 
 /// Full reconciliation
-pub async fn reconcile_vault(
-    vault_path: &Path,
-    vault_id: &str,
+pub async fn reconcile_source(
+    source_path: &Path,
+    source_id: &str,
     db: &SqlitePool,
     extensions: &[&str],
     frontmatter_buffer_size: usize,
@@ -561,21 +561,21 @@ pub async fn reconcile_vault(
     use std::time::Instant;
     let t_total = Instant::now();
 
-    // Ensure vault row exists
-    sqlx::query("INSERT OR IGNORE INTO vaults (id, title, path) VALUES (?1, ?2, ?3)")
-        .bind(vault_id)
+    // Ensure source row exists
+    sqlx::query("INSERT OR IGNORE INTO sources (id, title, path) VALUES (?1, ?2, ?3)")
+        .bind(source_id)
         .bind(
-            vault_path
+            source_path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("Untitled"),
         )
-        .bind(vault_path.to_string_lossy().as_ref())
+        .bind(source_path.to_string_lossy().as_ref())
         .execute(db)
         .await?;
 
     let t0 = Instant::now();
-    let fs_entries = walk_vault(vault_path, extensions);
+    let fs_entries = walk_source(source_path, extensions);
     eprintln!(
         "[reconcile] walk: {}ms ({} files)",
         t0.elapsed().as_millis(),
@@ -584,16 +584,16 @@ pub async fn reconcile_vault(
 
     let t1 = Instant::now();
     let db_entries: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT rel_path, coalesce(mtime, 0) FROM documents WHERE vault_id = ?1 AND rel_path IS NOT NULL",
+        "SELECT rel_path, coalesce(mtime, 0) FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
     )
-    .bind(vault_id)
+    .bind(source_id)
     .fetch_all(db)
     .await?;
 
     let db_id_to_path: HashMap<String, String> = sqlx::query_as(
-        "SELECT id, rel_path FROM documents WHERE vault_id = ?1 AND rel_path IS NOT NULL",
+        "SELECT id, rel_path FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
     )
-    .bind(vault_id)
+    .bind(source_id)
     .fetch_all(db)
     .await?
     .into_iter()
@@ -621,7 +621,7 @@ pub async fn reconcile_vault(
         .map(|(p, _)| p.clone())
         .chain(diff.modified.iter().map(|(p, _)| p.clone()))
         .collect();
-    let frontmatter = extract_frontmatter(vault_path, &paths_to_read, frontmatter_buffer_size);
+    let frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
     eprintln!(
         "[reconcile] frontmatter: {}ms ({} files read)",
         t2.elapsed().as_millis(),
@@ -631,7 +631,7 @@ pub async fn reconcile_vault(
     let operations = resolve_changes(diff, &frontmatter, &db_id_to_path);
 
     let t3 = Instant::now();
-    apply_operations(&operations, &frontmatter, vault_id, db).await?;
+    apply_operations(&operations, &frontmatter, source_id, db).await?;
     eprintln!(
         "[reconcile] apply: {}ms ({} ops)",
         t3.elapsed().as_millis(),

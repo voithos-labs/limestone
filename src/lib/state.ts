@@ -1,19 +1,19 @@
 import { readTextFile, writeTextFile, mkdir, exists } from '@tauri-apps/plugin-fs';
 
-export interface VaultState {
+export interface SourceState {
 	activeTheme: string;
 }
 
-const DEFAULT_STATE: VaultState = {
+const DEFAULT_STATE: SourceState = {
 	activeTheme: 'default-dark'
 };
 
-function statePath(vaultPath: string): string {
-	return `${vaultPath}/.limestone/state.json`;
+function statePath(sourcePath: string): string {
+	return `${sourcePath}/.limestone/state.json`;
 }
 
-export async function loadState(vaultPath: string): Promise<VaultState> {
-	const path = statePath(vaultPath);
+export async function loadState(sourcePath: string): Promise<SourceState> {
+	const path = statePath(sourcePath);
 	if (!(await exists(path))) {
 		return { ...DEFAULT_STATE };
 	}
@@ -21,15 +21,15 @@ export async function loadState(vaultPath: string): Promise<VaultState> {
 	return { ...DEFAULT_STATE, ...JSON.parse(raw) };
 }
 
-export async function saveState(vaultPath: string, state: VaultState): Promise<void> {
-	const dir = `${vaultPath}/.limestone`;
+export async function saveState(sourcePath: string, state: SourceState): Promise<void> {
+	const dir = `${sourcePath}/.limestone`;
 	if (!(await exists(dir))) {
 		await mkdir(dir, { recursive: true });
 	}
-	await writeTextFile(statePath(vaultPath), JSON.stringify(state, null, 2));
+	await writeTextFile(statePath(sourcePath), JSON.stringify(state, null, 2));
 }
 
-export async function updateState(vaultPath: string, partial: Partial<VaultState>): Promise<void> {
-	const current = await loadState(vaultPath);
-	await saveState(vaultPath, { ...current, ...partial });
+export async function updateState(sourcePath: string, partial: Partial<SourceState>): Promise<void> {
+	const current = await loadState(sourcePath);
+	await saveState(sourcePath, { ...current, ...partial });
 }

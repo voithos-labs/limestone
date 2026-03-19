@@ -1,13 +1,17 @@
--- connection config
+/*
+ Limestone App Index Schema
+ -> this db acts as a cached index, and can always be rebuilt losslessly from source material
+ */
+
+-- ── Config ───────────────────────────────────────────────────────────────────────────
+
 pragma journal_mode = WAL;
 pragma foreign_keys = on;
-pragma busy_timeout = 5000;
+pragma busy_timeout = 5000; -- if you timeout, start worrying
 
-------------
--- Tables --
-------------
+-- ── Tables ───────────────────────────────────────────────────────────────────────────
 
-create table if not exists vaults (
+create table if not exists sources (
     id text primary key not null,
     title text not null,
     path text not null,
@@ -18,7 +22,7 @@ create table if not exists vaults (
 
 create table if not exists documents (
     id text primary key not null,
-    vault_id text not null references vaults(id) on delete cascade,
+    source_id text not null references sources(id) on delete cascade,
     document_type text not null default 'md',
     rel_path text not null,
     title text not null,
@@ -32,15 +36,15 @@ create table if not exists documents (
 
 create table if not exists groups (
     id text primary key not null,
-    vault_id text not null references vaults(id) on delete cascade,
-    slug text not null, -- title, unique per vault
-    group_type text not null default 'tag', -- tag, folder
+    source_id text references sources(id) on delete cascade, -- nullable, only folder groups need this, tags are global
+    slug text not null, -- title
+    group_type text not null default 'tag' check (group_type in ('tag', 'folder')), -- tag, folder
     parent_group_id text references groups(id) on delete set null,
     created_at text not null default (datetime('now')),
     updated_at text not null default (datetime('now')),
     accessed_at text not null default (datetime('now'))
-    -- okay to get the full prop flexibillity potential (like notion) you need props with default values per-group
-    -- can just define in a basic json, schema will have to be enforced in code on-parse
+    -- okay to get the full prop flexibility potential (like notion) you need props with default values per-group
+    -- can just define in a basic json, schema will have to be enforced in code on-parse. Will add when needed.
 ) strict;
 
 create table if not exists document_groups (
@@ -49,13 +53,26 @@ create table if not exists document_groups (
     primary key (document_id, group_id)
 ) strict;
 
--------------
--- indexes --
--------------
+-- ── Indexes ──────────────────────────────────────────────────────────────────────────
 
-create index if not exists idx_documents_vault on documents(vault_id);
-create index if not exists idx_documents_rel_path on documents(vault_id, rel_path);
+create index if not exists idx_documents_source on documents(source_id);
+create index if not exists idx_documents_rel_path on documents(source_id, rel_path);
 create index if not exists idx_documents_updated_at on documents(updated_at);
-create index if not exists idx_groups_vault on groups(vault_id);
+create index if not exists idx_groups_source on groups(source_id);
 create index if not exists idx_groups_parent on groups(parent_group_id);
 create index if not exists idx_document_groups_group on document_groups(group_id);
+
+-- ── Restrictions ─────────────────────────────────────────────────────────────────────
+
+-- tags are globally unique by slug + type
+create unique index if not exists idx_groups_slug_global
+    on groups(slug, group_type) where source_id is null;
+
+-- folder slugs are unique within their source
+create unique index if not exists idx_groups_slug_source
+    on groups(slug, source_id) where source_id is not null;
+
+-- one root folder group per source
+create unique index if not exists idx_source_root
+    on groups(source_id) where parent_group_id is null;
+
