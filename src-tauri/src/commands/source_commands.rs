@@ -161,13 +161,9 @@ pub async fn search_documents(
     app_data: State<'_, AppData>,
     query: String,
 ) -> Result<Vec<services::search::SearchResult>, String> {
-    let source_id = {
-        let active = app_data.active_source.lock().unwrap();
-        active.as_ref().ok_or("no active source")?.id.to_string()
-    };
     let search_cfg = {
         let settings = app_data.settings.read().unwrap();
         search_config_from_settings(&settings)
     };
-    Ok(services::search::search(&app_data.db, &source_id, &query, &search_cfg).await)
+    Ok(services::search::search(&app_data.db, &query, &search_cfg).await)
 }
