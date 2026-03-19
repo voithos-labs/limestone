@@ -61,11 +61,14 @@ pub fn create_source(title: Option<String>, path: PathBuf) -> Result<Source, std
             .to_string()
     });
 
-    let ignore_path = path.join(".limestoneignore");
-    if !ignore_path.exists() {
+    let config_path = path.join(".limestone.json");
+    if !config_path.exists() {
+        let default_config = serde_json::json!({
+            "ignore": [".limestone/", "assets/", ".*"]
+        });
         let _ = fs::write(
-            &ignore_path,
-            "# directories\n.limestone/\nassets/\n\n# dotfiles\n.*\n",
+            &config_path,
+            serde_json::to_string_pretty(&default_config).unwrap(),
         );
     }
 
@@ -125,22 +128,21 @@ pub enum DbOperation {
 
 // ── Source Scan ──────────────────────────────────────────────────────────────────────
 
-/// Load .limestoneignore in source root
 fn load_ignore_patterns(source_path: &Path) -> Option<globset::GlobSet> {
-    let ignore_path = source_path.join(".limestoneignore");
-    let content = fs::read_to_string(&ignore_path).ok()?;
-    let mut builder = globset::GlobSetBuilder::new();
+    let config_path = source_path.join(".limestone.json");
+    let content = fs::read_to_string(&config_path).ok()?;
+    let config: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let patterns = config.get("ignore")?.as_array()?;
 
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Ok(glob) = globset::GlobBuilder::new(line)
-            .literal_separator(true)
-            .build()
-        {
-            builder.add(glob);
+    let mut builder = globset::GlobSetBuilder::new();
+    for pattern in patterns {
+        if let Some(s) = pattern.as_str() {
+            if let Ok(glob) = globset::GlobBuilder::new(s)
+                .literal_separator(true)
+                .build()
+            {
+                builder.add(glob);
+            }
         }
     }
 

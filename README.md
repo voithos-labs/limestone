@@ -21,7 +21,7 @@ npm run format
 So here's what I'm thinking:
 
 ```
-app_data_dir/                    # precious
+app_data_dir/                    # stateful app data
 ├── sources.json
 ├── groups.json
 ├── views.json
@@ -30,12 +30,12 @@ app_data_dir/                    # precious
 └── history/
     └── {uuid}.automerge
 
-app_cache_dir/                   # disposable
+app_cache_dir/                   # cache
 ├── index.db
 └── tantivy/
 
 SOURCE/                          # any mounted folder
-├── .limestone.json              # source policy
+├── .limestone.json              # source policy, ignore, etc.
 └── ...files
 ```
 
