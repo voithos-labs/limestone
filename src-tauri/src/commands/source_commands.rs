@@ -10,7 +10,6 @@ fn sources_store(app: &AppHandle) -> JsonSettingsStore {
     JsonSettingsStore {
         path: app.path().app_data_dir().unwrap().join("sources.json"),
         default_json: None,
-        override_path: None,
     }
 }
 
@@ -34,7 +33,9 @@ fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
         .unwrap_or(512) as usize;
     drop(settings);
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = services::reconcile_source(&source_path, &source_id, &pool, &["md"], fm_buf_size).await {
+        if let Err(e) =
+            services::reconcile_source(&source_path, &source_id, &pool, &["md"], fm_buf_size).await
+        {
             eprintln!("reconcile failed: {e}");
         }
         let _ = app_handle.emit("source-reconciled", &source_id);
@@ -168,11 +169,5 @@ pub async fn search_documents(
         let settings = app_data.settings.read().unwrap();
         search_config_from_settings(&settings)
     };
-    Ok(services::search::search(
-        &app_data.db,
-        &source_id,
-        &query,
-        &search_cfg,
-    )
-    .await)
+    Ok(services::search::search(&app_data.db, &source_id, &query, &search_cfg).await)
 }

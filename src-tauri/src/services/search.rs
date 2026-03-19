@@ -104,7 +104,12 @@ async fn search_recents(db: &SqlitePool, source_id: &str, limit: usize) -> Vec<S
         .collect()
 }
 
-async fn search_prefix(db: &SqlitePool, source_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+async fn search_prefix(
+    db: &SqlitePool,
+    source_id: &str,
+    query: &str,
+    cfg: &SearchConfig,
+) -> Vec<SearchResult> {
     let query_lower = query.to_lowercase();
     load_docs(db, source_id, Some(cfg.prefix_candidate_pool))
         .await
@@ -115,7 +120,12 @@ async fn search_prefix(db: &SqlitePool, source_id: &str, query: &str, cfg: &Sear
         .collect()
 }
 
-async fn search_fuzzy(db: &SqlitePool, source_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+async fn search_fuzzy(
+    db: &SqlitePool,
+    source_id: &str,
+    query: &str,
+    cfg: &SearchConfig,
+) -> Vec<SearchResult> {
     let docs = load_docs(db, source_id, None).await;
     if docs.is_empty() {
         return Vec::new();
@@ -147,7 +157,8 @@ async fn search_fuzzy(db: &SqlitePool, source_id: &str, query: &str, cfg: &Searc
     let mut results: Vec<(usize, f64)> = scored
         .iter()
         .map(|&(i, nucleo_score)| {
-            let recency_bonus = cfg.recency_multiplier / (1.0 + days_since(&docs[i].accessed_at, cfg.recency_default_days));
+            let recency_bonus = cfg.recency_multiplier
+                / (1.0 + days_since(&docs[i].accessed_at, cfg.recency_default_days));
             let composite = nucleo_score as f64 + (recency_bonus * cfg.recency_weight);
             (i, composite)
         })
@@ -178,7 +189,12 @@ async fn search_fuzzy(db: &SqlitePool, source_id: &str, query: &str, cfg: &Searc
         .collect()
 }
 
-pub async fn search(db: &SqlitePool, source_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+pub async fn search(
+    db: &SqlitePool,
+    source_id: &str,
+    query: &str,
+    cfg: &SearchConfig,
+) -> Vec<SearchResult> {
     let query = query.trim();
     match query.len() {
         0 => search_recents(db, source_id, cfg.max_results).await,

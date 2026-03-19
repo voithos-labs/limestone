@@ -45,7 +45,6 @@ pub fn run() {
             let user_store = services::JsonSettingsStore {
                 path: global_data_path.join("user.json"),
                 default_json: None,
-                override_path: None,
             };
 
             let user = user_store.load::<services::User>().unwrap_or_else(|| {
@@ -59,7 +58,6 @@ pub fn run() {
             let mut sources = services::JsonSettingsStore {
                 path: sources_path,
                 default_json: None,
-                override_path: None,
             }
             .load::<services::Sources>()
             .unwrap_or_default()
@@ -73,16 +71,16 @@ pub fn run() {
 
             let active_source = sources.first().cloned();
 
-            let source_path = active_source.as_ref().map(|v| v.path.as_path());
-            let initial_settings =
-                services::JsonSettingsStore::for_app(app.handle(), source_path).load_merged();
+            let initial_settings = services::JsonSettingsStore::for_app(app.handle()).load_merged();
 
             let fm_buf_size =
                 services::dot_get(&initial_settings, "indexing.frontmatter_read_buffer_size")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(512) as usize;
 
-            let db_path = global_data_path.join("limestone.db");
+            let cache_path = app.path().app_cache_dir()?;
+            std::fs::create_dir_all(&cache_path)?;
+            let db_path = cache_path.join("index.db");
             let pool = tauri::async_runtime::block_on(create_pool(&db_path)).map_err(|e| {
                 Box::<dyn std::error::Error>::from(format!("failed to create db pool: {e}"))
             })?;
@@ -126,7 +124,6 @@ pub fn run() {
             commands::source_commands::clear_cache,
             commands::source_commands::search_documents,
             commands::settings_commands::get_setting,
-            commands::settings_commands::set_setting_source,
             commands::settings_commands::set_setting_global,
             commands::document_commands::write_document,
             commands::document_commands::rename_document,

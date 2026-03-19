@@ -1,5 +1,5 @@
 import { load, type Store } from '@tauri-apps/plugin-store';
-import { loadState, updateState } from './state';
+import { loadWorkspace, updateWorkspace } from './workspace';
 
 export interface Theme {
 	name: string;
@@ -37,18 +37,18 @@ export function applyTheme(theme: Theme) {
 	}
 }
 
-export async function loadAndApplyTheme(sourcePath: string) {
-	const state = await loadState(sourcePath);
+export async function loadAndApplyTheme() {
+	const workspace = await loadWorkspace();
 	const s = await getStore();
-	const theme = await s.get<Theme>(state.activeTheme);
+	const theme = await s.get<Theme>(workspace.activeTheme);
 	applyTheme(theme ?? DEFAULT_THEME);
 }
 
-export async function setActiveTheme(sourcePath: string, name: string) {
+export async function setActiveTheme(name: string) {
 	const s = await getStore();
 	const theme = await s.get<Theme>(name);
 	if (!theme) return;
-	await updateState(sourcePath, { activeTheme: name });
+	await updateWorkspace({ activeTheme: name });
 	applyTheme(theme);
 }
 

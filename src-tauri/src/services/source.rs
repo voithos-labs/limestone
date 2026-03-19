@@ -45,11 +45,10 @@ pub fn open_source(app: &AppHandle, app_data: &crate::AppData, mut source: Sourc
     // Note: previously opened sources remain accessible until app restart (no way to remove perm)
     let _ = app.fs_scope().allow_directory(&source.path, true);
 
-    let source_path = source.path.clone();
     source.accessed_at = Utc::now();
     *app_data.active_source.lock().unwrap() = Some(source);
 
-    let merged = JsonSettingsStore::for_app(app, Some(&source_path)).load_merged();
+    let merged = JsonSettingsStore::for_app(app).load_merged();
     *app_data.settings.write().unwrap() = merged;
 }
 

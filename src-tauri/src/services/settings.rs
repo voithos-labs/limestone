@@ -12,16 +12,13 @@ pub struct JsonSettingsStore {
     pub default_json: Option<String>,
     /// path to global settings json file
     pub path: PathBuf,
-    /// source override path to json
-    pub override_path: Option<PathBuf>,
 }
 
 impl JsonSettingsStore {
-    pub fn for_app(app: &tauri::AppHandle, source_path: Option<&Path>) -> Self {
+    pub fn for_app(app: &tauri::AppHandle) -> Self {
         Self {
             path: app.path().app_data_dir().unwrap().join("settings.json"),
             default_json: Some(include_str!("../../defaults/default_settings.json").to_string()),
-            override_path: source_path.map(|p| p.join("settings.json")),
         }
     }
 
@@ -58,52 +55,7 @@ impl JsonSettingsStore {
             }
         }
 
-        // Source
-        if let Some(ref override_path) = self.override_path {
-            if let Ok(contents) = fs::read_to_string(override_path) {
-                if let Ok(source) = serde_json::from_str::<Value>(&contents) {
-                    json_merge(&mut merged, &source);
-                }
-            }
-        }
-
         merged
-    }
-
-    pub fn get<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
-        // try load from os, source -> global -> compiled defaults
-        let paths: Vec<&Path> = self
-            .override_path
-            .iter()
-            .map(|p| p.as_path())
-            .chain(std::iter::once(self.path.as_path()))
-            .collect();
-
-        for path in paths {
-            if let Ok(contents) = fs::read_to_string(path) {
-                if let Ok(json) = serde_json::from_str::<Value>(&contents) {
-                    if let Some(val) = dot_get(&json, key) {
-                        return serde_json::from_value(val.clone()).ok();
-                    }
-                }
-            }
-        }
-
-        // compiled defaults
-        self.default_json
-            .as_ref()
-            .and_then(|s| serde_json::from_str::<Value>(s).ok())
-            .and_then(|j| dot_get(&j, key).cloned())
-            .and_then(|v| serde_json::from_value(v).ok())
-    }
-
-    /// Set source-level settings override for specified key
-    pub fn set_source<T: Serialize>(&self, key: &str, value: T) -> io::Result<()> {
-        let path = self
-            .override_path
-            .as_ref()
-            .ok_or_else(|| io::Error::other("no source path configured"))?;
-        self.write_to(path, key, value)
     }
 
     /// Set global override of settings (basically a diff from default settings)
