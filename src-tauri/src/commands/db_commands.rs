@@ -32,14 +32,26 @@ fn row_to_json(row: &sqlx::sqlite::SqliteRow) -> Result<Value, String> {
         let raw = row.try_get_raw(i).map_err(|e| e.to_string())?;
         let v = match raw.type_info().name() {
             "NULL" => Value::Null,
-            "TEXT" => row.try_get::<String, _>(i).map(Value::String).map_err(|e| e.to_string())?,
-            "INTEGER" | "BOOLEAN" => row.try_get::<i64, _>(i).map(|n| Value::Number(n.into())).map_err(|e| e.to_string())?,
-            "REAL" => row.try_get::<f64, _>(i).map(|n| {
-                serde_json::Number::from_f64(n)
-                    .map(Value::Number)
-                    .unwrap_or(Value::Null)
-            }).map_err(|e| e.to_string())?,
-            _ => row.try_get::<String, _>(i).map(Value::String).unwrap_or(Value::Null),
+            "TEXT" => row
+                .try_get::<String, _>(i)
+                .map(Value::String)
+                .map_err(|e| e.to_string())?,
+            "INTEGER" | "BOOLEAN" => row
+                .try_get::<i64, _>(i)
+                .map(|n| Value::Number(n.into()))
+                .map_err(|e| e.to_string())?,
+            "REAL" => row
+                .try_get::<f64, _>(i)
+                .map(|n| {
+                    serde_json::Number::from_f64(n)
+                        .map(Value::Number)
+                        .unwrap_or(Value::Null)
+                })
+                .map_err(|e| e.to_string())?,
+            _ => row
+                .try_get::<String, _>(i)
+                .map(Value::String)
+                .unwrap_or(Value::Null),
         };
         map.insert(col.name().to_string(), v);
     }

@@ -1,5 +1,4 @@
 import { select, execute } from '$lib/db';
-import { getActiveVault } from './Vault';
 import { v4 as uuidv4 } from 'uuid';
 
 export enum GroupType {
@@ -10,7 +9,7 @@ export enum GroupType {
 /**
  * create table if not exists groups (
  *     id text primary key not null,
- *     vault_id text not null references vaults(id) on delete cascade,
+ *     source_id text references sources(id) on delete cascade,
  *     slug text not null,
  *     group_type text not null default 'tag',
  *     parent_group_id text references groups(id) on delete set null,
@@ -21,7 +20,7 @@ export enum GroupType {
  */
 export interface GroupRow {
 	id: string;
-	vault_id: string;
+	source_id: string;
 	slug: string;
 	group_type: string;
 	parent_group_id: string | null;
@@ -47,18 +46,22 @@ class Group {
 		this.parentGroupId = row.parent_group_id ?? undefined;
 	}
 
+	/**
+	 * need to consider how to handle global tags, having them all scoped under a source is not best
+	 * case for most users
+	 */
 	static async create(
+		sourceId: string,
 		slug: string,
 		groupType: GroupType = GroupType.Tag,
 		parentGroupId?: string
 	): Promise<Group> {
 		const id = uuidv4();
-		const vault = await getActiveVault();
 
 		await execute(
-			`INSERT INTO groups (id, vault_id, slug, group_type, parent_group_id)
+			`INSERT INTO groups (id, source_id, slug, group_type, parent_group_id)
              VALUES (?1, ?2, ?3, ?4, ?5)`,
-			[id, vault.id, slug, groupType, parentGroupId ?? null]
+			[id, sourceId, slug, groupType, parentGroupId ?? null]
 		);
 
 		const [row] = await select<GroupRow>(
@@ -71,12 +74,12 @@ class Group {
 		return new Group(row);
 	}
 
-	static async fromSlugs(slugs: string[], vaultId: string): Promise<Group[]> {
+	static async fromSlugs(slugs: string[], sourceId: string): Promise<Group[]> {
 		if (slugs.length === 0) return [];
 		const placeholders = slugs.map((_, i) => `?${i + 2}`).join(', ');
 		const rows = await select<GroupRow>(
-			`SELECT * FROM groups WHERE vault_id = ?1 AND slug IN (${placeholders})`,
-			[vaultId, ...slugs]
+			`SELECT * FROM groups WHERE source_id = ?1 AND slug IN (${placeholders})`,
+			[sourceId, ...slugs]
 		);
 		return rows.map((r) => new Group(r));
 	}

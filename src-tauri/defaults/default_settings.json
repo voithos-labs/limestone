@@ -3,7 +3,7 @@
 		"use_yaml_frontmatter": true
 	},
 	"indexing": {
-		"frontmatter_read_buffer_size": 512
+		"frontmatter_read_buffer_size": 1024
 	},
 	"search": {
 		"max_results": 15,

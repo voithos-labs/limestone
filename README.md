@@ -1,29 +1,46 @@
 # LIMESTONE (V4)
 
-I use https://plugins.jetbrains.com/plugin/24705-code-divider for sections
+## Dev Commands
 
-## Vaults
+Run dev app
+
+```bash
+npm run tauri dev
+```
+
+Format
+
+```bash
+npm run format
+```
+
+## Structure
+
+### Files
 
 So here's what I'm thinking:
 
 ```
-VAULT/
-├── .limestone/
-│   ├── settings.override.json
-│   ├── history/
-│   └── cache/
-│       ├── tantivy/
-│       └── thumbnails/
-├── assets/
-├── views/ # could move into .limestone
-│   ├── your-view.view.json
-│   └── my-view.view.json
-├── [folders]/
-│   ├── .limestone.folder.json
-│   ├── thatdoc.md
-│   └── ...
-├── yourdoc.md
-└── ...
+app_data_dir/                    # stateful app data
+├── sources.json
+├── groups.json
+├── views.json
+├── settings.json
+├── workspace.json
+└── history/
+    └── {uuid}.automerge
+
+app_cache_dir/                   # cache
+├── index.db
+└── tantivy/
+
+SOURCE/                          # any mounted folder
+├── .limestone.json              # source policy, ignore, etc.
+└── ...files
 ```
 
 (nice: https://tree.nathanfriend.com)
+
+## Tools
+
+I use https://plugins.jetbrains.com/plugin/24705-code-divider for sections

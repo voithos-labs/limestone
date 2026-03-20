@@ -41,22 +41,20 @@ struct DocEntry {
     accessed_at: Option<String>,
 }
 
-async fn load_docs(db: &SqlitePool, vault_id: &str, limit: Option<usize>) -> Vec<DocEntry> {
+async fn load_docs(db: &SqlitePool, limit: Option<usize>) -> Vec<DocEntry> {
     let rows: Vec<(String, String, Option<String>, Option<String>)> = match limit {
         Some(n) => {
             sqlx::query_as(
-                "SELECT id, title, rel_path, accessed_at FROM documents WHERE vault_id = ?1 AND deleted_at IS NULL ORDER BY accessed_at DESC LIMIT ?2",
+                "SELECT id, title, rel_path, accessed_at FROM documents WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT ?1",
             )
-            .bind(vault_id)
             .bind(n as i64)
             .fetch_all(db)
             .await
         }
         None => {
             sqlx::query_as(
-                "SELECT id, title, rel_path, accessed_at FROM documents WHERE vault_id = ?1 AND deleted_at IS NULL",
+                "SELECT id, title, rel_path, accessed_at FROM documents WHERE deleted_at IS NULL",
             )
-            .bind(vault_id)
             .fetch_all(db)
             .await
         }
@@ -96,17 +94,17 @@ fn to_result(doc: &DocEntry) -> SearchResult {
     }
 }
 
-async fn search_recents(db: &SqlitePool, vault_id: &str, limit: usize) -> Vec<SearchResult> {
-    load_docs(db, vault_id, Some(limit))
+async fn search_recents(db: &SqlitePool, limit: usize) -> Vec<SearchResult> {
+    load_docs(db, Some(limit))
         .await
         .iter()
         .map(to_result)
         .collect()
 }
 
-async fn search_prefix(db: &SqlitePool, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+async fn search_prefix(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
     let query_lower = query.to_lowercase();
-    load_docs(db, vault_id, Some(cfg.prefix_candidate_pool))
+    load_docs(db, Some(cfg.prefix_candidate_pool))
         .await
         .iter()
         .filter(|doc| doc.title.to_lowercase().contains(&query_lower))
@@ -115,8 +113,8 @@ async fn search_prefix(db: &SqlitePool, vault_id: &str, query: &str, cfg: &Searc
         .collect()
 }
 
-async fn search_fuzzy(db: &SqlitePool, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
-    let docs = load_docs(db, vault_id, None).await;
+async fn search_fuzzy(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+    let docs = load_docs(db, None).await;
     if docs.is_empty() {
         return Vec::new();
     }
@@ -147,7 +145,8 @@ async fn search_fuzzy(db: &SqlitePool, vault_id: &str, query: &str, cfg: &Search
     let mut results: Vec<(usize, f64)> = scored
         .iter()
         .map(|&(i, nucleo_score)| {
-            let recency_bonus = cfg.recency_multiplier / (1.0 + days_since(&docs[i].accessed_at, cfg.recency_default_days));
+            let recency_bonus = cfg.recency_multiplier
+                / (1.0 + days_since(&docs[i].accessed_at, cfg.recency_default_days));
             let composite = nucleo_score as f64 + (recency_bonus * cfg.recency_weight);
             (i, composite)
         })
@@ -178,11 +177,11 @@ async fn search_fuzzy(db: &SqlitePool, vault_id: &str, query: &str, cfg: &Search
         .collect()
 }
 
-pub async fn search(db: &SqlitePool, vault_id: &str, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+pub async fn search(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
     let query = query.trim();
     match query.len() {
-        0 => search_recents(db, vault_id, cfg.max_results).await,
-        n if n <= cfg.fuzzy_threshold => search_prefix(db, vault_id, query, cfg).await,
-        _ => search_fuzzy(db, vault_id, query, cfg).await,
+        0 => search_recents(db, cfg.max_results).await,
+        n if n <= cfg.fuzzy_threshold => search_prefix(db, query, cfg).await,
+        _ => search_fuzzy(db, query, cfg).await,
     }
 }

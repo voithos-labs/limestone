@@ -2,7 +2,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { listen } from '@tauri-apps/api/event';
 
-	interface Vault {
+	interface Source {
 		id: string;
 		title: string;
 		path: string;
@@ -18,42 +18,32 @@
 		match_indices: number[];
 	}
 
-	let vaults = $state<Vault[]>([]);
-	let activeVault = $state<Vault | null>(null);
-	let newVaultPath = $state('');
-	let newVaultTitle = $state('');
+	let sources = $state<Source[]>([]);
+	let newSourcePath = $state('');
+	let newSourceTitle = $state('');
 	let loading = $state(false);
 
 	let searchQuery = $state('');
 	let searchResults = $state<SearchResult[]>([]);
 
-	async function loadVaults() {
-		vaults = await invoke('get_vaults');
-		activeVault = await invoke('get_active_vault');
-		if (activeVault) {
-			await doSearch();
-		}
+	async function loadSources() {
+		sources = await invoke('get_sources');
+		await doSearch();
 	}
 
 	async function doSearch() {
-		if (!activeVault) return;
 		searchResults = await invoke('search_documents', { query: searchQuery });
 	}
 
-	async function createVault() {
-		if (!newVaultPath) return;
-		await invoke('create_vault', {
-			path: newVaultPath,
-			title: newVaultTitle || newVaultPath.split(/[\\/]/).pop() || 'Untitled'
+	async function createSource() {
+		if (!newSourcePath) return;
+		await invoke('create_source', {
+			path: newSourcePath,
+			title: newSourceTitle || newSourcePath.split(/[\\/]/).pop() || 'Untitled'
 		});
-		newVaultPath = '';
-		newVaultTitle = '';
-		await loadVaults();
-	}
-
-	async function switchVault(id: string) {
-		await invoke('set_active_vault', { id });
-		await loadVaults();
+		newSourcePath = '';
+		newSourceTitle = '';
+		await loadSources();
 	}
 
 	function highlightTitle(title: string, indices: number[]): string {
@@ -63,9 +53,9 @@
 		return chars.map((ch, i) => (set.has(i) ? `<mark>${ch}</mark>` : ch)).join('');
 	}
 
-	loadVaults();
+	loadSources();
 
-	listen('vault-reconciled', () => {
+	listen('source-reconciled', () => {
 		doSearch();
 	});
 </script>
@@ -74,67 +64,63 @@
 	<h2>limestone</h2>
 
 	<section>
-		<h3>create vault</h3>
+		<h3>create source</h3>
 		<div class="row">
-			<input bind:value={newVaultTitle} placeholder="title (optional)" />
-			<input bind:value={newVaultPath} placeholder="/path/to/vault" />
-			<button onclick={createVault} disabled={loading || !newVaultPath}>create</button>
+			<input bind:value={newSourceTitle} placeholder="title (optional)" />
+			<input bind:value={newSourcePath} placeholder="/path/to/source" />
+			<button onclick={createSource} disabled={loading || !newSourcePath}>create</button>
 		</div>
 	</section>
 
 	<section>
-		<h3>vaults</h3>
-		{#if vaults.length === 0}
-			<p class="muted">no vaults</p>
+		<h3>sources</h3>
+		{#if sources.length === 0}
+			<p class="muted">no sources</p>
 		{:else}
 			<ul>
-				{#each vaults as vault}
-					<li class:active={activeVault?.id === vault.id}>
-						<button onclick={() => switchVault(vault.id)} disabled={loading}>
-							{vault.title}
-						</button>
-						<span class="path">{vault.path}</span>
+				{#each sources as source}
+					<li>
+						<span>{source.title}</span>
+						<span class="path">{source.path}</span>
 					</li>
 				{/each}
 			</ul>
 		{/if}
 	</section>
 
-	{#if activeVault}
-		<section>
-			<h3>search</h3>
-			<input
-				bind:value={searchQuery}
-				oninput={doSearch}
-				placeholder="search documents..."
-				class="search-input"
-			/>
-			{#if searchResults.length > 0}
-				<table>
-					<thead>
+	<section>
+		<h3>search</h3>
+		<input
+			bind:value={searchQuery}
+			oninput={doSearch}
+			placeholder="search documents..."
+			class="search-input"
+		/>
+		{#if searchResults.length > 0}
+			<table>
+				<thead>
+					<tr>
+						<th>title</th>
+						<th>path</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each searchResults as result}
 						<tr>
-							<th>title</th>
-							<th>path</th>
+							<td>
+								<a href="/document/{result.id}"
+									>{@html highlightTitle(result.title, result.match_indices)}</a
+								>
+							</td>
+							<td class="mono">{result.rel_path ?? '-'}</td>
 						</tr>
-					</thead>
-					<tbody>
-						{#each searchResults as result}
-							<tr>
-								<td>
-									<a href="/document/{result.id}"
-										>{@html highlightTitle(result.title, result.match_indices)}</a
-									>
-								</td>
-								<td class="mono">{result.rel_path ?? '-'}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			{:else if searchQuery}
-				<p class="muted">no results</p>
-			{/if}
-		</section>
-	{/if}
+					{/each}
+				</tbody>
+			</table>
+		{:else if searchQuery}
+			<p class="muted">no results</p>
+		{/if}
+	</section>
 
 	{#if loading}
 		<div class="loading">working...</div>
@@ -225,10 +211,6 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-	}
-
-	li.active button {
-		color: var(--color-accent-primary);
 	}
 
 	.path {
