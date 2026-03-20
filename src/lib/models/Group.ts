@@ -1,5 +1,4 @@
 import { select, execute } from '$lib/db';
-import { getActiveSource } from './Source';
 import { v4 as uuidv4 } from 'uuid';
 
 export enum GroupType {
@@ -47,18 +46,22 @@ class Group {
 		this.parentGroupId = row.parent_group_id ?? undefined;
 	}
 
+	/**
+	 * need to consider how to handle global tags, having them all scoped under a source is not best
+	 * case for most users
+	 */
 	static async create(
+		sourceId: string,
 		slug: string,
 		groupType: GroupType = GroupType.Tag,
 		parentGroupId?: string
 	): Promise<Group> {
 		const id = uuidv4();
-		const source = await getActiveSource();
 
 		await execute(
 			`INSERT INTO groups (id, source_id, slug, group_type, parent_group_id)
              VALUES (?1, ?2, ?3, ?4, ?5)`,
-			[id, source.id, slug, groupType, parentGroupId ?? null]
+			[id, sourceId, slug, groupType, parentGroupId ?? null]
 		);
 
 		const [row] = await select<GroupRow>(

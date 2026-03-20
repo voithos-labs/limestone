@@ -19,7 +19,6 @@
 	}
 
 	let sources = $state<Source[]>([]);
-	let activeSource = $state<Source | null>(null);
 	let newSourcePath = $state('');
 	let newSourceTitle = $state('');
 	let loading = $state(false);
@@ -29,14 +28,10 @@
 
 	async function loadSources() {
 		sources = await invoke('get_sources');
-		activeSource = await invoke('get_active_source');
-		if (activeSource) {
-			await doSearch();
-		}
+		await doSearch();
 	}
 
 	async function doSearch() {
-		if (!activeSource) return;
 		searchResults = await invoke('search_documents', { query: searchQuery });
 	}
 
@@ -48,11 +43,6 @@
 		});
 		newSourcePath = '';
 		newSourceTitle = '';
-		await loadSources();
-	}
-
-	async function switchSource(id: string) {
-		await invoke('set_active_source', { id });
 		await loadSources();
 	}
 
@@ -89,10 +79,8 @@
 		{:else}
 			<ul>
 				{#each sources as source}
-					<li class:active={activeSource?.id === source.id}>
-						<button onclick={() => switchSource(source.id)} disabled={loading}>
-							{source.title}
-						</button>
+					<li>
+						<span>{source.title}</span>
 						<span class="path">{source.path}</span>
 					</li>
 				{/each}
@@ -100,41 +88,39 @@
 		{/if}
 	</section>
 
-	{#if activeSource}
-		<section>
-			<h3>search</h3>
-			<input
-				bind:value={searchQuery}
-				oninput={doSearch}
-				placeholder="search documents..."
-				class="search-input"
-			/>
-			{#if searchResults.length > 0}
-				<table>
-					<thead>
+	<section>
+		<h3>search</h3>
+		<input
+			bind:value={searchQuery}
+			oninput={doSearch}
+			placeholder="search documents..."
+			class="search-input"
+		/>
+		{#if searchResults.length > 0}
+			<table>
+				<thead>
+					<tr>
+						<th>title</th>
+						<th>path</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each searchResults as result}
 						<tr>
-							<th>title</th>
-							<th>path</th>
+							<td>
+								<a href="/document/{result.id}"
+									>{@html highlightTitle(result.title, result.match_indices)}</a
+								>
+							</td>
+							<td class="mono">{result.rel_path ?? '-'}</td>
 						</tr>
-					</thead>
-					<tbody>
-						{#each searchResults as result}
-							<tr>
-								<td>
-									<a href="/document/{result.id}"
-										>{@html highlightTitle(result.title, result.match_indices)}</a
-									>
-								</td>
-								<td class="mono">{result.rel_path ?? '-'}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			{:else if searchQuery}
-				<p class="muted">no results</p>
-			{/if}
-		</section>
-	{/if}
+					{/each}
+				</tbody>
+			</table>
+		{:else if searchQuery}
+			<p class="muted">no results</p>
+		{/if}
+	</section>
 
 	{#if loading}
 		<div class="loading">working...</div>
@@ -225,10 +211,6 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-	}
-
-	li.active button {
-		color: var(--color-accent-primary);
 	}
 
 	.path {

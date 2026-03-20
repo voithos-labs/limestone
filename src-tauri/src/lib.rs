@@ -1,6 +1,6 @@
 use serde_json::Value;
 use sqlx::SqlitePool;
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
 
@@ -18,17 +18,8 @@ pub async fn create_pool(path: &std::path::Path) -> Result<SqlitePool, Box<dyn s
 
 pub struct AppData {
     pub user: services::User,
-    pub active_source: Mutex<Option<services::Source>>,
     pub settings: RwLock<Value>,
     pub db: SqlitePool,
-}
-
-impl AppData {
-    pub fn get_active_source(&self) -> Result<(std::path::PathBuf, String), String> {
-        let active = self.active_source.lock().unwrap();
-        let source = active.as_ref().ok_or("no active source")?;
-        Ok((source.path.clone(), source.id.to_string()))
-    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -55,21 +46,18 @@ pub fn run() {
 
             // Load sources
             let sources_path = global_data_path.join("sources.json");
-            let mut sources = services::JsonSettingsStore {
+            let sources = services::JsonSettingsStore {
                 path: sources_path,
                 default_json: None,
             }
             .load::<services::Sources>()
             .unwrap_or_default()
             .sources;
-            sources.sort_by_key(|v| std::cmp::Reverse(v.accessed_at));
 
-            // Allow fs access to source dir
-            if let Some(source) = sources.first() {
+            // Allow fs access to all source dirs
+            for source in &sources {
                 let _ = app.fs_scope().allow_directory(&source.path, true);
             }
-
-            let active_source = sources.first().cloned();
 
             let initial_settings = services::JsonSettingsStore::for_app(app.handle()).load_merged();
 
@@ -87,15 +75,15 @@ pub fn run() {
 
             app.manage(AppData {
                 user,
-                active_source: Mutex::new(active_source.clone()),
                 settings: RwLock::new(initial_settings),
                 db: pool.clone(),
             });
 
             // ── Not Blocking!1 ───────────────────────────────────────────────────────
 
-            if let Some(source) = active_source {
+            for source in sources {
                 let app_handle = app.handle().clone();
+                let pool = pool.clone();
                 tauri::async_runtime::spawn(async move {
                     let source_id = source.id.to_string();
                     if let Err(e) = services::reconcile_source(
@@ -117,10 +105,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::source_commands::get_sources,
-            commands::source_commands::get_active_source,
             commands::source_commands::get_source_by_id,
             commands::source_commands::create_source,
-            commands::source_commands::set_active_source,
             commands::source_commands::clear_cache,
             commands::source_commands::search_documents,
             commands::settings_commands::get_setting,

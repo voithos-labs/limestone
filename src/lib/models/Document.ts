@@ -8,7 +8,7 @@ import yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '$lib/db';
-import { getActiveSource } from './Source';
+import type { Source } from './Source';
 import Group, { type GroupRow } from './Group';
 import { getSetting } from './Settings';
 
@@ -65,6 +65,7 @@ class Document {
 	// db fields *not all, just what is needed
 	readonly id: string; // primary id
 	private _relPath: string; // path relative to source root
+	readonly source: Source;
 
 	title: string;
 	groups: Group[];
@@ -74,9 +75,10 @@ class Document {
 	accessedAt: Date;
 	deletedAt?: Date;
 
-	constructor(row: DocumentRow) {
+	constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;
 		this._relPath = row.rel_path;
+		this.source = source;
 		this.title = row.title;
 		this.groups = [];
 		this.properties =
@@ -88,13 +90,13 @@ class Document {
 	}
 
 	static async create(
+		source: Source,
 		title: string,
 		relPath: string,
 		groupIds: string[] = [],
 		properties: Record<string, unknown> = {}
 	): Promise<Document> {
 		const id = uuidv4();
-		const source = await getActiveSource();
 
 		// insert new doc stub
 		await execute(
@@ -110,7 +112,7 @@ class Document {
 			[id]
 		);
 
-		const doc = new Document(row);
+		const doc = new Document(row, source);
 		if (groupIds.length > 0) {
 			await doc.addGroups(groupIds);
 		}
@@ -118,14 +120,22 @@ class Document {
 	}
 
 	static async fromID(id: string): Promise<Document> {
-		const [row] = await select<DocumentRow>(
-			`SELECT *
-             FROM documents
-             WHERE id = ?1`,
+		const [row] = await select<DocumentRow & { source_path: string; source_title: string }>(
+			`SELECT d.*, s.path as source_path, s.title as source_title
+             FROM documents d
+             JOIN sources s ON s.id = d.source_id
+             WHERE d.id = ?1`,
 			[id]
 		);
 		if (!row) throw new Error(`Document not found: ${id}`);
-		const doc = new Document(row);
+		const source: Source = {
+			id: row.source_id,
+			title: row.source_title,
+			path: row.source_path,
+			created_at: '',
+			accessed_at: ''
+		};
+		const doc = new Document(row, source);
 		await doc.fetchGroups();
 		return doc;
 	}
@@ -223,8 +233,7 @@ class Document {
 	 * Read file from disk, parse frontmatter, return contents
 	 */
 	async loadContent(): Promise<string> {
-		const source = await getActiveSource();
-		const raw = await readTextFile(`${source.path}/${this._relPath}`);
+		const raw = await readTextFile(`${this.source.path}/${this._relPath}`);
 		const { frontmatter, body } = Document.deserialize(raw);
 
 		if (frontmatter) {
@@ -233,7 +242,7 @@ class Document {
 			if (created_at) this.createdAt = new Date(created_at);
 			if (updated_at) this.updatedAt = new Date(updated_at);
 			this.properties = remaining;
-			this.groups = await Group.fromSlugs(tags, source.id);
+			this.groups = await Group.fromSlugs(tags, this.source.id);
 		}
 
 		// update accessed_at
@@ -253,16 +262,16 @@ class Document {
 	 */
 	async saveContent(body: string): Promise<void> {
 		const contents = await this.serialize(body);
-		await invoke('write_document', { relPath: this._relPath, contents });
+		await invoke('write_document', { sourcePath: this.source.path, relPath: this._relPath, contents });
 	}
 
 	async moveToPath(newRelPath: string): Promise<void> {
-		await invoke('move_document', { relPath: this._relPath, newRelPath });
+		await invoke('move_document', { sourcePath: this.source.path, relPath: this._relPath, newRelPath });
 		this._relPath = newRelPath;
 	}
 
 	async rename(newName: string): Promise<void> {
-		const newRel: string = await invoke('rename_document', { relPath: this._relPath, newName });
+		const newRel: string = await invoke('rename_document', { sourcePath: this.source.path, relPath: this._relPath, newName });
 		this._relPath = newRel;
 		this.title = newName.replace(/\.[^.]+$/, '');
 	}

@@ -1,4 +1,3 @@
-use super::JsonSettingsStore;
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -8,8 +7,6 @@ use std::fs;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
-use tauri::AppHandle;
-use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -38,18 +35,6 @@ impl Source {
 pub struct Sources {
     #[serde(default)]
     pub sources: Vec<Source>,
-}
-
-pub fn open_source(app: &AppHandle, app_data: &crate::AppData, mut source: Source) {
-    // Allow access to new source
-    // Note: previously opened sources remain accessible until app restart (no way to remove perm)
-    let _ = app.fs_scope().allow_directory(&source.path, true);
-
-    source.accessed_at = Utc::now();
-    *app_data.active_source.lock().unwrap() = Some(source);
-
-    let merged = JsonSettingsStore::for_app(app).load_merged();
-    *app_data.settings.write().unwrap() = merged;
 }
 
 pub fn create_source(title: Option<String>, path: PathBuf) -> Result<Source, std::io::Error> {

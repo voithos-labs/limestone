@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
 use crate::services::{self, dot_get, JsonSettingsStore, Source, Sources};
@@ -60,59 +61,21 @@ pub fn create_source(
     let source =
         services::create_source(Some(title), PathBuf::from(&path)).map_err(|e| e.to_string())?;
 
+    // add fs access to new source dir
+    let _ = app.fs_scope().allow_directory(&source.path, true);
+
     let mut sources = load_sources(&app);
     sources.push(source.clone());
     save_sources(&app, &sources)?;
 
-    services::open_source(&app, &app_data, source.clone());
     spawn_reconcile(&app, &source, &app_data);
 
     Ok(source)
 }
 
 #[tauri::command]
-pub fn set_active_source(
-    app: AppHandle,
-    app_data: State<AppData>,
-    id: Uuid,
-) -> Result<Source, String> {
-    let mut sources = load_sources(&app);
-
-    let source = sources
-        .iter_mut()
-        .find(|v| v.id == id)
-        .ok_or_else(|| format!("source {id} not found"))?
-        .clone();
-
-    services::open_source(&app, &app_data, source.clone());
-    spawn_reconcile(&app, &source, &app_data);
-
-    // update accessed_at
-    let active = app_data.active_source.lock().unwrap();
-    if let Some(updated) = active.as_ref() {
-        for v in &mut sources {
-            if v.id == id {
-                v.accessed_at = updated.accessed_at;
-                break;
-            }
-        }
-    }
-    drop(active);
-
-    save_sources(&app, &sources)?;
-
-    Ok(sources.into_iter().find(|v| v.id == id).unwrap())
-}
-
-#[tauri::command]
 pub fn get_sources(app: AppHandle) -> Vec<Source> {
     load_sources(&app)
-}
-
-#[tauri::command]
-pub fn get_active_source(app_data: State<AppData>) -> Option<Source> {
-    let active = app_data.active_source.lock().unwrap();
-    active.clone()
 }
 
 #[tauri::command]
