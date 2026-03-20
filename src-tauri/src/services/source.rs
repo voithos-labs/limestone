@@ -122,10 +122,7 @@ fn load_ignore_patterns(source_path: &Path) -> Option<globset::GlobSet> {
     let mut builder = globset::GlobSetBuilder::new();
     for pattern in patterns {
         if let Some(s) = pattern.as_str() {
-            if let Ok(glob) = globset::GlobBuilder::new(s)
-                .literal_separator(true)
-                .build()
-            {
+            if let Ok(glob) = globset::GlobBuilder::new(s).literal_separator(true).build() {
                 builder.add(glob);
             }
         }

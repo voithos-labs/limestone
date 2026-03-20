@@ -262,16 +262,28 @@ class Document {
 	 */
 	async saveContent(body: string): Promise<void> {
 		const contents = await this.serialize(body);
-		await invoke('write_document', { sourcePath: this.source.path, relPath: this._relPath, contents });
+		await invoke('write_document', {
+			sourcePath: this.source.path,
+			relPath: this._relPath,
+			contents
+		});
 	}
 
 	async moveToPath(newRelPath: string): Promise<void> {
-		await invoke('move_document', { sourcePath: this.source.path, relPath: this._relPath, newRelPath });
+		await invoke('move_document', {
+			sourcePath: this.source.path,
+			relPath: this._relPath,
+			newRelPath
+		});
 		this._relPath = newRelPath;
 	}
 
 	async rename(newName: string): Promise<void> {
-		const newRel: string = await invoke('rename_document', { sourcePath: this.source.path, relPath: this._relPath, newName });
+		const newRel: string = await invoke('rename_document', {
+			sourcePath: this.source.path,
+			relPath: this._relPath,
+			newName
+		});
 		this._relPath = newRel;
 		this.title = newName.replace(/\.[^.]+$/, '');
 	}

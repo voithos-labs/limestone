@@ -22,12 +22,14 @@ pub async fn write_document(
 
     atomic_write(&full_path, contents.as_bytes()).map_err(|e| e.to_string())?;
 
-    sqlx::query("UPDATE documents SET mtime = ?1, updated_at = datetime('now') WHERE rel_path = ?2")
-        .bind(mtime(&full_path))
-        .bind(&rel_path)
-        .execute(&app_data.db)
-        .await
-        .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "UPDATE documents SET mtime = ?1, updated_at = datetime('now') WHERE rel_path = ?2",
+    )
+    .bind(mtime(&full_path))
+    .bind(&rel_path)
+    .execute(&app_data.db)
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
