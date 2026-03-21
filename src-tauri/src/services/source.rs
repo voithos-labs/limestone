@@ -726,7 +726,23 @@ async fn sync_tags(
     Ok(())
 }
 
-/// Full reconciliation
+///
+/// Reconcile a Source
+///
+/// Little complicated, but basically:
+///
+/// 1. Walks source dir, collecting rel_path (to source) and mtime for .md documents
+/// 2. Loads all documents from this source in the db (cached)
+/// 3. Diffs source dir to db documents for this source
+///     - same path AND same mtime => unchanged
+///     - same path AND NOT same mtime => modifiedd
+///     - on disk but not found in db (by rel_path) => new_paths
+///     - in db but not found on disk => missing (later can prompt to restore for autpmerge history in UI)
+/// 4. Extract and parse frontmatter, quickly ideally
+/// 5. Resolve documents (little complicated, but handles a few cases like external file name swaps)
+/// 6. Commit changes
+/// 7. Cleanup orphaned groups
+///
 pub async fn reconcile_source(
     source_path: &Path,
     source_id: &str,
