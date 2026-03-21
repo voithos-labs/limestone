@@ -401,6 +401,8 @@ pub async fn apply_operations(
                         .unwrap_or_default();
                     sync_tags(&mut tx, source_id, &doc_id, &tags).await?;
                 }
+
+                sync_folders(&mut tx, source_id, &doc_id, rel_path).await?;
             }
 
             DbOperation::UpdatePath {
@@ -408,6 +410,14 @@ pub async fn apply_operations(
                 new_path,
                 mtime,
             } => {
+                let doc_id: Option<String> = sqlx::query_scalar(
+                    "SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2",
+                )
+                .bind(source_id)
+                .bind(old_path)
+                .fetch_optional(&mut *tx)
+                .await?;
+
                 sqlx::query(
                     "UPDATE documents SET rel_path = ?1, mtime = ?2, updated_at = datetime('now') WHERE source_id = ?3 AND rel_path = ?4",
                 )
@@ -417,6 +427,10 @@ pub async fn apply_operations(
                 .bind(old_path)
                 .execute(&mut *tx)
                 .await?;
+
+                if let Some(doc_id) = doc_id {
+                    sync_folders(&mut tx, source_id, &doc_id, new_path).await?;
+                }
             }
 
             DbOperation::UpdateContent {
@@ -481,6 +495,116 @@ pub async fn apply_operations(
     }
 
     tx.commit().await
+}
+
+/// Ensure folder groups exist for a document's path and link the document to all ancestors
+async fn sync_folders(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &str,
+    doc_id: &str,
+    rel_path: &str,
+) -> sqlx::Result<()> {
+    let path = Path::new(rel_path);
+    let segments: Vec<&str> = path
+        .parent()
+        .map(|p| p.components().filter_map(|c| c.as_os_str().to_str()).collect())
+        .unwrap_or_default();
+
+    if segments.is_empty() {
+        return Ok(());
+    }
+
+    // Clear existing folder associations for this document
+    sqlx::query(
+        "DELETE FROM document_groups WHERE document_id = ?1 AND group_id IN (SELECT id FROM groups WHERE source_id = ?2 AND group_type = 'folder')",
+    )
+    .bind(doc_id)
+    .bind(source_id)
+    .execute(&mut **tx)
+    .await?;
+
+    let mut parent_id: Option<String> = None;
+
+    for slug in &segments {
+        let existing: Option<String> = match &parent_id {
+            Some(pid) => {
+                sqlx::query_scalar(
+                    "SELECT id FROM groups WHERE source_id = ?1 AND slug = ?2 AND group_type = 'folder' AND parent_group_id = ?3",
+                )
+                .bind(source_id)
+                .bind(slug)
+                .bind(pid)
+                .fetch_optional(&mut **tx)
+                .await?
+            }
+            None => {
+                sqlx::query_scalar(
+                    "SELECT id FROM groups WHERE source_id = ?1 AND slug = ?2 AND group_type = 'folder' AND parent_group_id IS NULL",
+                )
+                .bind(source_id)
+                .bind(slug)
+                .fetch_optional(&mut **tx)
+                .await?
+            }
+        };
+
+        let group_id = match existing {
+            Some(id) => id,
+            None => {
+                let id = Uuid::new_v4().to_string();
+                sqlx::query(
+                    "INSERT INTO groups (id, source_id, slug, group_type, parent_group_id) VALUES (?1, ?2, ?3, 'folder', ?4)",
+                )
+                .bind(&id)
+                .bind(source_id)
+                .bind(slug)
+                .bind(parent_id.as_deref())
+                .execute(&mut **tx)
+                .await?;
+                id
+            }
+        };
+
+        sqlx::query(
+            "INSERT OR IGNORE INTO document_groups (document_id, group_id) VALUES (?1, ?2)",
+        )
+        .bind(doc_id)
+        .bind(&group_id)
+        .execute(&mut **tx)
+        .await?;
+
+        parent_id = Some(group_id);
+    }
+
+    Ok(())
+}
+
+/// Remove groups with no document associations
+async fn cleanup_orphan_groups(db: &SqlitePool) -> sqlx::Result<()> {
+    // Tags: delete any with zero members
+    sqlx::query(
+        "DELETE FROM groups WHERE group_type = 'tag'
+         AND id NOT IN (SELECT group_id FROM document_groups)",
+    )
+    .execute(db)
+    .await?;
+
+    // Folders: repeatedly prune leaves with no documents and no children
+    loop {
+        let result = sqlx::query(
+            "DELETE FROM groups WHERE group_type = 'folder'
+             AND id NOT IN (SELECT group_id FROM document_groups)
+             AND id NOT IN (SELECT parent_group_id FROM groups WHERE parent_group_id IS NOT NULL)",
+        )
+        .execute(db)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 /// Sync tags from frontmatter into groups
@@ -620,6 +744,8 @@ pub async fn reconcile_source(
         t3.elapsed().as_millis(),
         operations.len()
     );
+
+    cleanup_orphan_groups(db).await?;
 
     eprintln!("[reconcile] total: {}ms", t_total.elapsed().as_millis());
     Ok(())
