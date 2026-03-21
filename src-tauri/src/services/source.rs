@@ -94,7 +94,6 @@ pub enum DbOperation {
     Insert {
         rel_path: String,
         mtime: i64,
-        frontmatter: Option<serde_json::Value>,
     },
     UpdatePath {
         old_path: String,
@@ -104,7 +103,6 @@ pub enum DbOperation {
     UpdateContent {
         rel_path: String,
         mtime: i64,
-        frontmatter: Option<serde_json::Value>,
     },
     Delete {
         rel_path: String,
@@ -328,7 +326,6 @@ pub fn resolve_changes(
                     deferred_inbound.push(DbOperation::UpdateContent {
                         rel_path: path.clone(),
                         mtime: *mtime,
-                        frontmatter: None,
                     });
                 }
             }
@@ -365,7 +362,6 @@ pub fn resolve_changes(
         ops.push(DbOperation::Insert {
             rel_path: path.clone(),
             mtime: *mtime,
-            frontmatter: None,
         });
     }
 
@@ -380,7 +376,6 @@ pub fn resolve_changes(
         ops.push(DbOperation::UpdateContent {
             rel_path: path.clone(),
             mtime: *mtime,
-            frontmatter: None,
         });
     }
 
@@ -412,9 +407,7 @@ pub async fn apply_operations(
 
     for op in operations {
         match op {
-            DbOperation::Insert {
-                rel_path, mtime, ..
-            } => {
+            DbOperation::Insert { rel_path, mtime } => {
                 // todo: this is ugly, might want a document struct to work around for this
                 let fm = fm_map.get(rel_path.as_str()).copied().flatten();
                 let doc_id = fm
@@ -487,10 +480,16 @@ pub async fn apply_operations(
                 .fetch_optional(&mut *tx)
                 .await?;
 
+                let title = Path::new(new_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled");
+
                 sqlx::query(
-                    "UPDATE documents SET rel_path = ?1, mtime = ?2, updated_at = datetime('now') WHERE source_id = ?3 AND rel_path = ?4",
+                    "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, updated_at = datetime('now') WHERE source_id = ?4 AND rel_path = ?5",
                 )
                 .bind(new_path)
+                .bind(title)
                 .bind(mtime)
                 .bind(source_id)
                 .bind(old_path)
@@ -502,10 +501,12 @@ pub async fn apply_operations(
                 }
             }
 
-            DbOperation::UpdateContent {
-                rel_path, mtime, ..
-            } => {
+            DbOperation::UpdateContent { rel_path, mtime } => {
                 let fm = fm_map.get(rel_path.as_str()).copied().flatten();
+                let title = Path::new(rel_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled");
                 let properties = fm.map(fm_properties).unwrap_or_else(|| "{}".to_string());
                 let updated_at = fm
                     .and_then(|f| f.get("updated_at"))
@@ -517,9 +518,10 @@ pub async fn apply_operations(
                     .map(|s| s.to_string());
 
                 sqlx::query(
-                    "UPDATE documents SET mtime = ?1, properties = ?2, updated_at = coalesce(?3, datetime('now')), accessed_at = coalesce(?4, datetime('now'))
-                     WHERE source_id = ?5 AND rel_path = ?6",
+                    "UPDATE documents SET title = ?1, mtime = ?2, properties = ?3, updated_at = coalesce(?4, datetime('now')), accessed_at = coalesce(?5, datetime('now'))
+                     WHERE source_id = ?6 AND rel_path = ?7",
                 )
+                .bind(title)
                 .bind(mtime)
                 .bind(&properties)
                 .bind(&updated_at)
@@ -757,21 +759,21 @@ pub async fn reconcile_source(
     );
 
     let t1 = Instant::now();
-    let db_entries: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT rel_path, coalesce(mtime, 0) FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
+    let db_rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT id, rel_path, coalesce(mtime, 0) FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
     )
     .bind(source_id)
     .fetch_all(db)
     .await?;
 
-    let db_id_to_path: HashMap<String, String> = sqlx::query_as(
-        "SELECT id, rel_path FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
-    )
-    .bind(source_id)
-    .fetch_all(db)
-    .await?
-    .into_iter()
-    .collect();
+    let db_entries: Vec<(String, i64)> = db_rows
+        .iter()
+        .map(|(_, path, mtime)| (path.clone(), *mtime))
+        .collect();
+    let db_id_to_path: HashMap<String, String> = db_rows
+        .into_iter()
+        .map(|(id, path, _)| (id, path))
+        .collect();
 
     eprintln!(
         "[reconcile] db load: {}ms ({} cached)",
