@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": ".tmp/editor-test",
+    "noEmitOnError": true,
+    "declaration": false,
+    "sourceMap": false,
+    "types": []
+  },
+  "include": [
+    "src/lib/editor/core/**/*.ts",
+    "src/lib/editor/test/**/*.ts",
+    "src/lib/editor/test/**/*.d.ts"
+  ]
+}
