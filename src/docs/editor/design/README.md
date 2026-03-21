@@ -10,9 +10,6 @@ The editor remains based on four core decisions:
 - the editor stays decoupled from Limestone-specific persistence and vault logic
 
 ## Why this folder exists
-
-The original `../design.md` grew into a large monolithic document. It is now a high-level overview only.
-
 The design is split here so the highest-risk areas have their own contracts:
 
 - `architecture.md` - overall architecture, custom parser strategy, source fidelity policy, serialization, data flow, performance scope

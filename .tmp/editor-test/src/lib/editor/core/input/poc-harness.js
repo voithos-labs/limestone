@@ -1,6 +1,6 @@
-/****
+/**
  * Headless input and selection harness helpers for the Phase 0 proof of concept.
- ****/
+ */
 import { createDefaultFileEncodingMetadata, normalizeTextInsertion } from "../file-metadata.js";
 import { parseMarkdownProofOfConcept } from "../parser/poc-parser.js";
 export function buildInputHarnessProofOfConcept(source, metadata = {}) {
@@ -96,6 +96,54 @@ export function commitInputHarnessComposition(document, session, finalText) {
 export function pasteIntoInputHarnessSelection(document, selection, text) {
     return replaceInputHarnessSelection(document, selection, normalizeTextInsertion(text, document.metadata));
 }
+/**
+ * Translates a narrow browser `beforeinput` intent into a headless selection update or mutation.
+ */
+export function applyInputHarnessBeforeInputIntent(document, selection, intent) {
+    if (selection.anchor.blockKey !== selection.focus.blockKey) {
+        return {
+            kind: "unsupported",
+            reason: "Phase 0 beforeinput handling only supports selections that stay within a single block.",
+        };
+    }
+    switch (intent.inputType) {
+        case "insertText": {
+            if (typeof intent.data !== "string") {
+                return {
+                    kind: "unsupported",
+                    reason: "insertText requires text data.",
+                };
+            }
+            return {
+                kind: "mutation",
+                mutation: replaceInputHarnessSelection(document, selection, intent.data),
+            };
+        }
+        case "insertFromPaste": {
+            if (typeof intent.data !== "string") {
+                return {
+                    kind: "unsupported",
+                    reason: "insertFromPaste requires plain-text clipboard data.",
+                };
+            }
+            return {
+                kind: "mutation",
+                mutation: pasteIntoInputHarnessSelection(document, selection, intent.data),
+            };
+        }
+        case "insertParagraph":
+        case "insertLineBreak":
+            return applyLineBreakIntent(document, selection);
+        case "deleteContentBackward":
+            return applyDeletionIntent(document, selection, "backward");
+        case "deleteContentForward":
+            return applyDeletionIntent(document, selection, "forward");
+    }
+    return {
+        kind: "unsupported",
+        reason: `Phase 0 does not recognize beforeinput intent ${intent.inputType}.`,
+    };
+}
 function replaceInputHarnessSelection(document, selection, insertedText) {
     const range = toOrderedSourceRange(selection);
     const source = `${document.source.slice(0, range.start)}${insertedText}${document.source.slice(range.end)}`;
@@ -105,6 +153,25 @@ function replaceInputHarnessSelection(document, selection, insertedText) {
         source,
         document: nextDocument,
         selection: nextSelection,
+    };
+}
+function applyLineBreakIntent(document, selection) {
+    if (selection.kind === "node") {
+        return {
+            kind: "unsupported",
+            reason: "Phase 0 Enter handling only supports text selections.",
+        };
+    }
+    const block = getBlockByKey(document, selection.anchor.blockKey);
+    if (block.role !== "fencedCode") {
+        return {
+            kind: "unsupported",
+            reason: "Phase 0 does not yet split supported blocks on Enter outside fenced code.",
+        };
+    }
+    return {
+        kind: "mutation",
+        mutation: replaceInputHarnessSelection(document, selection, normalizeTextInsertion("\n", document.metadata)),
     };
 }
 function buildBlockDescriptor(block, blockIndex) {
@@ -470,6 +537,105 @@ function getAtomByKey(document, atomKey) {
         }
     }
     throw new Error(`Unknown input harness atom ${atomKey}.`);
+}
+function applyDeletionIntent(document, selection, direction) {
+    if (selection.kind === "node" || !isCollapsedSelection(selection)) {
+        return {
+            kind: "mutation",
+            mutation: replaceInputHarnessSelection(document, selection, ""),
+        };
+    }
+    const caret = selection.focus;
+    const block = getBlockByKey(document, caret.blockKey);
+    const partIndex = findCaretPartIndex(block, caret);
+    if (caret.kind === "atom") {
+        if (direction === "backward" && caret.side === "after") {
+            return {
+                kind: "selection",
+                selection: createInputHarnessNodeSelection(document, caret.atomKey),
+            };
+        }
+        if (direction === "forward" && caret.side === "before") {
+            return {
+                kind: "selection",
+                selection: createInputHarnessNodeSelection(document, caret.atomKey),
+            };
+        }
+        const adjacentPart = direction === "backward" ? block.parts[partIndex - 1] : block.parts[partIndex + 1];
+        return applyAdjacentPartDeletion(document, adjacentPart, direction);
+    }
+    const currentPart = block.parts[partIndex];
+    if (currentPart?.kind !== "text") {
+        return {
+            kind: "unsupported",
+            reason: "The caret could not be mapped to a text editing surface.",
+        };
+    }
+    if (direction === "backward") {
+        if (caret.sourceOffset > currentPart.sourceRange.start) {
+            return createDeletionMutationOutcome(document, caret.sourceOffset - 1, caret.sourceOffset);
+        }
+        const previousPart = block.parts[partIndex - 1];
+        if (previousPart?.kind === "atom") {
+            return {
+                kind: "selection",
+                selection: createInputHarnessNodeSelection(document, previousPart.key),
+            };
+        }
+        return applyAdjacentPartDeletion(document, previousPart, direction);
+    }
+    if (caret.sourceOffset < currentPart.sourceRange.end) {
+        return createDeletionMutationOutcome(document, caret.sourceOffset, caret.sourceOffset + 1);
+    }
+    const nextPart = block.parts[partIndex + 1];
+    if (nextPart?.kind === "atom") {
+        return {
+            kind: "selection",
+            selection: createInputHarnessNodeSelection(document, nextPart.key),
+        };
+    }
+    return applyAdjacentPartDeletion(document, nextPart, direction);
+}
+function applyAdjacentPartDeletion(document, adjacentPart, direction) {
+    if (!adjacentPart) {
+        return {
+            kind: "unsupported",
+            reason: `Phase 0 does not yet handle structural deletion at the ${direction === "backward" ? "start" : "end"} of a block.`,
+        };
+    }
+    if (adjacentPart.kind === "atom") {
+        return {
+            kind: "selection",
+            selection: createInputHarnessNodeSelection(document, adjacentPart.key),
+        };
+    }
+    if (adjacentPart.sourceRange.start === adjacentPart.sourceRange.end) {
+        return {
+            kind: "unsupported",
+            reason: "Phase 0 cannot delete across an empty structural boundary yet.",
+        };
+    }
+    return direction === "backward"
+        ? createDeletionMutationOutcome(document, adjacentPart.sourceRange.end - 1, adjacentPart.sourceRange.end)
+        : createDeletionMutationOutcome(document, adjacentPart.sourceRange.start, adjacentPart.sourceRange.start + 1);
+}
+function createDeletionMutationOutcome(document, start, end) {
+    return {
+        kind: "mutation",
+        mutation: replaceInputHarnessSelection(document, createSourceRangeSelection(document, start, end), ""),
+    };
+}
+function createSourceRangeSelection(document, start, end) {
+    return createSelection(resolveSourceOffsetToLogicalPosition(document, start), resolveSourceOffsetToLogicalPosition(document, end));
+}
+function findCaretPartIndex(block, position) {
+    if (position.kind === "atom") {
+        return block.parts.findIndex((part) => part.kind === "atom" && part.key === position.atomKey);
+    }
+    return block.parts.findIndex((part) => part.kind === "text" && position.sourceOffset >= part.sourceRange.start && position.sourceOffset <= part.sourceRange.end);
+}
+function isCollapsedSelection(selection) {
+    return compareLogicalPositions(selection.anchor, selection.focus) === 0;
 }
 function createSelection(anchor, focus, selectedAtomKey) {
     const direction = compareLogicalPositions(anchor, focus) <= 0 ? "forward" : "backward";
