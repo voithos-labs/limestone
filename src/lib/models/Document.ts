@@ -120,23 +120,34 @@ class Document {
 	}
 
 	static async fromID(id: string): Promise<Document> {
-		const [row] = await select<DocumentRow & { source_path: string; source_title: string }>(
-			`SELECT d.*, s.path as source_path, s.title as source_title
-             FROM documents d
-             JOIN sources s ON s.id = d.source_id
+		type Row = DocumentRow & {
+			source_path: string;
+			source_title: string;
+			groups_json: string | null;
+		};
+		const [row] = await select<Row>(
+			`SELECT d.*, s.path as source_path, s.title as source_title,
+                (SELECT json_group_array(json_object(
+                    'id', g.id, 'source_id', g.source_id, 'slug', g.slug,
+                    'group_type', g.group_type, 'parent_group_id', g.parent_group_id,
+                    'created_at', g.created_at, 'updated_at', g.updated_at, 'accessed_at', g.accessed_at
+                ))
+                FROM document_groups dg JOIN groups g ON g.id = dg.group_id
+                WHERE dg.document_id = d.id) as groups_json
+             FROM documents d JOIN sources s ON s.id = d.source_id
              WHERE d.id = ?1`,
 			[id]
 		);
 		if (!row) throw new Error(`Document not found: ${id}`);
-		const source: Source = {
+		const doc = new Document(row, {
 			id: row.source_id,
 			title: row.source_title,
 			path: row.source_path,
 			created_at: '',
 			accessed_at: ''
-		};
-		const doc = new Document(row, source);
-		await doc.fetchGroups();
+		});
+		const groups: GroupRow[] = row.groups_json ? JSON.parse(row.groups_json) : [];
+		doc.groups = groups.filter((r) => r.id !== null).map((r) => new Group(r));
 		return doc;
 	}
 
@@ -188,7 +199,7 @@ class Document {
 	toFrontmatter(): DocumentFrontmatter {
 		return {
 			id: this.id,
-			tags: this.groups.map((g) => g.slug),
+			tags: this.groups.filter((g) => g.groupType === 'tag').map((g) => g.slug),
 			created_at: this.createdAt,
 			updated_at: this.updatedAt,
 			...this.properties
@@ -217,11 +228,11 @@ class Document {
 
 		const parsed = (yaml.load(match[1]) as Record<string, any>) ?? {};
 		const frontmatter: DocumentFrontmatter = {
+			...parsed,
 			id: parsed.id ?? '',
 			tags: Array.isArray(parsed.tags) ? parsed.tags : [],
 			created_at: parsed.created_at ? new Date(parsed.created_at) : new Date(),
-			updated_at: parsed.updated_at ? new Date(parsed.updated_at) : new Date(),
-			...parsed
+			updated_at: parsed.updated_at ? new Date(parsed.updated_at) : new Date()
 		};
 
 		return { frontmatter, body: match[2] };

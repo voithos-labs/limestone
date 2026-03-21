@@ -68,11 +68,11 @@ create index if not exists idx_document_groups_group on document_groups(group_id
 create unique index if not exists idx_groups_slug_global
     on groups(slug, group_type) where source_id is null;
 
--- folder slugs are unique within their source
-create unique index if not exists idx_groups_slug_source
-    on groups(slug, source_id) where source_id is not null;
+-- folder slugs are unique within their parent
+create unique index if not exists idx_groups_slug_parent
+    on groups(slug, source_id, parent_group_id) where source_id is not null;
 
--- one root folder group per source
+-- root-level folder slugs are unique within their source
 create unique index if not exists idx_source_root
-    on groups(source_id) where parent_group_id is null;
+    on groups(slug, source_id) where parent_group_id is null and group_type = 'folder';
 
