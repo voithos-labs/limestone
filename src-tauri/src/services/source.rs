@@ -277,18 +277,81 @@ pub fn resolve_changes(
         })
         .collect();
 
+    // path -> id
+    let db_path_to_id: HashMap<&str, &str> = db_id_to_path
+        .iter()
+        .map(|(id, path)| (path.as_str(), id.as_str()))
+        .collect();
+
     // Track which missing paths were resolved as renames
     let mut resolved_missing: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    // Modified paths that are handled
+    let mut modified_handled: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    // Track modified paths where the ID changed (vacated by old ID: VACATED!)
+    let mut vacated: HashMap<&str, &str> = HashMap::new(); // modified_path -> old_id
 
-    // Handle new paths
+    // prescan modified files for ID changes
+    for (path, _mtime) in &diff.modified {
+        let fm = fm_map.get(path.as_str()).and_then(|(_, fm)| fm.as_ref());
+        let new_id = fm.and_then(|f| f.get("id")).and_then(|v| v.as_str());
+        let old_id = db_path_to_id.get(path.as_str()).copied();
+
+        if let (Some(new_id), Some(old_id)) = (new_id, old_id) {
+            if new_id != old_id {
+                vacated.insert(path.as_str(), old_id);
+            }
+        }
+    }
+
+    // Deferred ops for inbound moves to modified paths (must apply after vacating ops)
+    let mut deferred_inbound: Vec<DbOperation> = Vec::new();
+
+    // Pre-resolve modified paths with inbound moves (e.g. UUID-B moved from bar.md to foo.md)
+    // this is for handling the external swap case
+    for (path, mtime) in &diff.modified {
+        if !vacated.contains_key(path.as_str()) {
+            continue;
+        }
+        let fm = fm_map.get(path.as_str()).and_then(|(_, fm)| fm.as_ref());
+        let new_id = fm.and_then(|f| f.get("id")).and_then(|v| v.as_str());
+
+        if let Some(new_id) = new_id {
+            if let Some(old_path) = db_id_to_path.get(new_id) {
+                if diff.missing.contains(old_path) {
+                    resolved_missing.insert(old_path.as_str());
+                    modified_handled.insert(path.as_str());
+                    deferred_inbound.push(DbOperation::UpdatePath {
+                        old_path: old_path.clone(),
+                        new_path: path.clone(),
+                        mtime: *mtime,
+                    });
+                    deferred_inbound.push(DbOperation::UpdateContent {
+                        rel_path: path.clone(),
+                        mtime: *mtime,
+                        frontmatter: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // Handle new paths (including vacating + move, before deferred inbound)
     for (path, mtime) in &diff.new_paths {
         let fm = new_fm.get(path.as_str()).copied().flatten();
 
         if let Some(id) = fm.and_then(|f| f.get("id")).and_then(|v| v.as_str()) {
             if let Some(old_path) = db_id_to_path.get(id) {
-                // ID exists in DB with different path -- rename
                 if diff.missing.contains(old_path) {
                     resolved_missing.insert(old_path.as_str());
+                    ops.push(DbOperation::UpdatePath {
+                        old_path: old_path.clone(),
+                        new_path: path.clone(),
+                        mtime: *mtime,
+                    });
+                    continue;
+                }
+                // ID vacated a modified path -- just rename (I think)
+                if vacated.get(old_path.as_str()) == Some(&id) {
                     ops.push(DbOperation::UpdatePath {
                         old_path: old_path.clone(),
                         new_path: path.clone(),
@@ -306,8 +369,14 @@ pub fn resolve_changes(
         });
     }
 
-    // Handle modified paths
+    // Now apply inbound moves (path is vacated by ops above)
+    ops.extend(deferred_inbound);
+
+    // Handle modified paths (skip those handled as moves)
     for (path, mtime) in &diff.modified {
+        if modified_handled.contains(path.as_str()) {
+            continue;
+        }
         ops.push(DbOperation::UpdateContent {
             rel_path: path.clone(),
             mtime: *mtime,
@@ -399,7 +468,7 @@ pub async fn apply_operations(
                                 .collect()
                         })
                         .unwrap_or_default();
-                    sync_tags(&mut tx, source_id, &doc_id, &tags).await?;
+                    sync_tags(&mut tx, &doc_id, &tags).await?;
                 }
 
                 sync_folders(&mut tx, source_id, &doc_id, rel_path).await?;
@@ -479,7 +548,7 @@ pub async fn apply_operations(
                     .fetch_optional(&mut *tx)
                     .await?;
                     if let Some(doc_id) = doc_id {
-                        sync_tags(&mut tx, source_id, &doc_id, &tags).await?;
+                        sync_tags(&mut tx, &doc_id, &tags).await?;
                     }
                 }
             }
@@ -507,7 +576,11 @@ async fn sync_folders(
     let path = Path::new(rel_path);
     let segments: Vec<&str> = path
         .parent()
-        .map(|p| p.components().filter_map(|c| c.as_os_str().to_str()).collect())
+        .map(|p| {
+            p.components()
+                .filter_map(|c| c.as_os_str().to_str())
+                .collect()
+        })
         .unwrap_or_default();
 
     if segments.is_empty() {
@@ -607,44 +680,38 @@ async fn cleanup_orphan_groups(db: &SqlitePool) -> sqlx::Result<()> {
     Ok(())
 }
 
-/// Sync tags from frontmatter into groups
+/// Sync tags from frontmatter into groups (tags are global, source_id is null)
 async fn sync_tags(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    source_id: &str,
     doc_id: &str,
     tags: &[String],
 ) -> sqlx::Result<()> {
     // Clear existing tag associations for this document
     sqlx::query(
-        "DELETE FROM document_groups WHERE document_id = ?1 AND group_id IN (SELECT id FROM groups WHERE source_id = ?2 AND group_type = 'tag')",
+        "DELETE FROM document_groups WHERE document_id = ?1 AND group_id IN (SELECT id FROM groups WHERE source_id IS NULL AND group_type = 'tag')",
     )
     .bind(doc_id)
-    .bind(source_id)
     .execute(&mut **tx)
     .await?;
 
     for tag in tags {
-        // Upsert group
+        // Upsert tag group (global)
         sqlx::query(
-            "INSERT INTO groups (id, source_id, slug, group_type) VALUES (?1, ?2, ?3, 'tag')
-             ON CONFLICT(id) DO NOTHING",
+            "INSERT INTO groups (id, slug, group_type) VALUES (?1, ?2, 'tag')
+             ON CONFLICT(slug, group_type) DO NOTHING",
         )
         .bind(Uuid::new_v4().to_string())
-        .bind(source_id)
         .bind(tag)
         .execute(&mut **tx)
         .await?;
 
-        // Get group id by slug
         let group_id: String = sqlx::query_scalar(
-            "SELECT id FROM groups WHERE source_id = ?1 AND slug = ?2 AND group_type = 'tag'",
+            "SELECT id FROM groups WHERE slug = ?1 AND group_type = 'tag' AND source_id IS NULL",
         )
-        .bind(source_id)
         .bind(tag)
         .fetch_one(&mut **tx)
         .await?;
 
-        // Link document to group
         sqlx::query(
             "INSERT OR IGNORE INTO document_groups (document_id, group_id) VALUES (?1, ?2)",
         )
