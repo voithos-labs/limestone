@@ -1,4 +1,4 @@
-import { select, execute } from '$lib/db';
+import { select, execute, parseUtc } from '$lib/db';
 import { v4 as uuidv4 } from 'uuid';
 
 export enum GroupType {
@@ -41,8 +41,8 @@ class Group {
 		this.id = row.id;
 		this.slug = row.slug;
 		this.groupType = row.group_type as GroupType;
-		this.createdAt = new Date(row.created_at);
-		this.updatedAt = new Date(row.updated_at);
+		this.createdAt = parseUtc(row.created_at);
+		this.updatedAt = parseUtc(row.updated_at);
 		this.parentGroupId = row.parent_group_id ?? undefined;
 	}
 
@@ -97,15 +97,16 @@ class Group {
 
 	async updateSlug(newSlug: string): Promise<void> {
 		//todo: this has to actually find and replace all slugs in documents too
-		await execute(
+		const [{ updated_at }] = await select<{ updated_at: string }>(
 			`UPDATE groups
              SET slug = ?1,
                  updated_at = datetime('now')
-             WHERE id = ?2`,
+             WHERE id = ?2
+             RETURNING updated_at`,
 			[newSlug, this.id]
 		);
 		(this as { slug: string }).slug = newSlug;
-		this.updatedAt = new Date();
+		this.updatedAt = parseUtc(updated_at);
 	}
 }
 

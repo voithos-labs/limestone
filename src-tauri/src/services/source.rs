@@ -766,15 +766,8 @@ pub async fn reconcile_source(
         .execute(db)
         .await?;
 
-    let t0 = Instant::now();
     let fs_entries = walk_source(source_path, extensions);
-    eprintln!(
-        "[reconcile] walk: {}ms ({} files)",
-        t0.elapsed().as_millis(),
-        fs_entries.len()
-    );
 
-    let t1 = Instant::now();
     let db_rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT id, rel_path, coalesce(mtime, 0) FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
     )
@@ -791,22 +784,8 @@ pub async fn reconcile_source(
         .map(|(id, path, _)| (id, path))
         .collect();
 
-    eprintln!(
-        "[reconcile] db load: {}ms ({} cached)",
-        t1.elapsed().as_millis(),
-        db_entries.len()
-    );
-
     let diff = diff_against_db(&db_entries, &fs_entries);
-    eprintln!(
-        "[reconcile] diff: new={}, modified={}, unchanged={}, missing={}",
-        diff.new_paths.len(),
-        diff.modified.len(),
-        diff.unchanged.len(),
-        diff.missing.len()
-    );
 
-    let t2 = Instant::now();
     let paths_to_read: Vec<String> = diff
         .new_paths
         .iter()
@@ -814,24 +793,24 @@ pub async fn reconcile_source(
         .chain(diff.modified.iter().map(|(p, _)| p.clone()))
         .collect();
     let frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
-    eprintln!(
-        "[reconcile] frontmatter: {}ms ({} files read)",
-        t2.elapsed().as_millis(),
-        paths_to_read.len()
-    );
 
     let operations = resolve_changes(diff, &frontmatter, &db_id_to_path);
+    let ops_count = operations.len();
 
-    let t3 = Instant::now();
     apply_operations(&operations, &frontmatter, source_id, db).await?;
-    eprintln!(
-        "[reconcile] apply: {}ms ({} ops)",
-        t3.elapsed().as_millis(),
-        operations.len()
-    );
-
     cleanup_orphan_groups(db).await?;
 
-    eprintln!("[reconcile] total: {}ms", t_total.elapsed().as_millis());
+    let source_title = source_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("?");
+    eprintln!(
+        "[reconcile:{}] {}ms | {} files, {} cached, {} ops",
+        source_title,
+        t_total.elapsed().as_millis(),
+        fs_entries.len(),
+        db_entries.len(),
+        ops_count
+    );
     Ok(())
 }

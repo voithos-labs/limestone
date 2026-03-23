@@ -1,5 +1,3 @@
-// @ts-ignore > Document is reserved??
-
 // External
 import { v4 as uuidv4 } from 'uuid';
 import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -7,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import yaml from 'js-yaml';
 
 // Internal
-import { select, execute } from '$lib/db';
+import { select, execute, parseUtc } from '$lib/db';
 import type { Source } from './Source';
 import Group, { type GroupRow } from './Group';
 import { getSetting } from './Settings';
@@ -53,19 +51,17 @@ export interface DocumentFrontmatter {
 }
 
 /**
- * Document
+ * Document Handle
  *
- * todo
- * As is, since for most of development we will simply be using this to represent markdown documents, the features for
- * such will remain here. Later, when we distinguish the different kinds of documents, I will likely separate out some
- * of the functionality to MarkdownDocument or FileDocument.
+ * Provides a stable interface for interacting with a doc on disk,
+ * while maintaining data sync between the disk, db, and delta history.
  *
  */
-class Document {
+class DocHandle {
 	// db fields *not all, just what is needed
 	readonly id: string; // primary id
 	private _relPath: string; // path relative to source root
-	readonly source: Source;
+	readonly source: Source; // source instance, for data and UI
 
 	title: string;
 	groups: Group[];
@@ -75,7 +71,7 @@ class Document {
 	accessedAt: Date;
 	deletedAt?: Date;
 
-	constructor(row: DocumentRow, source: Source) {
+	private constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;
 		this._relPath = row.rel_path;
 		this.source = source;
@@ -83,10 +79,10 @@ class Document {
 		this.groups = [];
 		this.properties =
 			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
-		this.createdAt = new Date(row.created_at);
-		this.updatedAt = new Date(row.updated_at);
-		this.accessedAt = new Date(row.accessed_at);
-		this.deletedAt = row.deleted_at ? new Date(row.deleted_at) : undefined;
+		this.createdAt = parseUtc(row.created_at);
+		this.updatedAt = parseUtc(row.updated_at);
+		this.accessedAt = parseUtc(row.accessed_at);
+		this.deletedAt = row.deleted_at ? parseUtc(row.deleted_at) : undefined;
 	}
 
 	static async create(
@@ -95,7 +91,7 @@ class Document {
 		relPath: string,
 		groupIds: string[] = [],
 		properties: Record<string, unknown> = {}
-	): Promise<Document> {
+	): Promise<DocHandle> {
 		const id = uuidv4();
 
 		// insert new doc stub
@@ -112,19 +108,20 @@ class Document {
 			[id]
 		);
 
-		const doc = new Document(row, source);
+		const doc = new DocHandle(row, source);
 		if (groupIds.length > 0) {
 			await doc.addGroups(groupIds);
 		}
 		return doc;
 	}
 
-	static async fromID(id: string): Promise<Document> {
+	static async fromID(id: string): Promise<DocHandle> {
 		type Row = DocumentRow & {
 			source_path: string;
 			source_title: string;
 			groups_json: string | null;
 		};
+		// get doc AND join source and group data
 		const [row] = await select<Row>(
 			`SELECT d.*, s.path as source_path, s.title as source_title,
                 (SELECT json_group_array(json_object(
@@ -139,7 +136,7 @@ class Document {
 			[id]
 		);
 		if (!row) throw new Error(`Document not found: ${id}`);
-		const doc = new Document(row, {
+		const doc = new DocHandle(row, {
 			id: row.source_id,
 			title: row.source_title,
 			path: row.source_path,
@@ -220,6 +217,7 @@ class Document {
 
 	/**
 	 * Parse a raw file string into { frontmatter, body }
+	 *
 	 * todo: probably want to extract tags from body for obsid compat
 	 */
 	static deserialize(raw: string): { frontmatter: DocumentFrontmatter | null; body: string } {
@@ -245,7 +243,7 @@ class Document {
 	 */
 	async loadContent(): Promise<string> {
 		const raw = await readTextFile(`${this.source.path}/${this._relPath}`);
-		const { frontmatter, body } = Document.deserialize(raw);
+		const { frontmatter, body } = DocHandle.deserialize(raw);
 
 		if (frontmatter) {
 			const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
@@ -257,19 +255,26 @@ class Document {
 		}
 
 		// update accessed_at
-		await execute(
+		const [{ accessed_at }] = await select<{ accessed_at: string }>(
 			`UPDATE documents
              SET accessed_at = datetime('now')
-             WHERE id = ?1`,
+             WHERE id = ?1
+             RETURNING accessed_at`,
 			[this.id]
 		);
-		this.accessedAt = new Date();
+		this.accessedAt = parseUtc(accessed_at);
 
 		return body;
 	}
 
 	/**
-	 * Serialize and use atomic write via the rust command
+	 * Save document content to disk,,, and some more.
+	 * todo
+	 * 1. Save to disk + update relevant metadata in db
+	 * ON SUCCESS:
+	 * 2. Update version history (via automerge updateText)
+	 * ALL GOOD:
+	 * 3. Trigger FTS reindexing, in the background, don't wait for it.
 	 */
 	async saveContent(body: string): Promise<void> {
 		const contents = await this.serialize(body);
@@ -280,6 +285,12 @@ class Document {
 		});
 	}
 
+	/**
+	 * Move a document file
+	 * TODO: has to trigger rescan of path => folder group update
+	 *
+	 * @param newRelPath Path, relative to source, to move the document to
+	 */
 	async moveToPath(newRelPath: string): Promise<void> {
 		await invoke('move_document', {
 			sourcePath: this.source.path,
@@ -289,6 +300,11 @@ class Document {
 		this._relPath = newRelPath;
 	}
 
+	/**
+	 * Rename the document file, which is what the title is derived from
+	 *
+	 * @param newName
+	 */
 	async rename(newName: string): Promise<void> {
 		const newRel: string = await invoke('rename_document', {
 			sourcePath: this.source.path,
@@ -306,4 +322,4 @@ class Document {
 	}
 }
 
-export default Document;
+export default DocHandle;
