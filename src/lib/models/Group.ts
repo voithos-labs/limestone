@@ -47,14 +47,14 @@ class Group {
 	}
 
 	/**
-	 * need to consider how to handle global tags, having them all scoped under a source is not best
-	 * case for most users
+	 * Create a new group
+	 * todo: if/when folder manipulation is added to the app we'll need a way to auto-update folder-groups
 	 */
 	static async create(
-		sourceId: string,
 		slug: string,
-		groupType: GroupType = GroupType.Tag,
-		parentGroupId?: string
+		sourceId?: string,
+		parentGroupId?: string,
+		groupType: GroupType = GroupType.Tag
 	): Promise<Group> {
 		const id = uuidv4();
 
