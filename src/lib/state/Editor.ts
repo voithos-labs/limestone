@@ -30,7 +30,8 @@ import DocHandle from '$lib/models/DocHandle';
 
 export interface EditorJSON {
 	documentIds: string[];
-	activeDocumentId: string;
+	docsAccessOrderById: string[];
+	focusedDocumentId: string;
 }
 
 /**
@@ -47,18 +48,18 @@ export interface EditorJSON {
  */
 class Editor {
 	readonly docs: DocHandle[] = []; // tabs; order represents order of tabs
-	private _activeDocumentId: string;
-	private docsAccessedOrderById: string[] = []; // reverse accessed order, last = most recent
+	private _focusedDocumentId: string;
+	private docsAccessOrderById: string[] = []; // reverse accessed order, last = most recent
 
 	constructor(json: EditorJSON, docs: DocHandle[]) {
-		this._activeDocumentId = json.activeDocumentId;
+		this._focusedDocumentId = json.focusedDocumentId;
 		this.docs = docs;
 	}
 
 	// ── Getters ─────────────────────────────────────────────────────────────────────────
 
-	get activeDocumentId() {
-		return this._activeDocumentId;
+	get focusedDocumentId() {
+		return this._focusedDocumentId;
 	}
 
 	// ── Serialization ───────────────────────────────────────────────────────────────────
@@ -71,6 +72,7 @@ class Editor {
 			try {
 				let doc = await DocHandle.fromID(id);
 				// could group calls or await all at once, should be fast enough though
+				// todo: listeners?
 				docs.push(doc);
 			} catch (e) {
 				console.error(`Failed to load document with id ${id} found in editor state json: ${e}`);
@@ -81,9 +83,11 @@ class Editor {
 		return new Editor(json, docs);
 	}
 
-	toJSON() {
+	toJSON(): EditorJSON {
 		return {
-			// todo
+			documentIds: this.docs.map((v) => v.id),
+			docsAccessOrderById: this.docsAccessOrderById,
+			focusedDocumentId: this._focusedDocumentId
 		};
 	}
 
@@ -107,12 +111,12 @@ class Editor {
 		let doc: DocHandle = this.findDocById(id);
 
 		// update accessed order: filter out id, then append to end to update order
-		let accessedOrder = this.docsAccessedOrderById.filter((v) => v != id);
+		let accessedOrder = this.docsAccessOrderById.filter((v) => v != id);
 		accessedOrder.push(id);
-		this.docsAccessedOrderById = accessedOrder;
+		this.docsAccessOrderById = accessedOrder;
 
 		// update active document
-		this._activeDocumentId = id;
+		this._focusedDocumentId = id;
 
 		return doc;
 	}
@@ -125,7 +129,7 @@ class Editor {
 	getDocsAccessedOrder(): DocHandle[] {
 		let docsAccessedOrder: DocHandle[] = [];
 		let missingDocsIndexes: number[] = [];
-		for (const [i, id] of this.docsAccessedOrderById.entries()) {
+		for (const [i, id] of this.docsAccessOrderById.entries()) {
 			let docIndex = this.docs.findIndex((v) => v.id == id);
 			if (docIndex == -1) {
 				// queue remove referenced doc from this.accessedDocIdOrder (sync)
@@ -135,7 +139,7 @@ class Editor {
 			}
 		}
 		// clean missing docs
-		missingDocsIndexes.forEach((i) => this.docsAccessedOrderById.splice(i, 1));
+		missingDocsIndexes.forEach((i) => this.docsAccessOrderById.splice(i, 1));
 
 		return docsAccessedOrder;
 	}
