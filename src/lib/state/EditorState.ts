@@ -23,7 +23,7 @@
  * So maybe a set because all ts sets are OrderedSets? ehhh just use ids
  *
  * ---
- * note: technically `Editor.activeDocumentId` and `Editor.docsAccessedOrderById` are not exclusive
+ * note: technically `EditorState.activeDocumentId` and `EditorState.docsAccessedOrderById` are not exclusive
  */
 
 import DocHandle from '$lib/models/DocHandle';
@@ -35,7 +35,7 @@ export interface EditorJSON {
 }
 
 /**
- * Editor Model
+ * EditorState Model
  *
  * This is a model designed to work within the state / workspace json
  * It tracks your active tabs within a given 'editor' ; for which you may have two (or more?)
@@ -44,15 +44,16 @@ export interface EditorJSON {
  * `this.docs` acts as the editor's ordered tabs
  *
  * tab actions, such as closing a tab or reordering it, are performed by the id of the DocHandle
- * rather than the index
+ * rather than the index of the tab / doc in .docs
  */
-class Editor {
+class EditorState {
 	readonly docs: DocHandle[] = []; // tabs; order represents order of tabs
 	private _focusedDocumentId: string;
 	private docsAccessOrderById: string[] = []; // reverse accessed order, last = most recent
 
 	constructor(json: EditorJSON, docs: DocHandle[]) {
 		this._focusedDocumentId = json.focusedDocumentId;
+		this.docsAccessOrderById = json.docsAccessOrderById;
 		this.docs = docs;
 	}
 
@@ -80,7 +81,7 @@ class Editor {
 			}
 		}
 
-		return new Editor(json, docs);
+		return new EditorState(json, docs);
 	}
 
 	toJSON(): EditorJSON {
@@ -130,22 +131,36 @@ class Editor {
 		let docsAccessedOrder: DocHandle[] = [];
 		let missingDocsIndexes: number[] = [];
 		for (const [i, id] of this.docsAccessOrderById.entries()) {
-			let docIndex = this.docs.findIndex((v) => v.id == id);
-			if (docIndex == -1) {
+			let docIndex = this.docs.findIndex((v) => v.id === id);
+			if (docIndex === -1) {
 				// queue remove referenced doc from this.accessedDocIdOrder (sync)
-				missingDocsIndexes.push(docIndex);
+				missingDocsIndexes.push(i);
 			} else {
 				docsAccessedOrder.push(this.docs[docIndex]);
 			}
 		}
 		// clean missing docs
-		missingDocsIndexes.forEach((i) => this.docsAccessOrderById.splice(i, 1));
+		this.docsAccessOrderById = this.docsAccessOrderById.filter(
+			(_, i) => !missingDocsIndexes.includes(i)
+		);
 
 		return docsAccessedOrder;
 	}
 
 	closeDoc(id: string) {
-		this.docs.splice(this.docs.findIndex((v) => v.id == id, 1));
+		// error if not found
+		this.findDocById(id);
+
+		this.docs.splice(
+			this.docs.findIndex((v) => v.id === id),
+			1
+		);
+		this.docsAccessOrderById = this.docsAccessOrderById.filter((v) => v != id);
+
+		if (this._focusedDocumentId === id) {
+			let lastAccessed = this.docsAccessOrderById.at(-1);
+			this._focusedDocumentId = lastAccessed ?? '';
+		}
 	}
 
 	openDoc(doc: DocHandle) {
@@ -153,4 +168,4 @@ class Editor {
 	}
 }
 
-export default Editor;
+export default EditorState;
