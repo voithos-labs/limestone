@@ -68,7 +68,7 @@ class DocHandle {
 	createdAt: Date;
 	updatedAt: Date;
 	accessedAt: Date;
-	deletedAt?: Date;
+	deletedAt?: Date; // todo: handle deleted cases, e.g. load from id, where you return a stub
 
 	private constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;

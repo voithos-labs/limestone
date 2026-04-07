@@ -1,5 +1,5 @@
 import { load, type Store } from '@tauri-apps/plugin-store';
-import { loadWorkspace, updateWorkspace } from './workspace';
+import { loadWorkspace, updateWorkspace } from '$lib/state/Workspace';
 
 export interface Theme {
 	name: string;
@@ -17,7 +17,9 @@ const DEFAULT_THEME: Theme = {
 		'color-text-secondary': '#E6E5E5',
 		'color-ui-dulled': '#AFB1B3',
 		'color-ui-muted': '#666666',
-		'color-accent-primary': '#567B67'
+		'color-accent-primary': '#567B67',
+		'radius-ui': '4px',
+		'radius-surface': '8px'
 	}
 };
 

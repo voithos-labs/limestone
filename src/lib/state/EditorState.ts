@@ -31,7 +31,7 @@ import DocHandle from '$lib/models/DocHandle';
 export interface EditorJSON {
 	documentIds: string[];
 	docsAccessOrderById: string[];
-	focusedDocumentId: string;
+	focusedDocumentId?: string;
 }
 
 /**
@@ -48,13 +48,14 @@ export interface EditorJSON {
  */
 class EditorState {
 	readonly docs: DocHandle[] = []; // tabs; order represents order of tabs
-	private _focusedDocumentId: string;
+	private _focusedDocumentId?: string;
 	private docsAccessOrderById: string[] = []; // reverse accessed order, last = most recent
 
-	constructor(json: EditorJSON, docs: DocHandle[]) {
+	constructor(json: EditorJSON, docs?: DocHandle[]) {
 		this._focusedDocumentId = json.focusedDocumentId;
 		this.docsAccessOrderById = json.docsAccessOrderById;
-		this.docs = docs;
+
+		this.docs = docs ?? [];
 	}
 
 	// ── Getters ─────────────────────────────────────────────────────────────────────────
@@ -63,9 +64,16 @@ class EditorState {
 		return this._focusedDocumentId;
 	}
 
+	get focusedDocument() {
+		if (!this._focusedDocumentId) {
+			return undefined;
+		}
+		return this.docs.find((v) => v.id === this._focusedDocumentId);
+	}
+
 	// ── Serialization ───────────────────────────────────────────────────────────────────
 
-	static async loadFromJSON(json: EditorJSON) {
+	static async loadFromJSON(json: EditorJSON): Promise<EditorState> {
 		let docIds: string[] = json.documentIds;
 		let docs: DocHandle[] = [];
 		for (const id of docIds) {
