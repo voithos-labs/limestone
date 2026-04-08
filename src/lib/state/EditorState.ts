@@ -37,7 +37,7 @@ export interface EditorJSON {
 /**
  * EditorState Model
  *
- * This is a model designed to work within the state / workspace json
+ * This is a model designed to work within state.json
  * It tracks your active tabs within a given 'editor' ; for which you may have two (or more?)
  * in split-screen mode
  *
@@ -47,13 +47,13 @@ export interface EditorJSON {
  * rather than the index of the tab / doc in .docs
  */
 class EditorState {
-	readonly docs: DocHandle[] = []; // tabs; order represents order of tabs
+	readonly docs: DocHandle[]; // tabs; order represents order of tabs
 	private _focusedDocumentId?: string;
 	private docsAccessOrderById: string[] = []; // reverse accessed order, last = most recent
 
-	constructor(json: EditorJSON, docs?: DocHandle[]) {
-		this._focusedDocumentId = json.focusedDocumentId;
-		this.docsAccessOrderById = json.docsAccessOrderById;
+	constructor(json?: EditorJSON, docs?: DocHandle[]) {
+		this._focusedDocumentId = json?.focusedDocumentId;
+		this.docsAccessOrderById = json?.docsAccessOrderById ?? [];
 
 		this.docs = docs ?? [];
 	}
@@ -166,11 +166,13 @@ class EditorState {
 		this.docsAccessOrderById = this.docsAccessOrderById.filter((v) => v != id);
 
 		if (this._focusedDocumentId === id) {
-			let lastAccessed = this.docsAccessOrderById.at(-1);
-			this._focusedDocumentId = lastAccessed ?? '';
+			let lastAccessedId = this.docsAccessOrderById.at(-1);
+			if (!lastAccessedId) {
+				lastAccessedId = this.docs[0].id;
+			} // weird case, focus anything available
+			this._focusedDocumentId = lastAccessedId; // could be undefined, that's fine
 		}
 	}
-
 	openDoc(doc: DocHandle) {
 		this.docs.push(doc);
 	}

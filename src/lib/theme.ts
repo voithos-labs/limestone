@@ -1,16 +1,16 @@
 import { load, type Store } from '@tauri-apps/plugin-store';
-import { loadWorkspace, updateWorkspace } from '$lib/state/Workspace';
+import { loadState, updateState } from '$lib/state/State';
 
 export interface Theme {
 	name: string;
 	type: 'dark' | 'light';
-	colors: Record<string, string>;
+	variables: Record<string, string>;
 }
 
 const DEFAULT_THEME: Theme = {
 	name: 'Default Dark',
 	type: 'dark',
-	colors: {
+	variables: {
 		'color-bg': '#26282B',
 		'color-surface': '#1A1C1D',
 		'color-text-primary': '#FFFFFF',
@@ -34,15 +34,15 @@ async function getStore() {
 
 export function applyTheme(theme: Theme) {
 	const root = document.documentElement;
-	for (const [key, value] of Object.entries(theme.colors)) {
+	for (const [key, value] of Object.entries(theme.variables)) {
 		root.style.setProperty(`--${key}`, value);
 	}
 }
 
 export async function loadAndApplyTheme() {
-	const workspace = await loadWorkspace();
+	const state = await loadState();
 	const s = await getStore();
-	const theme = await s.get<Theme>(workspace.activeTheme);
+	const theme = await s.get<Theme>(state.activeTheme);
 	applyTheme(theme ?? DEFAULT_THEME);
 }
 
@@ -50,7 +50,7 @@ export async function setActiveTheme(name: string) {
 	const s = await getStore();
 	const theme = await s.get<Theme>(name);
 	if (!theme) return;
-	await updateWorkspace({ activeTheme: name });
+	await updateState({ activeTheme: name });
 	applyTheme(theme);
 }
 
