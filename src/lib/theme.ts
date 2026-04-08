@@ -1,13 +1,10 @@
-import { load, type Store } from '@tauri-apps/plugin-store';
-import { loadState, updateState } from '$lib/state/State';
-
 export interface Theme {
 	name: string;
 	type: 'dark' | 'light';
 	variables: Record<string, string>;
 }
 
-const DEFAULT_THEME: Theme = {
+export const DEFAULT_THEME: Theme = {
 	name: 'Default Dark',
 	type: 'dark',
 	variables: {
@@ -23,45 +20,9 @@ const DEFAULT_THEME: Theme = {
 	}
 };
 
-let store: Store | null = null;
-
-async function getStore() {
-	if (!store) {
-		store = await load('themes.json');
-	}
-	return store;
-}
-
 export function applyTheme(theme: Theme) {
 	const root = document.documentElement;
 	for (const [key, value] of Object.entries(theme.variables)) {
 		root.style.setProperty(`--${key}`, value);
 	}
 }
-
-export async function loadAndApplyTheme() {
-	const state = await loadState();
-	const s = await getStore();
-	const theme = await s.get<Theme>(state.activeTheme);
-	applyTheme(theme ?? DEFAULT_THEME);
-}
-
-export async function setActiveTheme(name: string) {
-	const s = await getStore();
-	const theme = await s.get<Theme>(name);
-	if (!theme) return;
-	await updateState({ activeTheme: name });
-	applyTheme(theme);
-}
-
-export async function saveTheme(key: string, theme: Theme) {
-	const s = await getStore();
-	await s.set(key, theme);
-}
-
-export async function listThemes(): Promise<string[]> {
-	const s = await getStore();
-	return await s.keys();
-}
-
-export { DEFAULT_THEME };
