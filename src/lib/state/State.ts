@@ -1,11 +1,11 @@
 import { load, type Store } from '@tauri-apps/plugin-store';
-import type EditorState from '$lib/state/EditorState';
+import type { EditorJSON } from '$lib/state/EditorState.svelte';
 
 // ── State Model ──────────────────────────────────────────────────────────────────────
 
 export interface State {
 	activeTheme: string;
-	editors: EditorState[];
+	editors: EditorJSON[];
 }
 const DEFAULTS: State = {
 	activeTheme: 'default-dark',
@@ -29,7 +29,7 @@ export async function loadState(): Promise<State> {
 	const s = await getStore();
 	return {
 		activeTheme: (await s.get<string>('activeTheme')) ?? DEFAULTS.activeTheme,
-		editors: (await s.get<EditorState[]>('editors')) ?? DEFAULTS.editors
+		editors: (await s.get<EditorJSON[]>('editors')) ?? DEFAULTS.editors
 	};
 }
 

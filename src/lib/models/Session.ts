@@ -9,7 +9,7 @@ cute and nice and simple and work well with the other models in this system that
 import { load, type Store } from '@tauri-apps/plugin-store';
 
 // internal
-import EditorState from '$lib/state/EditorState';
+import EditorState from '$lib/state/EditorState.svelte';
 import type { Source } from '$lib/models/Source';
 import { loadState, type State, updateState } from '$lib/state/State';
 import { applyTheme, DEFAULT_THEME, type Theme } from '$lib/theme';
@@ -21,16 +21,26 @@ class Session {
 
 	private themeStore: Store;
 
-	constructor(stateJSON: State, themeStore: Store) {
-		this.editors = stateJSON.editors;
-		this.activeTheme = stateJSON.activeTheme;
+	private constructor(editors: EditorState[], activeTheme: string, themeStore: Store) {
+		this.editors = editors;
+		this.activeTheme = activeTheme;
 		this.themeStore = themeStore;
 	}
 
 	static async init(): Promise<Session> {
 		let state = await loadState();
 		let themeStore = await load('themes.json');
-		let session = new Session(state, themeStore);
+
+		// hydrate EditorState instances from JSON
+		let editors: EditorState[] = [];
+		for (const editorJSON of state.editors) {
+			editors.push(await EditorState.loadFromJSON(editorJSON));
+		}
+		if (editors.length === 0) {
+			editors.push(new EditorState());
+		}
+
+		let session = new Session(editors, state.activeTheme, themeStore);
 		await session.applyCurrentTheme();
 		return session;
 	}

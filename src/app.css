@@ -19,9 +19,18 @@
 	--color-ui-muted: #666666;
 
 	--color-accent-primary: #567b67;
+
+	--font-ui: 'Inter', system-ui, sans-serif;
+}
+
+html,
+body {
+	height: 100%;
+	overflow: hidden;
 }
 
 body {
 	background: var(--color-bg);
 	color: var(--color-text-primary);
+	font-family: var(--font-ui);
 }
