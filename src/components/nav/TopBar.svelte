@@ -114,7 +114,7 @@
     .nav-bar {
         display: flex;
         align-items: flex-end;
-        height: 46px;
+        height: 42px;
         width: 100%;
         background: var(--color-bg);
         padding-left: 8px;
@@ -128,14 +128,14 @@
         align-items: center;
         justify-content: center;
         width: 32px;
-        height: 36px;
+        height: 32px;
         margin-bottom: 4px;
         flex-shrink: 0;
     }
 
     .logo-img {
-        width: 22px;
-        height: 22px;
+        width: 20px;
+        height: 20px;
         object-fit: contain;
     }
 
@@ -143,7 +143,7 @@
     .dropdown-btn {
         display: flex;
         align-items: center;
-        height: 36px;
+        height: 32px;
         margin-bottom: 4px;
         padding: 0 10px;
         border: none;
@@ -161,8 +161,8 @@
     /* ── Divider ── */
     .divider {
         width: 1px;
-        height: 24px;
-        margin: 0 4px 10px 4px;
+        height: 22px;
+        margin: 0 4px 9px 4px;
         background: var(--color-border);
         flex-shrink: 0;
     }
@@ -188,7 +188,7 @@
         position: relative;
         display: flex;
         align-items: center;
-        height: 36px;
+        height: 32px;
         margin-bottom: 4px;
         padding: 0 12px;
         border: none;
@@ -212,7 +212,7 @@
     }
 
     .tab.active {
-        height: 40px;
+        height: 36px;
         margin-bottom: 0;
         padding-bottom: 4px;
         border-radius: 6px 6px 0 0;
