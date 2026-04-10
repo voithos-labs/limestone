@@ -24,7 +24,7 @@
             backgroundColor: 'transparent',
         },
         '.cm-content': {
-            fontFamily: 'var(--font-ui)',
+            fontFamily: 'var(--font-editor)',
             lineHeight: '1.6',
             padding: '48px 24px',
             maxWidth: '700px',
@@ -59,20 +59,20 @@
     });
 
     const microMonokai = HighlightStyle.define([
-        { tag: tags.heading1, color: '#A6E22E', fontWeight: '700', fontSize: '1.6em' },
-        { tag: tags.heading2, color: '#A6E22E', fontWeight: '600', fontSize: '1.4em' },
-        { tag: tags.heading3, color: '#A6E22E', fontWeight: '600', fontSize: '1.2em' },
-        { tag: [tags.heading4, tags.heading5, tags.heading6], color: '#A6E22E', fontWeight: '600' },
-        { tag: tags.emphasis, color: '#66D9EF', fontStyle: 'italic' },
-        { tag: tags.strong, color: '#66D9EF', fontWeight: '700' },
-        { tag: tags.strikethrough, color: '#66D9EF', textDecoration: 'line-through' },
-        { tag: tags.link, color: '#AE81FF' },
-        { tag: tags.url, color: '#D33682' },
-        { tag: tags.quote, color: '#F92672' },
-        { tag: [tags.processingInstruction, tags.monospace], color: '#A6E22E' },
-        { tag: tags.comment, color: '#75715E' },
-        { tag: tags.list, color: '#66D9EF' },
-        { tag: tags.contentSeparator, color: '#A6E22E' },
+        { tag: tags.heading1, color: 'var(--syntax-heading)', fontWeight: '700', fontSize: '1.6em' },
+        { tag: tags.heading2, color: 'var(--syntax-heading)', fontWeight: '600', fontSize: '1.4em' },
+        { tag: tags.heading3, color: 'var(--syntax-heading)', fontWeight: '600', fontSize: '1.2em' },
+        { tag: [tags.heading4, tags.heading5, tags.heading6], color: 'var(--syntax-heading)', fontWeight: '600' },
+        { tag: tags.emphasis, color: 'var(--syntax-emphasis)', fontStyle: 'italic' },
+        { tag: tags.strong, color: 'var(--syntax-emphasis)', fontWeight: '700' },
+        { tag: tags.strikethrough, color: 'var(--syntax-emphasis)', textDecoration: 'line-through' },
+        { tag: tags.link, color: 'var(--syntax-link)' },
+        { tag: tags.url, color: 'var(--syntax-url)' },
+        { tag: tags.quote, color: 'var(--syntax-quote)' },
+        { tag: [tags.processingInstruction, tags.monospace], color: 'var(--syntax-code)' },
+        { tag: tags.comment, color: 'var(--syntax-comment)' },
+        { tag: tags.list, color: 'var(--syntax-list)' },
+        { tag: tags.contentSeparator, color: 'var(--syntax-separator)' },
     ]);
 
     onMount(() => {

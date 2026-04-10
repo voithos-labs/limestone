@@ -107,6 +107,27 @@ export const DARK_EARTH: Theme = {
 	}
 };
 
+export const LIGHT_EARTH: Theme = {
+	name: 'Light Earth',
+	type: 'light',
+	variables: {
+		'color-bg': '#dfd9dd',
+		'color-earth': '#8B6B47',
+		'color-backdrop':
+			'radial-gradient(ellipse 80% 60% at top left, color-mix(in srgb, var(--color-accent) 28%, var(--color-bg)) 0%, transparent 55%), radial-gradient(ellipse 80% 60% at bottom right, color-mix(in srgb, var(--color-earth) 24%, var(--color-bg)) 0%, transparent 55%), var(--color-bg)',
+		'color-surface': '#FFFFFF',
+		'color-border': '#D0CCD0',
+		'color-text-primary': '#000000',
+		'color-text-secondary': '#3A3D40',
+		'color-ui-dulled': '#5C5F62',
+		'color-ui-muted': '#787a7c',
+		'color-accent': '#567B67',
+		'color-accent-primary': '#567B67',
+		'radius-ui': '4px',
+		'radius-surface': '8px'
+	}
+};
+
 export const DEFAULT_THEME = DEFAULT_DARK;
 
 export const BUILTIN_THEMES: Record<string, Theme> = {
@@ -114,7 +135,8 @@ export const BUILTIN_THEMES: Record<string, Theme> = {
 	'default-dark-transparent': DEFAULT_DARK_TRANSPARENT,
 	'dark-earth': DARK_EARTH,
 	'default-light': DEFAULT_LIGHT,
-	'default-light-transparent': DEFAULT_LIGHT_TRANSPARENT
+	'default-light-transparent': DEFAULT_LIGHT_TRANSPARENT,
+	'light-earth': LIGHT_EARTH
 };
 
 export function applyTheme(theme: Theme) {
@@ -123,6 +145,7 @@ export function applyTheme(theme: Theme) {
 		root.style.setProperty(`--${key}`, value);
 	}
 	root.style.setProperty('--font-ui', theme.fontFamily ?? DEFAULT_FONT);
+	root.dataset.themeType = theme.type;
 
 	// Tear down any previous focus listener before installing or skipping
 	if (_focusCleanup) {

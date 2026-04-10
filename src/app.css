@@ -23,6 +23,30 @@
     --color-accent-primary: #567B67;
 
     --font-ui: 'Inter', system-ui, sans-serif;
+    --font-editor: 'Cascadia Code', 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
+
+    /* ── Markdown syntax highlighting (dark defaults) ── */
+    --syntax-heading: #A6E22E;
+    --syntax-emphasis: #66D9EF;
+    --syntax-link: #AE81FF;
+    --syntax-url: #D33682;
+    --syntax-quote: #F92672;
+    --syntax-code: #A6E22E;
+    --syntax-comment: #75715E;
+    --syntax-list: #66D9EF;
+    --syntax-separator: #A6E22E;
+}
+
+:root[data-theme-type="light"] {
+    --syntax-heading: #3f6e1a;
+    --syntax-emphasis: #0369a1;
+    --syntax-link: #6d28d9;
+    --syntax-url: #be185d;
+    --syntax-quote: #b91c1c;
+    --syntax-code: #166534;
+    --syntax-comment: #64748b;
+    --syntax-list: #0369a1;
+    --syntax-separator: #3f6e1a;
 }
 
 html,
