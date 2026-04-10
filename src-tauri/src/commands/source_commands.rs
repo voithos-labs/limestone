@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_fs::FsExt;
@@ -51,6 +51,36 @@ fn save_sources(app: &AppHandle, sources: &[Source]) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Canonicalize if possible, otherwise fall back to the cleaned path.
+fn normalize_path(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Check that `candidate` is neither equal to, nor an ancestor of, nor a
+/// descendant of any existing source path.
+fn check_source_conflict(candidate: &Path, existing: &[Source]) -> Result<(), String> {
+    let candidate_norm = normalize_path(candidate);
+    for source in existing {
+        let existing_norm = normalize_path(&source.path);
+        if candidate_norm == existing_norm {
+            return Err(format!("\"{}\" is already a source", source.title));
+        }
+        if candidate_norm.starts_with(&existing_norm) {
+            return Err(format!(
+                "Folder is nested inside existing source \"{}\"",
+                source.title
+            ));
+        }
+        if existing_norm.starts_with(&candidate_norm) {
+            return Err(format!(
+                "Folder contains existing source \"{}\"",
+                source.title
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn create_source(
     app: AppHandle,
@@ -58,13 +88,16 @@ pub fn create_source(
     path: String,
     title: String,
 ) -> Result<Source, String> {
+    let candidate = PathBuf::from(&path);
+    let mut sources = load_sources(&app);
+    check_source_conflict(&candidate, &sources)?;
+
     let source =
-        services::create_source(Some(title), PathBuf::from(&path)).map_err(|e| e.to_string())?;
+        services::create_source(Some(title), candidate).map_err(|e| e.to_string())?;
 
     // add fs access to new source dir
     let _ = app.fs_scope().allow_directory(&source.path, true);
 
-    let mut sources = load_sources(&app);
     sources.push(source.clone());
     save_sources(&app, &sources)?;
 
