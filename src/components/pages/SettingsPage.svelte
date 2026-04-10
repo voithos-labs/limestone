@@ -521,11 +521,16 @@
         padding: 6px 10px;
         border: 1px solid var(--color-border);
         border-radius: var(--radius-ui);
-        background: var(--color-bg);
+        background: var(--color-surface);
         color: var(--color-text-primary);
         font-family: var(--font-ui);
         font-size: 13px;
         outline: none;
         cursor: pointer;
+    }
+
+    .input-select option {
+        background: var(--color-surface);
+        color: var(--color-text-primary);
     }
 </style>

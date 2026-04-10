@@ -251,7 +251,7 @@
     .divider {
         width: 1px;
         height: 22px;
-        margin: 0 -4px 9px 4px;
+        margin: 0 -8px 9px 0px;
         background: var(--color-border);
         flex-shrink: 0;
     }
@@ -302,8 +302,9 @@
 
     .tabs-scroll .tab {
         flex-shrink: 1;
-        min-width: 60px;
+        min-width: 32px;
         max-width: 240px;
+        padding: 0 8px;
     }
 
     .tab.icon-tab {
@@ -392,7 +393,7 @@
         position: absolute;
         right: 0;
         top: 0;
-        width: 55px; /*Played with this for like 10 mins this is perf*/
+        width: 40px; /*Played with this for like 10 mins this is perf*/
         height: 100%;
         display: flex;
         align-items: center;
@@ -407,6 +408,7 @@
 
     .tab.active .close-zone {
         border-radius: 0 6px 0 0;
+        padding-bottom: 4px;
     }
 
     .tab:hover .close-zone {
