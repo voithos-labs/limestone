@@ -17,7 +17,7 @@
     }
 
     async function openResult(result: SearchResult) {
-        const existing = editor.docs.find(d => d.id === result.id);
+        const existing = editor.tabs.find(d => d.id === result.id);
         if (existing) {
             editor.focusTab({kind: 'document', id: existing.id});
             return;

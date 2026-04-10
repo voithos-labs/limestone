@@ -15,15 +15,24 @@
     import {defaultKeymap, history, historyKeymap} from '@codemirror/commands';
     import {syntaxHighlighting, HighlightStyle, syntaxTree} from '@codemirror/language';
     import {tags} from '@lezer/highlight';
+    import type DocHandle from "$lib/models/DocHandle";
 
-    let {content = $bindable(''), onchange}: {
-        content: string;
+    let {doc = $bindable(), onchange}: {
+        doc: DocHandle;
         onchange?: (value: string) => void;
     } = $props();
 
     let container: HTMLDivElement;
     let view: EditorView;
     let internalUpdate = false;
+
+    // Load contents
+    let content: string = $state('');
+
+    $effect(() => {
+        doc.loadContent().then((c) => content = c)
+    })
+
 
     const theme = EditorView.theme({
         '&': {
@@ -73,33 +82,36 @@
     });
 
     const microMonokai = HighlightStyle.define([
-        { tag: tags.heading1, color: 'var(--syntax-heading)', fontWeight: '700', fontSize: '1.6em' },
-        { tag: tags.heading2, color: 'var(--syntax-heading)', fontWeight: '600', fontSize: '1.4em' },
-        { tag: tags.heading3, color: 'var(--syntax-heading)', fontWeight: '600', fontSize: '1.2em' },
-        { tag: [tags.heading4, tags.heading5, tags.heading6], color: 'var(--syntax-heading)', fontWeight: '600' },
-        { tag: tags.emphasis, color: 'var(--syntax-emphasis)', fontStyle: 'italic' },
-        { tag: tags.strong, color: 'var(--syntax-emphasis)', fontWeight: '700' },
-        { tag: tags.strikethrough, color: 'var(--syntax-emphasis)', textDecoration: 'line-through' },
-        { tag: tags.link, color: 'var(--syntax-link)' },
-        { tag: tags.url, color: 'var(--syntax-url)' },
-        { tag: tags.quote, color: 'var(--syntax-quote)' },
-        { tag: tags.monospace, color: 'var(--syntax-code)' },
-        { tag: tags.comment, color: 'var(--syntax-comment)' },
-        { tag: tags.contentSeparator, color: 'var(--syntax-separator)' },
+        {tag: tags.heading1, color: 'var(--syntax-heading)', fontWeight: '700', fontSize: '1.6em'},
+        {tag: tags.heading2, color: 'var(--syntax-heading)', fontWeight: '600', fontSize: '1.4em'},
+        {tag: tags.heading3, color: 'var(--syntax-heading)', fontWeight: '600', fontSize: '1.2em'},
+        {tag: [tags.heading4, tags.heading5, tags.heading6], color: 'var(--syntax-heading)', fontWeight: '600'},
+        {tag: tags.emphasis, color: 'var(--syntax-emphasis)', fontStyle: 'italic'},
+        {tag: tags.strong, color: 'var(--syntax-emphasis)', fontWeight: '700'},
+        {tag: tags.strikethrough, color: 'var(--syntax-emphasis)', textDecoration: 'line-through'},
+        {tag: tags.link, color: 'var(--syntax-link)'},
+        {tag: tags.url, color: 'var(--syntax-url)'},
+        {tag: tags.quote, color: 'var(--syntax-quote)'},
+        {tag: tags.monospace, color: 'var(--syntax-code)'},
+        {tag: tags.comment, color: 'var(--syntax-comment)'},
+        {tag: tags.contentSeparator, color: 'var(--syntax-separator)'},
     ]);
 
     // Mark checked task markers (`- [x]`) with a dimmer class so completed
     // tasks render in a muted shade vs. the brighter `- [ ]` markers.
     const taskDonePlugin = ViewPlugin.fromClass(class {
         decorations: DecorationSet;
+
         constructor(view: EditorView) {
             this.decorations = this.build(view);
         }
+
         update(update: ViewUpdate) {
             if (update.docChanged || update.viewportChanged) {
                 this.decorations = this.build(update.view);
             }
         }
+
         build(view: EditorView): DecorationSet {
             const builder = new RangeSetBuilder<Decoration>();
             const openMark = Decoration.mark({class: 'cm-task-marker'});

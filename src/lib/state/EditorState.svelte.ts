@@ -24,26 +24,83 @@
  *
  * ---
  * note: technically `EditorState.activeDocumentId` and `EditorState.docsAccessedOrderById` are not exclusive
+ *
+ * ---
+ *
+ * okay just thinking about the tab type / class etc. idea and how it can be multiple purpose,
+ * i.e. holds tab type, including static?, tab state (scroll pos, cursor pos, zoom, etc.), and serve
+ * the basic purpose of interfacing somewhat coherently with the UI. See above todo ^
+ *
+ * so hm I'm just gonna OOP this bitch java be praised
+ *
  */
 
 import DocHandle from '$lib/models/DocHandle';
 
-// ── Tab ─────────────────────────────────────────────────────────────────────────────
+// ── Focus (used elsewhere) ───────────────────────────────────────────────────────────
 
-export type Tab =
+export type FocusTarget =
 	| { kind: 'document'; id: string }
 	| { kind: 'settings' }
 	| { kind: 'search' };
 
-export function tabKey(tab: Tab): string {
+export function tabKey(tab: FocusTarget): string {
 	return tab.kind === 'document' ? `document:${tab.id}` : tab.kind;
 }
 
-// ── Serialization ───────────────────────────────────────────────────────────────────
+// ── Tabs ─────────────────────────────────────────────────────────────────────────────
+
+export interface TabJSON {
+	type: string;
+	handleId: string;
+	state: Record<string, any>;
+}
+
+export class TabState {
+	type: string; // markdown, views, pdf, etc.
+	handle: DocHandle; // todo (views): DocHandle | View, or could do a Handle trait thing
+	state: Record<string, any> = $state({}); // props, e.g. scroll pos
+
+	constructor(json: TabJSON, handle: DocHandle) {
+		this.type = json.type;
+		this.handle = handle;
+		this.state = json.state ?? {};
+	}
+
+	get id() {
+		return this.handle.id;
+	}
+
+	toJSON(): TabJSON {
+		return {
+			type: this.type,
+			handleId: this.handle.id,
+			state: this.state
+		};
+	}
+
+	static newTabFromHandle(handle: DocHandle) {
+		return new TabState(
+			{
+				type: 'markdown',
+				handleId: handle.id,
+				state: {}
+			},
+			handle
+		);
+	}
+
+	static async loadFromJSON(json: TabJSON) {
+		const handle = await DocHandle.fromID(json.handleId);
+		return new TabState(json, handle);
+	}
+}
+
+// ── Core ─────────────────────────────────────────────────────────────────────────────
 
 export interface EditorJSON {
-	documentIds: string[];
-	docsAccessOrderById: string[];
+	tabs: TabJSON[];
+	tabAccessOrderById: string[];
 	focusedTabKey?: string;
 }
 
@@ -54,21 +111,21 @@ export interface EditorJSON {
  * It tracks your active tabs within a given 'editor' ; for which you may have two (or more?)
  * in split-screen mode
  *
- * `this.docs` acts as the editor's ordered tabs
+ * `this.tabs` is the editor's ordered tab list
  *
- * tab actions, such as closing a tab or reordering it, are performed by the id of the DocHandle
- * rather than the index of the tab / doc in .docs
+ * tab actions, such as closing a tab or reordering it, are performed by the id of the underlying
+ * handle rather than the index of the tab in .tabs
  */
 class EditorState {
-	docs: DocHandle[] = $state([]); // tabs; order represents order of tabs
+	tabs: TabState[] = $state([]);
 	focusedTabKey: string | null = $state(null);
-	private docsAccessOrderById: string[] = $state([]); // reverse accessed order, last = most recent
+	private tabAccessOrderById: string[] = $state([]); // reverse accessed order, last = most recent
 	onChanged?: () => void;
 
-	constructor(json?: EditorJSON, docs?: DocHandle[]) {
+	constructor(json?: EditorJSON, tabs?: TabState[]) {
 		this.focusedTabKey = json?.focusedTabKey ?? null;
-		if (json?.docsAccessOrderById) this.docsAccessOrderById = json.docsAccessOrderById;
-		if (docs) this.docs = docs;
+		if (json?.tabAccessOrderById) this.tabAccessOrderById = json.tabAccessOrderById;
+		if (tabs) this.tabs = tabs;
 	}
 
 	changed() {
@@ -80,76 +137,85 @@ class EditorState {
 	get focusedDocument(): DocHandle | undefined {
 		if (!this.focusedTabKey?.startsWith('document:')) return undefined;
 		const id = this.focusedTabKey.slice('document:'.length);
-		return this.docs.find((v) => v.id === id);
+		return this.tabs.find((v) => v.id === id)?.handle;
 	}
 
-	isTabFocused(tab: Tab): boolean {
+	isTabFocused(tab: FocusTarget): boolean {
 		return this.focusedTabKey === tabKey(tab);
 	}
 
 	// ── Serialization ───────────────────────────────────────────────────────────────────
 
 	static async loadFromJSON(json: EditorJSON): Promise<EditorState> {
-		let docIds: string[] = [...new Set(json.documentIds)];
-		let docs: DocHandle[] = [];
-		for (const id of docIds) {
-			// lookup docs in db and fill metadata
+		// dedupe by handleId to guard against corrupt state.json
+		let seen = new Set<string>();
+		let tabs: TabState[] = [];
+		for (const tabJson of json.tabs ?? []) {
+			if (seen.has(tabJson.handleId)) continue;
+			seen.add(tabJson.handleId);
+			// lookup handle in db and fill metadata
 			try {
-				let doc = await DocHandle.fromID(id);
+				let tab = await TabState.loadFromJSON(tabJson);
 				// could group calls or await all at once, should be fast enough though
 				// todo: listeners?
-				docs.push(doc);
+				tabs.push(tab);
 			} catch (e) {
-				console.error(`Failed to load document with id ${id} found in editor state json: ${e}`);
+				console.error(
+					`Failed to load tab for handle ${tabJson.handleId} found in editor state json: ${e}`
+				);
 				continue;
 			}
 		}
 
-		return new EditorState(json, docs);
+		return new EditorState(json, tabs);
 	}
 
 	toJSON(): EditorJSON {
 		return {
-			documentIds: this.docs.map((v) => v.id),
-			docsAccessOrderById: this.docsAccessOrderById,
+			tabs: this.tabs.map((t) => t.toJSON()),
+			tabAccessOrderById: this.tabAccessOrderById,
 			focusedTabKey: this.focusedTabKey ?? undefined
 		};
 	}
 
 	// ── Tab actions ─────────────────────────────────────────────────────────────────────
 
-	focusTab(tab: Tab) {
+	focusTab(tab: FocusTarget) {
 		const key = tabKey(tab);
 		if (this.focusedTabKey === key) return;
 		this.focusedTabKey = key;
 		if (tab.kind === 'document') {
 			// update accessed order: filter out id, then append to end to update order
-			let accessedOrder = this.docsAccessOrderById.filter((v) => v != tab.id);
+			let accessedOrder = this.tabAccessOrderById.filter((v) => v != tab.id);
 			accessedOrder.push(tab.id);
-			this.docsAccessOrderById = accessedOrder;
+			this.tabAccessOrderById = accessedOrder;
 		}
 		this.changed();
 	}
 
-	openDoc(doc: DocHandle) {
-		if (this.docs.some(d => d.id === doc.id)) return;
-		this.docs.push(doc);
+	openTab(tab: TabState) {
+		if (this.tabs.some((d) => d.id === tab.id)) return; // dupe
+		this.tabs.push(tab);
 		this.changed();
 	}
 
-	closeDoc(id: string) {
-		const idx = this.docs.findIndex((v) => v.id === id);
+	openDoc(doc: DocHandle) {
+		this.openTab(TabState.newTabFromHandle(doc));
+	}
+
+	closeTab(id: string) {
+		const idx = this.tabs.findIndex((v) => v.id === id);
 		if (idx === -1) return;
 
-		this.docs.splice(idx, 1);
-		this.docsAccessOrderById = this.docsAccessOrderById.filter((v) => v != id);
+		this.tabs.splice(idx, 1);
+		this.tabAccessOrderById = this.tabAccessOrderById.filter((v) => v != id);
 
 		if (this.focusedTabKey === `document:${id}`) {
-			let lastAccessedId = this.docsAccessOrderById.at(-1);
+			let lastAccessedId = this.tabAccessOrderById.at(-1);
 			if (lastAccessedId) {
 				this.focusedTabKey = `document:${lastAccessedId}`;
-			} else if (this.docs.length > 0) {
-				this.focusedTabKey = `document:${this.docs[Math.min(idx, this.docs.length - 1)].id}`;
+			} else if (this.tabs.length > 0) {
+				this.focusedTabKey = `document:${this.tabs[Math.min(idx, this.tabs.length - 1)].id}`;
 			} else {
 				this.focusedTabKey = null;
 			}
@@ -157,36 +223,36 @@ class EditorState {
 		this.changed();
 	}
 
-	moveDoc(fromIndex: number, toIndex: number) {
+	moveTab(fromIndex: number, toIndex: number) {
 		if (fromIndex === toIndex) return;
-		const [doc] = this.docs.splice(fromIndex, 1);
-		this.docs.splice(toIndex, 0, doc);
+		const [tab] = this.tabs.splice(fromIndex, 1);
+		this.tabs.splice(toIndex, 0, tab);
 		this.changed();
 	}
 
 	/**
-	 * returns DocHandle instances in reverse accessed order (last is most recent) within editor
+	 * returns TabState instances in reverse accessed order (last is most recent) within editor
 	 *
-	 * lazily cleans up prevoiusly removed docs from this.docs
+	 * lazily cleans up previously removed tabs from this.tabAccessOrderById
 	 */
-	getDocsAccessedOrder(): DocHandle[] {
-		let docsAccessedOrder: DocHandle[] = [];
-		let missingDocsIndexes: number[] = [];
-		for (const [i, id] of this.docsAccessOrderById.entries()) {
-			let docIndex = this.docs.findIndex((v) => v.id === id);
-			if (docIndex === -1) {
-				// queue remove referenced doc from this.accessedDocIdOrder (sync)
-				missingDocsIndexes.push(i);
+	getTabsAccessedOrder(): TabState[] {
+		let tabsAccessedOrder: TabState[] = [];
+		let missingTabsIndexes: number[] = [];
+		for (const [i, id] of this.tabAccessOrderById.entries()) {
+			let tabIndex = this.tabs.findIndex((v) => v.id === id);
+			if (tabIndex === -1) {
+				// queue remove referenced tab from this.tabAccessOrderById (sync)
+				missingTabsIndexes.push(i);
 			} else {
-				docsAccessedOrder.push(this.docs[docIndex]);
+				tabsAccessedOrder.push(this.tabs[tabIndex]);
 			}
 		}
-		// clean missing docs
-		this.docsAccessOrderById = this.docsAccessOrderById.filter(
-			(_, i) => !missingDocsIndexes.includes(i)
+		// clean missing tabs
+		this.tabAccessOrderById = this.tabAccessOrderById.filter(
+			(_, i) => !missingTabsIndexes.includes(i)
 		);
 
-		return docsAccessedOrder;
+		return tabsAccessedOrder;
 	}
 }
 

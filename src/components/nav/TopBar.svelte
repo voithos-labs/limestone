@@ -34,7 +34,7 @@
         e.preventDefault();
         el.setPointerCapture(e.pointerId);
 
-        dragDocId = editor.docs[index].id;
+        dragDocId = editor.tabs[index].id;
         dragStartX = e.clientX;
         dragDeltaX = 0;
         originalIndex = index;
@@ -82,7 +82,7 @@
     function onPointerUp() {
         if (dragDocId !== null && dropIndex !== originalIndex) {
             suppressTransition = true;
-            editor.moveDoc(originalIndex, dropIndex);
+            editor.moveTab(originalIndex, dropIndex);
             requestAnimationFrame(() => { suppressTransition = false; });
         }
         dragDocId = null;
@@ -158,7 +158,7 @@
 
     <!-- Document tabs -->
     <div class="tabs-scroll">
-        {#each editor.docs as d, i (d.id)}
+        {#each editor.tabs as d, i (d.id)}
             {@const tab: FocusTarget = {kind: 'document', id: d.id}}
             <div
                     class="tab"
@@ -177,13 +177,13 @@
                     tabindex="0"
             >
                 {#if !compactTabs}<span class="doc-icon"></span>{/if}
-                <span class="tab-label">{d.title}</span>
+                <span class="tab-label">{d.handle.title}</span>
                 <span class="tab-fade"></span>
                 <span class="close-zone">
                     <button
                             class="close-btn"
                             title="Close tab"
-                            onclick={(e) => { e.stopPropagation(); editor.closeDoc(d.id); }}
+                            onclick={(e) => { e.stopPropagation(); editor.closeTab(d.id); }}
                     >
                         <X size={12}/>
                     </button>

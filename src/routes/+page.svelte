@@ -4,34 +4,29 @@
     import SearchPage from "../components/pages/SearchPage.svelte";
     import SettingsPage from "../components/pages/SettingsPage.svelte";
     import MarkdownEditor from "../components/editor/MarkdownEditor.svelte";
+    import type DocHandle from "$lib/models/DocHandle";
 
     let session = $state<Session>();
-    let content = $state('');
+    let doc: DocHandle | undefined = $state();
 
     Session.init().then(s => session = s);
 
     // Load content when focused document changes
     $effect(() => {
-        const doc = session?.editors[0]?.focusedDocument;
-        if (doc) {
-            doc.loadContent().then(body => {
-                content = body;
-            });
-        } else {
-            content = '';
-        }
+        doc = session?.editors[0]?.focusedDocument;
+
     });
 </script>
 {#if session}
     <div class="app-layout">
         <TopBar editor={session.editors[0]}></TopBar>
         <main class="content-area">
-            {#if session.editors[0].focusedDocument}
-                <MarkdownEditor bind:content />
+            {#if doc}
+                <MarkdownEditor bind:doc/>
             {:else if session.editors[0].focusedTabKey === 'search'}
                 <SearchPage editor={session.editors[0]}/>
             {:else if session.editors[0].focusedTabKey === 'settings'}
-                <SettingsPage viewTab={session.getViewTab('settings')} {session} />
+                <SettingsPage viewTab={session.getViewTab('settings')} {session}/>
             {:else}
                 <div class="panel-placeholder">
                     No document selected
