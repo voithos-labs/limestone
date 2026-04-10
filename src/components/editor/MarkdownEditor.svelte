@@ -1,11 +1,19 @@
 <script lang="ts">
     import {onMount, onDestroy} from 'svelte';
-    import {EditorView, keymap, placeholder as cmPlaceholder} from '@codemirror/view';
-    import {EditorState} from '@codemirror/state';
+    import {
+        EditorView,
+        keymap,
+        placeholder as cmPlaceholder,
+        ViewPlugin,
+        Decoration,
+        type DecorationSet,
+        type ViewUpdate,
+    } from '@codemirror/view';
+    import {EditorState, RangeSetBuilder} from '@codemirror/state';
     import {markdown} from '@codemirror/lang-markdown';
     import {languages} from '@codemirror/language-data';
     import {defaultKeymap, history, historyKeymap} from '@codemirror/commands';
-    import {syntaxHighlighting, HighlightStyle} from '@codemirror/language';
+    import {syntaxHighlighting, HighlightStyle, syntaxTree} from '@codemirror/language';
     import {tags} from '@lezer/highlight';
 
     let {content = $bindable(''), onchange}: {
@@ -56,6 +64,12 @@
         '.cm-line': {
             color: 'var(--color-text-primary)',
         },
+        '.cm-task-marker': {
+            color: 'var(--syntax-task) !important',
+        },
+        '.cm-task-done': {
+            color: 'var(--syntax-task-done) !important',
+        },
     });
 
     const microMonokai = HighlightStyle.define([
@@ -69,11 +83,43 @@
         { tag: tags.link, color: 'var(--syntax-link)' },
         { tag: tags.url, color: 'var(--syntax-url)' },
         { tag: tags.quote, color: 'var(--syntax-quote)' },
-        { tag: [tags.processingInstruction, tags.monospace], color: 'var(--syntax-code)' },
+        { tag: tags.monospace, color: 'var(--syntax-code)' },
         { tag: tags.comment, color: 'var(--syntax-comment)' },
-        { tag: tags.list, color: 'var(--syntax-list)' },
         { tag: tags.contentSeparator, color: 'var(--syntax-separator)' },
     ]);
+
+    // Mark checked task markers (`- [x]`) with a dimmer class so completed
+    // tasks render in a muted shade vs. the brighter `- [ ]` markers.
+    const taskDonePlugin = ViewPlugin.fromClass(class {
+        decorations: DecorationSet;
+        constructor(view: EditorView) {
+            this.decorations = this.build(view);
+        }
+        update(update: ViewUpdate) {
+            if (update.docChanged || update.viewportChanged) {
+                this.decorations = this.build(update.view);
+            }
+        }
+        build(view: EditorView): DecorationSet {
+            const builder = new RangeSetBuilder<Decoration>();
+            const openMark = Decoration.mark({class: 'cm-task-marker'});
+            const doneMark = Decoration.mark({class: 'cm-task-done'});
+            for (const {from, to} of view.visibleRanges) {
+                syntaxTree(view.state).iterate({
+                    from, to,
+                    enter: (node) => {
+                        if (node.name !== 'TaskMarker') return;
+                        const text = view.state.doc.sliceString(node.from, node.to);
+                        const checked = text === '[x]' || text === '[X]';
+                        builder.add(node.from, node.to, checked ? doneMark : openMark);
+                    },
+                });
+            }
+            return builder.finish();
+        }
+    }, {
+        decorations: v => v.decorations,
+    });
 
     onMount(() => {
         const updateListener = EditorView.updateListener.of((update) => {
@@ -93,6 +139,7 @@
                     history(),
                     markdown({codeLanguages: languages}),
                     syntaxHighlighting(microMonokai),
+                    taskDonePlugin,
                     theme,
                     cmPlaceholder('Start writing...'),
                     updateListener,

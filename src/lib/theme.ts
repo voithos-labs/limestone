@@ -71,7 +71,7 @@ export const DEFAULT_LIGHT_TRANSPARENT: Theme = {
 	transparentBackground: true,
 	variables: {
 		'color-bg':
-			'linear-gradient(to bottom left, rgb(235 230 233 / 0.35) 0%, rgb(235 230 233 / 0.15) 100%)',
+			'linear-gradient(to bottom left, rgb(235 230 233 / 0.1) 0%, rgb(235 230 233 / 0.05) 100%)',
 		'color-bg-opaque': '#EBE6E9',
 		'color-surface': '#FFFFFF',
 		'color-border': '#D0CCD0',

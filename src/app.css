@@ -35,6 +35,8 @@
     --syntax-comment: #75715E;
     --syntax-list: #66D9EF;
     --syntax-separator: #A6E22E;
+    --syntax-task: #66D9EF;
+    --syntax-task-done: #4a7078;
 }
 
 :root[data-theme-type="light"] {
@@ -47,6 +49,8 @@
     --syntax-comment: #64748b;
     --syntax-list: #0369a1;
     --syntax-separator: #3f6e1a;
+    --syntax-task: #0369a1;
+    --syntax-task-done: #7c8791;
 }
 
 html,

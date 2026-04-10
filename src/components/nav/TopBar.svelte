@@ -1,6 +1,6 @@
 <script lang="ts">
     import type EditorState from "$lib/state/EditorState.svelte";
-    import type {Tab} from "$lib/state/EditorState.svelte";
+    import type {FocusTarget} from "$lib/state/EditorState.svelte";
     import {getCurrentWindow} from "@tauri-apps/api/window";
 
     import {Settings, Search, Bookmark, ChevronDown, Eye, X, GripVertical} from "@lucide/svelte";
@@ -11,8 +11,8 @@
     let compactTabs = $state(true);
     getSetting<boolean>('appearance.compact_tabs').then(v => { if (v !== null) compactTabs = v; });
 
-    const settingsTab: Tab = {kind: 'settings'};
-    const searchTab: Tab = {kind: 'search'};
+    const settingsTab: FocusTarget = {kind: 'settings'};
+    const searchTab: FocusTarget = {kind: 'search'};
 
     // ── Tab drag and drop ───────────────────────────────────────────────────────
     let dragDocId: string | null = $state(null);
@@ -91,6 +91,9 @@
     }
 
     // ── Window controls ─────────────────────────────────────────────────────────
+    // todo:
+    //  - move this into another component
+    //  - macOS version, adjustable in settings on linux
     const appWindow = getCurrentWindow();
     let isMaximized = $state(false);
 
@@ -145,10 +148,10 @@
     </div>
 
     <!-- Bookmarks dropdown -->
-    <button class="dropdown-btn" title="Bookmarks">
-        <Bookmark size={16}/>
-        <ChevronDown size={12}/>
-    </button>
+<!--    <button class="dropdown-btn" title="Bookmarks">-->
+<!--        <Bookmark size={16}/>-->
+<!--        <ChevronDown size={12}/>-->
+<!--    </button>-->
 
     <!-- Divider -->
     <div class="divider"></div>
@@ -156,7 +159,7 @@
     <!-- Document tabs -->
     <div class="tabs-scroll">
         {#each editor.docs as d, i (d.id)}
-            {@const tab: Tab = {kind: 'document', id: d.id}}
+            {@const tab: FocusTarget = {kind: 'document', id: d.id}}
             <div
                     class="tab"
                     class:active={editor.isTabFocused(tab)}
