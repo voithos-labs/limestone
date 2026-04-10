@@ -1,17 +1,60 @@
 <script lang="ts">
     import {getAllSettings, setSetting, type SettingValue} from "$lib/models/Settings";
+    import type Session from "$lib/models/Session";
+    import type {ViewTab} from "$lib/models/Session";
     import {onMount} from "svelte";
-    import {RotateCw} from "@lucide/svelte";
+    import {RotateCw, Search} from "@lucide/svelte";
+
+    let {viewTab, session}: { viewTab: ViewTab; session: Session } = $props();
 
     let settings: Record<string, SettingValue> = $state({});
     let sections = $derived(Object.keys(settings));
     let activeSection = $state('');
     let dirty = $state(false);
+    let searchQuery = $state('');
 
     onMount(async () => {
         settings = await getAllSettings();
-        if (sections.length > 0) activeSection = sections[0];
+        const saved = viewTab.state?.activeSection;
+        activeSection = (saved && sections.includes(saved)) ? saved : sections[0] ?? '';
     });
+
+    function saveTabState() {
+        if (!viewTab.state) viewTab.state = {};
+        viewTab.state.activeSection = activeSection;
+        session.persist();
+    }
+
+    interface FlatSetting {
+        section: string;
+        key: string;
+        path: string;
+        value: SettingValue;
+    }
+
+    let allSettings = $derived.by((): FlatSetting[] => {
+        const result: FlatSetting[] = [];
+        for (const section of sections) {
+            const obj = settings[section];
+            if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) continue;
+            for (const [key, value] of Object.entries(obj as Record<string, SettingValue>)) {
+                result.push({section, key, path: `${section}.${key}`, value});
+            }
+        }
+        return result;
+    });
+
+    let searchResults = $derived.by((): FlatSetting[] => {
+        if (!searchQuery.trim()) return [];
+        const q = searchQuery.toLowerCase();
+        return allSettings.filter(s =>
+            s.path.toLowerCase().includes(q) ||
+            formatLabel(s.key).toLowerCase().includes(q) ||
+            formatLabel(s.section).toLowerCase().includes(q)
+        );
+    });
+
+    let isSearching = $derived(searchQuery.trim().length > 0);
 
     function sectionEntries(section: string): [string, SettingValue][] {
         const obj = settings[section];
@@ -40,6 +83,12 @@
             updateSetting(section, key, input.value);
         }
     }
+
+    function selectSection(section: string) {
+        activeSection = section;
+        searchQuery = '';
+        saveTabState();
+    }
 </script>
 
 <div class="settings-page">
@@ -47,16 +96,74 @@
         {#each sections as section}
             <button
                     class="section-btn"
-                    class:active={activeSection === section}
-                    onclick={() => activeSection = section}
+                    class:active={!isSearching && activeSection === section}
+                    onclick={() => selectSection(section)}
             >
                 {formatLabel(section)}
             </button>
         {/each}
+        <div class="sidebar-spacer"></div>
+        <div class="search-bar">
+            <Search size={14} />
+            <input
+                class="search-input"
+                type="text"
+                placeholder="Search settings..."
+                bind:value={searchQuery}
+            />
+        </div>
     </div>
 
     <div class="settings-content">
-        {#if activeSection}
+        {#if isSearching}
+            <div class="section-header">
+                <h2 class="section-title">Search Results</h2>
+                {#if dirty}
+                    <button class="reload-btn" onclick={() => location.reload()}>
+                        <RotateCw size={14} />
+                        Reload to apply
+                    </button>
+                {/if}
+            </div>
+            <div class="settings-list">
+                {#each searchResults as {section, key, path, value}}
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <span class="setting-label">{formatLabel(key)}</span>
+                            <span class="setting-key">{path}</span>
+                        </div>
+                        <div class="setting-control">
+                            {#if typeof value === 'boolean'}
+                                <label class="toggle">
+                                    <input
+                                            type="checkbox"
+                                            checked={value}
+                                            onchange={(e) => handleInput(section, key, value, e)}
+                                    />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            {:else if typeof value === 'number'}
+                                <input
+                                        class="input-number"
+                                        type="number"
+                                        {value}
+                                        onchange={(e) => handleInput(section, key, value, e)}
+                                />
+                            {:else}
+                                <input
+                                        class="input-text"
+                                        type="text"
+                                        {value}
+                                        onchange={(e) => handleInput(section, key, value, e)}
+                                />
+                            {/if}
+                        </div>
+                    </div>
+                {:else}
+                    <p class="empty">No matching settings</p>
+                {/each}
+            </div>
+        {:else if activeSection}
             <div class="section-header">
                 <h2 class="section-title">{formatLabel(activeSection)}</h2>
                 {#if dirty}
@@ -87,14 +194,14 @@
                                 <input
                                         class="input-number"
                                         type="number"
-                                        value={value}
+                                        {value}
                                         onchange={(e) => handleInput(activeSection, key, value, e)}
                                 />
                             {:else}
                                 <input
                                         class="input-text"
                                         type="text"
-                                        value={value}
+                                        {value}
                                         onchange={(e) => handleInput(activeSection, key, value, e)}
                                 />
                             {/if}
@@ -121,6 +228,35 @@
         border-right: 1px solid var(--color-border);
         flex-shrink: 0;
         gap: 2px;
+    }
+
+    .sidebar-spacer {
+        flex: 1;
+    }
+
+    .search-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-ui);
+        color: var(--color-ui-muted);
+    }
+
+    .search-input {
+        flex: 1;
+        min-width: 0;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--color-text-primary);
+        font-family: var(--font-ui);
+        font-size: 12px;
+    }
+
+    .search-input::placeholder {
+        color: var(--color-ui-muted);
     }
 
     .section-btn {
@@ -226,6 +362,12 @@
     .setting-control {
         flex-shrink: 0;
         margin-left: 24px;
+    }
+
+    .empty {
+        padding: 12px 16px;
+        color: var(--color-ui-muted);
+        font-size: 14px;
     }
 
     /* ── Toggle ── */

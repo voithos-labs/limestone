@@ -14,17 +14,31 @@ import type { Source } from '$lib/models/Source';
 import { loadState, type State, updateState } from '$lib/state/State';
 import { applyTheme, DEFAULT_THEME, type Theme } from '$lib/theme';
 
+export interface ViewTab {
+	kind: string;
+	state?: Record<string, any>;
+}
+
 class Session {
 	editors: EditorState[];
 	activeTheme: string; // ;;;;;; replace the current theme config here, managed here
 	// sources: Source[];
+	viewTabs: Map<string, ViewTab> = new Map();
 
 	private themeStore: Store;
 
-	private constructor(editors: EditorState[], activeTheme: string, themeStore: Store) {
+	private constructor(editors: EditorState[], activeTheme: string, themeStore: Store, viewTabs?: ViewTab[]) {
 		this.editors = editors;
 		this.activeTheme = activeTheme;
 		this.themeStore = themeStore;
+		if (viewTabs) {
+			for (const vt of viewTabs) this.viewTabs.set(vt.kind, vt);
+		}
+	}
+
+	getViewTab(kind: string): ViewTab {
+		if (!this.viewTabs.has(kind)) this.viewTabs.set(kind, { kind });
+		return this.viewTabs.get(kind)!;
 	}
 
 	static async init(): Promise<Session> {
@@ -40,7 +54,10 @@ class Session {
 			editors.push(new EditorState());
 		}
 
-		let session = new Session(editors, state.activeTheme, themeStore);
+		let session = new Session(editors, state.activeTheme, themeStore, state.viewTabs);
+		for (const editor of editors) {
+			editor.onChanged = () => session.persist();
+		}
 		await session.applyCurrentTheme();
 		return session;
 	}
@@ -72,7 +89,8 @@ class Session {
 	toJSON(): State {
 		return {
 			editors: this.editors.map((e) => e.toJSON()),
-			activeTheme: this.activeTheme
+			activeTheme: this.activeTheme,
+			viewTabs: [...this.viewTabs.values()]
 		};
 	}
 

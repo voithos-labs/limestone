@@ -6,6 +6,7 @@ import type { EditorJSON } from '$lib/state/EditorState.svelte';
 export interface State {
 	activeTheme: string;
 	editors: EditorJSON[];
+	viewTabs?: { kind: string; state?: Record<string, any> }[];
 }
 const DEFAULTS: State = {
 	activeTheme: 'default-dark',
@@ -29,7 +30,8 @@ export async function loadState(): Promise<State> {
 	const s = await getStore();
 	return {
 		activeTheme: (await s.get<string>('activeTheme')) ?? DEFAULTS.activeTheme,
-		editors: (await s.get<EditorJSON[]>('editors')) ?? DEFAULTS.editors
+		editors: (await s.get<EditorJSON[]>('editors')) ?? DEFAULTS.editors,
+		viewTabs: (await s.get<State['viewTabs']>('viewTabs')) ?? []
 	};
 }
 

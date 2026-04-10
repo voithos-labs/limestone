@@ -30,14 +30,13 @@ import DocHandle from '$lib/models/DocHandle';
 
 // ── Tab ─────────────────────────────────────────────────────────────────────────────
 
-export type Tab = { kind: 'document'; id: string } | { kind: 'settings' } | { kind: 'search' };
+export type Tab =
+	| { kind: 'document'; id: string }
+	| { kind: 'settings' }
+	| { kind: 'search' };
 
 export function tabKey(tab: Tab): string {
 	return tab.kind === 'document' ? `document:${tab.id}` : tab.kind;
-}
-
-export function tabsEqual(a: Tab, b: Tab): boolean {
-	return tabKey(a) === tabKey(b);
 }
 
 // ── Serialization ───────────────────────────────────────────────────────────────────
@@ -45,7 +44,7 @@ export function tabsEqual(a: Tab, b: Tab): boolean {
 export interface EditorJSON {
 	documentIds: string[];
 	docsAccessOrderById: string[];
-	focusedTab?: Tab;
+	focusedTabKey?: string;
 }
 
 /**
@@ -62,34 +61,36 @@ export interface EditorJSON {
  */
 class EditorState {
 	docs: DocHandle[] = $state([]); // tabs; order represents order of tabs
-	focusedTab: Tab | null = $state(null);
+	focusedTabKey: string | null = $state(null);
 	private docsAccessOrderById: string[] = $state([]); // reverse accessed order, last = most recent
+	onChanged?: () => void;
 
 	constructor(json?: EditorJSON, docs?: DocHandle[]) {
-		this.focusedTab = json?.focusedTab ?? null;
+		this.focusedTabKey = json?.focusedTabKey ?? null;
 		if (json?.docsAccessOrderById) this.docsAccessOrderById = json.docsAccessOrderById;
 		if (docs) this.docs = docs;
 	}
 
+	changed() {
+		this.onChanged?.();
+	}
+
 	// ── Getters ─────────────────────────────────────────────────────────────────────────
 
-	get getFocusedDocument(): DocHandle | undefined {
-		if (this.focusedTab?.kind !== 'document') return undefined;
-		else {
-			// @ts-ignore for focusedTab!.id
-			return this.docs.find((v) => v.id === this.focusedTab!.id);
-		}
+	get focusedDocument(): DocHandle | undefined {
+		if (!this.focusedTabKey?.startsWith('document:')) return undefined;
+		const id = this.focusedTabKey.slice('document:'.length);
+		return this.docs.find((v) => v.id === id);
 	}
 
 	isTabFocused(tab: Tab): boolean {
-		if (!this.focusedTab) return false;
-		return tabsEqual(this.focusedTab, tab);
+		return this.focusedTabKey === tabKey(tab);
 	}
 
 	// ── Serialization ───────────────────────────────────────────────────────────────────
 
 	static async loadFromJSON(json: EditorJSON): Promise<EditorState> {
-		let docIds: string[] = json.documentIds;
+		let docIds: string[] = [...new Set(json.documentIds)];
 		let docs: DocHandle[] = [];
 		for (const id of docIds) {
 			// lookup docs in db and fill metadata
@@ -111,33 +112,56 @@ class EditorState {
 		return {
 			documentIds: this.docs.map((v) => v.id),
 			docsAccessOrderById: this.docsAccessOrderById,
-			focusedTab: this.focusedTab ?? undefined
+			focusedTabKey: this.focusedTabKey ?? undefined
 		};
 	}
 
-	// ── Util ────────────────────────────────────────────────────────────────────────────
+	// ── Tab actions ─────────────────────────────────────────────────────────────────────
 
-	findDocById(id: string): DocHandle {
-		let doc = this.docs.find((v) => v.id === id);
-		if (!doc) {
-			throw new Error(`Document not found with id: ${id}`);
-		}
-		return doc;
-	}
-
-	/**
-	 * Focus a document by its id and get its `DocHandle` instance
-	 *
-	 * Will error if id is not found in this.docs
-	 */
 	focusTab(tab: Tab) {
-		this.focusedTab = tab;
+		const key = tabKey(tab);
+		if (this.focusedTabKey === key) return;
+		this.focusedTabKey = key;
 		if (tab.kind === 'document') {
 			// update accessed order: filter out id, then append to end to update order
 			let accessedOrder = this.docsAccessOrderById.filter((v) => v != tab.id);
 			accessedOrder.push(tab.id);
 			this.docsAccessOrderById = accessedOrder;
 		}
+		this.changed();
+	}
+
+	openDoc(doc: DocHandle) {
+		if (this.docs.some(d => d.id === doc.id)) return;
+		this.docs.push(doc);
+		this.changed();
+	}
+
+	closeDoc(id: string) {
+		const idx = this.docs.findIndex((v) => v.id === id);
+		if (idx === -1) return;
+
+		this.docs.splice(idx, 1);
+		this.docsAccessOrderById = this.docsAccessOrderById.filter((v) => v != id);
+
+		if (this.focusedTabKey === `document:${id}`) {
+			let lastAccessedId = this.docsAccessOrderById.at(-1);
+			if (lastAccessedId) {
+				this.focusedTabKey = `document:${lastAccessedId}`;
+			} else if (this.docs.length > 0) {
+				this.focusedTabKey = `document:${this.docs[Math.min(idx, this.docs.length - 1)].id}`;
+			} else {
+				this.focusedTabKey = null;
+			}
+		}
+		this.changed();
+	}
+
+	moveDoc(fromIndex: number, toIndex: number) {
+		if (fromIndex === toIndex) return;
+		const [doc] = this.docs.splice(fromIndex, 1);
+		this.docs.splice(toIndex, 0, doc);
+		this.changed();
 	}
 
 	/**
@@ -163,37 +187,6 @@ class EditorState {
 		);
 
 		return docsAccessedOrder;
-	}
-
-	closeDoc(id: string) {
-		// error if not found
-		this.findDocById(id);
-
-		this.docs.splice(
-			this.docs.findIndex((v) => v.id === id),
-			1
-		);
-		this.docsAccessOrderById = this.docsAccessOrderById.filter((v) => v != id);
-
-		if (this.focusedTab?.kind === 'document' && this.focusedTab.id === id) {
-			let lastAccessedId = this.docsAccessOrderById.at(-1);
-			if (lastAccessedId) {
-				this.focusedTab = { kind: 'document', id: lastAccessedId };
-			} else if (this.docs.length > 0) {
-				this.focusedTab = { kind: 'document', id: this.docs[0].id };
-			} else {
-				this.focusedTab = null;
-			}
-		}
-	}
-	openDoc(doc: DocHandle) {
-		this.docs.push(doc);
-	}
-
-	moveDoc(fromIndex: number, toIndex: number) {
-		if (fromIndex === toIndex) return;
-		const [doc] = this.docs.splice(fromIndex, 1);
-		this.docs.splice(toIndex, 0, doc);
 	}
 }
 

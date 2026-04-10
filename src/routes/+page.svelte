@@ -1,30 +1,17 @@
 <script lang="ts">
     import TopBar from "../components/nav/TopBar.svelte";
-    import EditorState from "$lib/state/EditorState.svelte";
     import Session from "$lib/models/Session";
-    import {invoke} from "@tauri-apps/api/core";
-    import {listen} from "@tauri-apps/api/event";
-    import type {SearchResult} from "$lib/types/SearchResult";
-    import {onMount} from "svelte";
-    import DocHandle from "$lib/models/DocHandle";
     import SearchPage from "../components/pages/SearchPage.svelte";
     import SettingsPage from "../components/pages/SettingsPage.svelte";
 
     let session = $state<Session>();
     let content = $state('');
 
-    Session.init().then(async (s) => {
-        session = s
-        // TESTING
-        let searchResults: SearchResult[] = await invoke('search_documents', {query: ''});
-        searchResults = searchResults.slice(0, 4); // just need a few
-        searchResults.map(async r => session!.editors[0].openDoc(await DocHandle.fromID(r.id)));
-        console.info(session);
-    });
+    Session.init().then(s => session = s);
 
     // Load content when focused document changes
     $effect(() => {
-        const doc = session?.editors[0]?.getFocusedDocument;
+        const doc = session?.editors[0]?.focusedDocument;
         if (doc) {
             doc.loadContent().then(body => {
                 content = body;
@@ -38,12 +25,12 @@
     <div class="app-layout">
         <TopBar editor={session.editors[0]}></TopBar>
         <main class="content-area">
-            {#if session.editors[0].getFocusedDocument}
+            {#if session.editors[0].focusedDocument}
                 <textarea class="editor" bind:value={content} placeholder="Start writing..."></textarea>
-            {:else if session.editors[0].focusedTab?.kind === 'search'}
+            {:else if session.editors[0].focusedTabKey === 'search'}
                 <SearchPage editor={session.editors[0]}/>
-            {:else if session.editors[0].focusedTab?.kind === 'settings'}
-                <SettingsPage />
+            {:else if session.editors[0].focusedTabKey === 'settings'}
+                <SettingsPage viewTab={session.getViewTab('settings')} {session} />
             {:else}
                 <div class="panel-placeholder">
                     No document selected
