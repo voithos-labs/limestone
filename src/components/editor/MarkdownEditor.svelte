@@ -123,8 +123,32 @@
 
 <style>
     .cm-wrapper {
+        position: relative;
         width: 100%;
         height: 100%;
+    }
+
+    .cm-wrapper::before,
+    .cm-wrapper::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 24px;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    .cm-wrapper::before {
+        top: 0;
+        background: linear-gradient(to bottom, var(--color-surface), transparent);
+        border-radius: 8px 8px 0 0;
+    }
+
+    .cm-wrapper::after {
+        bottom: 0;
+        background: linear-gradient(to top, var(--color-surface), transparent);
+        border-radius: 0 0 8px 8px;
     }
 
     .cm-wrapper :global(.cm-editor) {

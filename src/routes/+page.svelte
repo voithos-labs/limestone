@@ -58,54 +58,6 @@
         overflow: hidden;
     }
 
-    .content-area::before,
-    .content-area::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        right: 0;
-        height: 24px;
-        pointer-events: none;
-        z-index: 1;
-    }
-
-    .content-area::before {
-        top: 0;
-        background: linear-gradient(to bottom, var(--color-surface), transparent);
-        border-radius: 8px 8px 0 0;
-    }
-
-    .content-area::after {
-        bottom: 0;
-        background: linear-gradient(to top, var(--color-surface), transparent);
-        border-radius: 0 0 8px 8px;
-    }
-
-    .editor {
-        width: 100%;
-        height: 100%;
-        max-width: 700px;
-        margin: 0 auto;
-        padding: 48px 24px;
-        display: block;
-        background: transparent;
-        border: none;
-        outline: none;
-        resize: none;
-        color: var(--color-text-primary);
-        font-family: var(--font-ui);
-        font-size: 16px;
-        line-height: 1.6;
-        scrollbar-width: none;
-    }
-
-    .editor::-webkit-scrollbar {
-        display: none;
-    }
-
-    .editor::placeholder {
-        color: var(--color-ui-muted);
-    }
 
     .panel-placeholder {
         display: flex;

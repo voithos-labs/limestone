@@ -334,7 +334,7 @@
         color: var(--color-ui-dulled);
     }
 
-    .tab:not(.active):hover::after {
+    .tab.icon-tab:not(.active):hover::after {
         content: '';
         position: absolute;
         bottom: -3px;
