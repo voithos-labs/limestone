@@ -3,7 +3,7 @@
     import type {Tab} from "$lib/state/EditorState.svelte";
     import {getCurrentWindow} from "@tauri-apps/api/window";
 
-    import {Settings, Search, Bookmark, ChevronDown, Eye, X} from "@lucide/svelte";
+    import {Settings, Search, Bookmark, ChevronDown, Eye, X, GripVertical} from "@lucide/svelte";
 
     let {editor}: { editor: EditorState } = $props();
 
@@ -38,9 +38,9 @@
 </script>
 
 <nav class="nav-bar" onmousedown={handleDrag}>
-    <!-- Logo -->
-    <div class="logo">
-        <img src="/assets/tmp-logo.png" alt="Logo" class="logo-img" />
+    <!-- Drag handle -->
+    <div class="drag-handle">
+        <GripVertical size={16} />
     </div>
 
     <!-- Pinned icon tabs -->
@@ -85,6 +85,7 @@
             >
                 <span class="doc-icon"></span>
                 <span class="tab-label">{d.title}</span>
+                <span class="tab-fade"></span>
                 <button
                         class="close-btn"
                         title="Close tab"
@@ -122,21 +123,17 @@
         overflow: hidden;
     }
 
-    /* ── Logo ── */
-    .logo {
+    /* ── Drag handle ── */
+    .drag-handle {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 32px;
+        width: 24px;
         height: 32px;
         margin-bottom: 4px;
         flex-shrink: 0;
-    }
-
-    .logo-img {
-        width: 20px;
-        height: 20px;
-        object-fit: contain;
+        color: var(--color-ui-muted);
+        cursor: grab;
     }
 
     /* ── Dropdown button ── */
@@ -175,13 +172,8 @@
         min-width: 0;
         gap: 6px;
         padding-left: 8px;
-        overflow-x: auto;
+        overflow-x: hidden;
         overflow-y: hidden;
-        scrollbar-width: none;
-    }
-
-    .tabs-scroll::-webkit-scrollbar {
-        display: none;
     }
 
     /* ── Tab ── */
@@ -202,6 +194,12 @@
         flex-shrink: 0;
         cursor: pointer;
         gap: 6px;
+    }
+
+    .tabs-scroll .tab {
+        flex-shrink: 1;
+        min-width: 60px;
+        max-width: 240px;
     }
 
     .tab.icon-tab {
@@ -262,6 +260,32 @@
         box-shadow: -3px 0 0 0 var(--color-surface);
     }
 
+    .tab-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .tab-fade {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 32px;
+        background: linear-gradient(to right, transparent, var(--color-surface));
+        pointer-events: none;
+        border-radius: 0 6px 6px 0;
+    }
+
+    .tab.active .tab-fade {
+        border-radius: 0 6px 0 0;
+    }
+
+    .tab:hover .tab-fade {
+        display: none;
+    }
+
     /* ── Close button ── */
     .close-btn {
         display: flex;
@@ -270,16 +294,33 @@
         width: 16px;
         height: 16px;
         padding: 0;
-        margin-left: 2px;
         border: none;
         border-radius: 4px;
         background: transparent;
         color: inherit;
         cursor: pointer;
+        opacity: 0;
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 1;
+    }
+
+    .tab:hover .close-btn {
         opacity: 0.6;
     }
 
-    .close-btn:hover {
+    .tab:hover .close-btn:hover {
+        background: rgba(0, 0, 0, 0.08);
+        opacity: 1;
+    }
+
+    .tab.active:hover .close-btn {
+        opacity: 0.6;
+    }
+
+    .tab.active:hover .close-btn:hover {
         background: rgba(0, 0, 0, 0.08);
         opacity: 1;
     }

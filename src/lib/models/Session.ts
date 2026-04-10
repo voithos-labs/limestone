@@ -71,7 +71,7 @@ class Session {
 	// ── Serialization ───────────────────────────────────────────────────────────────────
 	toJSON(): State {
 		return {
-			editors: this.editors,
+			editors: this.editors.map((e) => e.toJSON()),
 			activeTheme: this.activeTheme
 		};
 	}

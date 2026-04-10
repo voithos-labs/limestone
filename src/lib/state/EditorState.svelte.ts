@@ -30,10 +30,7 @@ import DocHandle from '$lib/models/DocHandle';
 
 // ── Tab ─────────────────────────────────────────────────────────────────────────────
 
-export type Tab =
-	| { kind: 'document'; id: string }
-	| { kind: 'settings' }
-	| { kind: 'search' };
+export type Tab = { kind: 'document'; id: string } | { kind: 'settings' } | { kind: 'search' };
 
 export function tabKey(tab: Tab): string {
 	return tab.kind === 'document' ? `document:${tab.id}` : tab.kind;
@@ -76,9 +73,12 @@ class EditorState {
 
 	// ── Getters ─────────────────────────────────────────────────────────────────────────
 
-	get focusedDocument(): DocHandle | undefined {
+	get getFocusedDocument(): DocHandle | undefined {
 		if (this.focusedTab?.kind !== 'document') return undefined;
-		return this.docs.find((v) => v.id === this.focusedTab!.id);
+		else {
+			// @ts-ignore for focusedTab!.id
+			return this.docs.find((v) => v.id === this.focusedTab!.id);
+		}
 	}
 
 	isTabFocused(tab: Tab): boolean {

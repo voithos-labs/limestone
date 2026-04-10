@@ -7,6 +7,7 @@
     import type {SearchResult} from "$lib/types/SearchResult";
     import {onMount} from "svelte";
     import DocHandle from "$lib/models/DocHandle";
+    import SearchPage from "../components/pages/SearchPage.svelte";
 
     let session = $state<Session>();
     let content = $state('');
@@ -22,7 +23,7 @@
 
     // Load content when focused document changes
     $effect(() => {
-        const doc = session?.editors[0]?.focusedDocument;
+        const doc = session?.editors[0]?.getFocusedDocument;
         if (doc) {
             doc.loadContent().then(body => {
                 content = body;
@@ -36,12 +37,12 @@
     <div class="app-layout">
         <TopBar editor={session.editors[0]}></TopBar>
         <main class="content-area">
-            {#if session.editors[0].focusedDocument}
+            {#if session.editors[0].getFocusedDocument}
                 <textarea class="editor" bind:value={content} placeholder="Start writing..."></textarea>
-            {:else if session.editors[0].focusedTab}
-                <div class="panel-placeholder">
-                    {session.editors[0].focusedTab.kind}
-                </div>
+            {:else if session.editors[0].focusedTab?.kind === 'search'}
+                <SearchPage editor={session.editors[0]}/>
+            {:else if session.editors[0].focusedTab?.kind === 'settings'}
+                <div class="panel-placeholder">Settings</div>
             {:else}
                 <div class="panel-placeholder">
                     No document selected
