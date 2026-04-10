@@ -8,6 +8,7 @@
     import {onMount} from "svelte";
     import DocHandle from "$lib/models/DocHandle";
     import SearchPage from "../components/pages/SearchPage.svelte";
+    import SettingsPage from "../components/pages/SettingsPage.svelte";
 
     let session = $state<Session>();
     let content = $state('');
@@ -42,7 +43,7 @@
             {:else if session.editors[0].focusedTab?.kind === 'search'}
                 <SearchPage editor={session.editors[0]}/>
             {:else if session.editors[0].focusedTab?.kind === 'settings'}
-                <div class="panel-placeholder">Settings</div>
+                <SettingsPage />
             {:else}
                 <div class="panel-placeholder">
                     No document selected

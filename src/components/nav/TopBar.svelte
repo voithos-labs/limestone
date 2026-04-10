@@ -9,7 +9,7 @@
     let {editor}: { editor: EditorState } = $props();
 
     let compactTabs = $state(true);
-    getSetting<boolean>('ui.compact_tabs').then(v => compactTabs = v ?? true);
+    getSetting<boolean>('user-interface.compact_tabs').then(v => { if (v !== null) compactTabs = v; });
 
     const settingsTab: Tab = {kind: 'settings'};
     const searchTab: Tab = {kind: 'search'};
@@ -23,7 +23,7 @@
     let dragStartX = 0;
     let tabWidths: number[] = [];
     let tabLefts: number[] = [];
-    let tabEls: HTMLElement[] = [];
+    let tabEls: HTMLElement[] = $state([]);
 
     function onPointerDown(e: PointerEvent, index: number) {
         if ((e.target as HTMLElement).closest('.close-btn')) return;

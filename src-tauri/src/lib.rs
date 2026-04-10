@@ -118,6 +118,7 @@ pub fn run() {
             commands::source_commands::clear_cache,
             commands::source_commands::search_documents,
             commands::settings_commands::get_setting,
+            commands::settings_commands::get_all_settings,
             commands::settings_commands::set_setting_global,
             commands::document_commands::write_document,
             commands::document_commands::rename_document,
