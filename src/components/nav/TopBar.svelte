@@ -10,6 +10,82 @@
     const settingsTab: Tab = {kind: 'settings'};
     const searchTab: Tab = {kind: 'search'};
 
+    // ── Tab drag and drop ───────────────────────────────────────────────────────
+    let dragDocId: string | null = $state(null);
+    let dragDeltaX = $state(0);
+    let dropIndex = $state(-1);
+    let suppressTransition = $state(false);
+    let originalIndex = -1;
+    let dragStartX = 0;
+    let tabWidths: number[] = [];
+    let tabLefts: number[] = [];
+    let tabEls: HTMLElement[] = [];
+
+    function onPointerDown(e: PointerEvent, index: number) {
+        if ((e.target as HTMLElement).closest('.close-btn')) return;
+        if (e.button !== 0) return;
+        const el = tabEls[index];
+        if (!el) return;
+
+        e.preventDefault();
+        el.setPointerCapture(e.pointerId);
+
+        dragDocId = editor.docs[index].id;
+        dragStartX = e.clientX;
+        dragDeltaX = 0;
+        originalIndex = index;
+        dropIndex = index;
+
+        tabWidths = tabEls.map(t => t.getBoundingClientRect().width);
+        tabLefts = tabEls.map(t => t.getBoundingClientRect().left);
+    }
+
+    function onPointerMove(e: PointerEvent) {
+        if (dragDocId === null) return;
+        dragDeltaX = e.clientX - dragStartX;
+
+        const draggedCenter = tabLefts[originalIndex] + tabWidths[originalIndex] / 2 + dragDeltaX;
+
+        let newIndex = originalIndex;
+        for (let i = originalIndex + 1; i < tabEls.length; i++) {
+            if (draggedCenter > tabLefts[i] + tabWidths[i] / 2) newIndex = i;
+            else break;
+        }
+        for (let i = originalIndex - 1; i >= 0; i--) {
+            if (draggedCenter < tabLefts[i] + tabWidths[i] / 2) newIndex = i;
+            else break;
+        }
+        dropIndex = newIndex;
+    }
+
+    function tabTransform(index: number): string {
+        if (dragDocId === null) return '';
+        if (index === originalIndex) return `translateX(${dragDeltaX}px)`;
+
+        const gap = 6;
+        const shift = tabWidths[originalIndex] + gap;
+
+        if (dropIndex > originalIndex && index > originalIndex && index <= dropIndex) {
+            return `translateX(-${shift}px)`;
+        }
+        if (dropIndex < originalIndex && index < originalIndex && index >= dropIndex) {
+            return `translateX(${shift}px)`;
+        }
+        return '';
+    }
+
+    function onPointerUp() {
+        if (dragDocId !== null && dropIndex !== originalIndex) {
+            suppressTransition = true;
+            editor.moveDoc(originalIndex, dropIndex);
+            requestAnimationFrame(() => { suppressTransition = false; });
+        }
+        dragDocId = null;
+        dragDeltaX = 0;
+        dropIndex = -1;
+    }
+
+    // ── Window controls ─────────────────────────────────────────────────────────
     const appWindow = getCurrentWindow();
     let isMaximized = $state(false);
 
@@ -74,25 +150,36 @@
 
     <!-- Document tabs -->
     <div class="tabs-scroll">
-        {#each editor.docs as d}
+        {#each editor.docs as d, i (d.id)}
             {@const tab: Tab = {kind: 'document', id: d.id}}
             <div
                     class="tab"
                     class:active={editor.isTabFocused(tab)}
+                    class:dragging={dragDocId === d.id}
+                    class:no-transition={suppressTransition}
+                    style:transform={tabTransform(i)}
                     onclick={() => editor.focusTab(tab)}
+                    onpointerdown={(e) => onPointerDown(e, i)}
+                    onpointermove={onPointerMove}
+                    onpointerup={onPointerUp}
+                    onpointercancel={onPointerUp}
+                    onlostpointercapture={onPointerUp}
+                    bind:this={tabEls[i]}
                     role="button"
                     tabindex="0"
             >
                 <span class="doc-icon"></span>
                 <span class="tab-label">{d.title}</span>
                 <span class="tab-fade"></span>
-                <button
-                        class="close-btn"
-                        title="Close tab"
-                        onclick={(e) => { e.stopPropagation(); editor.closeDoc(d.id); }}
-                >
-                    <X size={12}/>
-                </button>
+                <span class="close-zone">
+                    <button
+                            class="close-btn"
+                            title="Close tab"
+                            onclick={(e) => { e.stopPropagation(); editor.closeDoc(d.id); }}
+                    >
+                        <X size={12}/>
+                    </button>
+                </span>
             </div>
         {/each}
     </div>
@@ -194,6 +281,18 @@
         flex-shrink: 0;
         cursor: pointer;
         gap: 6px;
+        transition: transform 150ms ease;
+    }
+
+    .tab.no-transition {
+        transition: none;
+    }
+
+    .tab.dragging {
+        z-index: 10;
+        opacity: 0.9;
+        transition: none;
+        cursor: grabbing;
     }
 
     .tabs-scroll .tab {
@@ -265,64 +364,57 @@
         text-overflow: ellipsis;
         flex: 1;
         min-width: 0;
+        user-select: none;
     }
 
     .tab-fade {
-        position: absolute;
-        right: 0;
-        top: 0;
-        bottom: 0;
-        width: 32px;
-        background: linear-gradient(to right, transparent, var(--color-surface));
-        pointer-events: none;
-        border-radius: 0 6px 6px 0;
-    }
-
-    .tab.active .tab-fade {
-        border-radius: 0 6px 0 0;
-    }
-
-    .tab:hover .tab-fade {
         display: none;
     }
 
-    /* ── Close button ── */
+    /* ── Close zone + button ── */
+    .close-zone {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 55px; /*Played with this for like 10 mins this is perf*/
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 6px;
+        border-radius: 0 6px 6px 0;
+        background: transparent;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 100ms ease;
+    }
+
+    .tab.active .close-zone {
+        border-radius: 0 6px 0 0;
+    }
+
+    .tab:hover .close-zone {
+        background: linear-gradient(to right, transparent, var(--color-surface) 50%);
+        opacity: 1;
+    }
+
     .close-btn {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
         padding: 0;
         border: none;
         border-radius: 4px;
         background: transparent;
-        color: inherit;
+        color: var(--color-ui-muted);
         cursor: pointer;
-        opacity: 0;
-        position: absolute;
-        right: 8px;
-        top: 50%;
-        transform: translateY(-50%);
-        z-index: 1;
+        pointer-events: auto;
     }
 
-    .tab:hover .close-btn {
-        opacity: 0.6;
-    }
-
-    .tab:hover .close-btn:hover {
-        background: rgba(0, 0, 0, 0.08);
-        opacity: 1;
-    }
-
-    .tab.active:hover .close-btn {
-        opacity: 0.6;
-    }
-
-    .tab.active:hover .close-btn:hover {
-        background: rgba(0, 0, 0, 0.08);
-        opacity: 1;
+    .close-btn:hover {
+        color: var(--color-text-primary);
     }
 
     /* ── Window controls ── */

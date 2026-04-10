@@ -189,6 +189,12 @@ class EditorState {
 	openDoc(doc: DocHandle) {
 		this.docs.push(doc);
 	}
+
+	moveDoc(fromIndex: number, toIndex: number) {
+		if (fromIndex === toIndex) return;
+		const [doc] = this.docs.splice(fromIndex, 1);
+		this.docs.splice(toIndex, 0, doc);
+	}
 }
 
 export default EditorState;
