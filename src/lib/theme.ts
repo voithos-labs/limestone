@@ -68,6 +68,7 @@ export function applyTheme(theme: Theme) {
 		document.body.style.background = theme.variables['color-bg'] ?? 'transparent';
 
 		const fallback = '#26282B';
+		root.style.transition = 'background 0.3s ease';
 		const onBlur = () => { root.style.background = fallback; };
 		const onFocus = () => { root.style.background = 'transparent'; };
 		window.addEventListener('blur', onBlur);
@@ -77,7 +78,8 @@ export function applyTheme(theme: Theme) {
 			window.removeEventListener('focus', onFocus);
 		};
 	} else {
-		root.style.background = 'var(--color-bg)';
+		root.style.transition = '';
+		root.style.background = '';
 		document.body.style.background = '';
 	}
 }
