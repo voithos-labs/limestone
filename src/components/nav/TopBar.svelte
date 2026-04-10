@@ -3,7 +3,7 @@
     import type {Tab} from "$lib/state/EditorState.svelte";
     import {getCurrentWindow} from "@tauri-apps/api/window";
 
-    import {Settings, Search, Bookmark, ChevronDown, Eye, FileText, X} from "@lucide/svelte";
+    import {Settings, Search, Bookmark, ChevronDown, Eye, X} from "@lucide/svelte";
 
     let {editor}: { editor: EditorState } = $props();
 
@@ -83,7 +83,7 @@
                     role="button"
                     tabindex="0"
             >
-                <FileText size={14}/>
+                <span class="doc-icon"></span>
                 <span class="tab-label">{d.title}</span>
                 <button
                         class="close-btn"
@@ -116,9 +116,9 @@
         align-items: flex-end;
         height: 42px;
         width: 100%;
-        background: var(--color-bg);
+        background: transparent;
         padding-left: 8px;
-        gap: 4px;
+        gap: 6px;
         overflow: hidden;
     }
 
@@ -162,7 +162,7 @@
     .divider {
         width: 1px;
         height: 22px;
-        margin: 0 4px 9px 4px;
+        margin: 0 -4px 9px 4px;
         background: var(--color-border);
         flex-shrink: 0;
     }
@@ -173,7 +173,8 @@
         align-items: flex-end;
         flex: 1;
         min-width: 0;
-        gap: 4px;
+        gap: 6px;
+        padding-left: 8px;
         overflow-x: auto;
         overflow-y: hidden;
         scrollbar-width: none;
@@ -204,7 +205,27 @@
     }
 
     .tab.icon-tab {
-        padding: 0 14px;
+        padding: 0 10px;
+    }
+
+    .doc-icon {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        margin-right: 2px;
+        background-color: currentColor;
+        mask-image: url('/assets/markdown-icon.svg');
+        mask-size: contain;
+        mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-image: url('/assets/markdown-icon.svg');
+        -webkit-mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+    }
+
+    .tab.active .doc-icon {
+        background-color: var(--color-accent);
     }
 
     .tab:hover {
@@ -230,13 +251,13 @@
     }
 
     .tab.active::before {
-        left: -7px;
+        left: -6px;
         border-bottom-right-radius: 6px;
         box-shadow: 3px 0 0 0 var(--color-surface);
     }
 
     .tab.active::after {
-        right: -7px;
+        right: -6px;
         border-bottom-left-radius: 6px;
         box-shadow: -3px 0 0 0 var(--color-surface);
     }
@@ -259,7 +280,7 @@
     }
 
     .close-btn:hover {
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(0, 0, 0, 0.08);
         opacity: 1;
     }
 
@@ -284,11 +305,11 @@
     }
 
     .caption-btn:hover {
-        background: rgba(255, 255, 255, 0.08);
+        background: rgba(0, 0, 0, 0.06);
     }
 
     .caption-btn:active {
-        background: rgba(255, 255, 255, 0.04);
+        background: rgba(0, 0, 0, 0.1);
     }
 
     .caption-btn.close:hover {
