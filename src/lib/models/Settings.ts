@@ -15,3 +15,7 @@ export interface Settings {
 export async function getSetting<T extends SettingValue>(key: string): Promise<T | null> {
 	return invoke<T | null>('get_setting', { key });
 }
+
+export async function setSetting(key: string, value: SettingValue): Promise<void> {
+	await invoke('set_setting_global', { key, value });
+}

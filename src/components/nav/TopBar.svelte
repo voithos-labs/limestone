@@ -4,8 +4,12 @@
     import {getCurrentWindow} from "@tauri-apps/api/window";
 
     import {Settings, Search, Bookmark, ChevronDown, Eye, X, GripVertical} from "@lucide/svelte";
+    import {getSetting, setSetting} from "$lib/models/Settings";
 
     let {editor}: { editor: EditorState } = $props();
+
+    let compactTabs = $state(true);
+    getSetting<boolean>('ui.compact_tabs').then(v => compactTabs = v ?? true);
 
     const settingsTab: Tab = {kind: 'settings'};
     const searchTab: Tab = {kind: 'search'};
@@ -169,7 +173,7 @@
                     role="button"
                     tabindex="0"
             >
-                <span class="doc-icon"></span>
+                {#if !compactTabs}<span class="doc-icon"></span>{/if}
                 <span class="tab-label">{d.title}</span>
                 <span class="tab-fade"></span>
                 <span class="close-zone">
