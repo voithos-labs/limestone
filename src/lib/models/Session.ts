@@ -27,7 +27,12 @@ class Session {
 
 	private themeStore: Store;
 
-	private constructor(editors: EditorState[], activeTheme: string, themeStore: Store, viewTabs?: ViewTab[]) {
+	private constructor(
+		editors: EditorState[],
+		activeTheme: string,
+		themeStore: Store,
+		viewTabs?: ViewTab[]
+	) {
 		this.editors = editors;
 		this.activeTheme = activeTheme;
 		this.themeStore = themeStore;
@@ -60,9 +65,19 @@ class Session {
 		}
 
 		let session = new Session(editors, state.activeTheme, themeStore, state.viewTabs);
+
+		let persistTimer: ReturnType<typeof setTimeout> | null = null;
+		const debouncedPersist = () => {
+			if (persistTimer) clearTimeout(persistTimer);
+			persistTimer = setTimeout(() => {
+				persistTimer = null;
+				session.persist();
+			}, 200);
+		};
 		for (const editor of editors) {
-			editor.onChanged = () => session.persist();
+			editor.onChanged = debouncedPersist;
 		}
+
 		await session.applyCurrentTheme();
 		return session;
 	}

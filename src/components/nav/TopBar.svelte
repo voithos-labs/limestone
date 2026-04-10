@@ -3,7 +3,7 @@
     import type {FocusTarget} from "$lib/state/EditorState.svelte";
     import {getCurrentWindow} from "@tauri-apps/api/window";
 
-    import {Settings, Search, Bookmark, ChevronDown, Eye, X, GripVertical} from "@lucide/svelte";
+    import {Settings, Search, Cone, Library, Bookmark, ChevronDown, Eye, X, GripVertical} from "@lucide/svelte";
     import {getSetting, setSetting} from "$lib/models/Settings";
 
     let {editor}: { editor: EditorState } = $props();
@@ -144,7 +144,7 @@
             role="button"
             tabindex="0"
     >
-        <Search size={16}/>
+        <Library size={16}/>
     </div>
 
     <!-- Bookmarks dropdown -->

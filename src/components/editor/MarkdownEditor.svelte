@@ -17,20 +17,31 @@
     import {tags} from '@lezer/highlight';
     import type DocHandle from "$lib/models/DocHandle";
 
-    let {doc = $bindable(), onchange}: {
-        doc: DocHandle;
+    let {
+        handle,
+        initialScrollTop,
+        initialCursorPos,
+        onchange,
+        onScroll,
+        onCursor,
+    }: {
+        handle: DocHandle;
+        initialScrollTop?: number;
+        initialCursorPos?: number;
         onchange?: (value: string) => void;
+        onScroll?: (top: number) => void;
+        onCursor?: (pos: number) => void;
     } = $props();
 
     let container: HTMLDivElement;
     let view: EditorView;
     let internalUpdate = false;
+    let initApplied = false;
 
-    // Load contents
     let content: string = $state('');
 
     $effect(() => {
-        doc.loadContent().then((c) => content = c)
+        handle.loadContent().then((c) => content = c)
     })
 
 
@@ -141,6 +152,9 @@
                 onchange?.(content);
                 internalUpdate = false;
             }
+            if (update.selectionSet && initApplied) {
+                onCursor?.(update.state.selection.main.head);
+            }
         });
 
         view = new EditorView({
@@ -160,20 +174,41 @@
             }),
             parent: container,
         });
+
+        view.scrollDOM.addEventListener('scroll', handleScroll);
     });
 
-    // sync external content changes into codemirror
+    function handleScroll() {
+        if (!initApplied) return;
+        onScroll?.(view.scrollDOM.scrollTop);
+    }
+
     $effect(() => {
         if (!view || internalUpdate) return;
         const current = view.state.doc.toString();
         if (content !== current) {
             view.dispatch({
-                changes: {from: 0, to: current.length, insert: content}
+                changes: { from: 0, to: current.length, insert: content },
             });
+            if (!initApplied) {
+                requestAnimationFrame(() => {
+                    if (!view) return;
+                    if (initialCursorPos !== undefined) {
+                        const pos = Math.min(initialCursorPos, view.state.doc.length);
+                        view.dispatch({ selection: { anchor: pos } });
+                    }
+                    if (initialScrollTop !== undefined) {
+                        view.scrollDOM.scrollTop = initialScrollTop;
+                    }
+                    view.focus();
+                    initApplied = true;
+                });
+            }
         }
     });
 
     onDestroy(() => {
+        view?.scrollDOM.removeEventListener('scroll', handleScroll);
         view?.destroy();
     });
 </script>

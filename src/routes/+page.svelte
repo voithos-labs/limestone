@@ -4,28 +4,35 @@
     import SearchPage from "../components/pages/SearchPage.svelte";
     import SettingsPage from "../components/pages/SettingsPage.svelte";
     import MarkdownEditor from "../components/editor/MarkdownEditor.svelte";
-    import type DocHandle from "$lib/models/DocHandle";
+    import type { TabState } from "$lib/state/EditorState.svelte";
 
     let session = $state<Session>();
-    let doc: DocHandle | undefined = $state();
+    let tab: TabState | undefined = $state();
 
     Session.init().then(s => session = s);
 
-    // Load content when focused document changes
     $effect(() => {
-        doc = session?.editors[0]?.focusedDocument;
-
+        tab = session?.editors[0]?.focusedTab;
     });
 </script>
 {#if session}
+    {@const editor = session.editors[0]}
     <div class="app-layout">
-        <TopBar editor={session.editors[0]}></TopBar>
+        <TopBar {editor}></TopBar>
         <main class="content-area">
-            {#if doc}
-                <MarkdownEditor bind:doc/>
-            {:else if session.editors[0].focusedTabKey === 'search'}
-                <SearchPage editor={session.editors[0]}/>
-            {:else if session.editors[0].focusedTabKey === 'settings'}
+            {#if tab}
+                {#key tab.handle.id}
+                    <MarkdownEditor
+                        handle={tab.handle}
+                        initialScrollTop={tab.state.scrollTop}
+                        initialCursorPos={tab.state.cursorPos}
+                        onScroll={(top) => { tab!.state.scrollTop = top; editor.changed(); }}
+                        onCursor={(pos) => { tab!.state.cursorPos = pos; editor.changed(); }}
+                    />
+                {/key}
+            {:else if editor.focused?.kind === 'search'}
+                <SearchPage {editor}/>
+            {:else if editor.focused?.kind === 'settings'}
                 <SettingsPage viewTab={session.getViewTab('settings')} {session}/>
             {:else}
                 <div class="panel-placeholder">
