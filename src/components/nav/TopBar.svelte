@@ -44,15 +44,16 @@
         if (dragDocId === null) return;
         dragDeltaX = e.clientX - dragStartX;
 
-        const draggedCenter = tabLefts[originalIndex] + tabWidths[originalIndex] / 2 + dragDeltaX;
+        const draggedLeft = tabLefts[originalIndex] + dragDeltaX;
+        const draggedRight = draggedLeft + tabWidths[originalIndex];
 
         let newIndex = originalIndex;
         for (let i = originalIndex + 1; i < tabEls.length; i++) {
-            if (draggedCenter > tabLefts[i] + tabWidths[i] / 2) newIndex = i;
+            if (draggedRight > tabLefts[i] + tabWidths[i] / 2) newIndex = i;
             else break;
         }
         for (let i = originalIndex - 1; i >= 0; i--) {
-            if (draggedCenter < tabLefts[i] + tabWidths[i] / 2) newIndex = i;
+            if (draggedLeft < tabLefts[i] + tabWidths[i] / 2) newIndex = i;
             else break;
         }
         dropIndex = newIndex;
@@ -327,6 +328,17 @@
 
     .tab:hover {
         color: var(--color-ui-dulled);
+    }
+
+    .tab:not(.active):hover::after {
+        content: '';
+        position: absolute;
+        bottom: -3px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 20px;
+        height: 1px;
+        background: var(--color-border);
     }
 
     .tab.active {
