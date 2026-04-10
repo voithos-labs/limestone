@@ -9,7 +9,7 @@
     let {editor}: { editor: EditorState } = $props();
 
     let compactTabs = $state(true);
-    getSetting<boolean>('user-interface.compact_tabs').then(v => { if (v !== null) compactTabs = v; });
+    getSetting<boolean>('appearance.compact_tabs').then(v => { if (v !== null) compactTabs = v; });
 
     const settingsTab: Tab = {kind: 'settings'};
     const searchTab: Tab = {kind: 'search'};

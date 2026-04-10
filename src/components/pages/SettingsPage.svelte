@@ -10,7 +10,7 @@
     const APPEARANCE = 'appearance';
 
     let settings: Record<string, SettingValue> = $state({});
-    let sections = $derived(Object.keys(settings));
+    let sections = $derived(Object.keys(settings).filter(s => s !== APPEARANCE));
     let allSections = $derived([APPEARANCE, ...sections]);
     let activeSection = $state('');
     let dirty = $state(false);
@@ -39,7 +39,7 @@
 
     let allSettings = $derived.by((): FlatSetting[] => {
         const result: FlatSetting[] = [];
-        for (const section of sections) {
+        for (const section of allSections) {
             const obj = settings[section];
             if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) continue;
             for (const [key, value] of Object.entries(obj as Record<string, SettingValue>)) {
@@ -206,6 +206,40 @@
                         </select>
                     </div>
                 </div>
+                {#each sectionEntries(APPEARANCE) as [key, value]}
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <span class="setting-label">{formatLabel(key)}</span>
+                            <span class="setting-key">{APPEARANCE}.{key}</span>
+                        </div>
+                        <div class="setting-control">
+                            {#if typeof value === 'boolean'}
+                                <label class="toggle">
+                                    <input
+                                            type="checkbox"
+                                            checked={value}
+                                            onchange={(e) => handleInput(APPEARANCE, key, value, e)}
+                                    />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            {:else if typeof value === 'number'}
+                                <input
+                                        class="input-number"
+                                        type="number"
+                                        {value}
+                                        onchange={(e) => handleInput(APPEARANCE, key, value, e)}
+                                />
+                            {:else}
+                                <input
+                                        class="input-text"
+                                        type="text"
+                                        {value}
+                                        onchange={(e) => handleInput(APPEARANCE, key, value, e)}
+                                />
+                            {/if}
+                        </div>
+                    </div>
+                {/each}
             </div>
         {:else if activeSection}
             <div class="section-header">
