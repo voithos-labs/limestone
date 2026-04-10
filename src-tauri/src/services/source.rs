@@ -391,11 +391,32 @@ pub fn resolve_changes(
     ops
 }
 
+/// Format an epoch-seconds timestamp the way `datetime('now')` does
+/// (`YYYY-MM-DD HH:MM:SS`)
+fn epoch_to_sql(secs: i64) -> String {
+    DateTime::<Utc>::from_timestamp(secs, 0)
+        .unwrap_or_else(Utc::now)
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string()
+}
+
+/// Read the file's creation time, fall back to mtime if the
+/// platform/filesystem doent expose it
+fn fs_birth_secs(path: &Path, fallback_mtime: i64) -> i64 {
+    fs::metadata(path)
+        .ok()
+        .and_then(|m| m.created().ok())
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(fallback_mtime)
+}
+
 /// Apply all ops
 pub async fn apply_operations(
     operations: &[DbOperation],
     frontmatter: &[(String, Option<serde_json::Value>)],
     source_id: &str,
+    source_path: &Path,
     db: &SqlitePool,
 ) -> sqlx::Result<()> {
     let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
@@ -421,22 +442,30 @@ pub async fn apply_operations(
                     .and_then(|s| s.to_str())
                     .unwrap_or("Untitled");
                 let properties = fm.map(fm_properties).unwrap_or_else(|| "{}".to_string());
+                // Prefer frontmatter dates; otherwise derive from filesystem so
+                // imported files retain their real history instead of all
+                // being stamped with the moment of indexing.
+                let full_path = source_path.join(rel_path);
+                let mtime_str = epoch_to_sql(*mtime);
                 let created_at = fm
                     .and_then(|f| f.get("created_at"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| epoch_to_sql(fs_birth_secs(&full_path, *mtime)));
                 let updated_at = fm
                     .and_then(|f| f.get("updated_at"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| mtime_str.clone());
                 let accessed_at = fm
                     .and_then(|f| f.get("accessed_at"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| mtime_str.clone());
 
                 sqlx::query(
                     "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, coalesce(?7, datetime('now')), coalesce(?8, datetime('now')), coalesce(?9, datetime('now')))",
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 )
                 .bind(&doc_id)
                 .bind(source_id)
@@ -508,17 +537,20 @@ pub async fn apply_operations(
                     .and_then(|s| s.to_str())
                     .unwrap_or("Untitled");
                 let properties = fm.map(fm_properties).unwrap_or_else(|| "{}".to_string());
+                let mtime_str = epoch_to_sql(*mtime);
                 let updated_at = fm
                     .and_then(|f| f.get("updated_at"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| mtime_str.clone());
                 let accessed_at = fm
                     .and_then(|f| f.get("accessed_at"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| mtime_str.clone());
 
                 sqlx::query(
-                    "UPDATE documents SET title = ?1, mtime = ?2, properties = ?3, updated_at = coalesce(?4, datetime('now')), accessed_at = coalesce(?5, datetime('now'))
+                    "UPDATE documents SET title = ?1, mtime = ?2, properties = ?3, updated_at = ?4, accessed_at = ?5
                      WHERE source_id = ?6 AND rel_path = ?7",
                 )
                 .bind(title)
@@ -797,7 +829,7 @@ pub async fn reconcile_source(
     let operations = resolve_changes(diff, &frontmatter, &db_id_to_path);
     let ops_count = operations.len();
 
-    apply_operations(&operations, &frontmatter, source_id, db).await?;
+    apply_operations(&operations, &frontmatter, source_id, source_path, db).await?;
     cleanup_orphan_groups(db).await?;
 
     let source_title = source_path

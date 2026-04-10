@@ -65,19 +65,6 @@ class Session {
 		}
 
 		let session = new Session(editors, state.activeTheme, themeStore, state.viewTabs);
-
-		let persistTimer: ReturnType<typeof setTimeout> | null = null;
-		const debouncedPersist = () => {
-			if (persistTimer) clearTimeout(persistTimer);
-			persistTimer = setTimeout(() => {
-				persistTimer = null;
-				session.persist();
-			}, 200);
-		};
-		for (const editor of editors) {
-			editor.onChanged = debouncedPersist;
-		}
-
 		await session.applyCurrentTheme();
 		return session;
 	}

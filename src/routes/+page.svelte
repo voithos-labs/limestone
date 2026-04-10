@@ -14,6 +14,14 @@
     $effect(() => {
         tab = session?.editors[0]?.focusedTab;
     });
+
+    let persistTimer: ReturnType<typeof setTimeout> | null = null;
+    $effect(() => {
+        if (!session) return;
+        $state.snapshot(session.toJSON());
+        if (persistTimer) clearTimeout(persistTimer);
+        persistTimer = setTimeout(() => session!.persist(), 200);
+    });
 </script>
 {#if session}
     {@const editor = session.editors[0]}
@@ -22,10 +30,7 @@
         <main class="content-area">
             {#if tab}
                 {#key tab.handle.id}
-                    <MarkdownEditor
-                        {tab}
-                        onChanged={() => editor.changed()}
-                    />
+                    <MarkdownEditor {tab} />
                 {/key}
             {:else if editor.focused?.kind === 'search'}
                 <SearchPage {editor}/>

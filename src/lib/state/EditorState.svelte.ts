@@ -116,16 +116,11 @@ class EditorState {
 	tabs: TabState[] = $state([]);
 	focused: FocusTarget | null = $state(null);
 	private tabAccessOrderById: string[] = $state([]); // reverse accessed order, last = most recent
-	onChanged?: () => void;
 
 	constructor(json?: EditorJSON, tabs?: TabState[]) {
 		this.focused = json?.focused ?? null;
 		if (json?.tabAccessOrderById) this.tabAccessOrderById = json.tabAccessOrderById;
 		if (tabs) this.tabs = tabs;
-	}
-
-	changed() {
-		this.onChanged?.();
 	}
 
 	// ── Getters ─────────────────────────────────────────────────────────────────────────
@@ -193,13 +188,11 @@ class EditorState {
 			accessedOrder.push(tab.id);
 			this.tabAccessOrderById = accessedOrder;
 		}
-		this.changed();
 	}
 
 	openTab(tab: TabState) {
 		if (this.tabs.some((d) => d.id === tab.id)) return; // dupe
 		this.tabs.push(tab);
-		this.changed();
 	}
 
 	openDoc(doc: DocHandle) {
@@ -226,14 +219,12 @@ class EditorState {
 				this.focused = null;
 			}
 		}
-		this.changed();
 	}
 
 	moveTab(fromIndex: number, toIndex: number) {
 		if (fromIndex === toIndex) return;
 		const [tab] = this.tabs.splice(fromIndex, 1);
 		this.tabs.splice(toIndex, 0, tab);
-		this.changed();
 	}
 
 	/**

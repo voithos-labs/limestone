@@ -21,11 +21,9 @@
     let {
         tab,
         onchange,
-        onChanged,
     }: {
         tab: TabState;
         onchange?: (value: string) => void;
-        onChanged?: () => void;
     } = $props();
 
     let handle = $derived(tab.handle);
@@ -200,7 +198,6 @@
     function setZoom(next: number) {
         zoom = Math.max(10, Math.min(40, next));
         tab.state.zoom = zoom;
-        onChanged?.();
     }
 
     // Saving
@@ -234,7 +231,6 @@
             }
             if (update.selectionSet && initApplied) {
                 tab.state.cursorPos = update.state.selection.main.head;
-                onChanged?.();
             }
         });
 
@@ -277,7 +273,6 @@
 
         if (!initApplied) return;
         tab.state.scrollTop = view.scrollDOM.scrollTop;
-        onChanged?.();
     }
 
     $effect(() => {
