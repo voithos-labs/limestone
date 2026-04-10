@@ -1,3 +1,13 @@
+/**
+ * todo: this is only for native documents (md), will need to be expanded and seperated for
+ * handling other document types including virtual documents
+ *
+ *
+ *
+ */
+
+// ── Imports ──────────────────────────────────────────────────────────────────────────
+
 // External
 import { v4 as uuidv4 } from 'uuid';
 import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -13,19 +23,8 @@ import { getSetting } from './Settings';
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
 /**
- * create table if not exists documents (
- *     id text primary key not null,
- *     source_id text not null references sources(id) on delete cascade,
- *     document_type text not null default 'md',
- *     rel_path text not null,
- *     title text not null,
- *     created_at text not null default (datetime('now')),
- *     updated_at text not null default (datetime('now')),
- *     accessed_at text not null default (datetime('now')),
- *     mtime integer,
- *     deleted_at text,
- *     properties text not null default '{}'
- * ) strict;
+ * Yes I am using snakecase here, this is what they are in the db
+ * Fuck you
  */
 export interface DocumentRow {
 	id: string;
@@ -69,7 +68,7 @@ class DocHandle {
 	createdAt: Date;
 	updatedAt: Date;
 	accessedAt: Date;
-	deletedAt?: Date;
+	deletedAt?: Date; // todo: handle deleted cases, e.g. load from id, where you return a stub
 
 	private constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;

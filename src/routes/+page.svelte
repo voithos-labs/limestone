@@ -1,261 +1,94 @@
 <script lang="ts">
-	import { invoke } from '@tauri-apps/api/core';
-	import { listen } from '@tauri-apps/api/event';
+    import TopBar from "../components/nav/TopBar.svelte";
+    import Session from "$lib/models/Session";
+    import SearchPage from "../components/pages/SearchPage.svelte";
+    import SettingsPage from "../components/pages/SettingsPage.svelte";
 
-	interface Source {
-		id: string;
-		title: string;
-		path: string;
-		created_at: string;
-		accessed_at: string;
-	}
+    let session = $state<Session>();
+    let content = $state('');
 
-	interface SearchResult {
-		id: string;
-		title: string;
-		rel_path: string | null;
-		score: number;
-		match_indices: number[];
-	}
+    Session.init().then(s => session = s);
 
-	let sources = $state<Source[]>([]);
-	let newSourcePath = $state('');
-	let newSourceTitle = $state('');
-	let loading = $state(false);
-
-	let searchQuery = $state('');
-	let searchResults = $state<SearchResult[]>([]);
-
-	async function loadSources() {
-		sources = await invoke('get_sources');
-		await doSearch();
-	}
-
-	async function doSearch() {
-		searchResults = await invoke('search_documents', { query: searchQuery });
-	}
-
-	async function createSource() {
-		if (!newSourcePath) return;
-		await invoke('create_source', {
-			path: newSourcePath,
-			title: newSourceTitle || newSourcePath.split(/[\\/]/).pop() || 'Untitled'
-		});
-		newSourcePath = '';
-		newSourceTitle = '';
-		await loadSources();
-	}
-
-	function highlightTitle(title: string, indices: number[]): string {
-		if (!indices.length) return title;
-		const chars = [...title];
-		const set = new Set(indices);
-		return chars.map((ch, i) => (set.has(i) ? `<mark>${ch}</mark>` : ch)).join('');
-	}
-
-	loadSources();
-
-	listen('source-reconciled', () => {
-		doSearch();
-	});
+    // Load content when focused document changes
+    $effect(() => {
+        const doc = session?.editors[0]?.focusedDocument;
+        if (doc) {
+            doc.loadContent().then(body => {
+                content = body;
+            });
+        } else {
+            content = '';
+        }
+    });
 </script>
-
-<main>
-	<h2>limestone</h2>
-
-	<section>
-		<h3>create source</h3>
-		<div class="row">
-			<input bind:value={newSourceTitle} placeholder="title (optional)" />
-			<input bind:value={newSourcePath} placeholder="/path/to/source" />
-			<button onclick={createSource} disabled={loading || !newSourcePath}>create</button>
-		</div>
-	</section>
-
-	<section>
-		<h3>sources</h3>
-		{#if sources.length === 0}
-			<p class="muted">no sources</p>
-		{:else}
-			<ul>
-				{#each sources as source}
-					<li>
-						<span>{source.title}</span>
-						<span class="path">{source.path}</span>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</section>
-
-	<section>
-		<h3>search</h3>
-		<input
-			bind:value={searchQuery}
-			oninput={doSearch}
-			placeholder="search documents..."
-			class="search-input"
-		/>
-		{#if searchResults.length > 0}
-			<table>
-				<thead>
-					<tr>
-						<th>title</th>
-						<th>path</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each searchResults as result}
-						<tr>
-							<td>
-								<a href="/document/{result.id}"
-									>{@html highlightTitle(result.title, result.match_indices)}</a
-								>
-							</td>
-							<td class="mono">{result.rel_path ?? '-'}</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		{:else if searchQuery}
-			<p class="muted">no results</p>
-		{/if}
-	</section>
-
-	{#if loading}
-		<div class="loading">working...</div>
-	{/if}
-</main>
+{#if session}
+    <div class="app-layout">
+        <TopBar editor={session.editors[0]}></TopBar>
+        <main class="content-area">
+            {#if session.editors[0].focusedDocument}
+                <textarea class="editor" bind:value={content} placeholder="Start writing..."></textarea>
+            {:else if session.editors[0].focusedTabKey === 'search'}
+                <SearchPage editor={session.editors[0]}/>
+            {:else if session.editors[0].focusedTabKey === 'settings'}
+                <SettingsPage viewTab={session.getViewTab('settings')} {session} />
+            {:else}
+                <div class="panel-placeholder">
+                    No document selected
+                </div>
+            {/if}
+        </main>
+    </div>
+{/if}
 
 <style>
-	main {
-		font-family: monospace;
-		max-width: 900px;
-		margin: 0 auto;
-		padding: 2rem;
-		color: var(--color-text-primary);
-		background: var(--color-bg);
-		min-height: 100vh;
-	}
+    .app-layout {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        background: transparent;
+    }
 
-	h2 {
-		margin-bottom: 1.5rem;
-	}
+    .content-area {
+        flex: 1;
+        margin: 0 12px 12px 12px;
+        background: var(--color-surface);
+        border-radius: 8px;
+        overflow: hidden;
+    }
 
-	h3 {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
+    .editor {
+        width: 100%;
+        height: 100%;
+        max-width: 700px;
+        margin: 0 auto;
+        padding: 48px 24px;
+        display: block;
+        background: transparent;
+        border: none;
+        outline: none;
+        resize: none;
+        color: var(--color-text-primary);
+        font-family: var(--font-ui);
+        font-size: 16px;
+        line-height: 1.6;
+        scrollbar-width: none;
+    }
 
-	section {
-		margin-bottom: 2rem;
-	}
+    .editor::-webkit-scrollbar {
+        display: none;
+    }
 
-	a {
-		color: var(--color-text-primary);
-		text-decoration: none;
-	}
+    .editor::placeholder {
+        color: var(--color-ui-muted);
+    }
 
-	.row {
-		display: flex;
-		gap: 0.5rem;
-	}
-
-	input {
-		padding: 0.4rem 0.6rem;
-		font-family: monospace;
-		flex: 1;
-		border: 1px solid var(--color-ui-muted);
-		background: var(--color-surface);
-		color: var(--color-text-primary);
-	}
-
-	.search-input {
-		width: 100%;
-		margin-bottom: 0.5rem;
-		font-size: 1rem;
-		padding: 0.5rem 0.6rem;
-	}
-
-	button {
-		padding: 0.4rem 0.8rem;
-		font-family: monospace;
-		cursor: pointer;
-		background: var(--color-surface);
-		color: var(--color-text-primary);
-		border: 1px solid var(--color-ui-muted);
-	}
-
-	button:hover:not(:disabled) {
-		background: var(--color-ui-muted);
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-
-	button.small {
-		font-size: 0.8rem;
-		padding: 0.2rem 0.5rem;
-	}
-
-	ul {
-		list-style: none;
-		padding: 0;
-	}
-
-	li {
-		padding: 0.3rem 0;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.path {
-		color: var(--color-ui-dulled);
-		font-size: 0.85rem;
-	}
-
-	.muted {
-		color: var(--color-ui-dulled);
-	}
-
-	.mono {
-		font-family: monospace;
-		font-size: 0.85rem;
-	}
-
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.9rem;
-	}
-
-	th,
-	td {
-		text-align: left;
-		padding: 0.3rem 0.5rem;
-		border-bottom: 1px solid var(--color-ui-muted);
-	}
-
-	th {
-		color: var(--color-ui-dulled);
-	}
-
-	:global(mark) {
-		background: #ff05;
-		color: #ff0;
-		padding: 0;
-	}
-
-	.loading {
-		position: fixed;
-		bottom: 1rem;
-		right: 1rem;
-		background: var(--color-surface);
-		padding: 0.4rem 0.8rem;
-		border-radius: 4px;
-	}
+    .panel-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--color-ui-muted);
+        font-size: 14px;
+        text-transform: capitalize;
+    }
 </style>

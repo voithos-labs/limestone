@@ -1,65 +1,57 @@
-import { load, type Store } from '@tauri-apps/plugin-store';
-import { loadWorkspace, updateWorkspace } from './workspace';
+const DEFAULT_FONT = 'Inter, system-ui, sans-serif';
 
 export interface Theme {
 	name: string;
 	type: 'dark' | 'light';
-	colors: Record<string, string>;
+	variables: Record<string, string>;
+	fontFamily?: string;
+	transparentBackground?: boolean; // default: false
 }
 
-const DEFAULT_THEME: Theme = {
+export const DEFAULT_DARK: Theme = {
 	name: 'Default Dark',
 	type: 'dark',
-	colors: {
+	variables: {
 		'color-bg': '#26282B',
 		'color-surface': '#1A1C1D',
+		'color-border': '#3A3D40',
 		'color-text-primary': '#FFFFFF',
 		'color-text-secondary': '#E6E5E5',
 		'color-ui-dulled': '#AFB1B3',
-		'color-ui-muted': '#666666',
-		'color-accent-primary': '#567B67'
+		'color-ui-muted': '#A4A4A4',
+		'color-accent': '#567B67',
+		'color-accent-primary': '#567B67',
+		'radius-ui': '4px',
+		'radius-surface': '8px'
 	}
 };
 
-let store: Store | null = null;
-
-async function getStore() {
-	if (!store) {
-		store = await load('themes.json');
+export const DEFAULT_DARK_TRANSPARENT: Theme = {
+	name: 'Default Dark (Transparent)',
+	type: 'dark',
+	transparentBackground: true,
+	variables: {
+		'color-bg':
+			'linear-gradient(to bottom left, rgb(57 57 66 / 0.5) 0%, rgb(57 57 66 / 0.15) 100%)',
+		'color-surface': '#1A1C1D',
+		'color-border': '#3A3D40',
+		'color-text-primary': '#FFFFFF',
+		'color-text-secondary': '#E6E5E5',
+		'color-ui-dulled': '#AFB1B3',
+		'color-ui-muted': '#A4A4A4',
+		'color-accent': '#567B67',
+		'color-accent-primary': '#567B67',
+		'radius-ui': '4px',
+		'radius-surface': '8px'
 	}
-	return store;
-}
+};
+
+export const DEFAULT_THEME = DEFAULT_DARK;
 
 export function applyTheme(theme: Theme) {
 	const root = document.documentElement;
-	for (const [key, value] of Object.entries(theme.colors)) {
+	for (const [key, value] of Object.entries(theme.variables)) {
 		root.style.setProperty(`--${key}`, value);
 	}
+	root.style.setProperty('--font-ui', theme.fontFamily ?? DEFAULT_FONT);
 }
-
-export async function loadAndApplyTheme() {
-	const workspace = await loadWorkspace();
-	const s = await getStore();
-	const theme = await s.get<Theme>(workspace.activeTheme);
-	applyTheme(theme ?? DEFAULT_THEME);
-}
-
-export async function setActiveTheme(name: string) {
-	const s = await getStore();
-	const theme = await s.get<Theme>(name);
-	if (!theme) return;
-	await updateWorkspace({ activeTheme: name });
-	applyTheme(theme);
-}
-
-export async function saveTheme(key: string, theme: Theme) {
-	const s = await getStore();
-	await s.set(key, theme);
-}
-
-export async function listThemes(): Promise<string[]> {
-	const s = await getStore();
-	return await s.keys();
-}
-
-export { DEFAULT_THEME };

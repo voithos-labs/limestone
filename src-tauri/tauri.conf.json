@@ -12,9 +12,12 @@
 	"app": {
 		"windows": [
 			{
+				"label": "main",
 				"title": "limestone",
 				"width": 800,
-				"height": 600
+				"height": 600,
+				"decorations": false,
+				"transparent": true
 			}
 		],
 		"security": {

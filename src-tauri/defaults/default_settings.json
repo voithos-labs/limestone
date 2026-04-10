@@ -1,4 +1,7 @@
 {
+	"user-interface": {
+		"compact_tabs": true
+	},
 	"documents": {
 		"use_yaml_frontmatter": true
 	},

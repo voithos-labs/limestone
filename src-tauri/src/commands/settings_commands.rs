@@ -1,11 +1,16 @@
-use crate::services::JsonSettingsStore;
+use crate::services::{dot_get, JsonSettingsStore};
 use crate::AppData;
 use serde_json::Value;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn get_setting(app_data: State<AppData>, key: String) -> Option<Value> {
-    app_data.settings.read().unwrap().get(&key).cloned()
+    dot_get(&app_data.settings.read().unwrap(), &key).cloned()
+}
+
+#[tauri::command]
+pub fn get_all_settings(app_data: State<AppData>) -> Value {
+    app_data.settings.read().unwrap().clone()
 }
 
 #[tauri::command]

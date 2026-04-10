@@ -9,7 +9,9 @@ mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
 
-pub async fn create_pool(path: &std::path::Path) -> Result<SqlitePool, Box<dyn std::error::Error>> {
+pub async fn create_pool(
+    path: &std::path::Path,
+) -> Result<SqlitePool, Box<dyn std::error::Error + Send + Sync>> {
     let url = format!("sqlite:{}?mode=rwc", path.display());
     let pool = SqlitePool::connect(&url).await?;
     sqlx::raw_sql(SCHEMA).execute(&pool).await?;
@@ -32,6 +34,12 @@ pub fn run() {
             // ── Blocking Shi ─────────────────────────────────────────────────────────
 
             let global_data_path = app.path().app_data_dir()?;
+
+            let cache_path = app.path().app_cache_dir()?;
+            std::fs::create_dir_all(&cache_path)?;
+            let db_path = cache_path.join("index.db");
+            // start db load earlyl in bg, check back in a bit
+            let db_handle = tauri::async_runtime::spawn(async move { create_pool(&db_path).await });
 
             let user_store = services::JsonSettingsStore {
                 path: global_data_path.join("user.json"),
@@ -66,12 +74,12 @@ pub fn run() {
                     .and_then(|v| v.as_u64())
                     .unwrap_or(512) as usize;
 
-            let cache_path = app.path().app_cache_dir()?;
-            std::fs::create_dir_all(&cache_path)?;
-            let db_path = cache_path.join("index.db");
-            let pool = tauri::async_runtime::block_on(create_pool(&db_path)).map_err(|e| {
-                Box::<dyn std::error::Error>::from(format!("failed to create db pool: {e}"))
-            })?;
+            // wait for db ready (probably done)
+            let pool = tauri::async_runtime::block_on(db_handle)
+                .unwrap_or_else(|e| panic!("db task panicked (bad): {e}"))
+                .map_err(|e| {
+                    Box::<dyn std::error::Error>::from(format!("failed to create db pool: {e}"))
+                })?;
 
             app.manage(AppData {
                 user,
@@ -110,6 +118,7 @@ pub fn run() {
             commands::source_commands::clear_cache,
             commands::source_commands::search_documents,
             commands::settings_commands::get_setting,
+            commands::settings_commands::get_all_settings,
             commands::settings_commands::set_setting_global,
             commands::document_commands::write_document,
             commands::document_commands::rename_document,
