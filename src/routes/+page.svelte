@@ -3,6 +3,7 @@
     import Session from "$lib/models/Session";
     import SearchPage from "../components/pages/SearchPage.svelte";
     import SettingsPage from "../components/pages/SettingsPage.svelte";
+    import MarkdownEditor from "../components/editor/MarkdownEditor.svelte";
 
     let session = $state<Session>();
     let content = $state('');
@@ -26,7 +27,7 @@
         <TopBar editor={session.editors[0]}></TopBar>
         <main class="content-area">
             {#if session.editors[0].focusedDocument}
-                <textarea class="editor" bind:value={content} placeholder="Start writing..."></textarea>
+                <MarkdownEditor bind:content />
             {:else if session.editors[0].focusedTabKey === 'search'}
                 <SearchPage editor={session.editors[0]}/>
             {:else if session.editors[0].focusedTabKey === 'settings'}
@@ -49,6 +50,7 @@
     }
 
     .content-area {
+        position: relative;
         flex: 1;
         margin: 0 12px 12px 12px;
         background: var(--color-surface);
@@ -56,31 +58,6 @@
         overflow: hidden;
     }
 
-    .editor {
-        width: 100%;
-        height: 100%;
-        max-width: 700px;
-        margin: 0 auto;
-        padding: 48px 24px;
-        display: block;
-        background: transparent;
-        border: none;
-        outline: none;
-        resize: none;
-        color: var(--color-text-primary);
-        font-family: var(--font-ui);
-        font-size: 16px;
-        line-height: 1.6;
-        scrollbar-width: none;
-    }
-
-    .editor::-webkit-scrollbar {
-        display: none;
-    }
-
-    .editor::placeholder {
-        color: var(--color-ui-muted);
-    }
 
     .panel-placeholder {
         display: flex;

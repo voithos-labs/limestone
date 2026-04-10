@@ -3,6 +3,7 @@ use sqlx::SqlitePool;
 use std::sync::RwLock;
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
+use window_vibrancy::apply_acrylic;
 
 mod commands;
 mod services;
@@ -86,6 +87,11 @@ pub fn run() {
                 settings: RwLock::new(initial_settings),
                 db: pool.clone(),
             });
+
+            // this is for the transparency
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = apply_acrylic(&window, Some((0, 0, 0, 0)));
+            }
 
             // ── Not Blocking!1 ───────────────────────────────────────────────────────
 

@@ -7,16 +7,21 @@
 
     let {viewTab, session}: { viewTab: ViewTab; session: Session } = $props();
 
+    const APPEARANCE = 'appearance';
+
     let settings: Record<string, SettingValue> = $state({});
     let sections = $derived(Object.keys(settings));
+    let allSections = $derived([APPEARANCE, ...sections]);
     let activeSection = $state('');
     let dirty = $state(false);
     let searchQuery = $state('');
+    let themes: string[] = $state([]);
 
     onMount(async () => {
         settings = await getAllSettings();
+        themes = await session.listThemes();
         const saved = viewTab.state?.activeSection;
-        activeSection = (saved && sections.includes(saved)) ? saved : sections[0] ?? '';
+        activeSection = (saved && allSections.includes(saved)) ? saved : APPEARANCE;
     });
 
     function saveTabState() {
@@ -93,6 +98,14 @@
 
 <div class="settings-page">
     <div class="settings-sidebar">
+        <button
+                class="section-btn"
+                class:active={!isSearching && activeSection === APPEARANCE}
+                onclick={() => selectSection(APPEARANCE)}
+        >
+            Appearance
+        </button>
+        <div class="sidebar-divider"></div>
         {#each sections as section}
             <button
                     class="section-btn"
@@ -163,6 +176,37 @@
                     <p class="empty">No matching settings</p>
                 {/each}
             </div>
+        {:else if activeSection === APPEARANCE}
+            <div class="section-header">
+                <h2 class="section-title">Appearance</h2>
+                {#if dirty}
+                    <button class="reload-btn" onclick={() => location.reload()}>
+                        <RotateCw size={14} />
+                        Reload to apply
+                    </button>
+                {/if}
+            </div>
+            <div class="settings-list">
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <span class="setting-label">Theme</span>
+                        <span class="setting-key">Active: {session.activeTheme}</span>
+                    </div>
+                    <div class="setting-control">
+                        <select
+                                class="input-select"
+                                value={session.activeTheme}
+                                onchange={async (e) => {
+                                    await session.setTheme((e.target as HTMLSelectElement).value);
+                                }}
+                        >
+                            {#each themes as name}
+                                <option value={name}>{name}</option>
+                            {/each}
+                        </select>
+                    </div>
+                </div>
+            </div>
         {:else if activeSection}
             <div class="section-header">
                 <h2 class="section-title">{formatLabel(activeSection)}</h2>
@@ -228,6 +272,12 @@
         border-right: 1px solid var(--color-border);
         flex-shrink: 0;
         gap: 2px;
+    }
+
+    .sidebar-divider {
+        height: 1px;
+        margin: 6px 12px;
+        background: var(--color-border);
     }
 
     .sidebar-spacer {
@@ -428,7 +478,20 @@
     }
 
     .input-number:focus,
-    .input-text:focus {
+    .input-text:focus,
+    .input-select:focus {
         border-color: var(--color-accent);
+    }
+
+    .input-select {
+        padding: 6px 10px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-ui);
+        background: var(--color-bg);
+        color: var(--color-text-primary);
+        font-family: var(--font-ui);
+        font-size: 13px;
+        outline: none;
+        cursor: pointer;
     }
 </style>

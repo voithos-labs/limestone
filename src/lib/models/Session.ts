@@ -12,7 +12,7 @@ import { load, type Store } from '@tauri-apps/plugin-store';
 import EditorState from '$lib/state/EditorState.svelte';
 import type { Source } from '$lib/models/Source';
 import { loadState, type State, updateState } from '$lib/state/State';
-import { applyTheme, DEFAULT_THEME, type Theme } from '$lib/theme';
+import { applyTheme, BUILTIN_THEMES, DEFAULT_THEME, type Theme } from '$lib/theme';
 
 export interface ViewTab {
 	kind: string;
@@ -44,6 +44,11 @@ class Session {
 	static async init(): Promise<Session> {
 		let state = await loadState();
 		let themeStore = await load('themes.json');
+
+		// ensure built-in themes are always up to date in the store
+		for (const [key, theme] of Object.entries(BUILTIN_THEMES)) {
+			await themeStore.set(key, theme);
+		}
 
 		// hydrate EditorState instances from JSON
 		let editors: EditorState[] = [];
