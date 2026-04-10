@@ -23,11 +23,8 @@
             {#if tab}
                 {#key tab.handle.id}
                     <MarkdownEditor
-                        handle={tab.handle}
-                        initialScrollTop={tab.state.scrollTop}
-                        initialCursorPos={tab.state.cursorPos}
-                        onScroll={(top) => { tab!.state.scrollTop = top; editor.changed(); }}
-                        onCursor={(pos) => { tab!.state.cursorPos = pos; editor.changed(); }}
+                        {tab}
+                        onChanged={() => editor.changed()}
                     />
                 {/key}
             {:else if editor.focused?.kind === 'search'}

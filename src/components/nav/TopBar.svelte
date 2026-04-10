@@ -259,6 +259,10 @@
         flex-shrink: 0;
     }
 
+    :global([data-theme-transparent="true"]) .divider {
+        background: var(--color-ui-muted);
+    }
+
     /* ── Tabs scroll container ── */
     .tabs-scroll {
         display: flex;

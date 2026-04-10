@@ -1,6 +1,7 @@
 {
 	"appearance": {
-		"compact_tabs": true
+		"compact_tabs": true,
+		"editor_font_size": 14
 	},
 	"documents": {
 		"use_yaml_frontmatter": true

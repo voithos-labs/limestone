@@ -15,23 +15,26 @@
     import {defaultKeymap, history, historyKeymap} from '@codemirror/commands';
     import {syntaxHighlighting, HighlightStyle, syntaxTree} from '@codemirror/language';
     import {tags} from '@lezer/highlight';
-    import type DocHandle from "$lib/models/DocHandle";
+    import type {TabState} from "$lib/state/EditorState.svelte";
+    import {getSetting} from "$lib/models/Settings";
 
     let {
-        handle,
-        initialScrollTop,
-        initialCursorPos,
+        tab,
         onchange,
-        onScroll,
-        onCursor,
+        onChanged,
     }: {
-        handle: DocHandle;
-        initialScrollTop?: number;
-        initialCursorPos?: number;
+        tab: TabState;
         onchange?: (value: string) => void;
-        onScroll?: (top: number) => void;
-        onCursor?: (pos: number) => void;
+        onChanged?: () => void;
     } = $props();
+
+    let handle = $derived(tab.handle);
+    let zoom = $state(tab.state.zoom ?? 16);
+    if (tab.state.zoom === undefined) {
+        getSetting<number>('appearance.editor_font_size').then(v => {
+            if (tab.state.zoom === undefined && typeof v === 'number') zoom = v;
+        });
+    }
 
     let container: HTMLDivElement;
     let view: EditorView;
@@ -48,7 +51,7 @@
     const theme = EditorView.theme({
         '&': {
             height: '100%',
-            fontSize: '16px',
+            fontSize: 'var(--editor-font-size, 16px)',
             backgroundColor: 'transparent',
         },
         '.cm-content': {
@@ -144,6 +147,29 @@
         decorations: v => v.decorations,
     });
 
+    function setZoom(next: number) {
+        zoom = Math.max(10, Math.min(40, next));
+        tab.state.zoom = zoom;
+        onChanged?.();
+    }
+
+    // Saving
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    const SAVE_DEBOUNCE_MS = 250;
+
+    function flushSave() {
+        if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+        }
+        handle.saveContent(content).catch(e => console.error('saveContent failed', e));
+    }
+
+    function scheduleSave() {
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
+    }
+
     onMount(() => {
         const updateListener = EditorView.updateListener.of((update) => {
             if (update.docChanged) {
@@ -151,17 +177,25 @@
                 content = update.state.doc.toString();
                 onchange?.(content);
                 internalUpdate = false;
+                if (initApplied) scheduleSave();
             }
             if (update.selectionSet && initApplied) {
-                onCursor?.(update.state.selection.main.head);
+                tab.state.cursorPos = update.state.selection.main.head;
+                onChanged?.();
             }
         });
+
+        const zoomKeymap = [
+            {key: 'Mod-=', run: () => { setZoom(zoom + 1); return true; }},
+            {key: 'Mod-Shift-=', run: () => { setZoom(zoom + 1); return true; }},
+            {key: 'Mod--', run: () => { setZoom(zoom - 1); return true; }},
+        ];
 
         view = new EditorView({
             state: EditorState.create({
                 doc: content,
                 extensions: [
-                    keymap.of([...defaultKeymap, ...historyKeymap]),
+                    keymap.of([...zoomKeymap, ...defaultKeymap, ...historyKeymap]),
                     history(),
                     markdown({codeLanguages: languages}),
                     syntaxHighlighting(microMonokai),
@@ -180,7 +214,8 @@
 
     function handleScroll() {
         if (!initApplied) return;
-        onScroll?.(view.scrollDOM.scrollTop);
+        tab.state.scrollTop = view.scrollDOM.scrollTop;
+        onChanged?.();
     }
 
     $effect(() => {
@@ -193,6 +228,8 @@
             if (!initApplied) {
                 requestAnimationFrame(() => {
                     if (!view) return;
+                    const initialCursorPos = tab.state.cursorPos;
+                    const initialScrollTop = tab.state.scrollTop;
                     if (initialCursorPos !== undefined) {
                         const pos = Math.min(initialCursorPos, view.state.doc.length);
                         view.dispatch({ selection: { anchor: pos } });
@@ -208,12 +245,13 @@
     });
 
     onDestroy(() => {
+        if (saveTimer) flushSave();
         view?.scrollDOM.removeEventListener('scroll', handleScroll);
         view?.destroy();
     });
 </script>
 
-<div class="cm-wrapper" bind:this={container}></div>
+<div class="cm-wrapper" bind:this={container} style="--editor-font-size: {zoom}px"></div>
 
 <style>
     .cm-wrapper {

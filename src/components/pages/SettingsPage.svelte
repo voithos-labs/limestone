@@ -311,7 +311,7 @@
     .sidebar-divider {
         height: 1px;
         margin: 6px 12px;
-        background: var(--color-border);
+        background: var(--color-ui);
     }
 
     .sidebar-spacer {

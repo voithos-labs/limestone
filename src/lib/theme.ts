@@ -146,6 +146,8 @@ export function applyTheme(theme: Theme) {
 	}
 	root.style.setProperty('--font-ui', theme.fontFamily ?? DEFAULT_FONT);
 	root.dataset.themeType = theme.type;
+	if (theme.transparentBackground) root.dataset.themeTransparent = 'true';
+	else delete root.dataset.themeTransparent;
 
 	// Tear down any previous focus listener before installing or skipping
 	if (_focusCleanup) {
