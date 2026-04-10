@@ -30,6 +30,56 @@
 
     let handle = $derived(tab.handle);
     let zoom = $state(tab.state.zoom ?? 16);
+    let scrolling = $state(false);
+    let scrollHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Custom scrollbar thumb metrics
+    let thumbTop = $state(0);
+    let thumbHeight = $state(0);
+    let showThumb = $state(false);
+    const THUMB_MAX_FRACTION = 1 / 5;
+    const THUMB_MIN_PX = 24;
+    const THUMB_INSET_PX = 8;
+
+    function startThumbDrag(e: PointerEvent) {
+        if (!view) return;
+        e.preventDefault();
+        const startY = e.clientY;
+        const startScroll = view.scrollDOM.scrollTop;
+        const viewH = view.scrollDOM.clientHeight;
+        const maxScroll = view.scrollDOM.scrollHeight - viewH;
+        const trackRange = (viewH - 2 * THUMB_INSET_PX) - thumbHeight;
+        if (trackRange <= 0 || maxScroll <= 0) return;
+        const ratio = maxScroll / trackRange;
+
+        function onMove(ev: PointerEvent) {
+            view.scrollDOM.scrollTop = startScroll + (ev.clientY - startY) * ratio;
+        }
+        function onUp() {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+        }
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+    }
+
+    function updateThumb() {
+        if (!view) return;
+        const scroll = view.scrollDOM;
+        const viewH = scroll.clientHeight;
+        const contentH = scroll.scrollHeight;
+        const maxScroll = contentH - viewH;
+        const trackH = viewH - 2 * THUMB_INSET_PX;
+        if (maxScroll <= 0 || trackH <= 0) {
+            showThumb = false;
+            return;
+        }
+        const natural = (viewH / contentH) * trackH;
+        const capped = Math.min(natural, trackH * THUMB_MAX_FRACTION);
+        thumbHeight = Math.max(capped, THUMB_MIN_PX);
+        thumbTop = THUMB_INSET_PX + (scroll.scrollTop / maxScroll) * (trackH - thumbHeight);
+        showThumb = true;
+    }
     if (tab.state.zoom === undefined) {
         getSetting<number>('appearance.editor_font_size').then(v => {
             if (tab.state.zoom === undefined && typeof v === 'number') zoom = v;
@@ -170,6 +220,8 @@
         saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
     }
 
+    let resizeObserver: ResizeObserver | null = null;
+
     onMount(() => {
         const updateListener = EditorView.updateListener.of((update) => {
             if (update.docChanged) {
@@ -178,6 +230,7 @@
                 onchange?.(content);
                 internalUpdate = false;
                 if (initApplied) scheduleSave();
+                updateThumb();
             }
             if (update.selectionSet && initApplied) {
                 tab.state.cursorPos = update.state.selection.main.head;
@@ -210,9 +263,18 @@
         });
 
         view.scrollDOM.addEventListener('scroll', handleScroll);
+
+        resizeObserver = new ResizeObserver(() => updateThumb());
+        resizeObserver.observe(view.scrollDOM);
+        updateThumb();
     });
 
     function handleScroll() {
+        scrolling = true;
+        if (scrollHideTimer) clearTimeout(scrollHideTimer);
+        scrollHideTimer = setTimeout(() => { scrolling = false; }, 500);
+        updateThumb();
+
         if (!initApplied) return;
         tab.state.scrollTop = view.scrollDOM.scrollTop;
         onChanged?.();
@@ -246,12 +308,27 @@
 
     onDestroy(() => {
         if (saveTimer) flushSave();
+        if (scrollHideTimer) clearTimeout(scrollHideTimer);
+        resizeObserver?.disconnect();
         view?.scrollDOM.removeEventListener('scroll', handleScroll);
         view?.destroy();
     });
 </script>
 
-<div class="cm-wrapper" bind:this={container} style="--editor-font-size: {zoom}px"></div>
+<div
+    class="cm-wrapper"
+    class:scrolling
+    bind:this={container}
+    style="--editor-font-size: {zoom}px"
+>
+    {#if showThumb}
+        <div
+            class="scroll-thumb"
+            style="height: {thumbHeight}px; transform: translateY({thumbTop}px);"
+            onpointerdown={startThumbDrag}
+        ></div>
+    {/if}
+</div>
 
 <style>
     .cm-wrapper {
@@ -290,5 +367,33 @@
 
     .cm-wrapper :global(.cm-focused) {
         outline: none;
+    }
+
+    .scroll-thumb {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 14px;
+        background: transparent;
+        cursor: pointer;
+        z-index: 2;
+    }
+
+    .scroll-thumb::before {
+        content: '';
+        position: absolute;
+        right: 4px;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        border-radius: 4px;
+        background: var(--color-border);
+        transition: background-color 350ms ease, width 350ms ease;
+    }
+
+    .cm-wrapper.scrolling .scroll-thumb::before,
+    .scroll-thumb:hover::before {
+        width: 4px;
+        background: var(--color-ui-muted);
     }
 </style>
