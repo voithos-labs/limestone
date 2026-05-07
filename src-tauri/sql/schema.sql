@@ -31,7 +31,7 @@ create table if not exists documents (
     accessed_at text not null default (datetime('now')),
     mtime integer,
     deleted_at text,
-    properties text not null default '{}'
+    properties text not null default '{}' check (json_valid(properties))
 ) strict;
 
 create table if not exists groups (
@@ -42,9 +42,13 @@ create table if not exists groups (
     parent_group_id text references groups(id) on delete set null,
     created_at text not null default (datetime('now')),
     updated_at text not null default (datetime('now')),
-    accessed_at text not null default (datetime('now'))
+    accessed_at text not null default (datetime('now')),
     -- okay to get the full prop flexibility potential (like notion) you need props with default values per-group
     -- can just define in a basic json, schema will have to be enforced in code on-parse. Will add when needed.
+    check (
+        (group_type = 'tag' and parent_group_id is null)
+        or group_type = 'folder'
+    )
 ) strict;
 
 create table if not exists document_groups (
@@ -56,7 +60,7 @@ create table if not exists document_groups (
 -- ── Indexes ──────────────────────────────────────────────────────────────────────────
 
 create index if not exists idx_documents_source on documents(source_id);
-create index if not exists idx_documents_rel_path on documents(source_id, rel_path);
+create unique index if not exists idx_documents_rel_path on documents(source_id, rel_path);
 create index if not exists idx_documents_updated_at on documents(updated_at);
 create index if not exists idx_groups_source on groups(source_id);
 create index if not exists idx_groups_parent on groups(parent_group_id);

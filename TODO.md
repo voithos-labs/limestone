@@ -1,9 +1,10 @@
 ---
 id: da597ec2-6c45-45b2-99b2-428acf1a2f1e
-tags: []
+tags: [ ]
 created_at: 2026-04-10T20:16:06.000Z
 updated_at: 2026-04-10T20:16:06.000Z
 ---
+
 # TODO n shit
 
 ## Features
@@ -18,7 +19,6 @@ updated_at: 2026-04-10T20:16:06.000Z
 - [x] Title search
 - [ ] FTS (via tantivy)
 - [ ] Group filtering in search
-- [ ] <eventually> smart search local
 
 ### General UI
 
@@ -48,4 +48,6 @@ Searches should be able to be opened as a tab in one click
 - [ ] Default / base table-like view, with filters etc.
 - [ ] Journal / Daily log
 
+Think about:
 
+- Maybe use H1 header as title optionally? Including in search

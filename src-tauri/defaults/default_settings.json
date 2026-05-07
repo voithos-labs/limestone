@@ -1,7 +1,8 @@
 {
 	"appearance": {
 		"compact_tabs": true,
-		"editor_font_size": 14
+		"editor_font_size": 14,
+		"ui_scale_percent": 100
 	},
 	"documents": {
 		"use_yaml_frontmatter": true

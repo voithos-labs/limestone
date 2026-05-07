@@ -254,7 +254,7 @@
     .divider {
         width: 1px;
         height: 22px;
-        margin: 0 -8px 9px 0px;
+        margin: 0 -6px 9px 2px;
         background: var(--color-border);
         flex-shrink: 0;
     }
@@ -311,7 +311,7 @@
         flex-shrink: 1;
         min-width: 32px;
         max-width: 240px;
-        padding: 0 8px;
+        padding: 0 12px;
     }
 
     .tab.icon-tab {
@@ -367,20 +367,20 @@
         content: '';
         position: absolute;
         bottom: 0;
-        width: 6px;
-        height: 6px;
+        width: 5px;
+        height: 5px;
     }
 
     .tab.active::before {
-        left: -6px;
-        border-bottom-right-radius: 6px;
-        box-shadow: 3px 0 0 0 var(--color-surface);
+        left: -5px;
+        border-bottom-right-radius: 5px;
+        box-shadow: 2.5px 0 0 0 var(--color-surface);
     }
 
     .tab.active::after {
-        right: -6px;
-        border-bottom-left-radius: 6px;
-        box-shadow: -3px 0 0 0 var(--color-surface);
+        right: -5px;
+        border-bottom-left-radius: 5px;
+        box-shadow: -2.5px 0 0 0 var(--color-surface);
     }
 
     .tab-label {

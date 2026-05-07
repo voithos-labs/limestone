@@ -8,8 +8,17 @@
     let {viewTab, session}: { viewTab: ViewTab; session: Session } = $props();
 
     const APPEARANCE = 'appearance';
+    const SCALE_KEY = 'ui_scale_percent';
+    const SCALE_PRESETS = [75, 90, 100, 110, 125, 150, 175, 200];
 
     let settings: Record<string, SettingValue> = $state({});
+    let scaleCustomMode = $state(false);
+
+    let scalePercent = $derived.by(() => {
+        const v = (settings[APPEARANCE] as Record<string, SettingValue> | undefined)?.[SCALE_KEY];
+        return typeof v === 'number' ? v : 100;
+    });
+    let scaleShowCustom = $derived(scaleCustomMode || !SCALE_PRESETS.includes(scalePercent));
     let sections = $derived(Object.keys(settings).filter(s => s !== APPEARANCE));
     let allSections = $derived([APPEARANCE, ...sections]);
     let activeSection = $state('');
@@ -22,6 +31,7 @@
         themes = await session.listThemes();
         const saved = viewTab.state?.activeSection;
         activeSection = (saved && allSections.includes(saved)) ? saved : APPEARANCE;
+        if (!SCALE_PRESETS.includes(scalePercent)) scaleCustomMode = true;
     });
 
     function saveTabState() {
@@ -105,7 +115,6 @@
         >
             Appearance
         </button>
-        <div class="sidebar-divider"></div>
         {#each sections as section}
             <button
                     class="section-btn"
@@ -206,7 +215,47 @@
                         </select>
                     </div>
                 </div>
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <span class="setting-label">UI Scale</span>
+                        <span class="setting-key">{APPEARANCE}.{SCALE_KEY}</span>
+                    </div>
+                    <div class="setting-control scale-control">
+                        <select
+                                class="input-select"
+                                value={scaleShowCustom ? 'custom' : String(scalePercent)}
+                                onchange={(e) => {
+                                    const v = (e.target as HTMLSelectElement).value;
+                                    if (v === 'custom') {
+                                        scaleCustomMode = true;
+                                    } else {
+                                        scaleCustomMode = false;
+                                        updateSetting(APPEARANCE, SCALE_KEY, Number(v));
+                                    }
+                                }}
+                        >
+                            {#each SCALE_PRESETS as p}
+                                <option value={String(p)}>{p}%</option>
+                            {/each}
+                            <option value="custom">Custom…</option>
+                        </select>
+                        {#if scaleShowCustom}
+                            <input
+                                    class="input-number scale-custom"
+                                    type="number"
+                                    min="25"
+                                    max="500"
+                                    value={scalePercent}
+                                    onchange={(e) => {
+                                        const n = Number((e.target as HTMLInputElement).value);
+                                        if (!isNaN(n) && n > 0) updateSetting(APPEARANCE, SCALE_KEY, n);
+                                    }}
+                            />
+                        {/if}
+                    </div>
+                </div>
                 {#each sectionEntries(APPEARANCE) as [key, value]}
+                    {#if key !== SCALE_KEY}
                     <div class="setting-row">
                         <div class="setting-info">
                             <span class="setting-label">{formatLabel(key)}</span>
@@ -239,6 +288,7 @@
                             {/if}
                         </div>
                     </div>
+                    {/if}
                 {/each}
             </div>
         {:else if activeSection}
@@ -306,12 +356,6 @@
         border-right: 1px solid var(--color-border);
         flex-shrink: 0;
         gap: 2px;
-    }
-
-    .sidebar-divider {
-        height: 1px;
-        margin: 6px 12px;
-        background: var(--color-ui);
     }
 
     .sidebar-spacer {
@@ -446,6 +490,16 @@
     .setting-control {
         flex-shrink: 0;
         margin-left: 24px;
+    }
+
+    .scale-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .scale-custom {
+        width: 80px;
     }
 
     .empty {

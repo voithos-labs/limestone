@@ -1,23 +1,34 @@
+/**
+ * Okay what be a group
+ *
+ * There are two kinds of groups; tags and folders
+ *
+ * Why group? There was a reason when I thought it up and I've reconsidered a few times and settled
+ * on groups, it's easier to do intersections and unions and searches with a unified unit of
+ * organization -- maybe regret later issue
+ *
+ * So tags:
+ * - global, flat tags -- unique slugs
+ *
+ * Folders:
+ * - um folders, basically
+ *
+ * I'll make a note here later if I should have separated them
+ *
+ * todo:
+ * - when folder manipulation is added to the app we'll need a way to auto-update folder-groups
+ * 		I mean we kind of have this on full reload but ya know, prob want it to work while in the app
+ */
+
 import { select, execute, parseUtc } from '$lib/db';
 import { v4 as uuidv4 } from 'uuid';
 
+// just wasting lines at this point
 export enum GroupType {
 	Tag = 'tag',
 	Folder = 'folder'
 }
 
-/**
- * create table if not exists groups (
- *     id text primary key not null,
- *     source_id text references sources(id) on delete cascade,
- *     slug text not null,
- *     group_type text not null default 'tag',
- *     parent_group_id text references groups(id) on delete set null,
- *     created_at text not null default (datetime('now')),
- *     updated_at text not null default (datetime('now')),
- *     accessed_at text not null default (datetime('now'))
- * ) strict;
- */
 export interface GroupRow {
 	id: string;
 	source_id: string;
@@ -37,6 +48,8 @@ class Group {
 	updatedAt: Date;
 	parentGroupId?: string;
 
+	// ── State ───────────────────────────────────────────────────────────────────────────
+
 	constructor(row: GroupRow) {
 		this.id = row.id;
 		this.slug = row.slug;
@@ -48,13 +61,12 @@ class Group {
 
 	/**
 	 * Create a new group
-	 * todo: if/when folder manipulation is added to the app we'll need a way to auto-update folder-groups
 	 */
-	static async create(
+	private static async create(
 		slug: string,
 		sourceId?: string,
-		parentGroupId?: string,
-		groupType: GroupType = GroupType.Tag
+		groupType: GroupType = GroupType.Tag,
+		parentGroupId: string | undefined = undefined
 	): Promise<Group> {
 		const id = uuidv4();
 
@@ -74,14 +86,28 @@ class Group {
 		return new Group(row);
 	}
 
-	static async fromSlugs(slugs: string[], sourceId: string): Promise<Group[]> {
-		if (slugs.length === 0) return [];
-		const placeholders = slugs.map((_, i) => `?${i + 2}`).join(', ');
-		const rows = await select<GroupRow>(
-			`SELECT * FROM groups WHERE source_id = ?1 AND slug IN (${placeholders})`,
-			[sourceId, ...slugs]
-		);
-		return rows.map((r) => new Group(r));
+	// okay wtf was I on writing the above create
+
+	/**
+	 * Create a tag group
+	 *
+	 * Tags are global and the slug must be unique
+	 */
+	static async createTag(slug: string): Promise<Group> {
+		return Group.create(slug, undefined, GroupType.Tag, undefined);
+	}
+
+	/**
+	 * Create a folder group
+	 *
+	 * NOTE: only folders in the root of a source have parentGroupId NULL; leave blank
+	 */
+	static async createFolder(
+		slug: string,
+		sourceId: string,
+		parentGroupId?: string
+	): Promise<Group> {
+		return Group.create(slug, sourceId, GroupType.Folder, parentGroupId);
 	}
 
 	static async fromID(id: string): Promise<Group> {
@@ -107,6 +133,16 @@ class Group {
 		);
 		(this as { slug: string }).slug = newSlug;
 		this.updatedAt = parseUtc(updated_at);
+	}
+
+	static async fromSlugs(slugs: string[], sourceId: string): Promise<Group[]> {
+		if (slugs.length === 0) return [];
+		const placeholders = slugs.map((_, i) => `?${i + 2}`).join(', ');
+		const rows = await select<GroupRow>(
+			`SELECT * FROM groups WHERE source_id = ?1 AND slug IN (${placeholders})`,
+			[sourceId, ...slugs]
+		);
+		return rows.map((r) => new Group(r));
 	}
 }
 

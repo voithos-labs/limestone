@@ -76,8 +76,9 @@ class DocHandle {
 		this.source = source;
 		this.title = row.title;
 		this.groups = [];
-		this.properties =
-			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
+		this.properties = DocHandle.expandProps(
+			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties
+		);
 		this.createdAt = parseUtc(row.created_at);
 		this.updatedAt = parseUtc(row.updated_at);
 		this.accessedAt = parseUtc(row.accessed_at);
@@ -97,7 +98,7 @@ class DocHandle {
 		await execute(
 			`INSERT INTO documents (id, source_id, rel_path, title, properties)
              VALUES (?1, ?2, ?3, ?4, ?5)`,
-			[id, source.id, relPath, title, JSON.stringify(properties)]
+			[id, source.id, relPath, title, JSON.stringify(DocHandle.flattenProps(properties))]
 		);
 		// reselect for db defaults
 		const [row] = await select<DocumentRow>(
@@ -187,10 +188,21 @@ class DocHandle {
 		this.groups = this.groups.filter((g) => !removed.has(g.id));
 	}
 
+	// UTIL GETTERS
+
+	get tags(): Group[] {
+		return this.groups.filter((g) => g.groupType == 'tag');
+	}
+
+	get folders(): Group[] {
+		return this.groups.filter((g) => g.groupType == 'folder');
+	}
+
 	// ── Serialization ────────────────────────────────────────────────────────────────
 
 	/**
-	 * Build the frontmatter from doc state
+	 * Build the frontmatter from doc state.
+	 * Flattens nested properties into dot-delimited keys for storage.
 	 */
 	toFrontmatter(): DocumentFrontmatter {
 		return {
@@ -198,8 +210,54 @@ class DocHandle {
 			tags: this.groups.filter((g) => g.groupType === 'tag').map((g) => g.slug),
 			created_at: this.createdAt,
 			updated_at: this.updatedAt,
-			...this.properties
+			...DocHandle.flattenProps(this.properties)
 		};
+	}
+
+	/** Flatten a nested object into dot-delimited keys (only for known namespaces) */
+	private static flattenProps(obj: Record<string, unknown>, prefix = ''): Record<string, unknown> {
+		const result: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(obj)) {
+			const key = prefix ? `${prefix}.${k}` : k;
+			const ns = key.split('.')[0];
+			if (
+				v !== null &&
+				typeof v === 'object' &&
+				!Array.isArray(v) &&
+				!(v instanceof Date) &&
+				(prefix || DocHandle.NESTED_NAMESPACES.includes(ns))
+			) {
+				Object.assign(result, DocHandle.flattenProps(v as Record<string, unknown>, key));
+			} else {
+				result[key] = v;
+			}
+		}
+		return result;
+	}
+
+	/** Namespaces that use dot-delimited nesting. All other dotted keys are kept flat. */
+	private static readonly NESTED_NAMESPACES = ['views'];
+
+	/** Expand dot-delimited keys into a nested object (only for known namespaces) */
+	private static expandProps(flat: Record<string, unknown>): Record<string, unknown> {
+		const result: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(flat)) {
+			const ns = key.split('.')[0];
+			if (!key.includes('.') || !DocHandle.NESTED_NAMESPACES.includes(ns)) {
+				result[key] = value;
+				continue;
+			}
+			const segments = key.split('.');
+			let current = result;
+			for (let i = 0; i < segments.length - 1; i++) {
+				if (!(segments[i] in current) || typeof current[segments[i]] !== 'object') {
+					current[segments[i]] = {};
+				}
+				current = current[segments[i]] as Record<string, unknown>;
+			}
+			current[segments[segments.length - 1]] = value;
+		}
+		return result;
 	}
 
 	/**
@@ -249,7 +307,7 @@ class DocHandle {
 			if (id) (this as { id: string }).id = id;
 			if (created_at) this.createdAt = new Date(created_at);
 			if (updated_at) this.updatedAt = new Date(updated_at);
-			this.properties = remaining;
+			this.properties = DocHandle.expandProps(remaining);
 			this.groups = await Group.fromSlugs(tags, this.source.id);
 		}
 

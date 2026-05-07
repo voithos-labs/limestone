@@ -232,7 +232,7 @@ class EditorState {
 	 *
 	 * lazily cleans up previously removed tabs from this.tabAccessOrderById
 	 */
-	getTabsAccessedOrder(): TabState[] {
+	cleanTabsAccessedOrder(): TabState[] {
 		let tabsAccessedOrder: TabState[] = [];
 		let missingTabsIndexes: number[] = [];
 		for (const [i, id] of this.tabAccessOrderById.entries()) {
