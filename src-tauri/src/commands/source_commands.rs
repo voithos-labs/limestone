@@ -92,8 +92,7 @@ pub fn create_source(
     let mut sources = load_sources(&app);
     check_source_conflict(&candidate, &sources)?;
 
-    let source =
-        services::create_source(Some(title), candidate).map_err(|e| e.to_string())?;
+    let source = services::create_source(Some(title), candidate).map_err(|e| e.to_string())?;
 
     // add fs access to new source dir
     let _ = app.fs_scope().allow_directory(&source.path, true);
@@ -114,6 +113,47 @@ pub fn get_sources(app: AppHandle) -> Vec<Source> {
 #[tauri::command]
 pub fn get_source_by_id(app: AppHandle, id: Uuid) -> Option<Source> {
     load_sources(&app).into_iter().find(|v| v.id == id)
+}
+
+#[tauri::command]
+pub async fn touch_source(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    id: Uuid,
+) -> Result<(), String> {
+    let mut sources = load_sources(&app);
+    let now = chrono::Utc::now();
+    if let Some(s) = sources.iter_mut().find(|s| s.id == id) {
+        s.accessed_at = now;
+    }
+    save_sources(&app, &sources)?;
+
+    sqlx::query("UPDATE sources SET accessed_at = datetime('now') WHERE id = ?1")
+        .bind(id.to_string())
+        .execute(&app_data.db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_source(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    id: Uuid,
+) -> Result<(), String> {
+    let mut sources = load_sources(&app);
+    sources.retain(|s| s.id != id);
+    save_sources(&app, &sources)?;
+
+    sqlx::query("DELETE FROM sources WHERE id = ?1")
+        .bind(id.to_string())
+        .execute(&app_data.db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -149,6 +189,22 @@ fn search_config_from_settings(settings: &serde_json::Value) -> services::search
         recency_default_days: dot_get(settings, "search.recency_default_days")
             .and_then(|v| v.as_f64())
             .unwrap_or(defaults.recency_default_days),
+        group_prefix_min_chars: dot_get(settings, "search.group_prefix_min_chars")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(defaults.group_prefix_min_chars),
+        group_max_results: dot_get(settings, "search.group_max_results")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(defaults.group_max_results),
+        source_prefix_min_chars: dot_get(settings, "search.source_prefix_min_chars")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(defaults.source_prefix_min_chars),
+        source_max_results: dot_get(settings, "search.source_max_results")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(defaults.source_max_results),
     }
 }
 
