@@ -14,6 +14,10 @@ export async function getSource(id: string): Promise<Source> {
 	return result;
 }
 
+export async function listSources(): Promise<Source[]> {
+	return await invoke<Source[]>('get_sources');
+}
+
 export async function touchSource(id: string): Promise<void> {
 	await invoke('touch_source', { id });
 }

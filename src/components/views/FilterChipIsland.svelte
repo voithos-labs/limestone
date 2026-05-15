@@ -1,7 +1,9 @@
 <script lang="ts">
     import type {Component} from "svelte";
     import {X} from "@lucide/svelte";
+    import type {ViewField} from "$lib/models/View.svelte";
     import Menu from "./Menu.svelte";
+    import FilterValueEditor from "./FilterValueEditor.svelte";
     import type {OpOption} from "$lib/views/filterDisplay";
 
     let {
@@ -11,9 +13,11 @@
         opValue,
         opOptions,
         value,
+        rawValue,
+        field,
         onFieldClick,
         onOpChange,
-        onValueClick,
+        onValueChange,
         onRemove
     }: {
         icon: Component;
@@ -22,9 +26,11 @@
         opValue?: string;
         opOptions?: OpOption[];
         value?: string;
+        rawValue?: unknown;
+        field?: ViewField;
         onFieldClick?: () => void;
         onOpChange?: (op: string) => void;
-        onValueClick?: () => void;
+        onValueChange?: (value: unknown) => void;
         onRemove?: () => void;
     } = $props();
 
@@ -33,9 +39,18 @@
     let opEl: HTMLButtonElement | null = $state(null);
     let opOpen = $state(false);
 
+    let valueEl: HTMLButtonElement | null = $state(null);
+    let valueOpen = $state(false);
+
     function handleOpClick() {
         if (opOptions && opOptions.length > 0 && onOpChange) {
             opOpen = !opOpen;
+        }
+    }
+
+    function handleValueClick() {
+        if (field && onValueChange) {
+            valueOpen = !valueOpen;
         }
     }
 </script>
@@ -60,8 +75,15 @@
 
     {#if value !== undefined}
         <span class="divider"></span>
-        <button class="seg seg-value" type="button" onclick={onValueClick}>
-            <span class="seg-label">{value}</span>
+        <button
+                class="seg seg-value"
+                class:open={valueOpen}
+                class:empty={value === ''}
+                type="button"
+                onclick={handleValueClick}
+                bind:this={valueEl}
+        >
+            <span class="seg-label">{value === '' ? 'empty' : value}</span>
         </button>
     {/if}
 
@@ -82,12 +104,22 @@
         minWidth={140}
 />
 
+{#if field && onValueChange}
+    <FilterValueEditor
+            bind:open={valueOpen}
+            anchor={valueEl}
+            {field}
+            value={rawValue}
+            onChange={(v) => onValueChange?.(v)}
+    />
+{/if}
+
 <style>
     .chip {
         display: inline-flex;
         align-items: stretch;
         height: 28px;
-        background: rgba(0, 0, 0, 0.045);
+        background: var(--chip-bg);
         border: none;
         border-radius: 6px;
         font-family: var(--font-ui);
@@ -99,7 +131,7 @@
     }
 
     .chip:hover {
-        background: rgba(0, 0, 0, 0.06);
+        background: var(--chip-bg-hover);
     }
 
     .seg {
@@ -117,16 +149,16 @@
     }
 
     .seg:hover {
-        background: rgba(0, 0, 0, 0.04);
+        background: var(--chip-seg-hover);
         color: var(--color-text-secondary);
     }
 
     .seg:active {
-        background: rgba(0, 0, 0, 0.07);
+        background: var(--chip-seg-active);
     }
 
     .seg.open {
-        background: rgba(0, 0, 0, 0.07);
+        background: var(--chip-seg-active);
         color: var(--color-text-primary);
     }
 
@@ -158,10 +190,16 @@
         padding-left: 8px;
     }
 
+    .seg-value.empty {
+        color: var(--color-ui-muted);
+        font-style: italic;
+        font-weight: 400;
+    }
+
     .divider {
         width: 1px;
         margin: 6px 0;
-        background: rgba(0, 0, 0, 0.08);
+        background: var(--chip-divider);
         flex-shrink: 0;
     }
 
@@ -170,7 +208,7 @@
     }
 
     .seg-remove:hover {
-        background: rgba(0, 0, 0, 0.04);
+        background: var(--chip-seg-hover);
         color: var(--color-text-primary);
     }
 </style>

@@ -1,9 +1,12 @@
 <script lang="ts">
-    import {Check} from "@lucide/svelte";
+    import type {Component} from "svelte";
+    import {untrack} from "svelte";
+    import {Check, Search} from "@lucide/svelte";
 
     interface MenuItem {
         value: string;
         label: string;
+        icon?: Component;
     }
 
     let {
@@ -12,7 +15,9 @@
         items,
         selected,
         onSelect,
-        minWidth = 160
+        minWidth = 160,
+        searchable = false,
+        placeholder = 'Search…'
     }: {
         open: boolean;
         anchor: HTMLElement | null;
@@ -20,11 +25,21 @@
         selected?: string;
         onSelect: (value: string) => void;
         minWidth?: number;
+        searchable?: boolean;
+        placeholder?: string;
     } = $props();
 
     let menuEl: HTMLDivElement | null = $state(null);
     let pos: { top: number; left: number } = $state({top: 0, left: 0});
     let activeIndex = $state(-1);
+    let query = $state('');
+    let searchEl: HTMLInputElement | null = $state(null);
+
+    const filtered = $derived(
+        !searchable || query.trim() === ''
+            ? items
+            : items.filter(i => i.label.toLowerCase().includes(query.trim().toLowerCase()))
+    );
 
     function position() {
         if (!anchor || !menuEl) return;
@@ -57,21 +72,32 @@
             return;
         }
         if (e.key === 'ArrowDown') {
-            activeIndex = (activeIndex + 1) % items.length;
+            activeIndex = filtered.length === 0 ? -1 : (activeIndex + 1) % filtered.length;
             e.preventDefault();
         } else if (e.key === 'ArrowUp') {
-            activeIndex = (activeIndex - 1 + items.length) % items.length;
+            activeIndex = filtered.length === 0 ? -1 : (activeIndex - 1 + filtered.length) % filtered.length;
             e.preventDefault();
-        } else if (e.key === 'Enter' && activeIndex >= 0) {
-            pick(items[activeIndex].value);
+        } else if (e.key === 'Enter' && activeIndex >= 0 && filtered[activeIndex]) {
+            pick(filtered[activeIndex].value);
             e.preventDefault();
         }
     }
 
+    let wasOpen = false;
+
     $effect(() => {
-        if (open) {
-            activeIndex = items.findIndex(i => i.value === selected);
-            queueMicrotask(position);
+        const isOpen = open;
+        if (isOpen && !wasOpen) {
+            wasOpen = true;
+            untrack(() => {
+                activeIndex = filtered.findIndex(i => i.value === selected);
+                if (activeIndex < 0 && filtered.length > 0) activeIndex = 0;
+                if (query !== '') query = '';
+            });
+            queueMicrotask(() => {
+                position();
+                if (searchable) searchEl?.focus();
+            });
             window.addEventListener('resize', position);
             window.addEventListener('scroll', position, true);
             document.addEventListener('pointerdown', onDocPointerDown);
@@ -82,6 +108,21 @@
                 document.removeEventListener('pointerdown', onDocPointerDown);
                 document.removeEventListener('keydown', onKey);
             };
+        }
+        if (!isOpen && wasOpen) {
+            wasOpen = false;
+        }
+    });
+
+    $effect(() => {
+        query;
+        if (open) {
+            queueMicrotask(position);
+            untrack(() => {
+                if (filtered.length > 0 && (activeIndex < 0 || activeIndex >= filtered.length)) {
+                    activeIndex = 0;
+                }
+            });
         }
     });
 
@@ -101,22 +142,42 @@
             role="menu"
             tabindex="-1"
     >
-        {#each items as item, i (item.value)}
-            <button
-                    class="menu-item"
-                    class:active={activeIndex === i}
-                    class:selected={selected === item.value}
-                    type="button"
-                    role="menuitem"
-                    onclick={() => pick(item.value)}
-                    onmouseenter={() => activeIndex = i}
-            >
-                <span class="item-label">{item.label}</span>
-                {#if selected === item.value}
-                    <Check size={13} strokeWidth={2}/>
-                {/if}
-            </button>
-        {/each}
+        {#if searchable}
+            <div class="search-row">
+                <Search size={13} strokeWidth={1.75}/>
+                <input
+                        class="search-input"
+                        type="text"
+                        bind:value={query}
+                        bind:this={searchEl}
+                        placeholder={placeholder}
+                />
+            </div>
+        {/if}
+        <div class="list">
+            {#each filtered as item, i (item.value)}
+                {@const Icon = item.icon}
+                <button
+                        class="menu-item"
+                        class:active={activeIndex === i}
+                        class:selected={selected === item.value}
+                        type="button"
+                        role="menuitem"
+                        onclick={() => pick(item.value)}
+                        onmouseenter={() => activeIndex = i}
+                >
+                    {#if Icon}
+                        <span class="item-icon"><Icon size={13} strokeWidth={1.75}/></span>
+                    {/if}
+                    <span class="item-label">{item.label}</span>
+                    {#if selected === item.value}
+                        <Check size={13} strokeWidth={2}/>
+                    {/if}
+                </button>
+            {:else}
+                <div class="empty">No results</div>
+            {/each}
+        </div>
     </div>
 {/if}
 
@@ -127,23 +188,78 @@
         background: var(--color-bg);
         border: 1px solid var(--color-border);
         border-radius: 8px;
-        box-shadow:
-                0 8px 24px rgba(0, 0, 0, 0.10),
-                0 2px 6px rgba(0, 0, 0, 0.06);
+        box-shadow: var(--menu-shadow);
         padding: 4px;
         font-family: var(--font-ui);
         font-size: 13px;
         line-height: 1.4;
         color: var(--color-text-primary);
         max-height: 360px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .search-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: -4px -4px 4px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--menu-search-divider);
+        color: var(--color-ui-muted);
+    }
+
+    .search-row :global(svg) {
+        flex-shrink: 0;
+    }
+
+    .search-input {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        font: inherit;
+        font-size: 13px;
+        color: var(--color-text-primary);
+        outline: none;
+        padding: 0;
+    }
+
+    .search-input::placeholder {
+        color: var(--color-ui-dulled);
+    }
+
+    .list {
         overflow-y: auto;
+        flex: 1;
+        margin-right: -4px;
+        padding-right: 0;
+        scrollbar-width: thin;
+        scrollbar-color: var(--menu-scrollbar-thumb) transparent;
+    }
+
+    .list::-webkit-scrollbar {
+        width: 5px;
+    }
+
+    .list::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .list::-webkit-scrollbar-thumb {
+        background: var(--menu-scrollbar-thumb);
+        border-radius: 3px;
+    }
+
+    .list::-webkit-scrollbar-thumb:hover {
+        background: var(--menu-scrollbar-thumb-hover);
     }
 
     .menu-item {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
+        gap: 8px;
         width: 100%;
         padding: 6px 8px 6px 10px;
         border: 0;
@@ -157,16 +273,29 @@
     }
 
     .menu-item.active {
-        background: rgba(0, 0, 0, 0.05);
+        background: var(--menu-item-hover);
     }
 
     .menu-item.selected :global(svg) {
         color: var(--color-accent);
     }
 
+    .item-icon {
+        display: inline-flex;
+        align-items: center;
+        color: var(--color-ui-muted);
+        flex-shrink: 0;
+    }
+
     .item-label {
         flex: 1;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+
+    .empty {
+        padding: 8px 10px;
+        color: var(--color-ui-muted);
+        font-size: 12px;
     }
 </style>

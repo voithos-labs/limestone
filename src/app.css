@@ -25,6 +25,34 @@
     --font-ui: 'Inter', system-ui, sans-serif;
     --font-editor: 'Cascadia Code', 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
 
+    /* overlays */
+    --chip-bg: rgba(0, 0, 0, 0.045);
+    --chip-bg-hover: rgba(0, 0, 0, 0.06);
+    --chip-seg-hover: rgba(0, 0, 0, 0.04);
+    --chip-seg-active: rgba(0, 0, 0, 0.07);
+    --chip-divider: rgba(0, 0, 0, 0.08);
+    --menu-item-hover: rgba(0, 0, 0, 0.05);
+    --menu-search-divider: rgba(0, 0, 0, 0.07);
+    --menu-scrollbar-thumb: rgba(0, 0, 0, 0.2);
+    --menu-scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
+    --menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
+    --error-bg: rgba(220, 60, 60, 0.08);
+}
+
+:root[data-theme-type="dark"] {
+    --chip-bg: rgba(255, 255, 255, 0.055);
+    --chip-bg-hover: rgba(255, 255, 255, 0.085);
+    --chip-seg-hover: rgba(255, 255, 255, 0.07);
+    --chip-seg-active: rgba(255, 255, 255, 0.11);
+    --chip-divider: rgba(255, 255, 255, 0.1);
+    --menu-item-hover: rgba(255, 255, 255, 0.07);
+    --menu-search-divider: rgba(255, 255, 255, 0.08);
+    --menu-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+    --menu-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+    --menu-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35);
+    --error-bg: rgba(255, 110, 110, 0.12);
+}
+
     /* ── Markdown syntax highlighting (dark defaults) ── */
     --syntax-heading: #A6E22E;
     --syntax-emphasis: #66D9EF;

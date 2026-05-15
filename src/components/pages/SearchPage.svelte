@@ -4,7 +4,7 @@
     import {type Source, getSource, touchSource, removeSource} from "$lib/models/Source";
     import DocHandle from "$lib/models/DocHandle";
     import Group from "$lib/models/Group";
-    import View from "$lib/models/View";
+    import View from "$lib/models/View.svelte";
     import {invoke} from "@tauri-apps/api/core";
     import {listen} from "@tauri-apps/api/event";
     import {open, confirm} from "@tauri-apps/plugin-dialog";

@@ -413,10 +413,10 @@ class View {
 	id: string; // uuid
 	slug: string; // global unique view slug
 	createdAt: Date;
-	updatedAt: Date;
-	fields: ViewField[];
-	filter: FilterCompound;
-	faces: ViewFace[];
+	updatedAt: Date = $state(new Date());
+	fields: ViewField[] = $state([]);
+	filter: FilterCompound = $state({ op: 'and', children: [] });
+	faces: ViewFace[] = $state([]);
 
 	constructor(json: ViewJSON) {
 		this.id = json.id;

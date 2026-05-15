@@ -15,7 +15,7 @@ import {
 	CalendarClock,
 	Filter
 } from '@lucide/svelte';
-import { VIEW_FIELD_OPS, type ViewFieldType } from '$lib/models/View';
+import { VIEW_FIELD_OPS, type ViewFieldType } from '$lib/models/View.svelte';
 
 export interface OpOption {
 	value: string;

@@ -1,10 +1,12 @@
 <script lang="ts">
-    import type View from "$lib/models/View";
-    import type {FilterNode, FilterLeaf, ViewField} from "$lib/models/View";
+    import type View from "$lib/models/View.svelte";
+    import type {FilterNode, FilterLeaf, ViewField} from "$lib/models/View.svelte";
     import Group from "$lib/models/Group";
     import {getSource} from "$lib/models/Source";
     import FilterChipIsland from "../views/FilterChipIsland.svelte";
+    import Menu from "../views/Menu.svelte";
     import {getFieldIcon, getOpLabel, opHasValue, formatFilterValue, opsFor} from "$lib/views/filterDisplay";
+    import {VIEW_FIELD_OPS} from "$lib/models/View.svelte";
     import {Plus} from "@lucide/svelte";
     import {onMount} from "svelte";
 
@@ -70,6 +72,45 @@
         node.op = newOp;
     }
 
+    function changeValue(node: FilterLeaf, newValue: unknown) {
+        node.value = newValue;
+    }
+
+    function defaultValueFor(field: ViewField): unknown {
+        switch (field.type) {
+            case 'number': return 0;
+            case 'boolean': return true;
+            case 'date':
+            case 'created_at':
+            case 'updated_at': return new Date().toISOString().slice(0, 10);
+            case 'text':
+            case 'title':
+            case 'path': return '';
+            default: return null;
+        }
+    }
+
+    let addFilterEl: HTMLButtonElement | null = $state(null);
+    let addFilterOpen = $state(false);
+
+    const fieldPickerItems = $derived(view.fields.map((f: ViewField) => ({
+        value: f.id,
+        label: f.name,
+        icon: getFieldIcon(f.type)
+    })));
+
+    function addFilterByField(fieldId: string) {
+        const field = view.fields.find(f => f.id === fieldId);
+        if (!field) return;
+        const ops = VIEW_FIELD_OPS[field.type] ?? [];
+        const op = ops[0] ?? 'eq';
+        view.filter.children.push({
+            field_id: field.id,
+            op,
+            value: defaultValueFor(field)
+        });
+    }
+
     async function load() {
         loading = true;
         error = '';
@@ -85,6 +126,29 @@
     }
 
     onMount(load);
+
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastFilterSig: string | null = null;
+
+    function filterSignature(): string {
+        return view.filter.children
+            .map(c => 'field_id' in c
+                ? `L|${c.field_id}|${c.op}|${String(c.value)}`
+                : `C|${c.op}|${c.children.length}`)
+            .join(';');
+    }
+
+    $effect(() => {
+        const sig = filterSignature();
+        if (lastFilterSig === null) {
+            lastFilterSig = sig;
+            return;
+        }
+        if (sig === lastFilterSig) return;
+        lastFilterSig = sig;
+        if (reloadTimer) clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(load, 250);
+    });
 </script>
 
 <div class="view-page">
@@ -105,14 +169,30 @@
                 opValue={leaf.op}
                 opOptions={opsFor(field?.type)}
                 value={displayValue(leaf, field)}
+                rawValue={leaf.value}
+                {field}
                 onOpChange={(op) => changeOp(leaf, op)}
+                onValueChange={(v) => changeValue(leaf, v)}
                 onRemove={() => removeFilter(leaf)}
             />
         {/each}
-        <button class="add-filter" type="button">
+        <button
+                class="add-filter"
+                type="button"
+                bind:this={addFilterEl}
+                onclick={() => addFilterOpen = !addFilterOpen}
+        >
             <Plus size={12} strokeWidth={2}/>
             <span>Filter</span>
         </button>
+        <Menu
+                bind:open={addFilterOpen}
+                anchor={addFilterEl}
+                items={fieldPickerItems}
+                onSelect={addFilterByField}
+                searchable={fieldPickerItems.length > 7}
+                placeholder="Search fields…"
+        />
     </div>
 
     {#if error}
@@ -190,7 +270,7 @@
         gap: 4px;
         height: 28px;
         padding: 0 10px;
-        background: rgba(0, 0, 0, 0.025);
+        background: var(--chip-bg);
         border: none;
         border-radius: 6px;
         font-family: var(--font-ui);
@@ -202,7 +282,7 @@
     }
 
     .add-filter:hover {
-        background: rgba(0, 0, 0, 0.05);
+        background: var(--chip-bg-hover);
         color: var(--color-text-primary);
     }
 
@@ -211,7 +291,7 @@
         margin: 0 0 12px;
         font-size: 12px;
         color: var(--color-accent);
-        background: rgba(255, 0, 0, 0.05);
+        background: var(--error-bg);
         border-radius: var(--radius-ui);
     }
 

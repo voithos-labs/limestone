@@ -36,7 +36,7 @@
  */
 
 import DocHandle from '$lib/models/DocHandle';
-import View from '$lib/models/View';
+import View from '$lib/models/View.svelte';
 
 // ── Focus (used elsewhere) ───────────────────────────────────────────────────────────
 

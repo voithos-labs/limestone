@@ -110,6 +110,14 @@ class Group {
 		return Group.create(slug, sourceId, GroupType.Folder, parentGroupId);
 	}
 
+	static async list(): Promise<Group[]> {
+		const rows = await select<GroupRow>(
+			`SELECT * FROM groups ORDER BY slug ASC`,
+			[]
+		);
+		return rows.map((r) => new Group(r));
+	}
+
 	static async fromID(id: string): Promise<Group> {
 		const [row] = await select<GroupRow>(
 			`SELECT *
