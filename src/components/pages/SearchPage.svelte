@@ -1,12 +1,15 @@
 <script lang="ts">
     import type EditorState from "$lib/state/EditorState.svelte";
     import type {SearchResult} from "$lib/types/SearchResult";
-    import type {Source} from "$lib/models/Source";
+    import {type Source, getSource, touchSource, removeSource} from "$lib/models/Source";
     import DocHandle from "$lib/models/DocHandle";
+    import Group from "$lib/models/Group";
+    import View from "$lib/models/View";
     import {invoke} from "@tauri-apps/api/core";
     import {listen} from "@tauri-apps/api/event";
-    import {open} from "@tauri-apps/plugin-dialog";
-    import {Search, FolderPlus, Folder} from "@lucide/svelte";
+    import {open, confirm} from "@tauri-apps/plugin-dialog";
+    import {openPath} from "@tauri-apps/plugin-opener";
+    import {Search, FolderPlus, Folder, Folders, Hash, FileText, ExternalLink, Trash2} from "@lucide/svelte";
     import {onMount} from "svelte";
 
     let {editor}: { editor: EditorState } = $props();
@@ -38,15 +41,63 @@
         }
     }
 
+    async function revealSource(source: Source) {
+        try {
+            await openPath(source.path);
+        } catch (e) {
+            console.error('reveal failed', e);
+        }
+    }
+
+    async function confirmRemoveSource(source: Source) {
+        const ok = await confirm(
+            `Remove source "${source.title}"? Indexed documents and groups from this source will be removed from Limestone. Files on disk are not touched.`,
+            {title: 'Remove source', kind: 'warning'}
+        );
+        if (!ok) return;
+        try {
+            await removeSource(source.id);
+            await loadSources();
+        } catch (e) {
+            addError = String(e);
+        }
+    }
+
     async function openResult(result: SearchResult) {
+        if (result.kind === 'group') {
+            const group = await Group.fromID(result.id);
+            group.touch();
+            const existing = editor.tabs.find(
+                t => t.content.type === 'view' && t.content.view.slug === group.slug
+            );
+            if (existing) {
+                editor.focusTab({kind: 'tab', id: existing.id});
+                return;
+            }
+            editor.openView(View.createFromGroup(group));
+            return;
+        }
+        if (result.kind === 'source') {
+            const source = await getSource(result.id);
+            touchSource(source.id);
+            const existing = editor.tabs.find(
+                t => t.content.type === 'view' && t.content.view.slug === source.title
+            );
+            if (existing) {
+                editor.focusTab({kind: 'tab', id: existing.id});
+                return;
+            }
+            editor.openView(View.createFromSource(source));
+            return;
+        }
         const existing = editor.tabs.find(d => d.id === result.id);
         if (existing) {
-            editor.focusTab({kind: 'document', id: existing.id});
+            editor.focusTab({kind: 'tab', id: existing.id});
             return;
         }
         const doc = await DocHandle.fromID(result.id);
         editor.openDoc(doc);
-        editor.focusTab({kind: 'document', id: doc.id});
+        editor.focusTab({kind: 'tab', id: doc.id});
     }
 
     function highlightTitle(title: string, indices: number[]): string {
@@ -79,10 +130,26 @@
             <p class="add-error">{addError}</p>
         {/if}
         <div class="sources-list">
-            {#each sources as source}
+            {#each sources as source (source.id)}
                 <div class="source-item" title={source.path}>
                     <Folder size={13} />
                     <span class="source-name">{source.title}</span>
+                    <div class="source-actions">
+                        <button
+                            class="source-action"
+                            title="Reveal in file manager"
+                            onclick={() => revealSource(source)}
+                        >
+                            <ExternalLink size={12} />
+                        </button>
+                        <button
+                            class="source-action source-action-danger"
+                            title="Remove source"
+                            onclick={() => confirmRemoveSource(source)}
+                        >
+                            <Trash2 size={12} />
+                        </button>
+                    </div>
                 </div>
             {:else}
                 <p class="sources-empty">No sources yet</p>
@@ -104,8 +171,21 @@
 
         <div class="results">
             {#each results as result}
-                <button class="result" onclick={() => openResult(result)}>
-                    <span class="result-title">{@html highlightTitle(result.title, result.match_indices)}</span>
+                <button class="result" class:result-group={result.kind === 'group'} onclick={() => openResult(result)}>
+                    <span class="result-line">
+                        {#if result.kind === 'source'}
+                            <Folders size={14} />
+                        {:else if result.kind === 'group'}
+                            {#if result.group_type === 'folder'}
+                                <Folder size={14} />
+                            {:else}
+                                <Hash size={14} />
+                            {/if}
+                        {:else}
+                            <FileText size={14} />
+                        {/if}
+                        <span class="result-title">{@html highlightTitle(result.title, result.match_indices)}</span>
+                    </span>
                     {#if result.rel_path}
                         <span class="result-path">{result.rel_path}</span>
                     {/if}
@@ -208,9 +288,44 @@
     }
 
     .source-name {
+        flex: 1;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    .source-actions {
+        display: flex;
+        gap: 2px;
+        flex-shrink: 0;
+        visibility: hidden;
+    }
+
+    .source-item:hover .source-actions {
+        visibility: visible;
+    }
+
+    .source-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: none;
+        border-radius: var(--radius-ui);
+        background: transparent;
+        color: var(--color-ui-muted);
+        cursor: pointer;
+    }
+
+    .source-action:hover {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--color-text-primary);
+    }
+
+    .source-action-danger:hover {
+        color: var(--color-accent);
     }
 
     .sources-empty {
@@ -288,13 +403,22 @@
         background: rgba(255, 255, 255, 0.04);
     }
 
+    .result-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--color-ui-muted);
+    }
+
     .result-title {
         font-weight: 500;
+        color: var(--color-text-primary);
     }
 
     .result-path {
         font-size: 12px;
         color: var(--color-ui-muted);
+        padding-left: 22px;
     }
 
     .empty {

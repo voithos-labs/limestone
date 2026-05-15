@@ -46,6 +46,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type DocHandle from '$lib/models/DocHandle';
 import type Group from '$lib/models/Group';
+import type { Source } from '$lib/models/Source';
 import { select } from '$lib/db';
 
 /**
@@ -56,6 +57,12 @@ import { select } from '$lib/db';
  * A view may have many faces
  *
  * Need to think about how to selectively display / hide fields, and how to do group by and sort by
+ * Based the running UX model we've discussed, faces need additive filters on from the overall view
+ * too, e.g. a kanban face doesn't show documents with field 'status' eq to 'postponed' but the
+ * primary tab, a table for instance, just shows all
+ *
+ * faces: table, list, kanban, calendar, pinned doc
+ *
  */
 interface ViewFace {
 	display_field_ids: string[];
@@ -447,6 +454,19 @@ class View {
 			field_id: groupFieldId,
 			op: 'contains',
 			value: group.id
+		});
+
+		return view;
+	}
+
+	static createFromSource(source: Source): View {
+		const view = View.create(source.title);
+		const sourceFieldId = view.fields.find((f) => f.type == 'source')!.id;
+
+		view.addBasicFilter({
+			field_id: sourceFieldId,
+			op: 'eq',
+			value: source.id
 		});
 
 		return view;

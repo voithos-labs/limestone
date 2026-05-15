@@ -3,6 +3,14 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 use serde::Serialize;
 use sqlx::SqlitePool;
 
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchResultKind {
+    Document,
+    Group,
+    Source,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResult {
     pub id: String,
@@ -10,6 +18,8 @@ pub struct SearchResult {
     pub rel_path: Option<String>,
     pub score: f64,
     pub match_indices: Vec<u32>,
+    pub kind: SearchResultKind,
+    pub group_type: Option<String>,
 }
 
 pub struct SearchConfig {
@@ -19,6 +29,10 @@ pub struct SearchConfig {
     pub recency_weight: f64,
     pub recency_multiplier: f64,
     pub recency_default_days: f64,
+    pub group_prefix_min_chars: usize,
+    pub group_max_results: usize,
+    pub source_prefix_min_chars: usize,
+    pub source_max_results: usize,
 }
 
 impl Default for SearchConfig {
@@ -30,6 +44,10 @@ impl Default for SearchConfig {
             recency_weight: 0.5,
             recency_multiplier: 100.0,
             recency_default_days: 365.0,
+            group_prefix_min_chars: 3,
+            group_max_results: 5,
+            source_prefix_min_chars: 3,
+            source_max_results: 5,
         }
     }
 }
@@ -39,6 +57,42 @@ struct DocEntry {
     title: String,
     rel_path: Option<String>,
     accessed_at: Option<String>,
+}
+
+impl DocEntry {
+    fn to_result(&self) -> SearchResult {
+        SearchResult {
+            id: self.id.clone(),
+            title: self.title.clone(),
+            rel_path: self.rel_path.clone(),
+            score: 0.0,
+            match_indices: Vec::new(),
+            kind: SearchResultKind::Document,
+            group_type: None,
+        }
+    }
+}
+
+struct Container {
+    id: String,
+    title: String,
+    accessed_at: Option<String>,
+    kind: SearchResultKind,
+    group_type: Option<String>,
+}
+
+impl Container {
+    fn to_result(&self, match_len: u32) -> SearchResult {
+        SearchResult {
+            id: self.id.clone(),
+            title: self.title.clone(),
+            rel_path: None,
+            score: 0.0,
+            match_indices: (0..match_len).collect(),
+            kind: self.kind,
+            group_type: self.group_type.clone(),
+        }
+    }
 }
 
 async fn load_docs(db: &SqlitePool, limit: Option<usize>) -> Vec<DocEntry> {
@@ -71,6 +125,90 @@ async fn load_docs(db: &SqlitePool, limit: Option<usize>) -> Vec<DocEntry> {
         .collect()
 }
 
+async fn load_groups_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<Container> {
+    let pattern = format!("{}%", query.to_lowercase());
+    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, slug, group_type, accessed_at FROM groups WHERE lower(slug) LIKE ?1 ORDER BY length(slug) ASC, slug ASC LIMIT ?2",
+    )
+    .bind(pattern)
+    .bind(limit as i64)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    rows.into_iter()
+        .map(|(id, title, group_type, accessed_at)| Container {
+            id,
+            title,
+            accessed_at,
+            kind: SearchResultKind::Group,
+            group_type: Some(group_type),
+        })
+        .collect()
+}
+
+async fn load_groups_recent(db: &SqlitePool, limit: usize) -> Vec<Container> {
+    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, slug, group_type, accessed_at FROM groups ORDER BY accessed_at DESC LIMIT ?1",
+    )
+    .bind(limit as i64)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    rows.into_iter()
+        .map(|(id, title, group_type, accessed_at)| Container {
+            id,
+            title,
+            accessed_at,
+            kind: SearchResultKind::Group,
+            group_type: Some(group_type),
+        })
+        .collect()
+}
+
+async fn load_sources_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<Container> {
+    let pattern = format!("{}%", query.to_lowercase());
+    let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, title, accessed_at FROM sources WHERE lower(title) LIKE ?1 ORDER BY length(title) ASC, title ASC LIMIT ?2",
+    )
+    .bind(pattern)
+    .bind(limit as i64)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    rows.into_iter()
+        .map(|(id, title, accessed_at)| Container {
+            id,
+            title,
+            accessed_at,
+            kind: SearchResultKind::Source,
+            group_type: None,
+        })
+        .collect()
+}
+
+async fn load_sources_recent(db: &SqlitePool, limit: usize) -> Vec<Container> {
+    let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, title, accessed_at FROM sources ORDER BY accessed_at DESC LIMIT ?1",
+    )
+    .bind(limit as i64)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    rows.into_iter()
+        .map(|(id, title, accessed_at)| Container {
+            id,
+            title,
+            accessed_at,
+            kind: SearchResultKind::Source,
+            group_type: None,
+        })
+        .collect()
+}
+
 fn days_since(accessed_at: &Option<String>, default_days: f64) -> f64 {
     let now = chrono::Utc::now();
     accessed_at
@@ -84,22 +222,24 @@ fn days_since(accessed_at: &Option<String>, default_days: f64) -> f64 {
         .unwrap_or(default_days)
 }
 
-fn to_result(doc: &DocEntry) -> SearchResult {
-    SearchResult {
-        id: doc.id.clone(),
-        title: doc.title.clone(),
-        rel_path: doc.rel_path.clone(),
-        score: 0.0,
-        match_indices: Vec::new(),
-    }
-}
-
 async fn search_recents(db: &SqlitePool, limit: usize) -> Vec<SearchResult> {
-    load_docs(db, Some(limit))
-        .await
-        .iter()
-        .map(to_result)
-        .collect()
+    let docs = load_docs(db, Some(limit)).await;
+    let mut containers = load_groups_recent(db, limit).await;
+    containers.extend(load_sources_recent(db, limit).await);
+
+    let mut merged: Vec<(String, SearchResult)> =
+        Vec::with_capacity(docs.len() + containers.len());
+    for doc in &docs {
+        merged.push((doc.accessed_at.clone().unwrap_or_default(), doc.to_result()));
+    }
+    for c in &containers {
+        merged.push((c.accessed_at.clone().unwrap_or_default(), c.to_result(0)));
+    }
+
+    // accessed_at is 'YYYY-MM-DD HH:MM:SS' ;;;;;;;; might want to switch all to ms since epoch
+    merged.sort_by(|a, b| b.0.cmp(&a.0));
+    merged.truncate(limit);
+    merged.into_iter().map(|(_, r)| r).collect()
 }
 
 async fn search_prefix(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
@@ -109,7 +249,7 @@ async fn search_prefix(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<
         .iter()
         .filter(|doc| doc.title.to_lowercase().contains(&query_lower))
         .take(cfg.max_results)
-        .map(to_result)
+        .map(DocEntry::to_result)
         .collect()
 }
 
@@ -167,11 +307,9 @@ async fn search_fuzzy(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<S
             indices.sort();
 
             SearchResult {
-                id: doc.id.clone(),
-                title: doc.title.clone(),
-                rel_path: doc.rel_path.clone(),
                 score: composite,
                 match_indices: indices,
+                ..doc.to_result()
             }
         })
         .collect()
@@ -179,9 +317,24 @@ async fn search_fuzzy(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<S
 
 pub async fn search(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
     let query = query.trim();
-    match query.len() {
+    let docs = match query.len() {
         0 => search_recents(db, cfg.max_results).await,
         n if n <= cfg.fuzzy_threshold => search_prefix(db, query, cfg).await,
         _ => search_fuzzy(db, query, cfg).await,
+    };
+
+    let match_len = query.chars().count() as u32;
+    let mut containers: Vec<Container> = Vec::new();
+    if query.len() >= cfg.source_prefix_min_chars {
+        containers.extend(load_sources_prefix(db, query, cfg.source_max_results).await);
     }
+    if query.len() >= cfg.group_prefix_min_chars {
+        containers.extend(load_groups_prefix(db, query, cfg.group_max_results).await);
+    }
+
+    containers
+        .iter()
+        .map(|c| c.to_result(match_len))
+        .chain(docs.into_iter())
+        .collect()
 }

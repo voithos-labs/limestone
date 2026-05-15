@@ -36,59 +36,81 @@
  */
 
 import DocHandle from '$lib/models/DocHandle';
+import View from '$lib/models/View';
 
 // ── Focus (used elsewhere) ───────────────────────────────────────────────────────────
 
-export type FocusTarget =
-	| { kind: 'document'; id: string }
-	| { kind: 'settings' }
-	| { kind: 'search' };
+export type FocusTarget = { kind: 'tab'; id: string } | { kind: 'settings' } | { kind: 'search' };
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────────────
 
-export interface TabJSON {
-	type: string;
-	handleId: string;
-	state: Record<string, any>;
-}
+export type TabContent = { type: 'markdown'; handle: DocHandle } | { type: 'view'; view: View };
+
+export type TabJSON =
+	| { type: 'markdown'; handleId: string; state: Record<string, any> }
+	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any> };
+// eventualy  { type: 'view-ref'; viewId: string; state: Record<string, any> } for saved views, this
+// is for temp
 
 export class TabState {
-	type: string; // markdown, views, pdf, etc.
-	handle: DocHandle; // todo (views): DocHandle | View, or could do a Handle trait thing
-	state: Record<string, any> = $state({}); // props, e.g. scroll pos
+	content: TabContent;
+	state: Record<string, any> = $state({});
 
-	constructor(json: TabJSON, handle: DocHandle) {
-		this.type = json.type;
-		this.handle = handle;
-		this.state = json.state ?? {};
+	constructor(content: TabContent, state: Record<string, any> = {}) {
+		this.content = content;
+		this.state = state;
 	}
 
-	get id() {
-		return this.handle.id;
+	get type(): TabContent['type'] {
+		return this.content.type;
+	}
+
+	get id(): string {
+		return this.content.type === 'markdown' ? this.content.handle.id : this.content.view.id;
+	}
+
+	get title(): string {
+		return this.content.type === 'markdown' ? this.content.handle.title : this.content.view.slug;
+	}
+
+	// dep
+	get handle(): DocHandle | undefined {
+		return this.content.type === 'markdown' ? this.content.handle : undefined;
 	}
 
 	toJSON(): TabJSON {
+		if (this.content.type === 'markdown') {
+			return {
+				type: 'markdown',
+				handleId: this.content.handle.id,
+				state: this.state
+			};
+		}
 		return {
-			type: this.type,
-			handleId: this.handle.id,
+			type: 'view',
+			view: this.content.view.toJSON(),
 			state: this.state
 		};
 	}
 
-	static newTabFromHandle(handle: DocHandle) {
-		return new TabState(
-			{
-				type: 'markdown',
-				handleId: handle.id,
-				state: {}
-			},
-			handle
-		);
+	static forDoc(doc: DocHandle): TabState {
+		return new TabState({ type: 'markdown', handle: doc });
 	}
 
-	static async loadFromJSON(json: TabJSON) {
-		const handle = await DocHandle.fromID(json.handleId);
-		return new TabState(json, handle);
+	static forView(view: View): TabState {
+		return new TabState({ type: 'view', view });
+	}
+
+	static async loadFromJSON(json: TabJSON): Promise<TabState> {
+		if (json.type === 'markdown') {
+			const handle = await DocHandle.fromID(json.handleId);
+			return new TabState({ type: 'markdown', handle }, json.state ?? {});
+		}
+		if (json.type === 'view') {
+			const view = new View(json.view);
+			return new TabState({ type: 'view', view }, json.state ?? {});
+		}
+		throw new Error(`Unknown tab type: ${(json as { type: string }).type}`);
 	}
 }
 
@@ -125,20 +147,26 @@ class EditorState {
 
 	// ── Getters ─────────────────────────────────────────────────────────────────────────
 
-	get focusedDocument(): DocHandle | undefined {
-		return this.focusedTab?.handle;
-	}
-
 	get focusedTab(): TabState | undefined {
-		if (this.focused?.kind !== 'document') return undefined;
+		if (this.focused?.kind !== 'tab') return undefined;
 		const id = this.focused.id;
 		return this.tabs.find((v) => v.id === id);
 	}
 
+	get focusedDocument(): DocHandle | undefined {
+		const tab = this.focusedTab;
+		return tab?.content.type === 'markdown' ? tab.content.handle : undefined;
+	}
+
+	get focusedView(): View | undefined {
+		const tab = this.focusedTab;
+		return tab?.content.type === 'view' ? tab.content.view : undefined;
+	}
+
 	isTabFocused(tab: FocusTarget): boolean {
 		if (!this.focused || this.focused.kind !== tab.kind) return false;
-		if (tab.kind === 'document') {
-			return this.focused.kind === 'document' && this.focused.id === tab.id;
+		if (tab.kind === 'tab') {
+			return this.focused.kind === 'tab' && this.focused.id === tab.id;
 		}
 		return true;
 	}
@@ -146,22 +174,18 @@ class EditorState {
 	// ── Serialization ───────────────────────────────────────────────────────────────────
 
 	static async loadFromJSON(json: EditorJSON): Promise<EditorState> {
-		// dedupe by handleId to guard against corrupt state.json
-		let seen = new Set<string>();
-		let tabs: TabState[] = [];
+		// dedupe by id to guard against corrupt state.json
+		const seen = new Set<string>();
+		const tabs: TabState[] = [];
 		for (const tabJson of json.tabs ?? []) {
-			if (seen.has(tabJson.handleId)) continue;
-			seen.add(tabJson.handleId);
-			// lookup handle in db and fill metadata
+			const id = tabJson.type === 'markdown' ? tabJson.handleId : tabJson.view.id;
+			if (seen.has(id)) continue;
+			seen.add(id);
 			try {
-				let tab = await TabState.loadFromJSON(tabJson);
-				// could group calls or await all at once, should be fast enough though
-				// todo: listeners?
+				const tab = await TabState.loadFromJSON(tabJson);
 				tabs.push(tab);
 			} catch (e) {
-				console.error(
-					`Failed to load tab for handle ${tabJson.handleId} found in editor state json: ${e}`
-				);
+				console.error(`Failed to load tab ${id} from editor state json: ${e}`);
 				continue;
 			}
 		}
@@ -182,7 +206,7 @@ class EditorState {
 	focusTab(tab: FocusTarget) {
 		if (this.isTabFocused(tab)) return;
 		this.focused = tab;
-		if (tab.kind === 'document') {
+		if (tab.kind === 'tab') {
 			// update accessed order: filter out id, then append to end to update order
 			let accessedOrder = this.tabAccessOrderById.filter((v) => v != tab.id);
 			accessedOrder.push(tab.id);
@@ -196,7 +220,12 @@ class EditorState {
 	}
 
 	openDoc(doc: DocHandle) {
-		this.openTab(TabState.newTabFromHandle(doc));
+		this.openTab(TabState.forDoc(doc));
+	}
+
+	openView(view: View) {
+		this.openTab(TabState.forView(view));
+		this.focusTab({ kind: 'tab', id: view.id });
 	}
 
 	closeTab(id: string) {
@@ -206,13 +235,13 @@ class EditorState {
 		this.tabs.splice(idx, 1);
 		this.tabAccessOrderById = this.tabAccessOrderById.filter((v) => v != id);
 
-		if (this.focused?.kind === 'document' && this.focused.id === id) {
+		if (this.focused?.kind === 'tab' && this.focused.id === id) {
 			let lastAccessedId = this.tabAccessOrderById.at(-1);
 			if (lastAccessedId) {
-				this.focused = { kind: 'document', id: lastAccessedId };
+				this.focused = { kind: 'tab', id: lastAccessedId };
 			} else if (this.tabs.length > 0) {
 				this.focused = {
-					kind: 'document',
+					kind: 'tab',
 					id: this.tabs[Math.min(idx, this.tabs.length - 1)].id
 				};
 			} else {

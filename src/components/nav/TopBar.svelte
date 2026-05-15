@@ -3,7 +3,7 @@
     import type {FocusTarget} from "$lib/state/EditorState.svelte";
     import {getCurrentWindow} from "@tauri-apps/api/window";
 
-    import {Settings, Search, Cone, Library, Bookmark, ChevronDown, Eye, X, GripVertical} from "@lucide/svelte";
+    import {Settings, Search, Cone, Library, Bookmark, ChevronDown, Shapes, X, GripVertical} from "@lucide/svelte";
     import {getSetting, setSetting} from "$lib/models/Settings";
 
     let {editor}: { editor: EditorState } = $props();
@@ -40,8 +40,8 @@
         originalIndex = index;
         dropIndex = index;
 
-        tabWidths = tabEls.map(t => t.getBoundingClientRect().width);
-        tabLefts = tabEls.map(t => t.getBoundingClientRect().left);
+        tabWidths = tabEls.map(t => t?.getBoundingClientRect().width ?? 0);
+        tabLefts = tabEls.map(t => t?.getBoundingClientRect().left ?? 0);
     }
 
     function onPointerMove(e: PointerEvent) {
@@ -156,17 +156,17 @@
     <!-- Divider -->
     <div class="divider"></div>
 
-    <!-- Document tabs -->
+    <!-- Tabs -->
     <div class="tabs-scroll">
         {#each editor.tabs as d, i (d.id)}
-            {@const tab: FocusTarget = {kind: 'document', id: d.id}}
+            {@const target: FocusTarget = {kind: 'tab', id: d.id}}
             <div
                     class="tab"
-                    class:active={editor.isTabFocused(tab)}
+                    class:active={editor.isTabFocused(target)}
                     class:dragging={dragDocId === d.id}
                     class:no-transition={suppressTransition}
                     style:transform={tabTransform(i)}
-                    onclick={() => editor.focusTab(tab)}
+                    onclick={() => editor.focusTab(target)}
                     onpointerdown={(e) => onPointerDown(e, i)}
                     onpointermove={onPointerMove}
                     onpointerup={onPointerUp}
@@ -176,8 +176,12 @@
                     role="button"
                     tabindex="0"
             >
-                {#if !compactTabs}<span class="doc-icon"></span>{/if}
-                <span class="tab-label">{d.handle.title}</span>
+                {#if d.content.type === 'view'}
+                    <Shapes size={13}/>
+                {:else if !compactTabs}
+                    <span class="doc-icon"></span>
+                {/if}
+                <span class="tab-label">{d.title}</span>
                 <span class="tab-fade"></span>
                 <span class="close-zone">
                     <button

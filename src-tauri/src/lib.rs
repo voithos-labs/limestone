@@ -122,6 +122,8 @@ pub fn run() {
             commands::source_commands::get_sources,
             commands::source_commands::get_source_by_id,
             commands::source_commands::create_source,
+            commands::source_commands::delete_source,
+            commands::source_commands::touch_source,
             commands::source_commands::clear_cache,
             commands::source_commands::search_documents,
             commands::settings_commands::get_setting,

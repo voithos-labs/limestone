@@ -3,6 +3,7 @@
     import Session from "$lib/models/Session";
     import SearchPage from "../components/pages/SearchPage.svelte";
     import SettingsPage from "../components/pages/SettingsPage.svelte";
+    import ViewPage from "../components/pages/ViewPage.svelte";
     import MarkdownEditor from "../components/editor/MarkdownEditor.svelte";
     import type { TabState } from "$lib/state/EditorState.svelte";
 
@@ -29,8 +30,12 @@
         <TopBar {editor}></TopBar>
         <main class="content-area">
             {#if tab}
-                {#key tab.handle.id}
-                    <MarkdownEditor {tab} />
+                {#key tab.id}
+                    {#if tab.content.type === 'view'}
+                        <ViewPage view={tab.content.view}/>
+                    {:else if tab.content.type === 'markdown'}
+                        <MarkdownEditor {tab}/>
+                    {/if}
                 {/key}
             {:else if editor.focused?.kind === 'search'}
                 <SearchPage {editor}/>

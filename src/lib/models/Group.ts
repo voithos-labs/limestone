@@ -121,6 +121,15 @@ class Group {
 		return new Group(row);
 	}
 
+	async touch(): Promise<void> {
+		await execute(
+			`UPDATE groups
+             SET accessed_at = datetime('now')
+             WHERE id = ?1`,
+			[this.id]
+		);
+	}
+
 	async updateSlug(newSlug: string): Promise<void> {
 		//todo: this has to actually find and replace all slugs in documents too
 		const [{ updated_at }] = await select<{ updated_at: string }>(
