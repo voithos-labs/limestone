@@ -96,7 +96,7 @@ const BUILTIN_FIELD_TYPES = [
 ] as const;
 
 // idk probably some more this seems fine for now
-type ViewFieldType =
+export type ViewFieldType =
 	| 'date'
 	| 'text'
 	| 'number'
@@ -110,7 +110,7 @@ function isDerived(type: ViewFieldType): boolean {
 	return (BUILTIN_FIELD_TYPES as readonly string[]).includes(type);
 }
 
-interface ViewField {
+export interface ViewField {
 	id: string; // uuid
 	name: string; // all lowercase, alphanumeric, '-' and '_'
 	type: ViewFieldType;
@@ -209,7 +209,7 @@ function createViewField(
  * probably just going to stuff them all in ViewFieldType & VIEW_FIELD_OPS
  */
 
-const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
+export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	text: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
 	number: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'is_empty', 'is_not_empty'],
 	date: ['eq', 'neq', 'before', 'on_or_before', 'after', 'on_or_after', 'is_empty', 'is_not_empty'],
@@ -226,14 +226,14 @@ const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	updated_at: ['before', 'on_or_before', 'after', 'on_or_after']
 };
 
-type FilterNode = FilterCompound | FilterLeaf;
+export type FilterNode = FilterCompound | FilterLeaf;
 
-interface FilterCompound {
+export interface FilterCompound {
 	op: 'and' | 'or';
 	children: FilterNode[];
 }
 
-interface FilterLeaf {
+export interface FilterLeaf {
 	field_id: string;
 	op: string;
 	value: unknown;

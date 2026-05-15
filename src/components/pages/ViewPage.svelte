@@ -1,5 +1,11 @@
 <script lang="ts">
     import type View from "$lib/models/View";
+    import type {FilterNode, FilterLeaf, ViewField} from "$lib/models/View";
+    import Group from "$lib/models/Group";
+    import {getSource} from "$lib/models/Source";
+    import FilterChipIsland from "../views/FilterChipIsland.svelte";
+    import {getFieldIcon, getOpLabel, opHasValue, formatFilterValue, opsFor} from "$lib/views/filterDisplay";
+    import {Plus} from "@lucide/svelte";
     import {onMount} from "svelte";
 
     let {view}: { view: View } = $props();
@@ -16,6 +22,53 @@
     let error = $state('');
     let loading = $state(true);
     let elapsedMs = $state(0);
+
+    const fieldsById = $derived(new Map(view.fields.map((f: ViewField) => [f.id, f])));
+
+    const leafFilters: FilterLeaf[] = $derived(
+        view.filter.children.filter((n: FilterNode): n is FilterLeaf => 'field_id' in n)
+    );
+
+    let resolvedNames: Record<string, string> = $state({});
+
+    function resolveKey(field: ViewField | undefined, value: unknown): string {
+        return `${field?.type ?? 'unknown'}:${String(value)}`;
+    }
+
+    $effect(() => {
+        for (const leaf of leafFilters) {
+            const field = fieldsById.get(leaf.field_id);
+            if (!field || !opHasValue(leaf.op)) continue;
+            if (typeof leaf.value !== 'string') continue;
+            const key = resolveKey(field, leaf.value);
+            if (key in resolvedNames) continue;
+
+            if (field.type === 'groups') {
+                Group.fromID(leaf.value)
+                    .then(g => { resolvedNames = {...resolvedNames, [key]: g.slug}; })
+                    .catch(() => { resolvedNames = {...resolvedNames, [key]: formatFilterValue(leaf.value)}; });
+            } else if (field.type === 'source') {
+                getSource(leaf.value)
+                    .then(s => { resolvedNames = {...resolvedNames, [key]: s.title}; })
+                    .catch(() => { resolvedNames = {...resolvedNames, [key]: formatFilterValue(leaf.value)}; });
+            }
+        }
+    });
+
+    function displayValue(leaf: FilterLeaf, field: ViewField | undefined): string | undefined {
+        if (!opHasValue(leaf.op)) return undefined;
+        const key = resolveKey(field, leaf.value);
+        return resolvedNames[key] ?? formatFilterValue(leaf.value);
+    }
+
+    function removeFilter(node: FilterLeaf) {
+        const i = view.filter.children.indexOf(node);
+        if (i >= 0) view.filter.children.splice(i, 1);
+    }
+
+    function changeOp(node: FilterLeaf, newOp: string) {
+        node.op = newOp;
+    }
 
     async function load() {
         loading = true;
@@ -41,6 +94,26 @@
             {#if loading}loading…{:else}{rows.length} docs · {elapsedMs.toFixed(0)}ms{/if}
         </span>
     </header>
+
+    <div class="filter-bar">
+        {#each leafFilters as leaf (leaf)}
+            {@const field = fieldsById.get(leaf.field_id)}
+            <FilterChipIsland
+                icon={getFieldIcon(field?.type)}
+                fieldName={field?.name ?? 'unknown'}
+                operator={getOpLabel(leaf.op)}
+                opValue={leaf.op}
+                opOptions={opsFor(field?.type)}
+                value={displayValue(leaf, field)}
+                onOpChange={(op) => changeOp(leaf, op)}
+                onRemove={() => removeFilter(leaf)}
+            />
+        {/each}
+        <button class="add-filter" type="button">
+            <Plus size={12} strokeWidth={2}/>
+            <span>Filter</span>
+        </button>
+    </div>
 
     {#if error}
         <p class="error">{error}</p>
@@ -87,7 +160,7 @@
         display: flex;
         align-items: baseline;
         gap: 12px;
-        margin-bottom: 16px;
+        margin-bottom: 12px;
         flex-shrink: 0;
     }
 
@@ -101,6 +174,36 @@
     .view-meta {
         font-size: 12px;
         color: var(--color-ui-muted);
+    }
+
+    .filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 14px;
+        flex-shrink: 0;
+    }
+
+    .add-filter {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 28px;
+        padding: 0 10px;
+        background: rgba(0, 0, 0, 0.025);
+        border: none;
+        border-radius: 6px;
+        font-family: var(--font-ui);
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--color-ui-muted);
+        cursor: pointer;
+        transition: background-color 120ms ease, color 120ms ease;
+    }
+
+    .add-filter:hover {
+        background: rgba(0, 0, 0, 0.05);
+        color: var(--color-text-primary);
     }
 
     .error {
