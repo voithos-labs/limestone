@@ -14,6 +14,8 @@
         anchor,
         items,
         selected,
+        selectedValues = [],
+        multiple = false,
         onSelect,
         minWidth = 160,
         searchable = false,
@@ -23,11 +25,17 @@
         anchor: HTMLElement | null;
         items: MenuItem[];
         selected?: string;
+        selectedValues?: string[];
+        multiple?: boolean;
         onSelect: (value: string) => void;
         minWidth?: number;
         searchable?: boolean;
         placeholder?: string;
     } = $props();
+
+    function isChecked(value: string): boolean {
+        return multiple ? selectedValues.includes(value) : selected === value;
+    }
 
     let menuEl: HTMLDivElement | null = $state(null);
     let pos: { top: number; left: number } = $state({top: 0, left: 0});
@@ -128,7 +136,7 @@
 
     function pick(value: string) {
         onSelect(value);
-        open = false;
+        if (!multiple) open = false;
     }
 </script>
 
@@ -160,7 +168,7 @@
                 <button
                         class="menu-item"
                         class:active={activeIndex === i}
-                        class:selected={selected === item.value}
+                        class:selected={isChecked(item.value)}
                         type="button"
                         role="menuitem"
                         onclick={() => pick(item.value)}
@@ -170,7 +178,7 @@
                         <span class="item-icon"><Icon size={13} strokeWidth={1.75}/></span>
                     {/if}
                     <span class="item-label">{item.label}</span>
-                    {#if selected === item.value}
+                    {#if isChecked(item.value)}
                         <Check size={13} strokeWidth={2}/>
                     {/if}
                 </button>

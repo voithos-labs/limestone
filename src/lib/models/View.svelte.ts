@@ -45,7 +45,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import type DocHandle from '$lib/models/DocHandle';
-import type Group from '$lib/models/Group';
+import Group, { GroupType } from '$lib/models/Group';
 import type { Source } from '$lib/models/Source';
 import { select } from '$lib/db';
 
@@ -85,11 +85,13 @@ interface ViewFace {
  */
 
 // built-ins: derived (mapped) from existing document attributes
+
 const BUILTIN_FIELD_TYPES = [
 	'title',
 	'id',
 	'source',
-	'groups',
+	'tags',
+	'folder',
 	'path',
 	'created_at',
 	'updated_at'
@@ -220,7 +222,8 @@ export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	title: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
 	id: ['eq', 'neq'],
 	source: ['eq', 'neq'],
-	groups: ['contains', 'not_contains', 'is_empty', 'is_not_empty'],
+	tags: ['has_any', 'has_all', 'has_none'],
+	folder: ['in', 'not_in'],
 	path: ['contains', 'not_contains', 'starts_with'],
 	created_at: ['before', 'on_or_before', 'after', 'on_or_after'],
 	updated_at: ['before', 'on_or_before', 'after', 'on_or_after']
@@ -266,26 +269,48 @@ function resolveColumn(fieldType: ViewFieldType, fieldName: string, viewSlug: st
 			return 'd.created_at';
 		case 'updated_at':
 			return 'd.updated_at';
-		case 'groups':
-			throw new Error('groups field has no scalar column; handle separately');
+		case 'tags':
+		case 'folder':
+			throw new Error(`${fieldType} field has no scalar column; handle separately`);
 		default:
 			return `json_extract(d.properties, '$.views.${safeIdent(viewSlug, 'view slug')}.${safeIdent(fieldName, 'field name')}')`;
 	}
 }
 
-function compileGroupsLeaf(op: string, value: unknown): CompiledFilter {
-	const exists = `EXISTS (SELECT 1 FROM document_groups dg WHERE dg.document_id = d.id`;
+function compileFolderLeaf(op: string, value: unknown): CompiledFilter {
+	// docs carry every ancestor folder as a group includes children without recursive lookup
+	// (done at index time)
+	const exists = `EXISTS (SELECT 1 FROM document_groups dg WHERE dg.document_id = d.id AND dg.group_id = ?)`;
 	switch (op) {
-		case 'contains':
-			return { sql: `${exists} AND dg.group_id = ?)`, params: [value] };
-		case 'not_contains':
-			return { sql: `NOT ${exists} AND dg.group_id = ?)`, params: [value] };
-		case 'is_empty':
-			return { sql: `NOT ${exists})`, params: [] };
-		case 'is_not_empty':
-			return { sql: `${exists})`, params: [] };
+		case 'in':
+			return { sql: exists, params: [value] };
+		case 'not_in':
+			return { sql: `NOT ${exists}`, params: [value] };
 		default:
-			throw new Error(`Unsupported op '${op}' for groups`);
+			throw new Error(`Unsupported op '${op}' for folder`);
+	}
+}
+
+function compileTagsLeaf(op: string, value: unknown): CompiledFilter {
+	const ids = Array.isArray(value) ? value.filter((v) => typeof v === 'string') : [];
+	if (ids.length === 0) {
+		if (op === 'has_any') return { sql: '0', params: [] };
+		return { sql: '1', params: [] };
+	}
+	const placeholders = ids.map(() => '?').join(', ');
+	const anyExists = `EXISTS (SELECT 1 FROM document_groups dg WHERE dg.document_id = d.id AND dg.group_id IN (${placeholders}))`;
+	switch (op) {
+		case 'has_any':
+			return { sql: anyExists, params: [...ids] };
+		case 'has_none':
+			return { sql: `NOT ${anyExists}`, params: [...ids] };
+		case 'has_all':
+			return {
+				sql: `(SELECT COUNT(DISTINCT dg.group_id) FROM document_groups dg WHERE dg.document_id = d.id AND dg.group_id IN (${placeholders})) = ?`,
+				params: [...ids, ids.length]
+			};
+		default:
+			throw new Error(`Unsupported op '${op}' for tags`);
 	}
 }
 
@@ -295,7 +320,8 @@ function compileLeafSql(
 	value: unknown,
 	viewSlug: string
 ): CompiledFilter {
-	if (field.type === 'groups') return compileGroupsLeaf(op, value);
+	if (field.type === 'folder') return compileFolderLeaf(op, value);
+	if (field.type === 'tags') return compileTagsLeaf(op, value);
 
 	const expr = resolveColumn(field.type, field.name, viewSlug);
 
@@ -360,13 +386,24 @@ function compileLeafSql(
 	}
 }
 
+// a pred leaf only constrains results once it has not null val
+export function isLeafActive(op: string, value: unknown): boolean {
+	if (op === 'is_empty' || op === 'is_not_empty') return true;
+	if (value === null || value === undefined) return false;
+	if (typeof value === 'string') return value !== '';
+	if (Array.isArray(value)) return value.length > 0;
+	return true;
+}
+
 function compileNode(
 	node: FilterNode,
 	fieldsById: Map<string, ViewField>,
 	viewSlug: string
 ): CompiledFilter {
 	if ('children' in node) {
-		const compiled = node.children.map((c) => compileNode(c, fieldsById, viewSlug));
+		const compiled = node.children
+			.map((c) => compileNode(c, fieldsById, viewSlug))
+			.filter((c) => c.sql !== '');
 		if (compiled.length === 0) return { sql: '', params: [] };
 		const joiner = node.op === 'and' ? ' AND ' : ' OR ';
 		return {
@@ -374,6 +411,7 @@ function compileNode(
 			params: compiled.flatMap((c) => c.params)
 		};
 	}
+	if (!isLeafActive(node.op, node.value)) return { sql: '', params: [] };
 	const field = fieldsById.get(node.field_id);
 	if (!field) throw new Error(`Unknown field_id: ${node.field_id}`);
 	return compileLeafSql(field, node.op, node.value, viewSlug);
@@ -447,14 +485,22 @@ class View {
 
 	static createFromGroup(group: Group): View {
 		const view = View.create(group.slug);
-		// group field already exists, find it
-		const groupFieldId = view.fields.find((f) => f.type == 'groups')!.id;
 
-		view.addBasicFilter({
-			field_id: groupFieldId,
-			op: 'contains',
-			value: group.id
-		});
+		if (group.groupType === GroupType.Folder) {
+			const folderFieldId = view.fields.find((f) => f.type == 'folder')!.id;
+			view.addBasicFilter({
+				field_id: folderFieldId,
+				op: 'in',
+				value: group.id
+			});
+		} else {
+			const tagsFieldId = view.fields.find((f) => f.type == 'tags')!.id;
+			view.addBasicFilter({
+				field_id: tagsFieldId,
+				op: 'has_any',
+				value: [group.id]
+			});
+		}
 
 		return view;
 	}

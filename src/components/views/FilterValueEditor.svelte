@@ -1,11 +1,11 @@
 <script lang="ts">
     import type {Component} from "svelte";
-    import {Hash, Folder} from "@lucide/svelte";
     import type {ViewField} from "$lib/models/View.svelte";
     import Group, {GroupType} from "$lib/models/Group";
     import {listSources} from "$lib/models/Source";
     import Menu from "./Menu.svelte";
     import InputPopover from "./InputPopover.svelte";
+    import FolderValueEditor from "./FolderValueEditor.svelte";
 
     interface MenuItem { value: string; label: string; icon?: Component; }
 
@@ -23,21 +23,19 @@
         onChange: (newValue: unknown) => void;
     } = $props();
 
-    let groupItems: MenuItem[] = $state([]);
+    let tagItems: MenuItem[] = $state([]);
     let sourceItems: MenuItem[] = $state([]);
-    let groupsLoaded = false;
+    let tagsLoaded = false;
     let sourcesLoaded = false;
 
     $effect(() => {
         if (!open) return;
-        if (field.type === 'groups' && !groupsLoaded) {
-            groupsLoaded = true;
+        if (field.type === 'tags' && !tagsLoaded) {
+            tagsLoaded = true;
             Group.list()
-                .then(gs => groupItems = gs.map(g => ({
-                    value: g.id,
-                    label: g.slug,
-                    icon: g.groupType === GroupType.Folder ? Folder : Hash
-                })))
+                .then(gs => tagItems = gs
+                    .filter(g => g.groupType === GroupType.Tag)
+                    .map(g => ({value: g.id, label: g.slug})))
                 .catch(() => {});
         }
         if (field.type === 'source' && !sourcesLoaded) {
@@ -77,6 +75,14 @@
             onChange(s);
         }
     }
+
+    function toggleTag(id: string) {
+        const arr = Array.isArray(value) ? [...value as string[]] : [];
+        const i = arr.indexOf(id);
+        if (i >= 0) arr.splice(i, 1);
+        else arr.push(id);
+        onChange(arr);
+    }
 </script>
 
 {#if field.type === 'text' || field.type === 'title' || field.type === 'path' || field.type === 'number' || field.type === 'date' || field.type === 'created_at' || field.type === 'updated_at'}
@@ -105,15 +111,23 @@
             onSelect={(v) => onChange(v)}
             searchable={optionItems.length > 7}
     />
-{:else if field.type === 'groups'}
+{:else if field.type === 'tags'}
     <Menu
             bind:open
             {anchor}
-            items={groupItems}
-            selected={typeof value === 'string' ? value : undefined}
-            onSelect={(v) => onChange(v)}
+            items={tagItems}
+            multiple
+            selectedValues={Array.isArray(value) ? value as string[] : []}
+            onSelect={toggleTag}
             searchable
-            placeholder="Search groups…"
+            placeholder="Search tags…"
+    />
+{:else if field.type === 'folder'}
+    <FolderValueEditor
+            bind:open
+            {anchor}
+            value={typeof value === 'string' ? value : null}
+            onChange={(v) => onChange(v)}
     />
 {:else if field.type === 'source'}
     <Menu

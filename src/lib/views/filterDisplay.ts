@@ -6,10 +6,11 @@ import {
 	SquareCheck,
 	CircleDot,
 	Tags,
+	Tag,
+	Folder,
 	Heading1,
 	Fingerprint,
 	Database,
-	Blend,
 	Route,
 	CalendarPlus2,
 	CalendarClock,
@@ -32,7 +33,8 @@ export const FIELD_TYPE_ICONS: Record<ViewFieldType, Component> = {
 	title: Heading1,
 	id: Fingerprint,
 	source: Database,
-	groups: Blend,
+	tags: Tag,
+	folder: Folder,
 	path: Route,
 	created_at: CalendarPlus2,
 	updated_at: CalendarClock
@@ -60,7 +62,12 @@ export const OP_LABELS: Record<string, string> = {
 	before: 'before',
 	on_or_before: 'on or before',
 	after: 'after',
-	on_or_after: 'on or after'
+	on_or_after: 'on or after',
+	has_any: 'any',
+	has_all: 'all',
+	has_none: 'none',
+	in: 'in',
+	not_in: 'not in'
 };
 
 export function getOpLabel(op: string): string {

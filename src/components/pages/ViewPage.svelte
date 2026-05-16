@@ -6,7 +6,7 @@
     import FilterChipIsland from "../views/FilterChipIsland.svelte";
     import Menu from "../views/Menu.svelte";
     import {getFieldIcon, getOpLabel, opHasValue, formatFilterValue, opsFor} from "$lib/views/filterDisplay";
-    import {VIEW_FIELD_OPS} from "$lib/models/View.svelte";
+    import {VIEW_FIELD_OPS, isLeafActive} from "$lib/models/View.svelte";
     import {Plus} from "@lucide/svelte";
     import {onMount} from "svelte";
 
@@ -31,36 +31,56 @@
         view.filter.children.filter((n: FilterNode): n is FilterLeaf => 'field_id' in n)
     );
 
-    let resolvedNames: Record<string, string> = $state({});
-
-    function resolveKey(field: ViewField | undefined, value: unknown): string {
-        return `${field?.type ?? 'unknown'}:${String(value)}`;
-    }
+    let groupNames: Record<string, string> = $state({});
+    let sourceNames: Record<string, string> = $state({});
 
     $effect(() => {
+        const groupIds = new Set<string>();
+        const sourceIds = new Set<string>();
         for (const leaf of leafFilters) {
             const field = fieldsById.get(leaf.field_id);
-            if (!field || !opHasValue(leaf.op)) continue;
-            if (typeof leaf.value !== 'string') continue;
-            const key = resolveKey(field, leaf.value);
-            if (key in resolvedNames) continue;
-
-            if (field.type === 'groups') {
-                Group.fromID(leaf.value)
-                    .then(g => { resolvedNames = {...resolvedNames, [key]: g.slug}; })
-                    .catch(() => { resolvedNames = {...resolvedNames, [key]: formatFilterValue(leaf.value)}; });
+            if (!field) continue;
+            if (field.type === 'folder') {
+                if (typeof leaf.value === 'string') groupIds.add(leaf.value);
+            } else if (field.type === 'tags') {
+                if (Array.isArray(leaf.value)) {
+                    for (const v of leaf.value) if (typeof v === 'string') groupIds.add(v);
+                }
             } else if (field.type === 'source') {
-                getSource(leaf.value)
-                    .then(s => { resolvedNames = {...resolvedNames, [key]: s.title}; })
-                    .catch(() => { resolvedNames = {...resolvedNames, [key]: formatFilterValue(leaf.value)}; });
+                if (typeof leaf.value === 'string') sourceIds.add(leaf.value);
             }
+        }
+        for (const id of groupIds) {
+            if (id in groupNames) continue;
+            Group.fromID(id)
+                .then(g => { groupNames = {...groupNames, [id]: g.slug}; })
+                .catch(() => { groupNames = {...groupNames, [id]: id}; });
+        }
+        for (const id of sourceIds) {
+            if (id in sourceNames) continue;
+            getSource(id)
+                .then(s => { sourceNames = {...sourceNames, [id]: s.title}; })
+                .catch(() => { sourceNames = {...sourceNames, [id]: id}; });
         }
     });
 
     function displayValue(leaf: FilterLeaf, field: ViewField | undefined): string | undefined {
         if (!opHasValue(leaf.op)) return undefined;
-        const key = resolveKey(field, leaf.value);
-        return resolvedNames[key] ?? formatFilterValue(leaf.value);
+        if (!field) return formatFilterValue(leaf.value);
+        if (field.type === 'tags') {
+            const arr = Array.isArray(leaf.value) ? leaf.value : [];
+            if (arr.length === 0) return '';
+            return arr.map(id => groupNames[String(id)] ?? String(id)).join(', ');
+        }
+        if (field.type === 'folder') {
+            if (typeof leaf.value !== 'string') return '';
+            return groupNames[leaf.value] ?? leaf.value;
+        }
+        if (field.type === 'source') {
+            if (typeof leaf.value !== 'string') return '';
+            return sourceNames[leaf.value] ?? leaf.value;
+        }
+        return formatFilterValue(leaf.value);
     }
 
     function removeFilter(node: FilterLeaf) {
@@ -77,17 +97,7 @@
     }
 
     function defaultValueFor(field: ViewField): unknown {
-        switch (field.type) {
-            case 'number': return 0;
-            case 'boolean': return true;
-            case 'date':
-            case 'created_at':
-            case 'updated_at': return new Date().toISOString().slice(0, 10);
-            case 'text':
-            case 'title':
-            case 'path': return '';
-            default: return null;
-        }
+        return field.type === 'tags' ? [] : null;
     }
 
     let addFilterEl: HTMLButtonElement | null = $state(null);
@@ -99,6 +109,8 @@
         icon: getFieldIcon(f.type)
     })));
 
+    let pendingFocusLeaf: FilterLeaf | null = $state(null);
+
     function addFilterByField(fieldId: string) {
         const field = view.fields.find(f => f.id === fieldId);
         if (!field) return;
@@ -109,6 +121,7 @@
             op,
             value: defaultValueFor(field)
         });
+        pendingFocusLeaf = view.filter.children[view.filter.children.length - 1] as FilterLeaf;
     }
 
     async function load() {
@@ -132,6 +145,7 @@
 
     function filterSignature(): string {
         return view.filter.children
+            .filter(c => !('field_id' in c) || isLeafActive(c.op, c.value))
             .map(c => 'field_id' in c
                 ? `L|${c.field_id}|${c.op}|${String(c.value)}`
                 : `C|${c.op}|${c.children.length}`)
@@ -171,6 +185,7 @@
                 value={displayValue(leaf, field)}
                 rawValue={leaf.value}
                 {field}
+                autoOpenValue={leaf === pendingFocusLeaf}
                 onOpChange={(op) => changeOp(leaf, op)}
                 onValueChange={(v) => changeValue(leaf, v)}
                 onRemove={() => removeFilter(leaf)}

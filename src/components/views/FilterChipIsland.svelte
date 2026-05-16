@@ -1,5 +1,6 @@
 <script lang="ts">
     import type {Component} from "svelte";
+    import {onMount} from "svelte";
     import {X} from "@lucide/svelte";
     import type {ViewField} from "$lib/models/View.svelte";
     import Menu from "./Menu.svelte";
@@ -15,6 +16,7 @@
         value,
         rawValue,
         field,
+        autoOpenValue = false,
         onFieldClick,
         onOpChange,
         onValueChange,
@@ -28,6 +30,7 @@
         value?: string;
         rawValue?: unknown;
         field?: ViewField;
+        autoOpenValue?: boolean;
         onFieldClick?: () => void;
         onOpChange?: (op: string) => void;
         onValueChange?: (value: unknown) => void;
@@ -41,6 +44,10 @@
 
     let valueEl: HTMLButtonElement | null = $state(null);
     let valueOpen = $state(false);
+
+    onMount(() => {
+        if (autoOpenValue && field && onValueChange) valueOpen = true;
+    });
 
     function handleOpClick() {
         if (opOptions && opOptions.length > 0 && onOpChange) {
