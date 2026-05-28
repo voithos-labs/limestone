@@ -64,8 +64,70 @@ import { select } from '$lib/db';
  * faces: table, list, kanban, calendar, pinned doc
  *
  */
-interface ViewFace {
+export type ViewFaceType = 'table' | 'list' | 'kanban' | 'calendar' | 'pinned';
+
+interface ViewFaceJSON {
+	id: string;
+	type: ViewFaceType;
 	display_field_ids: string[];
+	additive_filter: FilterCompound;
+	sort: SortKey[];
+	config: Record<string, any>;
+}
+
+export class ViewFace {
+	id: string; // uuid
+	type: ViewFaceType;
+	display_field_ids: string[] = $state([]); // ORDERED LIST OF FIELD IDS
+	additive_filter: FilterCompound = $state({ op: 'and', children: [] }); // View filters AND this node
+	sort: SortKey[] = $state([]);
+	config: Record<string, any> = $state({});
+
+	constructor(json: ViewFaceJSON) {
+		this.id = json.id;
+		this.type = json.type;
+		this.display_field_ids = json.display_field_ids;
+		this.additive_filter = json.additive_filter;
+		this.sort = json.sort;
+		this.config = json.config;
+	}
+
+	static create(
+		type: ViewFaceType,
+		display_field_ids: string[] = [],
+		additive_filter: FilterCompound = { op: 'and', children: [] },
+		sort: SortKey[] = [],
+		config: Record<string, any> = {}
+	): ViewFace {
+		return new ViewFace({
+			id: uuidv4(),
+			type,
+			display_field_ids,
+			additive_filter,
+			sort,
+			config
+		});
+	}
+
+	addBasicFilter(filter: FilterLeaf) {
+		this.additive_filter.children.push(filter);
+	}
+
+	removeFilter(filter: FilterLeaf) {
+		const i = this.additive_filter.children.indexOf(filter);
+		if (i >= 0) this.additive_filter.children.splice(i, 1);
+	}
+
+	toJSON(): ViewFaceJSON {
+		return {
+			id: this.id,
+			type: this.type,
+			display_field_ids: this.display_field_ids,
+			additive_filter: this.additive_filter,
+			sort: this.sort,
+			config: this.config
+		};
+	}
 }
 
 // ── Fields ────────────────────────────────────────────────────────────
@@ -81,6 +143,8 @@ interface ViewFace {
  * Per doc stateful: due date, done status, priority, etc.
  *
  * Making this work between faces is going to be annoying as balls but whatever
+ *
+ * Have to think about sorting I suppose too
  *
  */
 
@@ -117,6 +181,7 @@ export interface ViewField {
 	name: string; // all lowercase, alphanumeric, '-' and '_'
 	type: ViewFieldType;
 	config: Record<string, any>; // field specific config, e.g. mappings & formulas
+	// todo: think about adding 'locked' bool for UX
 }
 
 function createViewField(
@@ -240,6 +305,28 @@ export interface FilterLeaf {
 	field_id: string;
 	op: string;
 	value: unknown;
+}
+
+// ── Sort ─────────────────────────────────────────────────────────────────────────────
+
+export const VIEW_FIELD_SORTABLE: ReadonlySet<ViewFieldType> = new Set([
+	'date',
+	'text',
+	'number',
+	'boolean',
+	'select',
+	'title',
+	'id',
+	'source',
+	'path',
+	'created_at',
+	'updated_at'
+]);
+
+export interface SortKey {
+	field_id: string;
+	direction: 'asc' | 'desc';
+	nulls?: 'first' | 'last';
 }
 
 // ── SQL Compilation ──────────────────────────────────────────────────────────────────
@@ -427,6 +514,20 @@ function compileFilter(
 	return compileNode(filter, fieldsById, viewSlug);
 }
 
+function compileSort(sort: SortKey[], fields: ViewField[], viewSlug: string): string {
+	const fieldsById = new Map(fields.map((f) => [f.id, f]));
+	const terms: string[] = [];
+	for (const key of sort) {
+		const field = fieldsById.get(key.field_id);
+		if (!field || !VIEW_FIELD_SORTABLE.has(field.type)) continue;
+		const expr = resolveColumn(field.type, field.name, viewSlug);
+		const dir = key.direction === 'desc' ? 'DESC' : 'ASC';
+		const nulls = key.nulls === 'first' ? 'NULLS FIRST' : 'NULLS LAST';
+		terms.push(`${expr} ${dir} ${nulls}`);
+	}
+	return terms.join(', ');
+}
+
 // ── View Model ───────────────────────────────────────────────────────────────────────
 
 interface MemberRow {
@@ -444,7 +545,8 @@ interface ViewJSON {
 	updated_at: Date;
 	fields: ViewField[];
 	filter: FilterCompound;
-	faces: ViewFace[];
+	faces: ViewFaceJSON[];
+	state: Record<string, any>;
 }
 
 class View {
@@ -455,6 +557,7 @@ class View {
 	fields: ViewField[] = $state([]);
 	filter: FilterCompound = $state({ op: 'and', children: [] });
 	faces: ViewFace[] = $state([]);
+	state: Record<string, any> = $state({});
 
 	constructor(json: ViewJSON) {
 		this.id = json.id;
@@ -463,7 +566,8 @@ class View {
 		this.updatedAt = json.updated_at;
 		this.fields = json.fields;
 		this.filter = json.filter;
-		this.faces = json.faces;
+		this.faces = json.faces.map((j) => new ViewFace(j));
+		this.state = json.state ?? {};
 	}
 
 	static create(slug: string): View {
@@ -477,9 +581,11 @@ class View {
 				op: 'and',
 				children: []
 			},
-			faces: [] // probably want default
+			faces: [], // probably want default
+			state: {}
 		});
 		view.initDefaultFields();
+		view.initDefaultFaces();
 		return view;
 	}
 
@@ -522,6 +628,14 @@ class View {
 		this.fields = BUILTIN_FIELD_TYPES.map((t) => createViewField(t, t));
 	}
 
+	private initDefaultFaces(): void {
+		const wanted: ViewFieldType[] = ['title', 'path', 'tags', 'updated_at'];
+		const ids = wanted
+			.map((t) => this.fields.find((f) => f.type === t)?.id)
+			.filter((id): id is string => !!id);
+		this.faces = [ViewFace.create('table', ids)];
+	}
+
 	addField(field: ViewField) {
 		this.fields.push(field);
 	}
@@ -545,18 +659,29 @@ class View {
 			updated_at: this.updatedAt,
 			fields: this.fields,
 			filter: this.filter,
-			faces: this.faces
+			faces: this.faces,
+			state: this.state
 		};
 	}
 
-	async getMembers(opts?: { limit?: number; offset?: number }): Promise<MemberRow[]> {
-		const compiled = compileFilter(this.filter, this.fields, this.slug);
+	async getMembers(opts?: {
+		face?: ViewFace;
+		limit?: number;
+		offset?: number;
+	}): Promise<MemberRow[]> {
+		const filterNode: FilterNode = opts?.face
+			? { op: 'and', children: [this.filter, opts.face.additive_filter] }
+			: this.filter;
+		const compiled = compileFilter(filterNode, this.fields, this.slug);
 		const params = [...compiled.params];
+
+		const sort = opts?.face?.sort ?? [];
+		const orderBy = sort.length ? compileSort(sort, this.fields, this.slug) : '';
 
 		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at
 			FROM documents d
 			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}
-			ORDER BY d.updated_at DESC`;
+			ORDER BY ${orderBy || 'd.updated_at DESC'}`;
 
 		if (opts?.limit !== undefined) {
 			sql += ' LIMIT ?';
