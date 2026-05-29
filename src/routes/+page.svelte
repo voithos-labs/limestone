@@ -32,7 +32,7 @@
             {#if tab}
                 {#key tab.id}
                     {#if tab.content.type === 'view'}
-                        <ViewPage view={tab.content.view}/>
+                        <ViewPage view={tab.content.view} {editor}/>
                     {:else if tab.content.type === 'markdown'}
                         <MarkdownEditor {tab}/>
                     {/if}

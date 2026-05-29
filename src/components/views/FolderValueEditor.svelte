@@ -1,17 +1,19 @@
 <script lang="ts">
     import {untrack} from "svelte";
-    import {Search, Folder, ChevronRight, ChevronLeft, Check} from "@lucide/svelte";
+    import {Search, Folder, ChevronRight, ChevronDown, Check} from "@lucide/svelte";
     import Group, {GroupType} from "$lib/models/Group";
 
     let {
         open = $bindable(false),
         anchor,
         value,
+        sourceId,
         onChange
     }: {
         open: boolean;
         anchor: HTMLElement | null;
         value: string | null;
+        sourceId?: string;
         onChange: (id: string) => void;
     } = $props();
 
@@ -20,15 +22,20 @@
     let pos: { top: number; left: number } = $state({top: 0, left: 0});
 
     let folders: Group[] = $state([]);
+    let loadError = $state('');
     let loaded = false;
-    let currentParentId: string | null = $state(null);
     let query = $state('');
+    let expandedIds: Set<string> = $state(new Set());
 
-    const byId = $derived(new Map(folders.map(f => [f.id, f])));
+    const scoped = $derived(
+        sourceId ? folders.filter(f => f.sourceId === sourceId) : folders
+    );
+
+    const byId = $derived(new Map(scoped.map(f => [f.id, f])));
 
     const childrenByParent = $derived.by(() => {
         const map = new Map<string | null, Group[]>();
-        for (const f of folders) {
+        for (const f of scoped) {
             const key = f.parentGroupId ?? null;
             const list = map.get(key) ?? [];
             list.push(f);
@@ -38,18 +45,34 @@
         return map;
     });
 
-    const currentFolder = $derived(currentParentId ? byId.get(currentParentId) ?? null : null);
-
     const searching = $derived(query.trim() !== '');
 
-    const visible = $derived.by(() => {
-        if (searching) {
-            const q = query.trim().toLowerCase();
-            return folders
-                .filter(f => f.slug.toLowerCase().includes(q))
-                .sort((a, b) => a.slug.localeCompare(b.slug));
+    const treeRows = $derived.by(() => {
+        const out: { folder: Group; depth: number }[] = [];
+        const inScope = new Set(scoped.map(f => f.id));
+        const roots = scoped
+            .filter(f => !f.parentGroupId || !inScope.has(f.parentGroupId))
+            .sort((a, b) => a.slug.localeCompare(b.slug));
+        function walk(parentId: string, depth: number) {
+            const children = childrenByParent.get(parentId) ?? [];
+            for (const f of children) {
+                out.push({folder: f, depth});
+                if (expandedIds.has(f.id)) walk(f.id, depth + 1);
+            }
         }
-        return childrenByParent.get(currentParentId) ?? [];
+        for (const f of roots) {
+            out.push({folder: f, depth: 0});
+            if (expandedIds.has(f.id)) walk(f.id, 1);
+        }
+        return out;
+    });
+
+    const searchMatches = $derived.by(() => {
+        if (!searching) return [] as Group[];
+        const q = query.trim().toLowerCase();
+        return scoped
+            .filter(f => f.slug.toLowerCase().includes(q))
+            .sort((a, b) => a.slug.localeCompare(b.slug));
     });
 
     function hasChildren(id: string): boolean {
@@ -72,13 +95,11 @@
         open = false;
     }
 
-    function drill(id: string) {
-        currentParentId = id;
-        query = '';
-    }
-
-    function goBack() {
-        currentParentId = currentFolder?.parentGroupId ?? null;
+    function toggleExpand(id: string) {
+        const next = new Set(expandedIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        expandedIds = next;
     }
 
     function position() {
@@ -120,13 +141,19 @@
             wasOpen = true;
             untrack(() => {
                 query = '';
-                currentParentId = null;
+                expandedIds = new Set();
             });
             if (!loaded) {
                 loaded = true;
                 Group.list()
-                    .then(gs => folders = gs.filter(g => g.groupType === GroupType.Folder))
-                    .catch(() => {});
+                    .then(gs => {
+                        folders = gs.filter(g => g.groupType === GroupType.Folder);
+                        loadError = '';
+                    })
+                    .catch(e => {
+                        loaded = false;
+                        loadError = String(e);
+                    });
             }
             queueMicrotask(() => {
                 position();
@@ -150,7 +177,7 @@
 
     $effect(() => {
         query;
-        currentParentId;
+        expandedIds;
         if (open) queueMicrotask(position);
     });
 </script>
@@ -175,35 +202,66 @@
             />
         </div>
 
+        {#if loadError}
+            <div class="load-error">{loadError}</div>
+        {/if}
         <div class="list">
-            {#if !searching && currentFolder}
-                <button class="back-row" type="button" onclick={goBack}>
-                    <ChevronLeft size={14} strokeWidth={2}/>
-                    <span class="back-label">{currentFolder.slug}</span>
-                </button>
-            {/if}
-
-            {#each visible as folder (folder.id)}
-                <div class="folder-row" class:selected={folder.id === value}>
-                    <button class="folder-name" type="button" onclick={() => pick(folder.id)}>
-                        <Folder size={13} strokeWidth={1.75}/>
-                        <span class="name-label">{folder.slug}</span>
-                        {#if searching && ancestorPath(folder)}
-                            <span class="name-path">{ancestorPath(folder)}</span>
-                        {/if}
-                        {#if folder.id === value}
-                            <Check size={13} strokeWidth={2}/>
-                        {/if}
-                    </button>
-                    {#if !searching && hasChildren(folder.id)}
-                        <button class="drill" type="button" aria-label="Open folder" onclick={() => drill(folder.id)}>
-                            <ChevronRight size={14} strokeWidth={2}/>
+            {#if searching}
+                {#each searchMatches as folder (folder.id)}
+                    <div class="folder-row" class:selected={folder.id === value}>
+                        <span class="disclosure-spacer"></span>
+                        <button class="folder-name" type="button" onclick={() => pick(folder.id)}>
+                            <Folder size={13} strokeWidth={1.75}/>
+                            <span class="name-label">{folder.slug}</span>
+                            {#if ancestorPath(folder)}
+                                <span class="name-path">{ancestorPath(folder)}</span>
+                            {/if}
+                            {#if folder.id === value}
+                                <Check size={13} strokeWidth={2}/>
+                            {/if}
                         </button>
-                    {/if}
-                </div>
+                    </div>
+                {:else}
+                    <div class="empty">No folders</div>
+                {/each}
             {:else}
-                <div class="empty">No folders</div>
-            {/each}
+                {#each treeRows as item (item.folder.id)}
+                    {@const folder = item.folder}
+                    {@const expanded = expandedIds.has(folder.id)}
+                    {@const children = hasChildren(folder.id)}
+                    <div
+                        class="folder-row"
+                        class:selected={folder.id === value}
+                        style:padding-left="{item.depth * 14}px"
+                    >
+                        {#if children}
+                            <button
+                                class="disclosure"
+                                type="button"
+                                aria-label={expanded ? 'Collapse' : 'Expand'}
+                                onclick={() => toggleExpand(folder.id)}
+                            >
+                                {#if expanded}
+                                    <ChevronDown size={12} strokeWidth={2}/>
+                                {:else}
+                                    <ChevronRight size={12} strokeWidth={2}/>
+                                {/if}
+                            </button>
+                        {:else}
+                            <span class="disclosure-spacer"></span>
+                        {/if}
+                        <button class="folder-name" type="button" onclick={() => pick(folder.id)}>
+                            <Folder size={13} strokeWidth={1.75}/>
+                            <span class="name-label">{folder.slug}</span>
+                            {#if folder.id === value}
+                                <Check size={13} strokeWidth={2}/>
+                            {/if}
+                        </button>
+                    </div>
+                {:else}
+                    <div class="empty">No folders</div>
+                {/each}
+            {/if}
         </div>
     </div>
 {/if}
@@ -284,38 +342,31 @@
         background: var(--menu-scrollbar-thumb-hover);
     }
 
-    .back-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        width: 100%;
-        padding: 6px 8px 6px 8px;
-        margin-bottom: 2px;
-        border: 0;
-        background: transparent;
-        border-radius: 5px;
-        color: var(--color-ui-muted);
-        font: inherit;
-        font-weight: 500;
-        text-align: left;
-        cursor: pointer;
-        white-space: nowrap;
-    }
-
-    .back-row:hover {
-        background: var(--menu-item-hover);
-        color: var(--color-text-primary);
-    }
-
-    .back-label {
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
     .folder-row {
         display: flex;
         align-items: stretch;
         border-radius: 5px;
+    }
+
+    .disclosure,
+    .disclosure-spacer {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        flex-shrink: 0;
+        border: 0;
+        background: transparent;
+        color: var(--color-ui-dulled);
+        cursor: pointer;
+    }
+
+    .disclosure:hover {
+        color: var(--color-text-primary);
+    }
+
+    .disclosure-spacer {
+        cursor: default;
     }
 
     .folder-row.selected {
@@ -328,7 +379,7 @@
         gap: 8px;
         flex: 1;
         min-width: 0;
-        padding: 6px 8px 6px 10px;
+        padding: 6px 8px 6px 6px;
         border: 0;
         background: transparent;
         border-radius: 5px;
@@ -362,27 +413,18 @@
         color: var(--color-ui-dulled);
     }
 
-    .drill {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        flex-shrink: 0;
-        border: 0;
-        background: transparent;
-        border-radius: 5px;
-        color: var(--color-ui-muted);
-        cursor: pointer;
-    }
-
-    .drill:hover {
-        background: var(--menu-item-hover);
-        color: var(--color-text-primary);
-    }
-
     .empty {
         padding: 8px 10px;
         color: var(--color-ui-muted);
         font-size: 12px;
+    }
+
+    .load-error {
+        margin: 0 2px 4px;
+        padding: 6px 10px;
+        font-size: 11px;
+        color: var(--color-accent);
+        background: var(--error-bg);
+        border-radius: 5px;
     }
 </style>

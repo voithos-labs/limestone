@@ -172,7 +172,7 @@ export type ViewFieldType =
 	| (typeof BUILTIN_FIELD_TYPES)[number];
 
 // does this add a prop to documents? If not it is derived (mapped)
-function isDerived(type: ViewFieldType): boolean {
+export function isDerived(type: ViewFieldType): boolean {
 	return (BUILTIN_FIELD_TYPES as readonly string[]).includes(type);
 }
 
@@ -668,6 +668,7 @@ class View {
 		face?: ViewFace;
 		limit?: number;
 		offset?: number;
+		ids_in?: string[];
 	}): Promise<MemberRow[]> {
 		const filterNode: FilterNode = opts?.face
 			? { op: 'and', children: [this.filter, opts.face.additive_filter] }
@@ -675,13 +676,24 @@ class View {
 		const compiled = compileFilter(filterNode, this.fields, this.slug);
 		const params = [...compiled.params];
 
+		const idsIn = opts?.ids_in;
+		let idsClause = '';
+		if (idsIn !== undefined) {
+			if (idsIn.length === 0) return [];
+			idsClause = ` AND d.id IN (${idsIn.map(() => '?').join(', ')})`;
+			params.push(...idsIn);
+		}
+
 		const sort = opts?.face?.sort ?? [];
 		const orderBy = sort.length ? compileSort(sort, this.fields, this.slug) : '';
 
 		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at
 			FROM documents d
-			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}
-			ORDER BY ${orderBy || 'd.updated_at DESC'}`;
+			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
+
+		if (!idsIn) {
+			sql += ` ORDER BY ${orderBy || 'd.updated_at DESC'}`;
+		}
 
 		if (opts?.limit !== undefined) {
 			sql += ' LIMIT ?';

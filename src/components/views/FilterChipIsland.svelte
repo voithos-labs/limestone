@@ -16,6 +16,7 @@
         value,
         rawValue,
         field,
+        sourceId,
         autoOpenValue = false,
         onFieldClick,
         onOpChange,
@@ -30,6 +31,7 @@
         value?: string;
         rawValue?: unknown;
         field?: ViewField;
+        sourceId?: string;
         autoOpenValue?: boolean;
         onFieldClick?: () => void;
         onOpChange?: (op: string) => void;
@@ -117,6 +119,7 @@
             anchor={valueEl}
             {field}
             value={rawValue}
+            {sourceId}
             onChange={(v) => onValueChange?.(v)}
     />
 {/if}

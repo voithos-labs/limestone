@@ -9,6 +9,17 @@
         icon?: Component;
     }
 
+    interface MenuDivider {
+        kind: 'divider';
+        section?: string;
+    }
+
+    type MenuEntry = MenuItem | MenuDivider;
+
+    function isItem(e: MenuEntry): e is MenuItem {
+        return !('kind' in e);
+    }
+
     let {
         open = $bindable(false),
         anchor,
@@ -23,7 +34,7 @@
     }: {
         open: boolean;
         anchor: HTMLElement | null;
-        items: MenuItem[];
+        items: MenuEntry[];
         selected?: string;
         selectedValues?: string[];
         multiple?: boolean;
@@ -46,8 +57,10 @@
     const filtered = $derived(
         !searchable || query.trim() === ''
             ? items
-            : items.filter(i => i.label.toLowerCase().includes(query.trim().toLowerCase()))
+            : items.filter((i): i is MenuItem => isItem(i) && i.label.toLowerCase().includes(query.trim().toLowerCase()))
     );
+
+    const actionable = $derived(filtered.filter(isItem));
 
     function position() {
         if (!anchor || !menuEl) return;
@@ -80,13 +93,13 @@
             return;
         }
         if (e.key === 'ArrowDown') {
-            activeIndex = filtered.length === 0 ? -1 : (activeIndex + 1) % filtered.length;
+            activeIndex = actionable.length === 0 ? -1 : (activeIndex + 1) % actionable.length;
             e.preventDefault();
         } else if (e.key === 'ArrowUp') {
-            activeIndex = filtered.length === 0 ? -1 : (activeIndex - 1 + filtered.length) % filtered.length;
+            activeIndex = actionable.length === 0 ? -1 : (activeIndex - 1 + actionable.length) % actionable.length;
             e.preventDefault();
-        } else if (e.key === 'Enter' && activeIndex >= 0 && filtered[activeIndex]) {
-            pick(filtered[activeIndex].value);
+        } else if (e.key === 'Enter' && activeIndex >= 0 && actionable[activeIndex]) {
+            pick(actionable[activeIndex].value);
             e.preventDefault();
         }
     }
@@ -98,8 +111,8 @@
         if (isOpen && !wasOpen) {
             wasOpen = true;
             untrack(() => {
-                activeIndex = filtered.findIndex(i => i.value === selected);
-                if (activeIndex < 0 && filtered.length > 0) activeIndex = 0;
+                activeIndex = actionable.findIndex(i => i.value === selected);
+                if (activeIndex < 0 && actionable.length > 0) activeIndex = 0;
                 if (query !== '') query = '';
             });
             queueMicrotask(() => {
@@ -127,7 +140,7 @@
         if (open) {
             queueMicrotask(position);
             untrack(() => {
-                if (filtered.length > 0 && (activeIndex < 0 || activeIndex >= filtered.length)) {
+                if (actionable.length > 0 && (activeIndex < 0 || activeIndex >= actionable.length)) {
                     activeIndex = 0;
                 }
             });
@@ -163,25 +176,30 @@
             </div>
         {/if}
         <div class="list">
-            {#each filtered as item, i (item.value)}
-                {@const Icon = item.icon}
-                <button
-                        class="menu-item"
-                        class:active={activeIndex === i}
-                        class:selected={isChecked(item.value)}
-                        type="button"
-                        role="menuitem"
-                        onclick={() => pick(item.value)}
-                        onmouseenter={() => activeIndex = i}
-                >
-                    {#if Icon}
-                        <span class="item-icon"><Icon size={13} strokeWidth={1.75}/></span>
-                    {/if}
-                    <span class="item-label">{item.label}</span>
-                    {#if isChecked(item.value)}
-                        <Check size={13} strokeWidth={2}/>
-                    {/if}
-                </button>
+            {#each filtered as entry, i (isItem(entry) ? entry.value : 'd' + i)}
+                {#if isItem(entry)}
+                    {@const Icon = entry.icon}
+                    {@const itemIdx = actionable.indexOf(entry)}
+                    <button
+                            class="menu-item"
+                            class:active={activeIndex === itemIdx}
+                            class:selected={isChecked(entry.value)}
+                            type="button"
+                            role="menuitem"
+                            onclick={() => pick(entry.value)}
+                            onmouseenter={() => activeIndex = itemIdx}
+                    >
+                        {#if Icon}
+                            <span class="item-icon"><Icon size={13} strokeWidth={1.75}/></span>
+                        {/if}
+                        <span class="item-label">{entry.label}</span>
+                        {#if isChecked(entry.value)}
+                            <Check size={13} strokeWidth={2}/>
+                        {/if}
+                    </button>
+                {:else}
+                    <div class="menu-divider" role="separator"></div>
+                {/if}
             {:else}
                 <div class="empty">No results</div>
             {/each}
@@ -305,5 +323,11 @@
         padding: 8px 10px;
         color: var(--color-ui-muted);
         font-size: 12px;
+    }
+
+    .menu-divider {
+        height: 1px;
+        margin: 4px 6px;
+        background: var(--color-border);
     }
 </style>

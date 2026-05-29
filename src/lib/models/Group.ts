@@ -47,6 +47,7 @@ class Group {
 	readonly createdAt: Date;
 	updatedAt: Date;
 	parentGroupId?: string;
+	sourceId?: string;
 
 	// ── State ───────────────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ class Group {
 		this.createdAt = parseUtc(row.created_at);
 		this.updatedAt = parseUtc(row.updated_at);
 		this.parentGroupId = row.parent_group_id ?? undefined;
+		this.sourceId = row.source_id ?? undefined;
 	}
 
 	/**

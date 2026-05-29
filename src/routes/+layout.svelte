@@ -12,6 +12,10 @@
         if (percent && percent > 0) {
             await getCurrentWebview().setZoom(percent / 100);
         }
+        const maxWidth = await getSetting<number>('appearance.max_page_width');
+        if (maxWidth && maxWidth > 0) {
+            document.documentElement.style.setProperty('--page-max-width', maxWidth + 'px');
+        }
     });
 </script>
 

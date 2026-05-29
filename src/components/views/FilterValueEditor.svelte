@@ -14,12 +14,14 @@
         anchor,
         field,
         value,
+        sourceId,
         onChange
     }: {
         open: boolean;
         anchor: HTMLElement | null;
         field: ViewField;
         value: unknown;
+        sourceId?: string;
         onChange: (newValue: unknown) => void;
     } = $props();
 
@@ -127,6 +129,7 @@
             bind:open
             {anchor}
             value={typeof value === 'string' ? value : null}
+            {sourceId}
             onChange={(v) => onChange(v)}
     />
 {:else if field.type === 'source'}

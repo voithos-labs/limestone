@@ -330,6 +330,9 @@
         position: relative;
         width: 100%;
         height: 100%;
+        max-width: var(--page-max-width, none);
+        margin-left: auto;
+        margin-right: auto;
     }
 
     .cm-wrapper::before,
