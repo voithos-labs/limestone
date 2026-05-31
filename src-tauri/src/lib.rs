@@ -23,6 +23,7 @@ pub struct AppData {
     pub user: services::User,
     pub settings: RwLock<Value>,
     pub db: SqlitePool,
+    pub bulk: services::BulkRunner,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -83,10 +84,13 @@ pub fn run() {
                     Box::<dyn std::error::Error>::from(format!("failed to create db pool: {e}"))
                 })?;
 
+            let bulk = services::BulkRunner::new(global_data_path.join("bulk_ops.json"));
+
             app.manage(AppData {
                 user,
                 settings: RwLock::new(initial_settings),
                 db: pool.clone(),
+                bulk: bulk.clone(),
             });
 
             // this is for the transparency
@@ -95,6 +99,21 @@ pub fn run() {
             }
 
             // ── Not Blocking!1 ───────────────────────────────────────────────────────
+
+            let source_paths: std::collections::HashMap<String, std::path::PathBuf> = sources
+                .iter()
+                .map(|s| (s.id.to_string(), s.path.clone()))
+                .collect();
+
+            {
+                let app_handle = app.handle().clone();
+                let pool = pool.clone();
+                let bulk = bulk.clone();
+                let source_paths = source_paths.clone();
+                tauri::async_runtime::spawn(async move {
+                    bulk.resume(&pool, &app_handle, &source_paths).await;
+                });
+            }
 
             for source in sources {
                 let app_handle = app.handle().clone();
@@ -132,6 +151,9 @@ pub fn run() {
             commands::document_commands::write_document,
             commands::document_commands::rename_document,
             commands::document_commands::move_document,
+            commands::bulk_ops_commands::bulk_set_view_field,
+            commands::bulk_ops_commands::bulk_rename_view_field,
+            commands::bulk_ops_commands::bulk_remove_view_field,
             commands::db_commands::sql_select,
             commands::db_commands::sql_execute,
         ])

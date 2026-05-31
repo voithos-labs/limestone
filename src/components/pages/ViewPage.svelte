@@ -49,6 +49,6 @@
 
     .view-chrome {
         flex-shrink: 0;
-        padding: 20px 24px 0;
+        padding: 20px 0 0 24px;
     }
 </style>

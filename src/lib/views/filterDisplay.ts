@@ -1,6 +1,6 @@
 import type { Component } from 'svelte';
 import {
-	Type,
+	CaseSensitive,
 	Hash,
 	Calendar,
 	SquareCheck,
@@ -8,7 +8,6 @@ import {
 	Tags,
 	Tag,
 	Folder,
-	Captions,
 	Fingerprint,
 	Database,
 	Route,
@@ -24,13 +23,13 @@ export interface OpOption {
 }
 
 export const FIELD_TYPE_ICONS: Record<ViewFieldType, Component> = {
-	text: Type,
+	text: CaseSensitive,
 	number: Hash,
 	date: Calendar,
 	boolean: SquareCheck,
 	select: CircleDot,
 	multiselect: Tags,
-	title: Captions,
+	title: CaseSensitive,
 	id: Fingerprint,
 	source: Database,
 	tags: Tag,

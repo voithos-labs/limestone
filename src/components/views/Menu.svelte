@@ -1,24 +1,8 @@
 <script lang="ts">
-    import type {Component} from "svelte";
     import {untrack} from "svelte";
-    import {Check, Search} from "@lucide/svelte";
-
-    interface MenuItem {
-        value: string;
-        label: string;
-        icon?: Component;
-    }
-
-    interface MenuDivider {
-        kind: 'divider';
-        section?: string;
-    }
-
-    type MenuEntry = MenuItem | MenuDivider;
-
-    function isItem(e: MenuEntry): e is MenuItem {
-        return !('kind' in e);
-    }
+    import {Check, Search, ChevronRight} from "@lucide/svelte";
+    import type {MenuItem, MenuEntry} from "$lib/views/menuTypes";
+    import {isMenuItem as isItem} from "$lib/views/menuTypes";
 
     let {
         open = $bindable(false),
@@ -30,7 +14,9 @@
         onSelect,
         minWidth = 160,
         searchable = false,
-        placeholder = 'Search…'
+        placeholder = 'Search…',
+        placement = 'bottom',
+        header
     }: {
         open: boolean;
         anchor: HTMLElement | null;
@@ -42,6 +28,8 @@
         minWidth?: number;
         searchable?: boolean;
         placeholder?: string;
+        placement?: 'bottom' | 'right';
+        header?: import('svelte').Snippet;
     } = $props();
 
     function isChecked(value: string): boolean {
@@ -53,6 +41,11 @@
     let activeIndex = $state(-1);
     let query = $state('');
     let searchEl: HTMLInputElement | null = $state(null);
+
+    // ── Submenu (single open slot, always mounted, controlled via bound open) ──
+    let subOpen = $state(false);
+    let subAnchor: HTMLElement | null = $state(null);
+    let subItems: MenuEntry[] = $state([]);
 
     const filtered = $derived(
         !searchable || query.trim() === ''
@@ -67,13 +60,26 @@
         const a = anchor.getBoundingClientRect();
         const m = menuEl.getBoundingClientRect();
         const margin = 4;
-        let top = a.bottom + margin;
-        let left = a.left;
-        if (top + m.height > window.innerHeight - 8) {
-            top = Math.max(8, a.top - m.height - margin);
-        }
-        if (left + m.width > window.innerWidth - 8) {
-            left = Math.max(8, a.right - m.width);
+        let top: number;
+        let left: number;
+        if (placement === 'right') {
+            top = a.top;
+            left = a.right + margin;
+            if (left + m.width > window.innerWidth - 8) {
+                left = Math.max(8, a.left - m.width - margin);
+            }
+            if (top + m.height > window.innerHeight - 8) {
+                top = Math.max(8, window.innerHeight - 8 - m.height);
+            }
+        } else {
+            top = a.bottom + margin;
+            left = a.left;
+            if (top + m.height > window.innerHeight - 8) {
+                top = Math.max(8, a.top - m.height - margin);
+            }
+            if (left + m.width > window.innerWidth - 8) {
+                left = Math.max(8, a.right - m.width);
+            }
         }
         pos = {top, left};
     }
@@ -87,6 +93,8 @@
 
     function onKey(e: KeyboardEvent) {
         if (!open) return;
+        // While a submenu is open it owns the keyboard, esc backs
+        if (subOpen) return;
         if (e.key === 'Escape') {
             open = false;
             e.preventDefault();
@@ -99,9 +107,14 @@
             activeIndex = actionable.length === 0 ? -1 : (activeIndex - 1 + actionable.length) % actionable.length;
             e.preventDefault();
         } else if (e.key === 'Enter' && activeIndex >= 0 && actionable[activeIndex]) {
-            pick(actionable[activeIndex].value);
+            activate(actionable[activeIndex], activeRowEl());
             e.preventDefault();
         }
+    }
+
+    function activeRowEl(): HTMLElement | null {
+        const value = actionable[activeIndex]?.value;
+        return value ? menuEl?.querySelector(`[data-mi="${value}"]`) ?? null : null;
     }
 
     let wasOpen = false;
@@ -114,6 +127,7 @@
                 activeIndex = actionable.findIndex(i => i.value === selected);
                 if (activeIndex < 0 && actionable.length > 0) activeIndex = 0;
                 if (query !== '') query = '';
+                subOpen = false;
             });
             queueMicrotask(() => {
                 position();
@@ -151,6 +165,32 @@
         onSelect(value);
         if (!multiple) open = false;
     }
+
+    function activate(entry: MenuItem, rowEl: HTMLElement | null) {
+        if (entry.children && entry.children.length > 0) {
+            subItems = entry.children;
+            subAnchor = rowEl;
+            subOpen = true;
+        } else {
+            pick(entry.value);
+        }
+    }
+
+    function hover(entry: MenuItem, i: number, rowEl: HTMLElement) {
+        activeIndex = i;
+        if (entry.children && entry.children.length > 0) {
+            subItems = entry.children;
+            subAnchor = rowEl;
+            subOpen = true;
+        } else {
+            subOpen = false;
+        }
+    }
+
+    function handleChildSelect(value: string) {
+        onSelect(value);
+        open = false;
+    }
 </script>
 
 {#if open}
@@ -163,6 +203,9 @@
             role="menu"
             tabindex="-1"
     >
+        {#if header}
+            <div class="menu-header">{@render header()}</div>
+        {/if}
         {#if searchable}
             <div class="search-row">
                 <Search size={13} strokeWidth={1.75}/>
@@ -180,20 +223,24 @@
                 {#if isItem(entry)}
                     {@const Icon = entry.icon}
                     {@const itemIdx = actionable.indexOf(entry)}
+                    {@const hasChildren = !!entry.children && entry.children.length > 0}
                     <button
                             class="menu-item"
                             class:active={activeIndex === itemIdx}
                             class:selected={isChecked(entry.value)}
                             type="button"
                             role="menuitem"
-                            onclick={() => pick(entry.value)}
-                            onmouseenter={() => activeIndex = itemIdx}
+                            data-mi={entry.value}
+                            onclick={(e) => activate(entry, e.currentTarget as HTMLElement)}
+                            onmouseenter={(e) => hover(entry, itemIdx, e.currentTarget as HTMLElement)}
                     >
                         {#if Icon}
                             <span class="item-icon"><Icon size={13} strokeWidth={1.75}/></span>
                         {/if}
                         <span class="item-label">{entry.label}</span>
-                        {#if isChecked(entry.value)}
+                        {#if hasChildren}
+                            <ChevronRight size={13} strokeWidth={2}/>
+                        {:else if isChecked(entry.value)}
                             <Check size={13} strokeWidth={2}/>
                         {/if}
                     </button>
@@ -204,6 +251,18 @@
                 <div class="empty">No results</div>
             {/each}
         </div>
+
+        <svelte:self
+                bind:open={subOpen}
+                anchor={subAnchor}
+                items={subItems}
+                {selected}
+                {selectedValues}
+                {multiple}
+                onSelect={handleChildSelect}
+                {minWidth}
+                placement="right"
+        />
     </div>
 {/if}
 
@@ -224,6 +283,12 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
+    }
+
+    .menu-header {
+        margin: -4px -4px 4px;
+        padding: 6px;
+        border-bottom: 1px solid var(--menu-search-divider);
     }
 
     .search-row {

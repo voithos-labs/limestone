@@ -171,6 +171,16 @@ export type ViewFieldType =
 	| 'multiselect' // might prune
 	| (typeof BUILTIN_FIELD_TYPES)[number];
 
+// user-creatable stateful field types (e.g. due-date, etc.)
+export const CREATABLE_FIELD_TYPES = [
+	'text',
+	'number',
+	'date',
+	'boolean',
+	'select',
+	'multiselect'
+] as const;
+
 // does this add a prop to documents? If not it is derived (mapped)
 export function isDerived(type: ViewFieldType): boolean {
 	return (BUILTIN_FIELD_TYPES as readonly string[]).includes(type);
@@ -536,6 +546,8 @@ interface MemberRow {
 	rel_path: string;
 	created_at: string;
 	updated_at: string;
+	properties: string;
+	source_id: string;
 }
 
 interface ViewJSON {
@@ -641,6 +653,20 @@ class View {
 	}
 
 	/**
+	 * Create a new field of the given type with a unique default name, append it
+	 * to the view's fields, and return it. Caller decides display placement.
+	 */
+	addFieldOfType(type: ViewFieldType): ViewField {
+		const taken = new Set(this.fields.map((f) => f.name));
+		let name: string = type;
+		let n = 2;
+		while (taken.has(name)) name = `${type}_${n++}`;
+		const field = createViewField(name, type);
+		this.fields.push(field);
+		return field;
+	}
+
+	/**
 	 * Adds a simple filter to the outer 'and' compound predicate
 	 */
 	addBasicFilter(filter: FilterLeaf) {
@@ -687,7 +713,7 @@ class View {
 		const sort = opts?.face?.sort ?? [];
 		const orderBy = sort.length ? compileSort(sort, this.fields, this.slug) : '';
 
-		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at
+		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.properties, d.source_id
 			FROM documents d
 			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
 

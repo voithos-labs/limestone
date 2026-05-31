@@ -1,0 +1,391 @@
+//! Bulk frontmatter ops on across documents
+//! e.g.:
+//!
+//! - um view prop renames and deletion, non-present assumes default val so not needed often on
+//! creation
+//! - eventually renames to fix wikilinks between docs (todo)
+//!
+//! Basically:
+//! 1. The DB index updates in one statement (instant view feedback),
+//! 2. the matching files have their frontmatter rewritten in parallel afterwards
+//!
+//! Structural ops (rename, remove) are recorded to an on-disk journal (i.e. write-ahead)
+//! so an interrupted op finishes on the next launch
+
+use crate::services::frontmatter;
+use crate::services::fs::atomic_write;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sqlx::SqlitePool;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use tauri::async_runtime::Mutex;
+use tauri::{AppHandle, Emitter};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BulkResult {
+    pub touched: usize,
+    pub failed: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct BulkProgress {
+    done: usize,
+    total: usize,
+}
+
+/// A resumable structural op, recoverable from these args
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum JournaledOp {
+    RenameViewField {
+        source_id: String,
+        view_slug: String,
+        old_name: String,
+        new_name: String,
+    },
+    RemoveViewField {
+        source_id: String,
+        view_slug: String,
+        field_name: String,
+    },
+}
+
+impl JournaledOp {
+    fn source_id(&self) -> &str {
+        match self {
+            JournaledOp::RenameViewField { source_id, .. }
+            | JournaledOp::RemoveViewField { source_id, .. } => source_id,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct BulkRunner {
+    inner: Arc<Inner>,
+}
+
+struct Inner {
+    journal_path: PathBuf,
+    lock: Mutex<()>,
+}
+
+impl BulkRunner {
+    pub fn new(journal_path: PathBuf) -> Self {
+        Self {
+            inner: Arc::new(Inner {
+                journal_path,
+                lock: Mutex::new(()),
+            }),
+        }
+    }
+
+    pub async fn set_view_field(
+        &self,
+        db: &SqlitePool,
+        app: &AppHandle,
+        source_id: &str,
+        source_path: &Path,
+        view_slug: &str,
+        field_name: &str,
+        value: Value,
+        doc_ids: Vec<String>,
+    ) -> Result<BulkResult, String> {
+        validate_ident(view_slug, "view slug")?;
+        validate_ident(field_name, "field name")?;
+        let _guard = self.inner.lock.lock().await;
+        if doc_ids.is_empty() {
+            return Ok(BulkResult {
+                touched: 0,
+                failed: 0,
+            });
+        }
+
+        let path = json_path(view_slug, field_name);
+        let placeholders = doc_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "UPDATE documents SET properties = json_set(properties, ?, json(?)), updated_at = datetime('now')
+             WHERE source_id = ? AND id IN ({placeholders})"
+        );
+        let mut q = sqlx::query(&sql)
+            .bind(&path)
+            .bind(serde_json::to_string(&value).map_err(|e| e.to_string())?)
+            .bind(source_id);
+        for id in &doc_ids {
+            q = q.bind(id);
+        }
+        q.execute(db).await.map_err(|e| e.to_string())?;
+
+        let rel_paths = fetch_paths_by_id(db, source_id, &doc_ids).await?;
+        let (slug, field) = (view_slug.to_string(), field_name.to_string());
+        write_files(app, source_path, rel_paths, move |fm| {
+            frontmatter::set_view_field(fm, &slug, &field, value.clone());
+        })
+        .await
+    }
+
+    pub async fn rename_view_field(
+        &self,
+        db: &SqlitePool,
+        app: &AppHandle,
+        source_id: &str,
+        source_path: &Path,
+        view_slug: &str,
+        old_name: &str,
+        new_name: &str,
+    ) -> Result<BulkResult, String> {
+        validate_ident(view_slug, "view slug")?;
+        validate_ident(old_name, "field name")?;
+        validate_ident(new_name, "new field name")?;
+        let op = JournaledOp::RenameViewField {
+            source_id: source_id.to_string(),
+            view_slug: view_slug.to_string(),
+            old_name: old_name.to_string(),
+            new_name: new_name.to_string(),
+        };
+        self.run_journaled(db, app, source_path, op).await
+    }
+
+    pub async fn remove_view_field(
+        &self,
+        db: &SqlitePool,
+        app: &AppHandle,
+        source_id: &str,
+        source_path: &Path,
+        view_slug: &str,
+        field_name: &str,
+    ) -> Result<BulkResult, String> {
+        validate_ident(view_slug, "view slug")?;
+        validate_ident(field_name, "field name")?;
+        let op = JournaledOp::RemoveViewField {
+            source_id: source_id.to_string(),
+            view_slug: view_slug.to_string(),
+            field_name: field_name.to_string(),
+        };
+        self.run_journaled(db, app, source_path, op).await
+    }
+
+    async fn run_journaled(
+        &self,
+        db: &SqlitePool,
+        app: &AppHandle,
+        source_path: &Path,
+        op: JournaledOp,
+    ) -> Result<BulkResult, String> {
+        let _guard = self.inner.lock.lock().await;
+        self.journal_add(&op);
+        let result = execute(db, app, source_path, &op).await;
+        self.journal_remove(&op);
+        result
+    }
+
+    /// Re-run any ops left in the journal after interrupt
+    pub async fn resume(
+        &self,
+        db: &SqlitePool,
+        app: &AppHandle,
+        source_paths: &HashMap<String, PathBuf>,
+    ) {
+        let ops = self.journal_read();
+        for op in &ops {
+            let Some(path) = source_paths.get(op.source_id()) else {
+                continue;
+            };
+            let _guard = self.inner.lock.lock().await;
+            if let Err(e) = execute(db, app, path, op).await {
+                eprintln!("bulk resume failed: {e}");
+            }
+        }
+        self.journal_write(&[]);
+    }
+
+    fn journal_read(&self) -> Vec<JournaledOp> {
+        std::fs::read_to_string(&self.inner.journal_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    fn journal_write(&self, ops: &[JournaledOp]) {
+        if let Ok(json) = serde_json::to_vec_pretty(ops) {
+            let _ = atomic_write(&self.inner.journal_path, &json);
+        }
+    }
+
+    fn journal_add(&self, op: &JournaledOp) {
+        let mut ops = self.journal_read();
+        ops.push(op.clone());
+        self.journal_write(&ops);
+    }
+
+    fn journal_remove(&self, op: &JournaledOp) {
+        let mut ops = self.journal_read();
+        ops.retain(|o| o != op);
+        self.journal_write(&ops);
+    }
+}
+
+async fn execute(
+    db: &SqlitePool,
+    app: &AppHandle,
+    source_path: &Path,
+    op: &JournaledOp,
+) -> Result<BulkResult, String> {
+    match op {
+        JournaledOp::RenameViewField {
+            source_id,
+            view_slug,
+            old_name,
+            new_name,
+        } => {
+            let old_path = json_path(view_slug, old_name);
+            let new_path = json_path(view_slug, new_name);
+            let rel_paths = fetch_paths_with_field(db, source_id, &old_path).await?;
+            sqlx::query(
+                "UPDATE documents
+                 SET properties = json_remove(json_set(properties, ?1, json_extract(properties, ?2)), ?2),
+                     updated_at = datetime('now')
+                 WHERE source_id = ?3 AND json_extract(properties, ?2) IS NOT NULL",
+            )
+            .bind(&new_path)
+            .bind(&old_path)
+            .bind(source_id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let (slug, from, to) = (view_slug.clone(), old_name.clone(), new_name.clone());
+            write_files(app, source_path, rel_paths, move |fm| {
+                frontmatter::rename_view_field(fm, &slug, &from, &to);
+            })
+            .await
+        }
+        JournaledOp::RemoveViewField {
+            source_id,
+            view_slug,
+            field_name,
+        } => {
+            let path = json_path(view_slug, field_name);
+            let rel_paths = fetch_paths_with_field(db, source_id, &path).await?;
+            sqlx::query(
+                "UPDATE documents
+                 SET properties = json_remove(properties, ?1), updated_at = datetime('now')
+                 WHERE source_id = ?2 AND json_extract(properties, ?1) IS NOT NULL",
+            )
+            .bind(&path)
+            .bind(source_id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let (slug, field) = (view_slug.clone(), field_name.clone());
+            write_files(app, source_path, rel_paths, move |fm| {
+                frontmatter::remove_view_field(fm, &slug, &field);
+            })
+            .await
+        }
+    }
+}
+
+async fn write_files(
+    app: &AppHandle,
+    source_path: &Path,
+    rel_paths: Vec<String>,
+    mutate: impl Fn(&mut Value) + Send + Sync + 'static,
+) -> Result<BulkResult, String> {
+    let total = rel_paths.len();
+    if total == 0 {
+        return Ok(BulkResult {
+            touched: 0,
+            failed: 0,
+        });
+    }
+    let app = app.clone();
+    let source_path = source_path.to_path_buf();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let done = AtomicUsize::new(0);
+        let failed = AtomicUsize::new(0);
+        let step = (total / 50).max(50);
+
+        rel_paths.par_iter().for_each(|rel| {
+            match frontmatter::rewrite_frontmatter(&source_path.join(rel), &mutate) {
+                Ok(()) => {
+                    let n = done.fetch_add(1, Ordering::Relaxed) + 1;
+                    if n % step == 0 || n == total {
+                        let _ = app.emit("bulk-progress", BulkProgress { done: n, total });
+                    }
+                }
+                Err(e) => {
+                    eprintln!("bulk write failed for {rel}: {e}");
+                    failed.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        });
+
+        BulkResult {
+            touched: done.into_inner(),
+            failed: failed.into_inner(),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+async fn fetch_paths_with_field(
+    db: &SqlitePool,
+    source_id: &str,
+    json_path: &str,
+) -> Result<Vec<String>, String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT rel_path FROM documents
+         WHERE source_id = ? AND deleted_at IS NULL AND json_extract(properties, ?) IS NOT NULL",
+    )
+    .bind(source_id)
+    .bind(json_path)
+    .fetch_all(db)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
+}
+
+async fn fetch_paths_by_id(
+    db: &SqlitePool,
+    source_id: &str,
+    doc_ids: &[String],
+) -> Result<Vec<String>, String> {
+    if doc_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = doc_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT rel_path FROM documents
+         WHERE source_id = ? AND deleted_at IS NULL AND id IN ({placeholders})"
+    );
+    let mut q = sqlx::query_as::<_, (String,)>(&sql).bind(source_id);
+    for id in doc_ids {
+        q = q.bind(id);
+    }
+    let rows = q.fetch_all(db).await.map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
+}
+
+fn json_path(view_slug: &str, field: &str) -> String {
+    format!("$.views.{view_slug}.{field}")
+}
+
+fn validate_ident(s: &str, what: &str) -> Result<(), String> {
+    if s.is_empty() {
+        return Err(format!("{what} is empty"));
+    }
+    if !s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!("{what} has unsafe characters: {s}"));
+    }
+    Ok(())
+}

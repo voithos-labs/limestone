@@ -37,9 +37,15 @@
     --menu-scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
     --menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
     --error-bg: rgba(220, 60, 60, 0.08);
+
+    /* tag palette (.tag-cN) */
+    --tag-bg-l: 90%;
+    --tag-fg-l: 30%;
 }
 
 :root[data-theme-type="dark"] {
+    --tag-bg-l: 26%;
+    --tag-fg-l: 82%;
     --chip-bg: rgba(255, 255, 255, 0.055);
     --chip-bg-hover: rgba(255, 255, 255, 0.085);
     --chip-seg-hover: rgba(255, 255, 255, 0.07);
@@ -96,12 +102,39 @@ body {
     font-family: var(--font-ui);
 }
 
-::-webkit-scrollbar-button {
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-button:single-button,
+::-webkit-scrollbar-button:start,
+::-webkit-scrollbar-button:end,
+::-webkit-scrollbar-button:vertical:start,
+::-webkit-scrollbar-button:vertical:end,
+::-webkit-scrollbar-button:horizontal:start,
+::-webkit-scrollbar-button:horizontal:end {
     display: none;
     width: 0;
     height: 0;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
 ::-webkit-scrollbar-corner {
     background: transparent;
 }
+
+/*; tag/select palette, 16 colors*/
+.tag-c0  { --tag-h: 0;   --tag-s: 0%; }
+.tag-c1  { --tag-h: 4;   --tag-s: 65%; }
+.tag-c2  { --tag-h: 22;  --tag-s: 75%; }
+.tag-c3  { --tag-h: 34;  --tag-s: 78%; }
+.tag-c4  { --tag-h: 48;  --tag-s: 75%; }
+.tag-c5  { --tag-h: 70;  --tag-s: 60%; }
+.tag-c6  { --tag-h: 100; --tag-s: 50%; }
+.tag-c7  { --tag-h: 140; --tag-s: 48%; }
+.tag-c8  { --tag-h: 168; --tag-s: 52%; }
+.tag-c9  { --tag-h: 190; --tag-s: 58%; }
+.tag-c10 { --tag-h: 205; --tag-s: 62%; }
+.tag-c11 { --tag-h: 222; --tag-s: 62%; }
+.tag-c12 { --tag-h: 244; --tag-s: 58%; }
+.tag-c13 { --tag-h: 266; --tag-s: 55%; }
+.tag-c14 { --tag-h: 290; --tag-s: 52%; }
+.tag-c15 { --tag-h: 330; --tag-s: 62%; }
