@@ -3,6 +3,7 @@
     import {Check, Search, ChevronRight} from "@lucide/svelte";
     import type {MenuItem, MenuEntry} from "$lib/views/menuTypes";
     import {isMenuItem as isItem} from "$lib/views/menuTypes";
+    import Menu from "./Menu.svelte";
 
     let {
         open = $bindable(false),
@@ -252,7 +253,7 @@
             {/each}
         </div>
 
-        <svelte:self
+        <Menu
                 bind:open={subOpen}
                 anchor={subAnchor}
                 items={subItems}

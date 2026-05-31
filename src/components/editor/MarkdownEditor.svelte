@@ -92,7 +92,7 @@
     let content: string = $state('');
 
     $effect(() => {
-        handle.loadContent().then((c) => content = c)
+        handle?.loadContent().then((c) => content = c)
     })
 
 
@@ -209,7 +209,7 @@
             clearTimeout(saveTimer);
             saveTimer = null;
         }
-        handle.saveContent(content).catch(e => console.error('saveContent failed', e));
+        handle?.saveContent(content).catch(e => console.error('saveContent failed', e));
     }
 
     function scheduleSave() {
