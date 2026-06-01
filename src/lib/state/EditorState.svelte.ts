@@ -220,7 +220,12 @@ class EditorState {
 	}
 
 	openDoc(doc: DocHandle) {
-		this.openTab(TabState.forDoc(doc));
+		const existing = this.tabs.find(
+			(t) => t.content.type === 'markdown' && t.content.handle.id === doc.id
+		);
+		const tab = existing ?? TabState.forDoc(doc);
+		if (!existing) this.openTab(tab);
+		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	openView(view: View) {

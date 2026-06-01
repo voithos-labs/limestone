@@ -89,6 +89,30 @@ pub fn rename_view_field(fm: &mut Value, slug: &str, from: &str, to: &str) {
     }
 }
 
+/// Rename a select/multiselect option value in-place within `views.<slug>.<field>`
+pub fn rename_view_option(fm: &mut Value, slug: &str, field: &str, from: &str, to: &str) {
+    let Some(views) = fm.as_object_mut().and_then(|r| r.get_mut("views")) else {
+        return;
+    };
+    let Some(obj) = views.as_object_mut().and_then(|v| v.get_mut(slug)) else {
+        return;
+    };
+    let Some(val) = obj.as_object_mut().and_then(|o| o.get_mut(field)) else {
+        return;
+    };
+    match val {
+        Value::String(s) if s == from => *s = to.to_string(),
+        Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                if matches!(item, Value::String(s) if s == from) {
+                    *item = Value::String(to.to_string());
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// View prop pruning, e.g. removing `views.<slug>.<field>` when the `field` no longer exists in the
 /// view definition or the view itself no longer exists
 pub fn remove_view_field(fm: &mut Value, slug: &str, field: &str) {

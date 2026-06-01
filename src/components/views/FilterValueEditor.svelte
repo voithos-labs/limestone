@@ -3,9 +3,11 @@
     import type {ViewField} from "$lib/models/View.svelte";
     import Group, {GroupType} from "$lib/models/Group";
     import {listSources} from "$lib/models/Source";
+    import {SquareCheck, Square} from "@lucide/svelte";
     import Menu from "./Menu.svelte";
     import InputPopover from "./InputPopover.svelte";
     import FolderValueEditor from "./FolderValueEditor.svelte";
+    import DateValueEditor from "./DateValueEditor.svelte";
 
     interface MenuItem { value: string; label: string; icon?: Component; }
 
@@ -54,8 +56,8 @@
     });
 
     const booleanItems: MenuItem[] = [
-        {value: 'true', label: 'true'},
-        {value: 'false', label: 'false'}
+        {value: 'true', label: 'Checked', icon: SquareCheck},
+        {value: 'false', label: 'Unchecked', icon: Square}
     ];
 
     function asString(v: unknown): string {
@@ -63,9 +65,8 @@
         return String(v);
     }
 
-    function inputType(): 'text' | 'number' | 'date' {
+    function inputType(): 'text' | 'number' {
         if (field.type === 'number') return 'number';
-        if (field.type === 'date' || field.type === 'created_at' || field.type === 'updated_at') return 'date';
         return 'text';
     }
 
@@ -87,7 +88,15 @@
     }
 </script>
 
-{#if field.type === 'text' || field.type === 'title' || field.type === 'path' || field.type === 'number' || field.type === 'date' || field.type === 'created_at' || field.type === 'updated_at'}
+{#if field.type === 'date' || field.type === 'created_at' || field.type === 'updated_at'}
+    <DateValueEditor
+            bind:open
+            {anchor}
+            {value}
+            mode={field.type === 'created_at' || field.type === 'updated_at' ? 'datetime' : 'date'}
+            onChange={(v) => onChange(v)}
+    />
+{:else if field.type === 'text' || field.type === 'title' || field.type === 'path' || field.type === 'number'}
     <InputPopover
             bind:open
             {anchor}

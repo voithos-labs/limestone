@@ -12,6 +12,10 @@
 
     let meta = $state({loading: true, count: 0, elapsedMs: 0});
 
+    // Bumped by the header's "+ New" button; the active face watches it and begins
+    // a create in whatever way fits its layout (table = floating draft row at top).
+    let createSignal = $state(0);
+
     function onOpenRow(rowId: string) {
         DocHandle.fromID(rowId).then(d => editor.openDoc(d)).catch(console.error);
     }
@@ -24,6 +28,7 @@
                 loading={meta.loading}
                 count={meta.count}
                 elapsedMs={meta.elapsedMs}
+                onNew={() => createSignal++}
         />
     </div>
 
@@ -32,6 +37,7 @@
             face={activeFace}
             onMeta={(m) => { meta = m; }}
             {onOpenRow}
+            {createSignal}
     />
 </div>
 

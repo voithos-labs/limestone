@@ -1,6 +1,6 @@
 ---
 id: da597ec2-6c45-45b2-99b2-428acf1a2f1e
-tags: [ ]
+tags: []
 created_at: 2026-04-10T20:16:06.000Z
 updated_at: 2026-04-10T20:16:06.000Z
 ---
@@ -47,6 +47,7 @@ Searches should be able to be opened as a tab in one click
 - [ ] Pinned views somewhere
 - [ ] Default / base table-like view, with filters etc.
 - [ ] Journal / Daily log
+- [ ] Yoo maybe like uh view-property editing in the documents yo?
 
 Think about:
 

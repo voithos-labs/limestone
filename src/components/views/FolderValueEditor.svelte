@@ -1,6 +1,6 @@
 <script lang="ts">
     import {untrack} from "svelte";
-    import {Search, Folder, ChevronRight, ChevronDown, Check} from "@lucide/svelte";
+    import {Search, Folder, FolderPlus, ChevronRight, ChevronDown, Check} from "@lucide/svelte";
     import Group, {GroupType} from "$lib/models/Group";
 
     let {
@@ -53,6 +53,7 @@
         const roots = scoped
             .filter(f => !f.parentGroupId || !inScope.has(f.parentGroupId))
             .sort((a, b) => a.slug.localeCompare(b.slug));
+
         function walk(parentId: string, depth: number) {
             const children = childrenByParent.get(parentId) ?? [];
             for (const f of children) {
@@ -60,6 +61,7 @@
                 if (expandedIds.has(f.id)) walk(f.id, depth + 1);
             }
         }
+
         for (const f of roots) {
             out.push({folder: f, depth: 0});
             if (expandedIds.has(f.id)) walk(f.id, 1);
@@ -74,6 +76,42 @@
             .filter(f => f.slug.toLowerCase().includes(q))
             .sort((a, b) => a.slug.localeCompare(b.slug));
     });
+
+    // Flat list of currently visible folders for keyboard nav
+    const navFolders = $derived(searching ? searchMatches : treeRows.map(r => r.folder));
+    let activeIndex = $state(0);
+
+    const createSourceId = $derived(
+        sourceId ?? (new Set(folders.map(f => f.sourceId)).size === 1 ? folders[0]?.sourceId : undefined)
+    );
+    const showCreate = $derived(
+        searching
+        && !!createSourceId
+        && !scoped.some(f => f.slug.toLowerCase() === query.trim().toLowerCase())
+    );
+    const navCount = $derived(navFolders.length + (showCreate ? 1 : 0));
+    let creating = $state(false);
+
+    $effect(() => {
+        query;
+        expandedIds;
+        if (activeIndex >= navCount) activeIndex = 0;
+    });
+
+    async function createFolder() {
+        const slug = query.trim();
+        if (!slug || !createSourceId || creating) return;
+        creating = true;
+        try {
+            const g = await Group.createFolder(slug, createSourceId);
+            folders = [...folders, g];
+            pick(g.id);
+        } catch (e) {
+            loadError = String(e);
+        } finally {
+            creating = false;
+        }
+    }
 
     function hasChildren(id: string): boolean {
         return (childrenByParent.get(id)?.length ?? 0) > 0;
@@ -127,9 +165,42 @@
 
     function onKey(e: KeyboardEvent) {
         if (!open) return;
+        const n = navCount;
+        const onCreateRow = showCreate && activeIndex === navFolders.length;
         if (e.key === 'Escape') {
             open = false;
             e.preventDefault();
+        } else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+            e.preventDefault();
+            if (n > 0) activeIndex = (activeIndex + 1) % n;
+        } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+            e.preventDefault();
+            if (n > 0) activeIndex = (activeIndex - 1 + n) % n;
+        } else if (e.key === 'ArrowRight' && !searching) {
+            const f = navFolders[activeIndex];
+            if (f && hasChildren(f.id) && !expandedIds.has(f.id)) {
+                toggleExpand(f.id);
+                e.preventDefault();
+            }
+        } else if (e.key === 'ArrowLeft' && !searching) {
+            const f = navFolders[activeIndex];
+            if (f && expandedIds.has(f.id)) {
+                toggleExpand(f.id);
+                e.preventDefault();
+            }
+        } else if (e.key === 'Enter') {
+            // Bare Enter never creates by accident: it only creates when you've
+            // navigated to the create row w/ tab/arrow
+            if (onCreateRow) {
+                createFolder();
+                e.preventDefault();
+                return;
+            }
+            const f = navFolders[activeIndex];
+            if (f) {
+                pick(f.id);
+                e.preventDefault();
+            }
         }
     }
 
@@ -207,10 +278,11 @@
         {/if}
         <div class="list">
             {#if searching}
-                {#each searchMatches as folder (folder.id)}
-                    <div class="folder-row" class:selected={folder.id === value}>
+                {#each searchMatches as folder, i (folder.id)}
+                    <div class="folder-row" class:selected={folder.id === value} class:active={i === activeIndex}>
                         <span class="disclosure-spacer"></span>
-                        <button class="folder-name" type="button" onclick={() => pick(folder.id)}>
+                        <button class="folder-name" type="button" tabindex="-1" onclick={() => pick(folder.id)}
+                                onmouseenter={() => activeIndex = i}>
                             <Folder size={13} strokeWidth={1.75}/>
                             <span class="name-label">{folder.slug}</span>
                             {#if ancestorPath(folder)}
@@ -221,25 +293,43 @@
                             {/if}
                         </button>
                     </div>
-                {:else}
-                    <div class="empty">No folders</div>
                 {/each}
+                {#if showCreate}
+                    <div class="folder-row create" class:active={activeIndex === searchMatches.length}>
+                        <span class="disclosure-spacer"></span>
+                        <button
+                                class="folder-name"
+                                type="button"
+                                tabindex="-1"
+                                onclick={createFolder}
+                                onmouseenter={() => activeIndex = searchMatches.length}
+                        >
+                            <FolderPlus size={13} strokeWidth={1.75}/>
+                            <span class="name-label">Create folder</span>
+                            <span class="create-name">{query.trim()}</span>
+                        </button>
+                    </div>
+                {:else if searchMatches.length === 0}
+                    <div class="empty">No folders</div>
+                {/if}
             {:else}
-                {#each treeRows as item (item.folder.id)}
+                {#each treeRows as item, i (item.folder.id)}
                     {@const folder = item.folder}
                     {@const expanded = expandedIds.has(folder.id)}
                     {@const children = hasChildren(folder.id)}
                     <div
-                        class="folder-row"
-                        class:selected={folder.id === value}
-                        style:padding-left="{item.depth * 14}px"
+                            class="folder-row"
+                            class:selected={folder.id === value}
+                            class:active={i === activeIndex}
+                            style:padding-left="{item.depth * 14}px"
                     >
                         {#if children}
                             <button
-                                class="disclosure"
-                                type="button"
-                                aria-label={expanded ? 'Collapse' : 'Expand'}
-                                onclick={() => toggleExpand(folder.id)}
+                                    class="disclosure"
+                                    type="button"
+                                    tabindex="-1"
+                                    aria-label={expanded ? 'Collapse' : 'Expand'}
+                                    onclick={() => toggleExpand(folder.id)}
                             >
                                 {#if expanded}
                                     <ChevronDown size={12} strokeWidth={2}/>
@@ -250,7 +340,8 @@
                         {:else}
                             <span class="disclosure-spacer"></span>
                         {/if}
-                        <button class="folder-name" type="button" onclick={() => pick(folder.id)}>
+                        <button class="folder-name" type="button" tabindex="-1" onclick={() => pick(folder.id)}
+                                onmouseenter={() => activeIndex = i}>
                             <Folder size={13} strokeWidth={1.75}/>
                             <span class="name-label">{folder.slug}</span>
                             {#if folder.id === value}
@@ -320,7 +411,6 @@
     .list {
         overflow-y: auto;
         flex: 1;
-        margin-right: -4px;
         scrollbar-width: thin;
         scrollbar-color: var(--menu-scrollbar-thumb) transparent;
     }
@@ -373,6 +463,10 @@
         background: var(--menu-item-hover);
     }
 
+    .folder-row.active .folder-name {
+        background: var(--menu-item-hover);
+    }
+
     .folder-name {
         display: flex;
         align-items: center;
@@ -395,9 +489,8 @@
         color: var(--color-ui-muted);
     }
 
-    .folder-name:hover {
-        background: var(--menu-item-hover);
-    }
+    /* Highlight is driven by .folder-row.active (set on mouseenter), so hover and
+       keyboard nav share one cursor*/
 
     .name-label {
         overflow: hidden;
@@ -411,6 +504,18 @@
         text-overflow: ellipsis;
         font-size: 11px;
         color: var(--color-ui-dulled);
+    }
+
+    .folder-row.create .name-label {
+        color: var(--color-ui-muted);
+    }
+
+    .create-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 500;
+        color: var(--color-text-primary);
     }
 
     .empty {

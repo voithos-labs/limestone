@@ -55,6 +55,32 @@ pub async fn bulk_rename_view_field(
 }
 
 #[tauri::command]
+pub async fn bulk_rename_view_option(
+    app_data: State<'_, AppData>,
+    app: AppHandle,
+    source_id: String,
+    source_path: String,
+    view_slug: String,
+    field_name: String,
+    old_value: String,
+    new_value: String,
+) -> Result<BulkResult, String> {
+    app_data
+        .bulk
+        .rename_view_option(
+            &app_data.db,
+            &app,
+            &source_id,
+            Path::new(&source_path),
+            &view_slug,
+            &field_name,
+            &old_value,
+            &new_value,
+        )
+        .await
+}
+
+#[tauri::command]
 pub async fn bulk_remove_view_field(
     app_data: State<'_, AppData>,
     app: AppHandle,

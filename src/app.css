@@ -37,15 +37,21 @@
     --menu-scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
     --menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
     --error-bg: rgba(220, 60, 60, 0.08);
+    --error-fg: #c0392b;
 
     /* tag palette (.tag-cN) */
     --tag-bg-l: 90%;
     --tag-fg-l: 30%;
+
+    /* keyboard focus ring */
+    --focus-ring: rgba(86, 123, 103, 0.55);
 }
 
 :root[data-theme-type="dark"] {
     --tag-bg-l: 26%;
     --tag-fg-l: 82%;
+    --focus-ring: rgba(140, 190, 165, 0.5);
+    --error-fg: #ff8a80;
     --chip-bg: rgba(255, 255, 255, 0.055);
     --chip-bg-hover: rgba(255, 255, 255, 0.085);
     --chip-seg-hover: rgba(255, 255, 255, 0.07);
@@ -85,6 +91,27 @@
     --syntax-separator: #3f6e1a;
     --syntax-task: #0369a1;
     --syntax-task-done: #7c8791;
+}
+
+/* Kill the platform's default (black, uneven) focus outline */
+:focus {
+    outline: none;
+}
+
+:focus-visible {
+    outline: none;
+}
+
+/* umm uhh gotta work on this */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="tab"]:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 3.5px var(--focus-ring);
+    border-radius: 5px;
 }
 
 html,

@@ -411,6 +411,15 @@ fn fs_birth_secs(path: &Path, fallback_mtime: i64) -> i64 {
         .unwrap_or(fallback_mtime)
 }
 
+fn fs_mtime_secs(path: &Path) -> i64 {
+    fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 /// Apply all ops
 pub async fn apply_operations(
     operations: &[DbOperation],
@@ -775,6 +784,57 @@ async fn sync_tags(
 /// 6. Commit changes
 /// 7. Cleanup orphaned groups
 ///
+
+pub async fn index_document(
+    db: &SqlitePool,
+    source_id: &str,
+    source_path: &Path,
+    doc_id: &str,
+    rel_path: &str,
+    fm_buffer_size: usize,
+) -> sqlx::Result<()> {
+    let full = source_path.join(rel_path);
+    let fm = read_frontmatter(&full, fm_buffer_size);
+    let title = Path::new(rel_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Untitled");
+    let properties = fm
+        .as_ref()
+        .map(fm_properties)
+        .unwrap_or_else(|| "{}".to_string());
+    let mtime = fs_mtime_secs(&full);
+
+    let mut tx = db.begin().await?;
+    sqlx::query(
+        "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4, updated_at = datetime('now') WHERE id = ?5",
+    )
+    .bind(rel_path)
+    .bind(title)
+    .bind(mtime)
+    .bind(&properties)
+    .bind(doc_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sync_folders(&mut tx, source_id, doc_id, rel_path).await?;
+    if let Some(fm) = fm.as_ref() {
+        let tags: Vec<String> = fm
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        sync_tags(&mut tx, doc_id, &tags).await?;
+    }
+
+    tx.commit().await?;
+    Ok(())
+}
+
 pub async fn reconcile_source(
     source_path: &Path,
     source_id: &str,

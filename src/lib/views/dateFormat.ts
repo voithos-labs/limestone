@@ -9,7 +9,7 @@ function parseDate(input: string | number | Date): Date | null {
 
 function shortTime(d: Date): string {
 	return d
-		.toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit', hour12: true})
+		.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })
 		.toLowerCase()
 		.replace(/[\s.]/g, '');
 }
@@ -37,18 +37,43 @@ export function formatDateFriendly(input: string | number | Date | null | undefi
 
 	const days = Math.floor(hr / 24);
 	if (days < 7) {
-		const weekday = d.toLocaleDateString(undefined, {weekday: 'short'});
+		const weekday = d.toLocaleDateString(undefined, { weekday: 'short' });
 		return `${weekday} ${shortTime(d)}`;
 	}
 
 	const sameYear = d.getFullYear() === now.getFullYear();
-	if (sameYear) return d.toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
-	return d.toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'});
+	if (sameYear) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+	return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * Format a view date
+ */
+export function formatViewDate(input: string | null | undefined): string {
+	if (input === null || input === undefined || input === '') return '';
+	const m = String(input).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+	if (!m) return String(input);
+	const [, y, mo, d, hh, mm] = m;
+	// Construct as local time so no UTC shift is applied
+	const date = new Date(+y, +mo - 1, +d, hh ? +hh : 0, mm ? +mm : 0);
+	if (isNaN(date.getTime())) return String(input);
+
+	const now = new Date();
+	const sameYear = date.getFullYear() === now.getFullYear();
+	const datePart = sameYear
+		? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+		: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+	if (hh === undefined) return datePart;
+	return `${datePart}, ${shortTime(date)}`;
 }
 
 export function formatDateISO(input: string | number | Date | null | undefined): string {
 	if (input === null || input === undefined || input === '') return '';
 	const d = parseDate(input);
 	if (!d) return String(input);
-	return d.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+	return d
+		.toISOString()
+		.replace('T', ' ')
+		.replace(/\.\d{3}Z$/, ' UTC');
 }

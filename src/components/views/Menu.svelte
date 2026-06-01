@@ -101,10 +101,10 @@
             e.preventDefault();
             return;
         }
-        if (e.key === 'ArrowDown') {
+        if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
             activeIndex = actionable.length === 0 ? -1 : (activeIndex + 1) % actionable.length;
             e.preventDefault();
-        } else if (e.key === 'ArrowUp') {
+        } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
             activeIndex = actionable.length === 0 ? -1 : (activeIndex - 1 + actionable.length) % actionable.length;
             e.preventDefault();
         } else if (e.key === 'Enter' && activeIndex >= 0 && actionable[activeIndex]) {
@@ -231,6 +231,7 @@
                             class:selected={isChecked(entry.value)}
                             type="button"
                             role="menuitem"
+                            tabindex="-1"
                             data-mi={entry.value}
                             onclick={(e) => activate(entry, e.currentTarget as HTMLElement)}
                             onmouseenter={(e) => hover(entry, itemIdx, e.currentTarget as HTMLElement)}
@@ -325,8 +326,6 @@
     .list {
         overflow-y: auto;
         flex: 1;
-        margin-right: -4px;
-        padding-right: 0;
         scrollbar-width: thin;
         scrollbar-color: var(--menu-scrollbar-thumb) transparent;
     }

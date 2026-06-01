@@ -1,5 +1,7 @@
 <script lang="ts">
     import type {Snippet} from "svelte";
+    import {Tween} from "svelte/motion";
+    import {cubicOut} from "svelte/easing";
 
     let {children}: { children: Snippet } = $props();
 
@@ -7,27 +9,79 @@
     let content: HTMLDivElement;
     let scrolling = $state(false);
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Vertical thumb
     let thumbTop = $state(0);
     let thumbHeight = $state(0);
     let showThumb = $state(false);
 
+    // Horizontal "tick lens"
+    let showHBar = $state(false);
+    let railWidth = $state(0);
+    let draggingRail = false;
+    const lensFrac = new Tween(0, {duration: 220, easing: cubicOut});
+
     const THUMB_MIN_PX = 24;
     const THUMB_INSET_PX = 8;
 
+    // Tick field
+    const TICK_GAP = 7;          // px between ticks
+    const TICK_BASE = 1;         // resting tick thickness
+    const TICK_PEAK = 3;         // thickness at the lens center
+    const LENS_SIGMA_FRAC = 0.16; // lens width as a fraction of the rail
+    const RAIL_PAD = 24;         // left/right inset; matches the table's 24px side margin
+
+    const ticks = $derived.by(() => {
+        if (!showHBar || railWidth <= 0) return [];
+        const span = Math.max(1, railWidth - 2 * RAIL_PAD);
+        const n = Math.max(2, Math.floor(span / TICK_GAP));
+        const step = span / n;
+        const center = RAIL_PAD + lensFrac.current * span;
+        const sigma = Math.max(12, span * LENS_SIGMA_FRAC);
+        const out: { x: number; w: number; o: number }[] = [];
+        for (let i = 0; i <= n; i++) {
+            const x = RAIL_PAD + i * step;
+            const d = x - center;
+            const g = Math.exp(-(d * d) / (2 * sigma * sigma));
+            out.push({
+                x,
+                w: TICK_BASE + (TICK_PEAK - TICK_BASE) * g,
+                o: 0.28 + 0.62 * g
+            });
+        }
+        return out;
+    });
+
     function updateThumb() {
         if (!scroller) return;
+
+        // vertical
         const viewH = scroller.clientHeight;
         const contentH = scroller.scrollHeight;
-        const maxScroll = contentH - viewH;
+        const maxScrollY = contentH - viewH;
         const trackH = viewH - 2 * THUMB_INSET_PX;
-        if (maxScroll <= 1 || trackH <= 0) {
+        if (maxScrollY <= 1 || trackH <= 0) {
             showThumb = false;
-            return;
+        } else {
+            const natural = (viewH / contentH) * trackH;
+            thumbHeight = Math.max(natural, THUMB_MIN_PX);
+            thumbTop = THUMB_INSET_PX + (scroller.scrollTop / maxScrollY) * (trackH - thumbHeight);
+            showThumb = true;
         }
-        const natural = (viewH / contentH) * trackH;
-        thumbHeight = Math.max(natural, THUMB_MIN_PX);
-        thumbTop = THUMB_INSET_PX + (scroller.scrollTop / maxScroll) * (trackH - thumbHeight);
-        showThumb = true;
+
+        // Horizontal
+        const viewW = scroller.clientWidth;
+        const contentW = scroller.scrollWidth;
+        const maxScrollX = contentW - viewW;
+        if (maxScrollX <= 1 || viewW <= 0) {
+            showHBar = false;
+        } else {
+            railWidth = viewW;
+            const frac = scroller.scrollLeft / maxScrollX;
+            if (draggingRail) lensFrac.set(frac, {duration: 0});
+            else lensFrac.target = frac;
+            showHBar = true;
+        }
     }
 
     function onScroll() {
@@ -59,6 +113,34 @@
         window.addEventListener('pointerup', up);
     }
 
+    function startRailDrag(e: PointerEvent) {
+        if (!scroller) return;
+        e.preventDefault();
+        const rail = e.currentTarget as HTMLElement;
+        const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+        if (maxScroll <= 0) return;
+        draggingRail = true;
+
+        function apply(clientX: number) {
+            const rect = rail.getBoundingClientRect();
+            const span = Math.max(1, rect.width - 2 * RAIL_PAD);
+            const frac = Math.max(0, Math.min(1, (clientX - rect.left - RAIL_PAD) / span));
+            scroller.scrollLeft = frac * maxScroll;
+        }
+        apply(e.clientX);
+
+        function move(ev: PointerEvent) {
+            apply(ev.clientX);
+        }
+        function up() {
+            draggingRail = false;
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+        }
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    }
+
     $effect(() => {
         updateThumb();
         const ro = new ResizeObserver(() => updateThumb());
@@ -68,7 +150,7 @@
     });
 </script>
 
-<div class="cs-wrapper" class:scrolling>
+<div class="cs-wrapper" class:scrolling class:has-hbar={showHBar}>
     <div class="cs-scroller" bind:this={scroller} onscroll={onScroll}>
         <div class="cs-content" bind:this={content}>
             {@render children()}
@@ -80,6 +162,18 @@
             style="height: {thumbHeight}px; transform: translateY({thumbTop}px);"
             onpointerdown={startThumbDrag}
         ></div>
+    {/if}
+    {#if showHBar}
+        <div class="hbar-rail" onpointerdown={startRailDrag}>
+            <div class="hbar-ticks">
+                {#each ticks as t (t.x)}
+                    <span
+                        class="tick"
+                        style="left: {t.x}px; width: {t.w}px; opacity: {t.o};"
+                    ></span>
+                {/each}
+            </div>
+        </div>
     {/if}
 </div>
 
@@ -105,6 +199,10 @@
     .cs-content {
         display: block;
         width: 100%;
+    }
+
+    .cs-wrapper.has-hbar .cs-content {
+        padding-bottom: var(--hbar-h, 16px);
     }
 
     .scroll-thumb {
@@ -133,5 +231,33 @@
     .scroll-thumb:hover::before {
         width: 4px;
         background: var(--color-ui-muted);
+    }
+
+    .hbar-rail {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: var(--hbar-h, 16px);
+        background: transparent;
+        cursor: pointer;
+        z-index: 6;
+    }
+
+    .hbar-ticks {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 3px;
+        bottom: 3px;
+    }
+
+    .tick {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-radius: 1px;
+        background: var(--hbar-tick, var(--color-ui-muted));
+        transform: translateX(-50%);
     }
 </style>

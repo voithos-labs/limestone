@@ -422,6 +422,14 @@ function compileLeafSql(
 
 	const expr = resolveColumn(field.type, field.name, viewSlug);
 
+	// Booleans: an unset prop (NULL) reads as false
+	if (field.type === 'boolean' && op === 'eq') {
+		const truthy = value === true || value === 'true';
+		return truthy
+			? { sql: `${expr} = 1`, params: [] }
+			: { sql: `(${expr} IS NULL OR ${expr} = 0)`, params: [] };
+	}
+
 	// good lord
 	switch (op) {
 		case 'eq':
@@ -641,7 +649,7 @@ class View {
 	}
 
 	private initDefaultFaces(): void {
-		const wanted: ViewFieldType[] = ['title', 'path', 'tags', 'updated_at'];
+		const wanted: ViewFieldType[] = ['title', 'folder', 'tags', 'updated_at'];
 		const ids = wanted
 			.map((t) => this.fields.find((f) => f.type === t)?.id)
 			.filter((id): id is string => !!id);

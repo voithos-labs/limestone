@@ -3,7 +3,7 @@
      * todo:
      */
     import {untrack} from "svelte";
-    import {Check, Plus, Ellipsis} from "@lucide/svelte";
+    import {Check, Plus, PaintBucket, Trash2, ArrowLeft, X} from "@lucide/svelte";
     import type {ViewField} from "$lib/models/View.svelte";
 
     interface TagOption {
@@ -18,6 +18,7 @@
         value: unknown;
         multiple?: boolean;
         onChange: (value: unknown) => void;
+        onRenameOption?: (oldValue: string, newValue: string) => void;
     }
 
     let {
@@ -26,7 +27,8 @@
         field,
         value,
         multiple = false,
-        onChange
+        onChange,
+        onRenameOption
     }: Props = $props();
 
     let popEl: HTMLDivElement | null = $state(null);
@@ -34,6 +36,38 @@
     let pos: { top: number; left: number } = $state({top: 0, left: 0});
     let query = $state('');
     let colorEditFor: string | null = $state(null);
+    let confirmDeleteFor: string | null = $state(null);
+    let renamingFor: string | null = $state(null);
+    let renameDraft = $state('');
+    let renameInput: HTMLInputElement | null = $state(null);
+
+    function startRename(opt: TagOption) {
+        renamingFor = opt.value;
+        renameDraft = opt.value;
+        colorEditFor = null;
+        confirmDeleteFor = null;
+        queueMicrotask(() => {
+            renameInput?.focus();
+            renameInput?.select();
+        });
+    }
+
+    function commitRename(oldValue: string) {
+        const next = renameDraft.trim();
+        renamingFor = null;
+        if (!next || next === oldValue) return;
+        if (options.some((o) => o.value === next)) return; // avoid collision
+        if (Array.isArray(vf.config.options)) {
+            vf.config.options = vf.config.options.map((o: TagOption) =>
+                o.value === oldValue ? {...o, value: next} : o
+            );
+        }
+        // Update the live selection so the cell reflects the new label immediately
+        if (selectedValues.includes(oldValue)) {
+            onChange(multiple ? selectedValues.map((v) => v === oldValue ? next : v) : next);
+        }
+        onRenameOption?.(oldValue, next);
+    }
 
     const vf = $derived(field as ViewField);
     const options = $derived((vf.config.options ?? []) as TagOption[]);
@@ -51,6 +85,11 @@
     );
 
     const exact = $derived(options.some((o) => o.value === query.trim()));
+
+    // Navigable rows: each filtered option, plus a trailing "create" row when the query is mot found
+    const showCreate = $derived(query.trim() !== '' && !exact);
+    const navCount = $derived(filtered.length + (showCreate ? 1 : 0));
+    let activeIndex = $state(0);
 
     function isSelected(v: string): boolean {
         return selectedValues.includes(v);
@@ -76,20 +115,41 @@
         }
     }
 
+    function clearSelection() {
+        onChange(multiple ? [] : null);
+        if (!multiple) open = false;
+    }
+
     function createAndPick() {
         const v = query.trim();
         if (!v) return;
-        if (!vf.config.options) vf.config.options = [];
-        if (!options.some((o) => o.value === v)) {
-            vf.config.options.push({value: v, color: nextColor()});
+        const existing = Array.isArray(vf.config.options) ? vf.config.options : [];
+        if (!existing.some((o: TagOption) => o.value === v)) {
+            vf.config.options = [...existing, {value: v, color: nextColor()}];
         }
         pick(v);
     }
 
     function setColor(optValue: string, color: number) {
-        const opt = options.find((o) => o.value === optValue);
-        if (opt) opt.color = color;
+        if (!Array.isArray(vf.config.options)) return;
+        // Reassign (not in-place mutate) so the change propagates to the table,
+        // which reads colors from field.config.options.
+        vf.config.options = vf.config.options.map((o: TagOption) =>
+            o.value === optValue ? {...o, color} : o
+        );
         colorEditFor = null;
+    }
+
+    function removeOption(optValue: string) {
+        if (!Array.isArray(vf.config.options)) return;
+        vf.config.options = vf.config.options.filter((o: TagOption) => o.value !== optValue);
+        colorEditFor = null;
+        confirmDeleteFor = null;
+        // Drop the value from the current selection if present
+        if (selectedValues.includes(optValue)) {
+            if (multiple) onChange(selectedValues.filter((v) => v !== optValue));
+            else onChange(null);
+        }
     }
 
     function position() {
@@ -106,21 +166,50 @@
 
     function onDocPointerDown(e: PointerEvent) {
         if (!open) return;
-        if (popEl?.contains(e.target as Node)) return;
-        if (anchor?.contains(e.target as Node)) return;
+        const t = e.target as Node;
+        if (popEl?.contains(t)) {
+            // Clicking inside the menu but outside the open color panel dismisses it
+            if (colorEditFor && !(e.target as HTMLElement).closest?.('.color-panel, .opt-icon')) {
+                colorEditFor = null;
+            }
+            return;
+        }
+        if (anchor?.contains(t)) return;
         open = false;
     }
 
+    function activateIndex(i: number) {
+        if (showCreate && i === filtered.length) {
+            createAndPick();
+        } else if (filtered[i]) {
+            pick(filtered[i].value);
+        }
+    }
+
     function onKey(e: KeyboardEvent) {
+        if (!open) return;
         if (e.key === 'Escape') {
             open = false;
             e.preventDefault();
+        } else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+            e.preventDefault();
+            if (navCount > 0) activeIndex = (activeIndex + 1) % navCount;
+        } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+            e.preventDefault();
+            if (navCount > 0) activeIndex = (activeIndex - 1 + navCount) % navCount;
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            if (query.trim() && !exact) createAndPick();
+            if (activeIndex >= 0 && activeIndex < navCount) activateIndex(activeIndex);
+            else if (showCreate) createAndPick();
             else if (filtered.length > 0) pick(filtered[0].value);
         }
     }
+
+    // Reset/clamp the active row as the filtered set changes
+    $effect(() => {
+        query;
+        if (activeIndex >= navCount) activeIndex = navCount > 0 ? 0 : 0;
+    });
 
     let wasOpen = false;
     $effect(() => {
@@ -137,10 +226,12 @@
             window.addEventListener('resize', position);
             window.addEventListener('scroll', position, true);
             document.addEventListener('pointerdown', onDocPointerDown);
+            document.addEventListener('keydown', onKey);
             return () => {
                 window.removeEventListener('resize', position);
                 window.removeEventListener('scroll', position, true);
                 document.removeEventListener('pointerdown', onDocPointerDown);
+                document.removeEventListener('keydown', onKey);
             };
         }
         if (!isOpen && wasOpen) wasOpen = false;
@@ -161,44 +252,106 @@
                     bind:value={query}
                     bind:this={searchEl}
                     placeholder="Search or create…"
-                    onkeydown={onKey}
             />
         </div>
         <div class="list">
-            {#each filtered as opt (opt.value)}
-                <div class="opt-row">
-                    <button class="opt" type="button" onclick={() => pick(opt.value)}>
-                        <span class="pill tag-c{opt.color}">{opt.value}</span>
-                        {#if isSelected(opt.value)}
-                            <Check size={13} strokeWidth={2}/>
-                        {/if}
-                    </button>
-                    <button
-                            class="opt-color"
-                            type="button"
-                            aria-label="Change color"
-                            onclick={(e) => { e.stopPropagation(); colorEditFor = colorEditFor === opt.value ? null : opt.value; }}
-                    >
-                        <Ellipsis size={14} strokeWidth={2}/>
-                    </button>
+            {#each filtered as opt, i (opt.value)}
+                <div class="opt-row" class:active={i === activeIndex} class:confirming={confirmDeleteFor === opt.value}>
+                    {#if renamingFor === opt.value}
+                        <span class="opt rename">
+                            <input
+                                    class="rename-input"
+                                    bind:this={renameInput}
+                                    bind:value={renameDraft}
+                                    onkeydown={(e) => {
+                                        e.stopPropagation();
+                                        if (e.key === 'Enter') { e.preventDefault(); commitRename(opt.value); }
+                                        else if (e.key === 'Escape') { e.preventDefault(); renamingFor = null; }
+                                    }}
+                                    onblur={() => commitRename(opt.value)}
+                            />
+                        </span>
+                    {:else}
+                        <button
+                                class="opt"
+                                type="button"
+                                tabindex="-1"
+                                onclick={() => pick(opt.value)}
+                                ondblclick={(e) => { e.stopPropagation(); startRename(opt); }}
+                                onmouseenter={() => activeIndex = i}
+                        >
+                            <span class="pill tag-c{opt.color}">{opt.value}</span>
+                            {#if isSelected(opt.value)}
+                                <Check class="opt-check" size={13} strokeWidth={2}/>
+                            {/if}
+                        </button>
+                    {/if}
+                    {#if confirmDeleteFor === opt.value}
+                        <button
+                                class="opt-icon"
+                                type="button"
+                                tabindex="-1"
+                                aria-label="Cancel delete"
+                                onclick={(e) => { e.stopPropagation(); confirmDeleteFor = null; }}
+                        >
+                            <ArrowLeft size={14} strokeWidth={2}/>
+                        </button>
+                        <button
+                                class="confirm-btn"
+                                type="button"
+                                tabindex="-1"
+                                onclick={(e) => { e.stopPropagation(); removeOption(opt.value); }}
+                        >
+                            Confirm
+                        </button>
+                    {:else if i === activeIndex}
+                        <button
+                                class="opt-icon"
+                                type="button"
+                                tabindex="-1"
+                                aria-label="Change color"
+                                onclick={(e) => { e.stopPropagation(); colorEditFor = colorEditFor === opt.value ? null : opt.value; }}
+                        >
+                            <PaintBucket size={14} strokeWidth={1.75}/>
+                        </button>
+                        <button
+                                class="opt-icon danger"
+                                type="button"
+                                tabindex="-1"
+                                aria-label="Delete option"
+                                onclick={(e) => { e.stopPropagation(); confirmDeleteFor = opt.value; colorEditFor = null; }}
+                        >
+                            <Trash2 size={14} strokeWidth={1.75}/>
+                        </button>
+                    {/if}
                 </div>
                 {#if colorEditFor === opt.value}
-                    <div class="swatches">
-                        {#each Array(16) as _, i}
-                            <button
-                                    class="swatch tag-c{i}"
-                                    class:active={opt.color === i}
-                                    type="button"
-                                    aria-label="Color {i}"
-                                    onclick={() => setColor(opt.value, i)}
-                            ></button>
-                        {/each}
+                    <div class="color-panel">
+                        <div class="swatch-grid">
+                            {#each Array(16) as _, ci}
+                                <button
+                                        class="swatch tag-c{ci}"
+                                        class:active={opt.color === ci}
+                                        type="button"
+                                        tabindex="-1"
+                                        aria-label="Color {ci}"
+                                        onclick={() => setColor(opt.value, ci)}
+                                ></button>
+                            {/each}
+                        </div>
                     </div>
                 {/if}
             {/each}
 
-            {#if query.trim() && !exact}
-                <button class="opt create" type="button" onclick={createAndPick}>
+            {#if showCreate}
+                <button
+                        class="opt create"
+                        class:active={activeIndex === filtered.length}
+                        type="button"
+                        tabindex="-1"
+                        onclick={createAndPick}
+                        onmouseenter={() => activeIndex = filtered.length}
+                >
                     <Plus size={13} strokeWidth={1.75}/>
                     <span class="create-label">Create</span>
                     <span class="pill tag-c{nextColor()}">{query.trim()}</span>
@@ -207,6 +360,12 @@
                 <div class="empty">No options</div>
             {/if}
         </div>
+        {#if selectedValues.length > 0}
+            <button class="clear-row" type="button" tabindex="-1" onclick={clearSelection}>
+                <X size={13} strokeWidth={2}/>
+                <span>Clear</span>
+            </button>
+        {/if}
     </div>
 {/if}
 
@@ -261,10 +420,63 @@
     .opt-row {
         display: flex;
         align-items: center;
+        gap: 4px;
+        position: relative;
+        padding-right: 4px;
+        border-radius: 5px;
     }
 
-    .opt-row:hover .opt-color {
-        opacity: 1;
+    .opt-row.active {
+        background: var(--menu-item-hover);
+    }
+
+    .opt-row.confirming .pill {
+        text-decoration: line-through;
+        opacity: 0.6;
+    }
+
+    .confirm-btn {
+        flex-shrink: 0;
+        align-self: center;
+        height: 24px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 5px;
+        background: var(--chip-bg);
+        color: var(--color-text-primary);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 120ms ease;
+    }
+
+    .confirm-btn:hover {
+        background: var(--chip-bg-hover);
+    }
+
+    .opt.rename {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
+        padding: 4px 6px;
+    }
+
+    .rename-input {
+        width: 100%;
+        padding: 2px 6px;
+        border: 1px solid var(--color-border);
+        border-radius: 4px;
+        background: var(--color-bg);
+        font: inherit;
+        font-size: 13px;
+        color: var(--color-text-primary);
+        outline: none;
+    }
+
+    .rename-input:focus {
+        border-color: var(--color-ui-muted);
     }
 
     .opt {
@@ -283,40 +495,72 @@
         cursor: pointer;
     }
 
-    .opt-color {
+    .opt-icon {
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        flex-shrink: 0;
+        align-self: center;
         width: 24px;
         height: 24px;
-        flex-shrink: 0;
         border: 0;
         background: transparent;
         border-radius: 5px;
         color: var(--color-ui-muted);
         cursor: pointer;
-        opacity: 0;
-        transition: opacity 120ms ease;
+        transition: background-color 120ms ease, color 120ms ease;
     }
 
-    .opt-color:hover {
-        background: var(--menu-item-hover);
+    .opt-icon:hover {
+        background: var(--chip-bg-hover);
         color: var(--color-text-primary);
     }
 
-    .swatches {
+    .opt-icon.danger:hover {
+        background: var(--chip-bg-hover);
+        color: var(--color-text-primary);
+    }
+
+    .clear-row {
         display: flex;
-        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        margin-top: 4px;
+        padding: 7px 10px;
+        border: 0;
+        border-top: 1px solid var(--menu-search-divider);
+        background: transparent;
+        font: inherit;
+        font-size: 12px;
+        color: var(--color-ui-muted);
+        cursor: pointer;
+        transition: color 120ms ease;
+    }
+
+    .clear-row:hover {
+        color: var(--color-text-primary);
+    }
+
+    .clear-row :global(svg) {
+        flex-shrink: 0;
+    }
+
+    .color-panel {
+        padding: 4px 8px 8px 10px;
+    }
+
+    .swatch-grid {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
         gap: 5px;
-        padding: 6px 8px 8px;
     }
 
     .swatch {
-        width: 18px;
-        height: 18px;
+        aspect-ratio: 1 / 1;
         padding: 0;
         border: 1.5px solid transparent;
-        border-radius: 4px;
+        border-radius: 5px;
         cursor: pointer;
         background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
     }
@@ -325,13 +569,14 @@
         border-color: var(--color-text-primary);
     }
 
-    .opt:hover {
+    .opt.create:hover,
+    .opt.create.active {
         background: var(--menu-item-hover);
     }
 
-    .opt :global(svg) {
+    .opt :global(.opt-check) {
         flex-shrink: 0;
-        color: var(--color-ui-muted);
+        color: var(--color-accent);
         margin-left: auto;
     }
 

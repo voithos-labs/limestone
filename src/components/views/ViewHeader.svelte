@@ -1,20 +1,23 @@
 <script lang="ts">
     import type View from "$lib/models/View.svelte";
-    import type {FilterNode, FilterLeaf, ViewField} from "$lib/models/View.svelte";
+    import type {FilterNode, FilterLeaf, ViewField, ViewFieldType} from "$lib/models/View.svelte";
     import {VIEW_FIELD_OPS} from "$lib/models/View.svelte";
     import Group from "$lib/models/Group";
     import {getSource} from "$lib/models/Source";
     import FilterChipIsland from "./FilterChipIsland.svelte";
     import Menu from "./Menu.svelte";
+    import ViewManageMenu from "./ViewManageMenu.svelte";
     import {getFieldIcon, getOpLabel, opHasValue, formatFilterValue, opsFor} from "$lib/views/filterDisplay";
-    import {Plus, Funnel, ChevronLeft, ChevronRight, Search} from "@lucide/svelte";
+    import {Plus, Funnel, ChevronLeft, ChevronRight, Search, Shapes, StickyNotePlus} from "@lucide/svelte";
+    import {isDerived} from "$lib/models/View.svelte";
     import {onMount} from "svelte";
 
-    let {view, loading, count, elapsedMs}: {
+    let {view, loading, count, elapsedMs, onNew}: {
         view: View;
         loading: boolean;
         count: number;
         elapsedMs: number;
+        onNew?: () => void;
     } = $props();
 
     const fieldsById = $derived(new Map(view.fields.map((f: ViewField) => [f.id, f])));
@@ -55,14 +58,22 @@
         for (const id of groupIds) {
             if (id in groupNames) continue;
             Group.fromID(id)
-                .then(g => { groupNames = {...groupNames, [id]: g.slug}; })
-                .catch(() => { groupNames = {...groupNames, [id]: id}; });
+                .then(g => {
+                    groupNames = {...groupNames, [id]: g.slug};
+                })
+                .catch(() => {
+                    groupNames = {...groupNames, [id]: id};
+                });
         }
         for (const id of sourceIds) {
             if (id in sourceNames) continue;
             getSource(id)
-                .then(s => { sourceNames = {...sourceNames, [id]: s.title}; })
-                .catch(() => { sourceNames = {...sourceNames, [id]: id}; });
+                .then(s => {
+                    sourceNames = {...sourceNames, [id]: s.title};
+                })
+                .catch(() => {
+                    sourceNames = {...sourceNames, [id]: id};
+                });
         }
     });
 
@@ -81,6 +92,9 @@
         if (field.type === 'source') {
             if (typeof leaf.value !== 'string') return '';
             return sourceNames[leaf.value] ?? leaf.value;
+        }
+        if (field.type === 'boolean') {
+            return leaf.value ? 'Checked' : 'Unchecked';
         }
         return formatFilterValue(leaf.value);
     }
@@ -129,7 +143,42 @@
 
     let chipsWidth = $state(0);
     let hasMounted = $state(false);
-    onMount(() => { hasMounted = true; });
+    onMount(() => {
+        hasMounted = true;
+    });
+
+    // Translate vertical wheel into horizontal scroll over the overflowing bar
+    function onFilterWheel(e: WheelEvent) {
+        const el = e.currentTarget as HTMLElement;
+        if (el.scrollWidth <= el.clientWidth) return;
+        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        el.scrollLeft += e.deltaY;
+        e.preventDefault();
+    }
+
+    // ── View management menu ─────────────────────────────────────────────────
+    let manageEl: HTMLButtonElement | null = $state(null);
+    let manageOpen = $state(false);
+
+    const customFields = $derived(view.fields.filter((f: ViewField) => !isDerived(f.type)));
+
+    function deleteField(id: string) {
+        view.fields = view.fields.filter((f: ViewField) => f.id !== id);
+        // Drop it from every face's displayed columns + filters referencing it
+        for (const face of view.faces) {
+            face.display_field_ids = face.display_field_ids.filter((fid: string) => fid !== id);
+        }
+        view.filter.children = view.filter.children.filter(
+            (n: FilterNode) => !('field_id' in n) || n.field_id !== id
+        );
+    }
+
+    function addField(type: ViewFieldType) {
+        const field = view.addFieldOfType(type);
+        // Surface the new column in the active face
+        const face = view.faces[0];
+        if (face) face.display_field_ids = [...face.display_field_ids, field.id];
+    }
 </script>
 
 <header class="view-header">
@@ -139,7 +188,7 @@
     </span>
 </header>
 
-<div class="filter-bar">
+<div class="filter-bar" onwheel={onFilterWheel}>
     {#if leafFilters.length > 0}
         <button
                 class="collapse-toggle"
@@ -181,18 +230,17 @@
                         onRemove={() => removeFilter(leaf)}
                 />
             {/each}
+            <button
+                    class="add-filter"
+                    type="button"
+                    aria-label="Add filter"
+                    bind:this={addFilterEl}
+                    onclick={() => addFilterOpen = !addFilterOpen}
+            >
+                <Plus size={14} strokeWidth={2}/>
+            </button>
         </div>
     </div>
-
-    <button
-            class="add-filter"
-            type="button"
-            aria-label="Add filter"
-            bind:this={addFilterEl}
-            onclick={() => addFilterOpen = !addFilterOpen}
-    >
-        <Plus size={14} strokeWidth={2}/>
-    </button>
     <Menu
             bind:open={addFilterOpen}
             anchor={addFilterEl}
@@ -212,6 +260,28 @@
                 oninput={(e) => view.state.search = (e.currentTarget as HTMLInputElement).value}
         />
     </label>
+
+    <button class="new-entry" type="button" onclick={() => onNew?.()}>
+        <StickyNotePlus size={14} strokeWidth={1.75}/>
+        <span>New</span>
+    </button>
+
+    <button
+            class="manage-view"
+            type="button"
+            aria-label="Manage view"
+            bind:this={manageEl}
+            onclick={() => manageOpen = !manageOpen}
+    >
+        <Shapes size={14} strokeWidth={1.75}/>
+    </button>
+    <ViewManageMenu
+            bind:open={manageOpen}
+            anchor={manageEl}
+            fields={customFields}
+            onDelete={deleteField}
+            onAddField={addField}
+    />
 </div>
 
 <style>
@@ -240,7 +310,15 @@
         align-items: center;
         gap: 6px;
         margin-bottom: 14px;
+        padding-right: 24px;
         flex-shrink: 0;
+        /* Scroll horizontally in place when the row is too wide, no visible bar */
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .filter-bar::-webkit-scrollbar {
+        display: none;
     }
 
     .collapse-toggle {
@@ -308,6 +386,49 @@
     }
 
     .add-filter:hover {
+        background: var(--chip-bg-hover);
+        color: var(--color-text-primary);
+    }
+
+    .new-entry {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 28px;
+        padding: 0 11px;
+        flex-shrink: 0;
+        background: var(--chip-bg);
+        border: none;
+        border-radius: 6px;
+        color: var(--color-text-secondary);
+        font-family: var(--font-ui);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 120ms ease, color 120ms ease;
+    }
+
+    .new-entry:hover {
+        background: var(--chip-bg-hover);
+        color: var(--color-text-primary);
+    }
+
+    .manage-view {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 28px;
+        padding: 0 10px;
+        flex-shrink: 0;
+        background: var(--chip-bg);
+        border: none;
+        border-radius: 6px;
+        color: var(--color-ui-muted);
+        cursor: pointer;
+        transition: background-color 120ms ease, color 120ms ease;
+    }
+
+    .manage-view:hover {
         background: var(--chip-bg-hover);
         color: var(--color-text-primary);
     }

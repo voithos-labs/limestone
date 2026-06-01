@@ -52,13 +52,21 @@ enum JournaledOp {
         view_slug: String,
         field_name: String,
     },
+    RenameViewOption {
+        source_id: String,
+        view_slug: String,
+        field_name: String,
+        old_value: String,
+        new_value: String,
+    },
 }
 
 impl JournaledOp {
     fn source_id(&self) -> &str {
         match self {
             JournaledOp::RenameViewField { source_id, .. }
-            | JournaledOp::RemoveViewField { source_id, .. } => source_id,
+            | JournaledOp::RemoveViewField { source_id, .. }
+            | JournaledOp::RenameViewOption { source_id, .. } => source_id,
         }
     }
 }
@@ -164,6 +172,29 @@ impl BulkRunner {
             source_id: source_id.to_string(),
             view_slug: view_slug.to_string(),
             field_name: field_name.to_string(),
+        };
+        self.run_journaled(db, app, source_path, op).await
+    }
+
+    pub async fn rename_view_option(
+        &self,
+        db: &SqlitePool,
+        app: &AppHandle,
+        source_id: &str,
+        source_path: &Path,
+        view_slug: &str,
+        field_name: &str,
+        old_value: &str,
+        new_value: &str,
+    ) -> Result<BulkResult, String> {
+        validate_ident(view_slug, "view slug")?;
+        validate_ident(field_name, "field name")?;
+        let op = JournaledOp::RenameViewOption {
+            source_id: source_id.to_string(),
+            view_slug: view_slug.to_string(),
+            field_name: field_name.to_string(),
+            old_value: old_value.to_string(),
+            new_value: new_value.to_string(),
         };
         self.run_journaled(db, app, source_path, op).await
     }
@@ -284,6 +315,53 @@ async fn execute(
             let (slug, field) = (view_slug.clone(), field_name.clone());
             write_files(app, source_path, rel_paths, move |fm| {
                 frontmatter::remove_view_field(fm, &slug, &field);
+            })
+            .await
+        }
+        JournaledOp::RenameViewOption {
+            source_id,
+            view_slug,
+            field_name,
+            old_value,
+            new_value,
+        } => {
+            let path = json_path(view_slug, field_name);
+            // candidates = the scalar equals the old value or an array contains it
+            let rows: Vec<(String, String)> = sqlx::query_as(
+                "SELECT id, rel_path FROM documents
+                 WHERE source_id = ?1 AND deleted_at IS NULL
+                   AND (json_extract(properties, ?2) = ?3
+                        OR EXISTS (SELECT 1 FROM json_each(properties, ?2) WHERE value = ?3))",
+            )
+            .bind(source_id)
+            .bind(&path)
+            .bind(old_value)
+            .fetch_all(db)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let rel_paths: Vec<String> = rows.iter().map(|(_, p)| p.clone()).collect();
+            sqlx::query(
+                "UPDATE documents
+                 SET properties = json_set(properties, ?1, ?2), updated_at = datetime('now')
+                 WHERE source_id = ?3 AND json_extract(properties, ?1) = ?4",
+            )
+            .bind(&path)
+            .bind(new_value)
+            .bind(source_id)
+            .bind(old_value)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let (slug, field, from, to) = (
+                view_slug.clone(),
+                field_name.clone(),
+                old_value.clone(),
+                new_value.clone(),
+            );
+            write_files(app, source_path, rel_paths, move |fm| {
+                frontmatter::rename_view_option(fm, &slug, &field, &from, &to);
             })
             .await
         }

@@ -350,11 +350,27 @@ class DocHandle {
 	 */
 	async moveToPath(newRelPath: string): Promise<void> {
 		await invoke('move_document', {
+			sourceId: this.source.id,
 			sourcePath: this.source.path,
 			relPath: this._relPath,
 			newRelPath
 		});
 		this._relPath = newRelPath;
+	}
+
+	/**
+	 * will update this to allow mutation of other fields, for now need to easily update dates
+	 */
+	async saveMeta(meta: { createdAt?: Date; updatedAt?: Date }): Promise<void> {
+		await invoke('save_document_meta', {
+			id: this.id,
+			sourcePath: this.source.path,
+			relPath: this._relPath,
+			createdAt: meta.createdAt ? meta.createdAt.toISOString() : null,
+			updatedAt: meta.updatedAt ? meta.updatedAt.toISOString() : null
+		});
+		if (meta.createdAt) this.createdAt = meta.createdAt;
+		if (meta.updatedAt) this.updatedAt = meta.updatedAt;
 	}
 
 	/**
