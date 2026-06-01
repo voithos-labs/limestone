@@ -5,10 +5,14 @@
      * - in-line editing that actually works
      */
     import type View from "$lib/models/View.svelte";
-    import type {FilterNode, ViewFace, SortKey, ViewField, ViewFieldType} from "$lib/models/View.svelte";
+    import type {FilterNode, ViewFace, SortKey, ViewField, ViewFieldType, MemberRow} from "$lib/models/View.svelte";
     import {isLeafActive, isDerived, CREATABLE_FIELD_TYPES} from "$lib/models/View.svelte";
     import {getFieldIcon} from "$lib/views/filterDisplay";
-    import {formatDateFriendly, formatDateISO, formatViewDate} from "$lib/views/dateFormat";
+    import {
+        rawStatefulValue as rawStateful, statefulValue as stateful, rawArrayValue as rawArray,
+        tagClass as tagClassOf, valueFor as valueOf, titleFor as titleOf, folderDir,
+        sourceName as sourceNameOf, isEditable, isMetaField, fieldLabel
+    } from "$lib/views/fieldValue";
     import type {SearchResult} from "$lib/types/SearchResult";
     import Menu from "../Menu.svelte";
     import {
@@ -19,7 +23,6 @@
         Trash2,
         ChevronDown,
         SquareArrowOutUpRight,
-        Square,
         SquareCheck,
         Folder,
         Grid2x2Plus,
@@ -32,9 +35,10 @@
     import DocHandle from "$lib/models/DocHandle";
     import {deriveCreateContext, folderLinkChain, folderPath} from "$lib/views/createDefaults";
     import {select} from "$lib/db";
-    import FilterValueEditor from "../FilterValueEditor.svelte";
     import FolderValueEditor from "../FolderValueEditor.svelte";
-    import SelectOptionEditor from "../SelectOptionEditor.svelte";
+    import CellEditor from "../CellEditor.svelte";
+    import CellValue from "../CellValue.svelte";
+    import FolderCrumb from "../FolderCrumb.svelte";
     import LeanScroll from "../LeanScroll.svelte";
     import {invoke} from "@tauri-apps/api/core";
     import {onMount} from "svelte";
@@ -49,15 +53,7 @@
 
     const query = $derived((view.state.search as string | undefined) ?? '');
 
-    interface Row {
-        id: string;
-        title: string;
-        rel_path: string;
-        created_at: string;
-        updated_at: string;
-        properties: string;
-        source_id: string;
-    }
+    type Row = MemberRow;
 
     interface ColumnDef {
         field: ViewField;
@@ -562,84 +558,13 @@
         }
     }
 
-    function valueFor(field: ViewField, row: Row): string {
-        switch (field.type) {
-            case 'title':
-                return row.title;
-            case 'path':
-                return row.rel_path;
-            case 'id':
-                return row.id;
-            case 'created_at':
-                return formatDateFriendly(row.created_at);
-            case 'updated_at':
-                return formatDateFriendly(row.updated_at);
-            case 'date': {
-                const v = rawStatefulValue(field, row);
-                return v == null ? '' : formatViewDate(v as string);
-            }
-            case 'folder':
-                return folderDir(row.rel_path).split('/').filter(Boolean).join(' / ');
-            case 'source':
-            case 'tags':
-                return '—';
-            default:
-                return statefulValue(field, row);
-        }
-    }
-
-    function folderDir(relPath: string): string {
-        const p = relPath.replace(/\\/g, '/');
-        const i = p.lastIndexOf('/');
-        return i < 0 ? '' : p.slice(0, i);
-    }
-
-    function sourceName(id: string): string {
-        return sources.find(s => s.id === id)?.title ?? 'Source root';
-    }
-
-    function rawArrayValue(field: ViewField, row: Row): string[] {
-        const v = rawStatefulValue(field, row);
-        if (Array.isArray(v)) return v.map(String);
-        if (v === null || v === undefined || v === '') return [];
-        return [String(v)];
-    }
-
-    function tagClass(field: ViewField, value: string): string {
-        const opts = (field.config?.options ?? []) as { value: string; color: number }[];
-        const opt = opts.find((o) => o.value === value);
-        if (opt) return `tag-c${opt.color}`;
-        let h = 0;
-        for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) >>> 0;
-        return `tag-c${h % 16}`;
-    }
-
-    function rawStatefulValue(field: ViewField, row: Row): unknown {
-        try {
-            const props = JSON.parse(row.properties || '{}');
-            return props?.views?.[view.slug]?.[field.name] ?? null;
-        } catch {
-            return null;
-        }
-    }
-
-    function statefulValue(field: ViewField, row: Row): string {
-        const v = rawStatefulValue(field, row);
-        if (v === undefined || v === null) return '';
-        if (Array.isArray(v)) return v.join(', ');
-        if (typeof v === 'boolean') return v ? '✓' : '';
-        return String(v);
-    }
-
-    const EDITABLE = new Set<string>([...CREATABLE_FIELD_TYPES, 'created_at', 'updated_at', 'folder']);
-
-    function isEditable(field: ViewField): boolean {
-        return EDITABLE.has(field.type);
-    }
-
-    function isMetaField(type: ViewFieldType): boolean {
-        return type === 'created_at' || type === 'updated_at';
-    }
+    // thin wrappers binding this view's slug / sources to the shared helpers
+    const rawStatefulValue = (field: ViewField, row: Row) => rawStateful(row, view.slug, field.name);
+    const statefulValue = (field: ViewField, row: Row) => stateful(row, view.slug, field.name);
+    const rawArrayValue = (field: ViewField, row: Row) => rawArray(row, view.slug, field.name);
+    const tagClass = tagClassOf;
+    const valueFor = (field: ViewField, row: Row) => valueOf(field, row, view.slug);
+    const sourceName = (id: string) => sourceNameOf(sources, id);
 
     // ── Draft (new-row) state ───────────────────────────────────────────────────
     // Declared before the editing block so editingRow can resolve the draft row.
@@ -1074,16 +999,7 @@
         });
     }
 
-    function titleFor(field: ViewField, row: Row): string {
-        switch (field.type) {
-            case 'created_at':
-                return formatDateISO(row.created_at);
-            case 'updated_at':
-                return formatDateISO(row.updated_at);
-            default:
-                return valueFor(field, row);
-        }
-    }
+    const titleFor = (field: ViewField, row: Row) => titleOf(field, row, view.slug);
 
     function cellClassFor(type: ViewFieldType): string {
         if (type === 'title') return 'cell-title';
@@ -1092,24 +1008,6 @@
         // Pill cells clip cleanly at the edge rather than appending a "…"
         if (type === 'select' || type === 'multiselect' || type === 'tags') return 'cell-default cell-pill';
         return 'cell-default';
-    }
-
-    const PRETTY_FIELD: Record<string, string> = {
-        title: 'Title',
-        id: 'ID',
-        source: 'Source',
-        tags: 'Tags',
-        folder: 'Folder',
-        path: 'Path',
-        created_at: 'Created',
-        updated_at: 'Updated'
-    };
-
-    // Built-in columns show a pretty title by default, once renamed (name no
-    // longer equals the type slug) the user's name wins
-    function fieldLabel(field: ViewField): string {
-        if (field.name === field.type && PRETTY_FIELD[field.type]) return PRETTY_FIELD[field.type];
-        return field.name;
     }
 
     // ── New row ─────────────────────────────────────────────────────────────────
@@ -1336,41 +1234,7 @@
 {/if}
 
 {#snippet cellInner(field: ViewField, row: Row)}
-    {#if field.type === 'boolean'}
-        {@const on = rawStatefulValue(field, row) === true}
-        <span class="bool" class:on>
-            {#if on}<Square size={15} strokeWidth={2} fill="currentColor"/>{:else}<Square size={15}
-                                                                                          strokeWidth={2}/>{/if}
-        </span>
-    {:else if field.type === 'select'}
-        {@const v = statefulValue(field, row)}
-        {#if v}<span class="pill {tagClass(field, v)}">{v}</span>{/if}
-    {:else if field.type === 'multiselect'}
-        {@const arr = rawArrayValue(field, row)}
-        <span class="pills">
-            {#each arr as t (t)}<span class="pill {tagClass(field, t)}">{t}</span>{/each}
-        </span>
-    {:else if field.type === 'folder'}
-        {@render folderCrumb(folderDir(row.rel_path), sourceName(row.source_id))}
-    {:else}
-        {valueFor(field, row)}
-    {/if}
-{/snippet}
-
-{#snippet folderCrumb(dir: string, rootLabel: string = 'Root')}
-    {@const segs = dir.split('/').filter(Boolean)}
-    <span class="folder-crumb">
-        {#if segs.length}
-            <Folder size={12} strokeWidth={1.75}/>
-            {#each segs as s, i (i)}
-                {#if i > 0}<span class="crumb-sep">›</span>{/if}
-                <span class="crumb-seg" class:last={i === segs.length - 1}>{s}</span>
-            {/each}
-        {:else}
-            <Database size={12} strokeWidth={1.75}/>
-            <span class="crumb-seg last">{rootLabel}</span>
-        {/if}
-    </span>
+    <CellValue {field} {row} viewSlug={view.slug} {sources}/>
 {/snippet}
 
 <LeanScroll>
@@ -1416,7 +1280,7 @@
                                 {#if needsFolderChoice}
                                     <span class="crumb-choose">Choose folder…</span>
                                 {:else}
-                                    {@render folderCrumb(folderDirLabel, createSourceName)}
+                                    <FolderCrumb dir={folderDirLabel} rootLabel={createSourceName}/>
                                 {/if}
                             </button>
                         {:else if editable}
@@ -1666,33 +1530,15 @@
 />
 
 {#if editingField && editingRow}
-    {#if editingField.type === 'select' || editingField.type === 'multiselect'}
-        <SelectOptionEditor
-                bind:open={editOpen}
-                anchor={editAnchor}
-                field={editingField}
-                value={editingValue}
-                multiple={editingField.type === 'multiselect'}
-                onChange={(v) => { if (editingField && editingRow) writeCell(editingField, editingRow, v); }}
-                onRenameOption={(oldV, newV) => { if (editingField) renameOption(editingField, oldV, newV); }}
-        />
-    {:else if editingField.type === 'folder'}
-        <FolderValueEditor
-                bind:open={editOpen}
-                anchor={editAnchor}
-                value={typeof editingValue === 'string' ? editingValue : null}
-                sourceId={editingRow.source_id}
-                onChange={(id) => { if (editingRow) writeCell(editingField!, editingRow, id); editOpen = false; }}
-        />
-    {:else}
-        <FilterValueEditor
-                bind:open={editOpen}
-                anchor={editAnchor}
-                field={editingField}
-                value={editingValue}
-                onChange={(v) => { if (editingField && editingRow) writeCell(editingField, editingRow, v); editOpen = false; }}
-        />
-    {/if}
+    <CellEditor
+            bind:open={editOpen}
+            anchor={editAnchor}
+            field={editingField}
+            value={editingValue}
+            sourceId={editingRow.source_id}
+            onChange={(v) => { if (editingField && editingRow) writeCell(editingField, editingRow, v); }}
+            onRenameOption={(oldV, newV) => { if (editingField) renameOption(editingField, oldV, newV); }}
+    />
 {/if}
 
 
@@ -1809,7 +1655,7 @@
         user-select: none;
     }
 
-    .basic-table td.check-col .bool {
+    .basic-table td.check-col :global(.bool) {
         justify-content: center;
     }
 
@@ -2068,41 +1914,8 @@
         color: var(--color-text-primary);
     }
 
-    .bool {
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        height: var(--row-h);
-        color: var(--color-ui-dulled);
-        transition: color 120ms ease;
-    }
-
-    .bool.on {
-        color: var(--color-accent);
-    }
-
     .basic-table td.cell-pill {
         text-overflow: clip;
-    }
-
-    .pills {
-        display: inline-flex;
-        gap: 4px;
-        overflow: hidden;
-        vertical-align: middle;
-    }
-
-    .pill {
-        display: inline-flex;
-        align-items: center;
-        flex-shrink: 0;
-        padding: 1px 8px;
-        border-radius: 4px;
-        font-size: 11px;
-        line-height: 1.55;
-        white-space: nowrap;
-        background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
-        color: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-fg-l, 30%));
     }
 
     .empty {
@@ -2296,34 +2109,6 @@
     }
 
     /* Folder breadcrumb (read + draft) */
-    .folder-crumb {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        min-width: 0;
-        color: var(--color-ui-muted);
-    }
-
-    .folder-crumb :global(svg) {
-        flex-shrink: 0;
-        color: var(--color-ui-dulled);
-    }
-
-    .crumb-sep {
-        color: var(--color-ui-dulled);
-    }
-
-    .crumb-seg {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .crumb-seg.last {
-        color: var(--color-text-primary);
-    }
-
-    .crumb-root,
     .crumb-choose {
         color: var(--color-ui-dulled);
     }

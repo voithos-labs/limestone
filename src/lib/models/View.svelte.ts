@@ -548,7 +548,7 @@ function compileSort(sort: SortKey[], fields: ViewField[], viewSlug: string): st
 
 // ── View Model ───────────────────────────────────────────────────────────────────────
 
-interface MemberRow {
+export interface MemberRow {
 	id: string;
 	title: string;
 	rel_path: string;

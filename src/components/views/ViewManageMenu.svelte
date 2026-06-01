@@ -1,9 +1,10 @@
 <script lang="ts">
     import {untrack} from "svelte";
-    import {ArrowLeft, Trash2, Plus, ChevronRight, ChevronDown, Check, CircleSlash, Triangle} from "@lucide/svelte";
+    import {ArrowLeft, Trash2, Plus, ChevronRight, Check, CircleSlash, Triangle} from "@lucide/svelte";
     import type {ViewField, ViewFieldType} from "$lib/models/View.svelte";
     import {CREATABLE_FIELD_TYPES} from "$lib/models/View.svelte";
     import {getFieldIcon} from "$lib/views/filterDisplay";
+    import Menu from "./Menu.svelte";
 
     let {
         open = $bindable(false),
@@ -23,14 +24,18 @@
     let pos: { top: number; left: number } = $state({top: 0, left: 0});
     let activeIndex = $state(0);
     let confirmFor: string | null = $state(null);
-    let adding = $state(false);
 
-    const addableTypes = CREATABLE_FIELD_TYPES.map((t) => ({
-        type: t as ViewFieldType,
-        label: t.charAt(0).toUpperCase() + t.slice(1)
+    let addEl: HTMLButtonElement | null = $state(null);
+    let addOpen = $state(false);
+
+    const addItems = CREATABLE_FIELD_TYPES.map((t) => ({
+        value: t,
+        label: t.charAt(0).toUpperCase() + t.slice(1),
+        icon: getFieldIcon(t)
     }));
 
     function addField(type: ViewFieldType) {
+        addOpen = false;
         onAddField(type);
         open = false;
     }
@@ -56,6 +61,8 @@
         if (!open) return;
         if (popEl?.contains(e.target as Node)) return;
         if (anchor?.contains(e.target as Node)) return;
+        // the Add field flyout renders outside popEl, keep it from closing us
+        if ((e.target as HTMLElement).closest?.('.menu')) return;
         open = false;
     }
 
@@ -79,7 +86,7 @@
         const isOpen = open;
         if (isOpen && !wasOpen) {
             wasOpen = true;
-            untrack(() => { confirmFor = null; activeIndex = 0; adding = false; defaultFor = null; });
+            untrack(() => { confirmFor = null; activeIndex = 0; addOpen = false; defaultFor = null; });
             queueMicrotask(position);
             window.addEventListener('resize', position);
             window.addEventListener('scroll', position, true);
@@ -210,27 +217,26 @@
 
         <div class="divider"></div>
 
-        <button class="add-toggle" type="button" onclick={() => adding = !adding}>
+        <button
+                class="add-toggle"
+                type="button"
+                bind:this={addEl}
+                onclick={() => addOpen = !addOpen}
+        >
             <Plus size={14} strokeWidth={1.75}/>
             <span>Add field</span>
-            {#if adding}
-                <ChevronDown size={13} strokeWidth={2}/>
-            {:else}
-                <ChevronRight size={13} strokeWidth={2}/>
-            {/if}
+            <ChevronRight size={13} strokeWidth={2}/>
         </button>
-        {#if adding}
-            <div class="add-list">
-                {#each addableTypes as opt (opt.type)}
-                    {@const Icon = getFieldIcon(opt.type)}
-                    <button class="add-row" type="button" onclick={() => addField(opt.type)}>
-                        <Icon size={14} strokeWidth={1.75}/>
-                        <span>{opt.label}</span>
-                    </button>
-                {/each}
-            </div>
-        {/if}
     </div>
+
+    <Menu
+            bind:open={addOpen}
+            anchor={addEl}
+            items={addItems}
+            onSelect={(v) => addField(v as ViewFieldType)}
+            minWidth={160}
+            placement="right"
+    />
 {/if}
 
 <style>
@@ -385,36 +391,6 @@
 
     .add-toggle span {
         flex: 1;
-    }
-
-    .add-list {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .add-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        width: 100%;
-        padding: 6px 8px 6px 22px;
-        border: 0;
-        background: transparent;
-        border-radius: 5px;
-        color: inherit;
-        font: inherit;
-        font-size: 13px;
-        text-align: left;
-        cursor: pointer;
-    }
-
-    .add-row:hover {
-        background: var(--menu-item-hover);
-    }
-
-    .add-row :global(svg) {
-        flex-shrink: 0;
-        color: var(--color-ui-muted);
     }
 
     .default-panel {
