@@ -23,12 +23,14 @@
     </span>
 {:else if field.type === 'select'}
     {@const v = statefulValue(row, viewSlug, field.name)}
-    {#if v}<span class="pill {tagClass(field, v)}">{v}</span>{/if}
+    {#if v}<span class="pill {tagClass(field, v)}">{v}</span>{:else}<span class="muted">—</span>{/if}
 {:else if field.type === 'multiselect'}
     {@const arr = rawArrayValue(row, viewSlug, field.name)}
-    <span class="pills">
-        {#each arr as t (t)}<span class="pill {tagClass(field, t)}">{t}</span>{/each}
-    </span>
+    {#if arr.length}
+        <span class="pills">
+            {#each arr as t (t)}<span class="pill {tagClass(field, t)}">{t}</span>{/each}
+        </span>
+    {:else}<span class="muted">—</span>{/if}
 {:else if field.type === 'folder'}
     <FolderCrumb dir={folderDir(row.rel_path)} rootLabel={sourceName(sources, row.source_id)}/>
 {:else}
@@ -36,6 +38,10 @@
 {/if}
 
 <style>
+    .muted {
+        color: var(--color-ui-dulled);
+    }
+
     .bool {
         display: flex;
         align-items: center;

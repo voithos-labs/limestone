@@ -155,6 +155,7 @@ pub fn run() {
             commands::document_commands::delete_document,
             commands::bulk_ops_commands::bulk_set_view_field,
             commands::bulk_ops_commands::bulk_rename_view_field,
+            commands::bulk_ops_commands::bulk_rename_view,
             commands::bulk_ops_commands::bulk_rename_view_option,
             commands::bulk_ops_commands::bulk_remove_view_field,
             commands::db_commands::sql_select,

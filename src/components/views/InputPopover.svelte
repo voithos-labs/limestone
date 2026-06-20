@@ -128,7 +128,7 @@
     }
 
     .input:focus {
-        border-color: var(--color-accent);
+        border-color: var(--focus-border);
     }
 
     .input[type="date"] {

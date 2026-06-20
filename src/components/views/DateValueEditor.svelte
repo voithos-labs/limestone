@@ -668,7 +668,7 @@
     }
 
     .time-input:focus {
-        border-color: var(--color-accent);
+        border-color: var(--focus-border);
     }
 
     .colon {
@@ -694,7 +694,7 @@
     }
 
     .meridiem:focus {
-        border-color: var(--color-accent);
+        border-color: var(--focus-border);
     }
 
     .apply {

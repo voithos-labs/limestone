@@ -16,6 +16,7 @@
         anchor,
         field,
         value,
+        op = '',
         sourceId,
         onChange
     }: {
@@ -23,9 +24,20 @@
         anchor: HTMLElement | null;
         field: ViewField;
         value: unknown;
+        op?: string;
         sourceId?: string;
         onChange: (newValue: unknown) => void;
     } = $props();
+
+    const opValue = $derived(op);
+
+    function toggleValue(v: string) {
+        const arr = Array.isArray(value) ? [...value as string[]] : [];
+        const i = arr.indexOf(v);
+        if (i >= 0) arr.splice(i, 1);
+        else arr.push(v);
+        onChange(arr);
+    }
 
     let tagItems: MenuItem[] = $state([]);
     let sourceItems: MenuItem[] = $state([]);
@@ -112,6 +124,16 @@
             selected={value === true ? 'true' : value === false ? 'false' : undefined}
             onSelect={(v) => onChange(v === 'true')}
             minWidth={120}
+    />
+{:else if opValue === 'any_of' || opValue === 'has_all'}
+    <Menu
+            bind:open
+            {anchor}
+            items={optionItems}
+            multiple
+            selectedValues={Array.isArray(value) ? value as string[] : []}
+            onSelect={toggleValue}
+            searchable={optionItems.length > 7}
     />
 {:else if field.type === 'select' || field.type === 'multiselect'}
     <Menu

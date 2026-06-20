@@ -76,9 +76,8 @@ class DocHandle {
 		this.source = source;
 		this.title = row.title;
 		this.groups = [];
-		this.properties = DocHandle.expandProps(
-			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties
-		);
+		this.properties =
+			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
 		this.createdAt = parseUtc(row.created_at);
 		this.updatedAt = parseUtc(row.updated_at);
 		this.accessedAt = parseUtc(row.accessed_at);
@@ -98,7 +97,7 @@ class DocHandle {
 		await execute(
 			`INSERT INTO documents (id, source_id, rel_path, title, properties)
              VALUES (?1, ?2, ?3, ?4, ?5)`,
-			[id, source.id, relPath, title, JSON.stringify(DocHandle.flattenProps(properties))]
+			[id, source.id, relPath, title, JSON.stringify(properties)]
 		);
 		// reselect for db defaults
 		const [row] = await select<DocumentRow>(
@@ -145,6 +144,53 @@ class DocHandle {
 		});
 		const groups: GroupRow[] = row.groups_json ? JSON.parse(row.groups_json) : [];
 		doc.groups = groups.filter((r) => r.id !== null).map((r) => new Group(r));
+		return doc;
+	}
+
+	/** Is there a live (non-deleted) document at this path in the source? */
+	static async pathExists(sourceId: string, relPath: string): Promise<boolean> {
+		const [row] = await select<{ c: number }>(
+			`SELECT COUNT(*) as c
+             FROM documents
+             WHERE source_id = ?1
+               AND rel_path = ?2
+               AND deleted_at IS NULL`,
+			[sourceId, relPath]
+		);
+		return (row?.c ?? 0) > 0;
+	}
+
+	/** A non-colliding rel_path for `base` in `dir`, appending " 2", " 3", … as needed */
+	static async uniqueRelPath(sourceId: string, dir: string, base: string): Promise<string> {
+		let candidate = dir ? `${dir}/${base}.md` : `${base}.md`;
+		let n = 2;
+		while (await DocHandle.pathExists(sourceId, candidate)) {
+			candidate = dir ? `${dir}/${base} ${n}.md` : `${base} ${n}.md`;
+			n++;
+		}
+		return candidate;
+	}
+
+	static async createFromTitle(
+		source: Source,
+		opts: {
+			title: string;
+			dir?: string;
+			groupIds?: string[];
+			properties?: Record<string, unknown>;
+			body?: string;
+		}
+	): Promise<DocHandle> {
+		const base = opts.title.replace(/[\\/]/g, '-');
+		const relPath = await DocHandle.uniqueRelPath(source.id, opts.dir ?? '', base);
+		const doc = await DocHandle.create(
+			source,
+			opts.title,
+			relPath,
+			opts.groupIds ?? [],
+			opts.properties ?? {}
+		);
+		await doc.saveContent(opts.body ?? '');
 		return doc;
 	}
 
@@ -201,8 +247,8 @@ class DocHandle {
 	// ── Serialization ────────────────────────────────────────────────────────────────
 
 	/**
-	 * Build the frontmatter from doc state.
-	 * Flattens nested properties into dot-delimited keys for storage.
+	 * Build the frontmatter from doc state. Properties are stored nested
+	 * (e.g. views.<slug>.<field>) as a YAML object.
 	 */
 	toFrontmatter(): DocumentFrontmatter {
 		return {
@@ -210,54 +256,8 @@ class DocHandle {
 			tags: this.groups.filter((g) => g.groupType === 'tag').map((g) => g.slug),
 			created_at: this.createdAt,
 			updated_at: this.updatedAt,
-			...DocHandle.flattenProps(this.properties)
+			...this.properties
 		};
-	}
-
-	/** Flatten a nested object into dot-delimited keys (only for known namespaces) */
-	private static flattenProps(obj: Record<string, unknown>, prefix = ''): Record<string, unknown> {
-		const result: Record<string, unknown> = {};
-		for (const [k, v] of Object.entries(obj)) {
-			const key = prefix ? `${prefix}.${k}` : k;
-			const ns = key.split('.')[0];
-			if (
-				v !== null &&
-				typeof v === 'object' &&
-				!Array.isArray(v) &&
-				!(v instanceof Date) &&
-				(prefix || DocHandle.NESTED_NAMESPACES.includes(ns))
-			) {
-				Object.assign(result, DocHandle.flattenProps(v as Record<string, unknown>, key));
-			} else {
-				result[key] = v;
-			}
-		}
-		return result;
-	}
-
-	/** Namespaces that use dot-delimited nesting. All other dotted keys are kept flat. */
-	private static readonly NESTED_NAMESPACES = ['views'];
-
-	/** Expand dot-delimited keys into a nested object (only for known namespaces) */
-	private static expandProps(flat: Record<string, unknown>): Record<string, unknown> {
-		const result: Record<string, unknown> = {};
-		for (const [key, value] of Object.entries(flat)) {
-			const ns = key.split('.')[0];
-			if (!key.includes('.') || !DocHandle.NESTED_NAMESPACES.includes(ns)) {
-				result[key] = value;
-				continue;
-			}
-			const segments = key.split('.');
-			let current = result;
-			for (let i = 0; i < segments.length - 1; i++) {
-				if (!(segments[i] in current) || typeof current[segments[i]] !== 'object') {
-					current[segments[i]] = {};
-				}
-				current = current[segments[i]] as Record<string, unknown>;
-			}
-			current[segments[segments.length - 1]] = value;
-		}
-		return result;
 	}
 
 	/**
@@ -307,7 +307,7 @@ class DocHandle {
 			if (id) (this as { id: string }).id = id;
 			if (created_at) this.createdAt = new Date(created_at);
 			if (updated_at) this.updatedAt = new Date(updated_at);
-			this.properties = DocHandle.expandProps(remaining);
+			this.properties = remaining;
 			this.groups = await Group.fromSlugs(tags, this.source.id);
 		}
 
@@ -339,6 +339,15 @@ class DocHandle {
 			sourcePath: this.source.path,
 			relPath: this._relPath,
 			contents
+		});
+	}
+
+	/** Delete the document from disk and the index. */
+	async delete(): Promise<void> {
+		await invoke('delete_document', {
+			id: this.id,
+			sourcePath: this.source.path,
+			relPath: this._relPath
 		});
 	}
 

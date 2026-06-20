@@ -3,17 +3,20 @@
      * Todo:
      * - better auto scaling
      * - in-line editing that actually works
+     *
+     * this file is cursed FYI
      */
     import type View from "$lib/models/View.svelte";
     import type {FilterNode, ViewFace, SortKey, ViewField, ViewFieldType, MemberRow} from "$lib/models/View.svelte";
-    import {isLeafActive, isDerived, CREATABLE_FIELD_TYPES} from "$lib/models/View.svelte";
+    import {isLeafActive, isDerived, CREATABLE_FIELD_TYPES, sanitizeName} from "$lib/models/View.svelte";
     import {getFieldIcon} from "$lib/views/filterDisplay";
     import {
         rawStatefulValue as rawStateful, statefulValue as stateful, rawArrayValue as rawArray,
-        tagClass as tagClassOf, valueFor as valueOf, titleFor as titleOf, folderDir,
-        sourceName as sourceNameOf, isEditable, isMetaField, fieldLabel
+        tagClass as tagClassOf, valueFor as valueOf, titleFor as titleOf, folderDir, fileName,
+        sourceName as sourceNameOf, isEditable, isMetaField, fieldLabel, withStatefulValue
     } from "$lib/views/fieldValue";
-    import type {SearchResult} from "$lib/types/SearchResult";
+    import {sqlToWallClock, toSqlDateTime} from "$lib/views/dateFormat";
+    import {searchDocuments} from "$lib/search";
     import Menu from "../Menu.svelte";
     import {
         Plus,
@@ -25,28 +28,25 @@
         SquareArrowOutUpRight,
         SquareCheck,
         Folder,
-        Grid2x2Plus,
         Database,
         Ellipsis,
         X
     } from "@lucide/svelte";
-    import {getSource, listSources, type Source} from "$lib/models/Source";
+    import {listSources, type Source} from "$lib/models/Source";
     import Group, {GroupType} from "$lib/models/Group";
     import DocHandle from "$lib/models/DocHandle";
     import {deriveCreateContext, folderLinkChain, folderPath} from "$lib/views/createDefaults";
-    import {select} from "$lib/db";
     import FolderValueEditor from "../FolderValueEditor.svelte";
     import CellEditor from "../CellEditor.svelte";
     import CellValue from "../CellValue.svelte";
     import FolderCrumb from "../FolderCrumb.svelte";
     import LeanScroll from "../LeanScroll.svelte";
-    import {invoke} from "@tauri-apps/api/core";
     import {onMount} from "svelte";
 
     let {view, face, onMeta, onOpenRow, createSignal = 0}: {
         view: View;
         face: ViewFace;
-        onMeta?: (m: { loading: boolean; count: number; elapsedMs: number }) => void;
+        onMeta?: (m: { loading: boolean; count: number; total: number; elapsedMs: number }) => void;
         onOpenRow?: (rowId: string) => void;
         createSignal?: number;
     } = $props();
@@ -61,7 +61,11 @@
 
     const MIN_COL_WIDTH = 60;
 
+    const PERF = true;
+    const tInit = performance.now();
+
     let rows: Row[] = $state([]);
+    let total = $state(0);
     let error = $state('');
     let loading = $state(true);
     let elapsedMs = $state(0);
@@ -76,6 +80,71 @@
     );
 
     const widths = $derived(face.config.column_widths ?? {});
+
+    // ── Group by (presentation only, over the already-loaded rows) ──────────────
+    const groupField = $derived.by(() => {
+        const id = (face.config.group_by ?? null) as string | null;
+        return id ? view.fields.find(f => f.id === id) ?? null : null;
+    });
+
+    function groupKey(row: Row): string {
+        if (!groupField) return '';
+        const v = valueFor(groupField, row);
+        return v === '' ? '(empty)' : v;
+    }
+
+    // raw stored value of the group field on a row (to seed new notes in a group)
+    function groupValue(row: Row): unknown {
+        if (!groupField) return null;
+        return rawStatefulValue(groupField, row);
+    }
+
+    type RenderItem =
+        | { kind: 'header'; label: string; count: number; first: boolean }
+        | { kind: 'row'; row: Row; idx: number }
+        | { kind: 'footer'; key: string; value: unknown };
+
+    // group keys in display order: the user's saved order (face.config.group_order)
+    // first, then any new groups in first-seen order
+    const orderedGroupKeys = $derived.by(() => {
+        if (!groupField) return [];
+        const seen: string[] = [];
+        const set = new Set<string>();
+        for (const row of rows) {
+            const k = groupKey(row);
+            if (!set.has(k)) {
+                set.add(k);
+                seen.push(k);
+            }
+        }
+        const order = (face.config.group_order ?? []) as string[];
+        const ordered = order.filter(k => set.has(k));
+        const rest = seen.filter(k => !ordered.includes(k));
+        return [...ordered, ...rest];
+    });
+
+    // flat render list: a header before each group, its rows, then an add footer
+    const renderItems = $derived.by(() => {
+        if (!groupField) {
+            return rows.map((row, i) => ({kind: 'row' as const, row, idx: i}));
+        }
+        const groups = new Map<string, { row: Row; idx: number }[]>();
+        rows.forEach((row, i) => {
+            const k = groupKey(row);
+            (groups.get(k) ?? groups.set(k, []).get(k)!).push({row, idx: i});
+        });
+        const out: RenderItem[] = [];
+        let first = true;
+        for (const label of orderedGroupKeys) {
+            const items = groups.get(label);
+            if (!items) continue;
+            out.push({kind: 'header', label, count: items.length, first});
+            for (const it of items) out.push({kind: 'row', row: it.row, idx: it.idx});
+            out.push({kind: 'footer', key: label, value: groupValue(items[0].row)});
+            first = false;
+        }
+        return out;
+    });
 
     // Only a boolean in the FIRST column becomes the compact square checkbox column (ClickUp style)
     const checkColIndex = $derived(columns[0]?.field.type === 'boolean' ? 0 : -1);
@@ -142,8 +211,8 @@
         try {
             const q = query.trim();
             if (q) {
-                const hits = await invoke<SearchResult[]>('search_documents', {query: q});
-                const idsInOrder = hits.filter(r => r.kind === 'document').map(r => r.id);
+                const hits = await searchDocuments(q);
+                const idsInOrder = hits.filter(r => r.kind === 'document').map(r => r.id).slice(0, 100);
                 if (idsInOrder.length === 0) {
                     rows = [];
                 } else {
@@ -155,8 +224,10 @@
                     const byId = new Map(members.map(r => [r.id, r]));
                     rows = idsInOrder.map(id => byId.get(id)).filter((r): r is Row => !!r);
                 }
+                total = rows.length;
             } else {
-                rows = await view.getMembers({face, limit: 200}) as Row[];
+                rows = await view.getMembers({face, limit: 100}) as Row[];
+                total = await view.countMembers({face});
             }
         } catch (e) {
             error = String(e);
@@ -180,6 +251,18 @@
     let sources: Source[] = $state([]);
 
     onMount(() => {
+        if (PERF) {
+            const warm = rows.length > 0;
+            const tMount = performance.now();
+            requestAnimationFrame(() => {
+                const tFrame = performance.now();
+                console.log(
+                    `[perf] TableFace warm=${warm} rows=${rows.length} cols=${columns.length}` +
+                    ` | init→mount ${(tMount - tInit).toFixed(1)}ms` +
+                    ` | mount→frame ${(tFrame - tMount).toFixed(1)}ms`
+                );
+            });
+        }
         load();
         Group.list()
             .then((gs) => (folders = gs.filter((g) => g.groupType === GroupType.Folder)))
@@ -196,7 +279,7 @@
     $effect(() => {
         if (didInitFocus || loading || rows.length === 0 || columns.length === 0) return;
         didInitFocus = true;
-        if (!face.config.active_cell) setActiveCell({row: 0, col: 0});
+        if (!face.config.active_cell) setActiveCell({row: visualRowOrder[0] ?? 0, col: 0});
         focusTable();
     });
 
@@ -218,6 +301,7 @@
 
     function fullSignature(): string {
         return [
+            view.slug,
             nodeSig(view.filter),
             nodeSig(face.additive_filter),
             sortSig(face.sort),
@@ -242,7 +326,7 @@
     });
 
     $effect(() => {
-        onMeta?.({loading, count: rows.length, elapsedMs});
+        onMeta?.({loading, count: rows.length, total, elapsedMs});
     });
 
     function startResize(e: PointerEvent, col: ColumnDef) {
@@ -303,7 +387,7 @@
     function onHeaderPointerDown(e: PointerEvent, index: number) {
         if (e.button !== 0) return;
         const t = e.target as HTMLElement;
-        if (t.closest('.resize-handle') || t.closest('.add-btn') || t.closest('.th-rename')) return;
+        if (t.closest('.resize-handle') || t.closest('.th-rename') || t.closest('.col-add')) return;
         dragArmed = true;
         didDrag = false;
         dragOriginalIndex = index;
@@ -378,6 +462,62 @@
         return dropIndex > dragOriginalIndex ? 'after' : 'before';
     }
 
+    // ── Group drag-reorder (persisted in face.config.group_order) ────────────────
+    let dragGroupKey: string | null = $state(null);
+    let dropTargetKey: string | null = $state(null);
+    let dropAfter = $state(false);
+
+    function onGroupPointerDown(e: PointerEvent, label: string) {
+        if (e.button !== 0) return;
+        const startY = e.clientY;
+        let started = false;
+
+        function move(ev: PointerEvent) {
+            if (!started) {
+                if (Math.abs(ev.clientY - startY) < 4) return;
+                started = true;
+                dragGroupKey = label;
+            }
+            const headers = [...(tableEl?.querySelectorAll('tr.group-header[data-group-key]') ?? [])] as HTMLElement[];
+            if (!headers.length) return;
+            const tops = headers.map(h => h.getBoundingClientRect().top);
+            const tableBottom = tableEl?.getBoundingClientRect().bottom ?? 0;
+            let gi = headers.length - 1;
+            for (let i = 0; i < headers.length; i++) {
+                const bottom = i + 1 < headers.length ? tops[i + 1] : tableBottom;
+                if (ev.clientY < bottom) {
+                    gi = i;
+                    break;
+                }
+            }
+            const top = tops[gi];
+            const bottom = gi + 1 < headers.length ? tops[gi + 1] : tableBottom;
+            dropTargetKey = headers[gi].dataset.groupKey ?? null;
+            dropAfter = ev.clientY - top > (bottom - top) / 2;
+        }
+
+        function up() {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            if (started && dragGroupKey && dropTargetKey) commitGroupReorder(dragGroupKey, dropTargetKey, dropAfter);
+            dragGroupKey = null;
+            dropTargetKey = null;
+        }
+
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    }
+
+    function commitGroupReorder(key: string, targetKey: string, after: boolean) {
+        if (key === targetKey) return;
+        const order = orderedGroupKeys.filter(k => k !== key);
+        let to = order.indexOf(targetKey);
+        if (to < 0) return;
+        if (after) to += 1;
+        order.splice(to, 0, key);
+        face.config.group_order = order;
+    }
+
     let menuOpen = $state(false);
     let menuAnchor: HTMLElement | null = $state(null);
     let menuFieldId: string | undefined = $state(undefined);
@@ -385,6 +525,8 @@
     const menuField = $derived(
         menuFieldId ? view.fields.find(f => f.id === menuFieldId) : undefined
     );
+
+    let confirmingDelete = $state(false);
 
     const menuItems = $derived.by(() => {
         if (!menuField) return [];
@@ -395,10 +537,45 @@
             {value: 'hide', label: 'Hide', icon: EyeOff},
         ];
         if (!isDerived(menuField.type)) {
-            items.push({value: 'delete', label: 'Delete', icon: Trash2});
+            items.push(confirmingDelete
+                ? {value: 'delete_confirm', label: 'Confirm delete', icon: Trash2}
+                : {value: 'delete', label: 'Delete', icon: Trash2});
         }
         return items;
     });
+
+    // ── Add-column menu (header plus): re-show hidden fields + create new ones ──
+    let addColOpen = $state(false);
+    let addColEl: HTMLElement | null = $state(null);
+
+    const addColItems = $derived.by(() => {
+        const items: any[] = view.fields
+            .filter(f => !face.display_field_ids.includes(f.id))
+            .map(f => ({value: `show:${f.id}`, label: fieldLabel(f), icon: getFieldIcon(f.type)}));
+        if (!view.temporary) {
+            if (items.length) items.push({kind: 'divider'});
+            for (const t of CREATABLE_FIELD_TYPES) {
+                items.push({value: `new:${t}`, label: `New ${t}`, icon: getFieldIcon(t)});
+            }
+        }
+        if (items.length === 0) {
+            items.push({value: 'noop', label: view.temporary ? 'Save the view to add fields' : 'All fields shown'});
+        }
+        return items;
+    });
+
+    function onAddColSelect(action: string) {
+        addColOpen = false;
+        if (action.startsWith('show:')) {
+            const id = action.slice(5);
+            if (!face.display_field_ids.includes(id)) face.display_field_ids = [...face.display_field_ids, id];
+        } else if (action.startsWith('new:')) {
+            const type = action.slice(4) as ViewFieldType;
+            const field = view.addFieldOfType(type);
+            face.display_field_ids = [...face.display_field_ids, field.id];
+            openRenameFor(field.id);
+        }
+    }
 
     function openColumnMenu(e: MouseEvent, fid: string) {
         menuAnchor = e.currentTarget as HTMLElement;
@@ -411,6 +588,11 @@
     function onColumnMenuSelect(action: string) {
         const fid = menuFieldId;
         if (!fid) return;
+        // delete is a two-step confirm; only this branch keeps the menu open
+        if (action === 'delete') {
+            confirmingDelete = true;
+            return;
+        }
         switch (action) {
             case 'sort_asc':
                 face.sort = [{field_id: fid, direction: 'asc'}];
@@ -421,10 +603,11 @@
             case 'hide':
                 hideField(fid);
                 break;
-            case 'delete':
+            case 'delete_confirm':
                 deleteField(fid);
                 break;
         }
+        confirmingDelete = false;
         menuFieldId = undefined;
     }
 
@@ -433,15 +616,26 @@
         if (face.config.column_widths) delete face.config.column_widths[fid];
     }
 
+    // remove a field from the view entirely, plus every face's columns + filters
     function deleteField(fid: string) {
         view.fields = view.fields.filter(f => f.id !== fid);
-        face.display_field_ids = face.display_field_ids.filter(id => id !== fid);
-        if (face.config.column_widths) delete face.config.column_widths[fid];
+        for (const f of view.faces) {
+            f.display_field_ids = f.display_field_ids.filter(id => id !== fid);
+            if (f.config.column_widths) delete f.config.column_widths[fid];
+        }
+        view.filter.children = view.filter.children.filter(
+            (n) => !('field_id' in n) || n.field_id !== fid
+        );
     }
 
     let renameDraft = $state('');
     let renameInput: HTMLInputElement | null = $state(null);
     let isCommitting = false;
+
+    // reassign through view.fields so every face's derived columns re-run
+    function setFieldName(fid: string, name: string) {
+        view.fields = view.fields.map(ff => ff.id === fid ? {...ff, name} : ff);
+    }
 
     async function commitRename() {
         if (isCommitting) return;
@@ -452,33 +646,23 @@
         const raw = renameDraft.trim();
         if (!raw) return;
         if (isDerived(f.type)) {
-            f.name = raw;
+            setFieldName(fid, raw);
             return;
         }
 
         // Stateful fields: the name is the storage key (views.<slug>.<name>), so
         // it must be a safe identifier, and existing values have to be moved from
         // the old key to the new one across all soursces:
-        const newName = raw.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+        const newName = sanitizeName(raw);
         const oldName = f.name;
         if (!newName || newName === oldName) {
-            if (newName) f.name = newName;
+            if (newName) setFieldName(fid, newName);
             return;
         }
 
         isCommitting = true;
         try {
-            const sources = await listSources();
-            for (const s of sources) {
-                await invoke('bulk_rename_view_field', {
-                    sourceId: s.id,
-                    sourcePath: s.path,
-                    viewSlug: view.slug,
-                    oldName,
-                    newName
-                });
-            }
-            f.name = newName;
+            await view.renameField(f, newName);
             load();
         } catch (e) {
             error = String(e);
@@ -489,17 +673,7 @@
 
     async function renameOption(field: ViewField, oldValue: string, newValue: string) {
         try {
-            const sources = await listSources();
-            for (const s of sources) {
-                await invoke('bulk_rename_view_option', {
-                    sourceId: s.id,
-                    sourcePath: s.path,
-                    viewSlug: view.slug,
-                    fieldName: field.name,
-                    oldValue,
-                    newValue
-                });
-            }
+            await view.renameOption(field, oldValue, newValue);
             load();
         } catch (e) {
             error = String(e);
@@ -511,51 +685,19 @@
             renameInput.focus();
             renameInput.select();
         }
+        if (!menuOpen) confirmingDelete = false;
     });
 
-    let addMenuOpen = $state(false);
-    let addAnchor: HTMLElement | null = $state(null);
 
-    const hiddenFields = $derived(
-        view.fields.filter(f => !face.display_field_ids.includes(f.id))
-    );
-
-    const addMenuItems = $derived.by(() => {
-        const items: any[] = hiddenFields.map(f => ({
-            value: `add:${f.id}`,
-            label: fieldLabel(f),
-            icon: getFieldIcon(f.type)
-        }));
-        if (items.length > 0) items.push({kind: 'divider'});
-        items.push({
-            value: 'add-field',
-            label: 'Add field',
-            icon: Plus,
-            children: CREATABLE_FIELD_TYPES.map(t => ({
-                value: `new:${t}`,
-                label: t.charAt(0).toUpperCase() + t.slice(1),
-                icon: getFieldIcon(t)
-            }))
-        });
-        return items;
-    });
-
-    function openAddMenu(e: MouseEvent) {
-        addAnchor = e.currentTarget as HTMLElement;
-        addMenuOpen = true;
-    }
-
-    function onAddMenuSelect(value: string) {
-        addMenuOpen = false;
-        if (value.startsWith('new:')) {
-            const field = view.addFieldOfType(value.slice(4) as ViewFieldType);
-            face.display_field_ids = [...face.display_field_ids, field.id];
-        } else if (value.startsWith('add:')) {
-            const fid = value.slice(4);
-            if (!face.display_field_ids.includes(fid)) {
-                face.display_field_ids = [...face.display_field_ids, fid];
-            }
-        }
+    function openRenameFor(fid: string) {
+        const idx = columns.findIndex(c => c.field.id === fid);
+        const th = idx >= 0 ? headerEls[idx] : null;
+        if (!th) return;
+        menuAnchor = th;
+        menuFieldId = fid;
+        const f = view.fields.find(ff => ff.id === fid);
+        renameDraft = f ? fieldLabel(f) : '';
+        menuOpen = true;
     }
 
     // thin wrappers binding this view's slug / sources to the shared helpers
@@ -573,6 +715,7 @@
 
     let creating = $state(false);
     let floatTop = $state(false);
+    let creatingGroupKey: string | null = $state(null);
     // createdAt captured once per draft so prefilled date columns are stable
     let draft: { title: string; values: Record<string, unknown>; createdAt: string } = $state({
         title: '',
@@ -667,12 +810,8 @@
         const row = rows.find(r => r.id === rowId);
         if (!row) return;
         try {
-            const source = await getSource(row.source_id);
-            await invoke('delete_document', {
-                id: rowId,
-                sourcePath: source.path,
-                relPath: row.rel_path
-            });
+            const doc = await DocHandle.fromID(rowId);
+            await doc.delete();
             rows = rows.filter(r => r.id !== rowId);
         } catch (e) {
             error = String(e);
@@ -691,7 +830,7 @@
         if (!editingField || !editingRow) return null;
         if (isMetaField(editingField.type)) {
             const sql = editingField.type === 'created_at' ? editingRow.created_at : editingRow.updated_at;
-            return sqlToLocalWallClock(sql);
+            return sqlToWallClock(sql);
         }
         if (editingField.type === 'folder') {
             return folderIdForPath(editingRow.rel_path, editingRow.source_id);
@@ -709,22 +848,15 @@
         return match?.id ?? null;
     }
 
-    function pad2(n: number): string {
-        return String(n).padStart(2, '0');
-    }
 
-    function sqlToLocalWallClock(sql: string): string | null {
-        if (!sql) return null;
-        const d = new Date(sql.replace(' ', 'T') + 'Z');
-        if (isNaN(d.getTime())) return null;
-        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    }
-
+    let wasEditOpen = false;
     $effect(() => {
-        if (!editOpen) {
+        const open = editOpen;
+        if (!open && wasEditOpen) {
             editing = null;
             if (activeCell) focusTable();
         }
+        wasEditOpen = open;
     });
 
     function onCellClick(e: MouseEvent, field: ViewField, row: Row) {
@@ -792,26 +924,35 @@
         });
     });
 
+    // rows-array indices in the order they're actually rendered (grouping + manual
+    // reorder decouple this from rows order), so vertical nav follows what's on screen
+    const visualRowOrder = $derived(
+        renderItems.filter((i) => i.kind === 'row').map((i) => (i as { idx: number }).idx)
+    );
+
     function moveActive(dRow: number, dCol: number, wrap = false) {
         if (rows.length === 0 || columns.length === 0 || !activeCell) return;
         scrollOnNext = true;
-        let row = activeCell.row + dRow;
+        const order = visualRowOrder;
+        let pos = order.indexOf(activeCell.row);
+        if (pos < 0) pos = 0;
+        pos += dRow;
         let col = activeCell.col + dCol;
         if (wrap) {
             while (col >= columns.length) {
                 col -= columns.length;
-                row += 1;
+                pos += 1;
             }
             while (col < 0) {
                 col += columns.length;
-                row -= 1;
+                pos -= 1;
             }
         } else {
             col = Math.max(0, Math.min(columns.length - 1, col));
         }
-        row = Math.max(0, Math.min(rows.length - 1, row));
+        pos = Math.max(0, Math.min(order.length - 1, pos));
         col = Math.max(0, Math.min(columns.length - 1, col));
-        setActiveCell({row, col});
+        setActiveCell({row: order[pos] ?? activeCell.row, col});
     }
 
     function beginEditActive() {
@@ -837,6 +978,9 @@
         // The draft row owns the keyboard entirely while creating.
         if (creating) return;
         const t = e.target as HTMLElement | null;
+        // Only drive grid nav when focus is on the table itself; let other focused
+        // controls (the title button, search, menus) handle their own keys.
+        if (t && t !== tableEl && !tableEl?.contains(t)) return;
         if (t && t !== tableEl) {
             const tag = t.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return;
@@ -853,7 +997,7 @@
             // than letting Tab move focus out of the view.
             if (e.key !== 'Escape') {
                 scrollOnNext = true;
-                setActiveCell({row: 0, col: 0});
+                setActiveCell({row: visualRowOrder[0] ?? 0, col: 0});
                 focusTable();
                 e.preventDefault();
             }
@@ -916,15 +1060,7 @@
             return;
         }
         try {
-            const source = await getSource(row.source_id);
-            await invoke('bulk_set_view_field', {
-                sourceId: row.source_id,
-                sourcePath: source.path,
-                viewSlug: view.slug,
-                fieldName: field.name,
-                value,
-                docIds: [row.id]
-            });
+            await view.writeFieldValue(row.source_id, field, value, [row.id]);
             applyLocal(row.id, field.name, value);
             // if this field is filtered/sorted on, re-pull so membership and
             // order stay correct. silent so no loading flash, keyed rows just diff
@@ -942,7 +1078,7 @@
             return;
         }
         const dir = groupId ? folderPath(groupId, folders) : '';
-        const file = row.rel_path.replace(/\\/g, '/').split('/').pop() ?? row.rel_path;
+        const file = fileName(row.rel_path);
         const newRel = dir ? `${dir}/${file}` : file;
         if (newRel === row.rel_path) return;
         try {
@@ -968,35 +1104,18 @@
         try {
             const doc = await DocHandle.fromID(row.id);
             await doc.saveMeta(type === 'created_at' ? {createdAt: date} : {updatedAt: date});
-            const sql = date.toISOString().replace('T', ' ').slice(0, 19);
-            rows = rows.map(r => r.id === row.id ? {...r, [type]: sql} : r);
+            rows = rows.map(r => r.id === row.id ? {...r, [type]: toSqlDateTime(date)} : r);
         } catch (e) {
             error = String(e);
         }
     }
 
     function applyLocal(rowId: string, name: string, value: unknown) {
-        rows = rows.map(r => {
-            if (r.id !== rowId) return r;
-            let props: any;
-            try {
-                props = JSON.parse(r.properties || '{}');
-            } catch {
-                props = {};
-            }
-            props.views ??= {};
-            props.views[view.slug] ??= {};
-            const empty =
-                value === null ||
-                value === '' ||
-                (Array.isArray(value) && value.length === 0);
-            if (empty) {
-                delete props.views[view.slug][name];
-            } else {
-                props.views[view.slug][name] = value;
-            }
-            return {...r, properties: JSON.stringify(props)};
-        });
+        rows = rows.map(r =>
+            r.id === rowId
+                ? {...r, properties: withStatefulValue(r.properties, view.slug, name, value)}
+                : r
+        );
     }
 
     const titleFor = (field: ViewField, row: Row) => titleOf(field, row, view.slug);
@@ -1028,6 +1147,36 @@
         effectiveFolderId ? folderPath(effectiveFolderId, folders) : ''
     );
 
+    // Warn (red border) when the draft title would collide with an existing note
+    // and get silently renamed to "<name> 2" on save.
+    let titleCollision = $state(false);
+    $effect(() => {
+        const title = draft.title.trim();
+        const dir = folderDirLabel;
+        let sid = createCtx.sourceId;
+        if (!sid && effectiveFolderId) sid = folders.find(f => f.id === effectiveFolderId)?.sourceId ?? null;
+        if (!sid && sources.length === 1) sid = sources[0].id;
+        if (!creating || !title || !sid) {
+            titleCollision = false;
+            return;
+        }
+        const base = title.replace(/[\\/]/g, '-');
+        const candidate = dir ? `${dir}/${base}.md` : `${base}.md`;
+        let cancelled = false;
+        const t = setTimeout(async () => {
+            try {
+                const exists = await DocHandle.pathExists(sid, candidate);
+                if (!cancelled) titleCollision = exists;
+            } catch {
+                /* ignore */
+            }
+        }, 150);
+        return () => {
+            cancelled = true;
+            clearTimeout(t);
+        };
+    });
+
     // For the "root" case the location is the source itself; show its name
     const createSourceName = $derived.by(() => {
         let sid = createCtx.sourceId;
@@ -1036,10 +1185,18 @@
         return s?.title ?? 'Source root';
     });
 
-    function startNew(opts?: { floatTop?: boolean }) {
+    function startNew(opts?: { floatTop?: boolean; groupValue?: unknown; groupKey?: string }) {
         creating = true;
         floatTop = opts?.floatTop ?? false;
-        draft = {title: '', values: {...createCtx.fieldValues}, createdAt: new Date().toISOString()};
+        creatingGroupKey = opts?.groupKey ?? null;
+        const values: Record<string, unknown> = {...createCtx.fieldValues};
+        // when adding inside a group, seed that group's value for the new note
+        if (groupField && opts && 'groupValue' in opts) {
+            const v = opts.groupValue;
+            if (v === null || v === undefined || v === '') delete values[groupField.name];
+            else values[groupField.name] = v;
+        }
+        draft = {title: '', values, createdAt: new Date().toISOString()};
         folderOverride = undefined;
         queueMicrotask(() => newTitleInput?.focus());
     }
@@ -1067,7 +1224,7 @@
         draft = {...draft, values: next};
     }
 
-    // ── Draft-row keyboard nav: locked to the row, Tab/arrows loop the fields ──
+    // -─ Draft-row keyboard nav: locked to the row, Tab/arrows loop the fields ──
     function draftFieldIndices(): number[] {
         const out: number[] = [];
         columns.forEach((col, idx) => {
@@ -1174,24 +1331,6 @@
         return sources[0];
     }
 
-    async function uniqueRelPath(sourceId: string, dir: string, base: string): Promise<string> {
-        let candidate = dir ? `${dir}/${base}.md` : `${base}.md`;
-        let n = 2;
-        while (true) {
-            const hit = await select<{ c: number }>(
-                    `SELECT COUNT(*) as c
-                     FROM documents
-                     WHERE source_id = ?1
-                       AND rel_path = ?2
-                       AND deleted_at IS NULL`,
-                [sourceId, candidate]
-            );
-            if ((hit[0]?.c ?? 0) === 0) return candidate;
-            candidate = dir ? `${dir}/${base} ${n}.md` : `${base} ${n}.md`;
-            n++;
-        }
-    }
-
     async function commitNew() {
         if (saving) return;
         const title = draft.title.trim();
@@ -1207,8 +1346,6 @@
         try {
             const source = await resolveCreateSource();
             const dir = effectiveFolderId ? folderPath(effectiveFolderId, folders) : '';
-            const base = title.replace(/[\\/]/g, '-');
-            const relPath = await uniqueRelPath(source.id, dir, base);
             const groupIds = [
                 ...(effectiveFolderId ? folderLinkChain(effectiveFolderId, folders) : []),
                 ...createCtx.tagGroupIds
@@ -1216,11 +1353,16 @@
             const props = Object.keys(draft.values).length
                 ? {views: {[view.slug]: draft.values}}
                 : {};
-            const doc = await DocHandle.create(source, title, relPath, groupIds, props);
-            await doc.saveContent('');
+            await DocHandle.createFromTitle(source, {title, dir, groupIds, properties: props});
             await load();
             const wasFloat = floatTop;
-            queueMicrotask(() => startNew({floatTop: wasFloat}));
+            const groupKey = creatingGroupKey;
+            const gv = groupField && groupKey !== null ? draft.values[groupField.name] : undefined;
+            queueMicrotask(() => startNew(
+                groupKey !== null
+                    ? {groupValue: gv, groupKey}
+                    : {floatTop: wasFloat}
+            ));
         } catch (e) {
             error = String(e);
         } finally {
@@ -1263,10 +1405,12 @@
                         {#if col.field.type === 'title'}
                             <input
                                     class="nr-title"
+                                    class:collision={titleCollision}
                                     data-draft-idx={idx}
                                     bind:this={newTitleInput}
                                     bind:value={draft.title}
                                     placeholder="Untitled"
+                                    title={titleCollision ? 'A note with this name already exists here' : undefined}
                             />
                         {:else if col.field.type === 'folder'}
                             <button
@@ -1376,12 +1520,13 @@
                     {/if}
                     {#if isAdd}
                         <button
+                                class="col-add"
                                 type="button"
-                                class="add-btn"
                                 aria-label="Add column"
-                                onclick={(e) => { e.stopPropagation(); openAddMenu(e); }}
+                                bind:this={addColEl}
+                                onclick={(e) => { e.stopPropagation(); addColOpen = !addColOpen; }}
                         >
-                            <Grid2x2Plus size={15} strokeWidth={1.75}/>
+                            <Plus size={15} strokeWidth={1.75}/>
                         </button>
                     {/if}
                 </th>
@@ -1392,79 +1537,114 @@
         {#if creating && floatTop}
             {@render draftRow_(true)}
         {/if}
-        {#each rows as row, rowIdx (row.id)}
-            <tr>
-                {#each columns as col, idx (col.field.id)}
-                    {@const isLast = idx === lastDataIndex}
-                    {@const editable = isEditable(col.field)}
-                    {@const isCheck = idx === checkColIndex}
-                    <td
-                            class={cellClassFor(col.field.type)}
-                            class:last-data={isLast}
-                            class:editable
-                            class:check-col={isCheck}
-                            class:active-cell={isActive(rowIdx, idx)}
-                            data-cell={`${rowIdx}-${idx}`}
-                            style={cellStyle(col)}
-                            title={isCheck ? undefined : titleFor(col.field, row)}
-                            onclick={(e) => onCellPointer(e, rowIdx, idx, col.field, row)}
-                    >
-                        {#if col.field.type === 'title'}
-                            {#if titleEditRowId === row.id}
-                                <input
-                                        class="title-input"
-                                        bind:this={titleInput}
-                                        bind:value={titleDraft}
-                                        onkeydown={(e) => onTitleKey(e, row)}
-                                        onblur={() => commitTitle(row)}
-                                        onclick={(e) => e.stopPropagation()}
-                                />
-                            {:else}
+        {#each renderItems as item, ri (item.kind === 'row' ? item.row.id : item.kind === 'header' ? 'h:' + item.label : 'f:' + item.key)}
+            {#if item.kind === 'header'}
+                <tr
+                        class="group-header"
+                        class:first={item.first}
+                        class:group-dragging={dragGroupKey === item.label}
+                        class:drop-before-group={dragGroupKey !== null && dragGroupKey !== item.label && dropTargetKey === item.label && !dropAfter}
+                        data-group-key={item.label}
+                        onpointerdown={(e) => onGroupPointerDown(e, item.label)}
+                >
+                    <td colspan={Math.max(1, columns.length)}>
+                        <span class="group-pill">
+                            <span class="group-label">{item.label}</span>
+                            <span class="group-count">{item.count}</span>
+                        </span>
+                    </td>
+                </tr>
+            {:else if item.kind === 'footer'}
+                {#if creating && creatingGroupKey === item.key}
+                    {@render draftRow_()}
+                {:else}
+                    <tr class="new-row group-add"
+                        class:drop-after-group={dragGroupKey !== null && dragGroupKey !== item.key && dropTargetKey === item.key && dropAfter}>
+                        <td colspan={Math.max(1, columns.length)} class="nr-trigger-cell">
+                            <button type="button" class="new-trigger"
+                                    onclick={() => startNew({groupValue: item.value, groupKey: item.key})}>
+                                <Plus size={15} strokeWidth={2}/>
+                                <span>New</span>
+                            </button>
+                        </td>
+                    </tr>
+                {/if}
+            {:else}
+                {@const row = item.row}
+                {@const rowIdx = item.idx}
+                <tr>
+                    {#each columns as col, idx (col.field.id)}
+                        {@const isLast = idx === lastDataIndex}
+                        {@const editable = isEditable(col.field)}
+                        {@const isCheck = idx === checkColIndex}
+                        <td
+                                class={cellClassFor(col.field.type)}
+                                class:last-data={isLast}
+                                class:editable
+                                class:check-col={isCheck}
+                                class:active-cell={isActive(rowIdx, idx)}
+                                data-cell={`${rowIdx}-${idx}`}
+                                style={cellStyle(col)}
+                                title={isCheck ? undefined : titleFor(col.field, row)}
+                                onclick={(e) => onCellPointer(e, rowIdx, idx, col.field, row)}
+                        >
+                            {#if col.field.type === 'title'}
+                                {#if titleEditRowId === row.id}
+                                    <input
+                                            class="title-input"
+                                            bind:this={titleInput}
+                                            bind:value={titleDraft}
+                                            onkeydown={(e) => onTitleKey(e, row)}
+                                            onblur={() => commitTitle(row)}
+                                            onclick={(e) => e.stopPropagation()}
+                                    />
+                                {:else}
                                 <span
                                         class="cell-text title-text"
                                         role="textbox"
                                         tabindex="-1"
                                         onclick={(e) => { e.stopPropagation(); startTitleEdit(row); }}
                                 >{@render cellInner(col.field, row)}</span>
-                                {#if onOpenRow}
-                                    <button
-                                            type="button"
-                                            class="row-action title-open"
-                                            aria-label="Open in tab"
-                                            title="Open in tab"
-                                            onclick={(e) => { e.stopPropagation(); onOpenRow?.(row.id); }}
-                                    >
-                                        <SquareArrowOutUpRight size={13} strokeWidth={1.75}/>
-                                    </button>
+                                    {#if onOpenRow}
+                                        <button
+                                                type="button"
+                                                class="row-action title-open"
+                                                aria-label="Open in tab"
+                                                title="Open in tab"
+                                                onclick={(e) => { e.stopPropagation(); onOpenRow?.(row.id); }}
+                                        >
+                                            <SquareArrowOutUpRight size={13} strokeWidth={1.75}/>
+                                        </button>
+                                    {/if}
                                 {/if}
+                            {:else if isLast}
+                                <span class="cell-text">{@render cellInner(col.field, row)}</span>
+                                <button
+                                        type="button"
+                                        class="row-action row-menu-btn"
+                                        aria-label="Row actions"
+                                        title="Actions"
+                                        onclick={(e) => { e.stopPropagation(); openRowMenu(e, row.id); }}
+                                >
+                                    <Ellipsis size={15} strokeWidth={1.75}/>
+                                </button>
+                            {:else}
+                                {@render cellInner(col.field, row)}
                             {/if}
-                        {:else if isLast}
-                            <span class="cell-text">{@render cellInner(col.field, row)}</span>
-                            <button
-                                    type="button"
-                                    class="row-action row-menu-btn"
-                                    aria-label="Row actions"
-                                    title="Actions"
-                                    onclick={(e) => { e.stopPropagation(); openRowMenu(e, row.id); }}
-                            >
-                                <Ellipsis size={15} strokeWidth={1.75}/>
-                            </button>
-                        {:else}
-                            {@render cellInner(col.field, row)}
-                        {/if}
-                    </td>
-                {/each}
-            </tr>
+                        </td>
+                    {/each}
+                </tr>
+            {/if}
         {:else}
             {#if !loading}
                 <tr>
-                    <td colspan={columns.length} class="empty">No documents</td>
+                    <td colspan={Math.max(1, columns.length)} class="empty">No documents</td>
                 </tr>
             {/if}
         {/each}
-        {#if creating && !floatTop}
+        {#if creating && !floatTop && creatingGroupKey === null}
             {@render draftRow_()}
-        {:else if !creating}
+        {:else if !creating && !groupField}
             <tr class="new-row">
                 <td colspan={Math.max(1, columns.length)} class="nr-trigger-cell">
                     <button type="button" class="new-trigger" onclick={() => startNew()}>
@@ -1514,19 +1694,19 @@
 />
 
 <Menu
-        bind:open={addMenuOpen}
-        anchor={addAnchor}
-        items={addMenuItems}
-        onSelect={onAddMenuSelect}
-        minWidth={200}
-/>
-
-<Menu
         bind:open={rowMenuOpen}
         anchor={rowMenuAnchor}
         items={rowMenuItems}
         onSelect={onRowMenuSelect}
         minWidth={150}
+/>
+
+<Menu
+        bind:open={addColOpen}
+        anchor={addColEl}
+        items={addColItems}
+        onSelect={onAddColSelect}
+        minWidth={170}
 />
 
 {#if editingField && editingRow}
@@ -1579,7 +1759,7 @@
 
     .basic-table th,
     .basic-table td {
-        padding: 0 14px;
+        padding: 0 11px;
         height: var(--row-h);
         line-height: var(--row-h);
         text-align: left;
@@ -1677,10 +1857,44 @@
         margin-left: 0;
     }
 
+    /* Overlays the header at the far right (like the row ellipsis), no reserved column */
+    .col-add {
+        position: absolute;
+        right: 10px;
+        top: 0;
+        bottom: 0;
+        margin: auto 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        border-radius: 5px;
+        color: var(--color-ui-dulled);
+        cursor: pointer;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+        z-index: 6;
+    }
+
+    .basic-table thead:hover .col-add {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .col-add:hover {
+        background: var(--chip-bg-hover);
+        color: var(--color-text-primary);
+    }
+
     .th-icon {
         display: inline-flex;
         align-items: center;
-        margin-right: 6px;
+        margin-right: 4px;
         color: var(--color-ui-muted);
         flex-shrink: 0;
     }
@@ -1761,32 +1975,6 @@
         padding-right: 36px;
     }
 
-    .add-btn {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        right: 10px;
-        margin: auto 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
-        padding: 0;
-        background: transparent;
-        border: 0;
-        border-radius: 5px;
-        color: var(--color-ui-dulled);
-        cursor: pointer;
-        transition: color 120ms ease, background-color 120ms ease;
-        z-index: 2;
-    }
-
-    .add-btn:hover {
-        color: var(--color-text-primary);
-        background: var(--chip-bg-hover);
-    }
-
     .basic-table tbody td.last-data,
     .basic-table tbody td.cell-title {
         overflow: visible;
@@ -1862,7 +2050,7 @@
         width: 100%;
         height: calc(var(--row-h) - 8px);
         padding: 0 6px;
-        border: 1px solid var(--color-accent);
+        border: 1px solid var(--focus-border);
         border-radius: 5px;
         background: var(--color-bg);
         font: inherit;
@@ -1925,8 +2113,54 @@
         position: static;
     }
 
+    .basic-table tbody tr.group-header td {
+        padding: 32px 0 8px;
+        height: auto;
+        line-height: 1;
+        border-bottom: 0;
+        background: transparent;
+        cursor: grab;
+        user-select: none;
+    }
+
+    .basic-table tbody tr.group-header.group-dragging {
+        opacity: 0.45;
+    }
+
+    .basic-table tbody tr.group-header.drop-before-group td {
+        box-shadow: inset 0 2px 0 var(--color-accent);
+    }
+
+    .basic-table tbody tr.new-row.group-add.drop-after-group td {
+        box-shadow: inset 0 -2px 0 var(--color-accent);
+    }
+
+    .basic-table tbody tr.group-header.first td {
+        padding-top: 28px;
+    }
+
+    .group-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 10px;
+        border-radius: 6px;
+        background: var(--chip-bg);
+    }
+
+    .group-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+
+    .group-count {
+        font-size: 11px;
+        color: var(--color-ui-muted);
+    }
+
     /* New row: trigger (collapsed) */
-    .nr-trigger-cell {
+    .basic-table td.nr-trigger-cell {
         padding: 0;
         border-bottom: 0;
     }
@@ -2017,6 +2251,11 @@
         outline: none;
     }
 
+    .nr-title.collision {
+        box-shadow: inset 0 0 0 1.5px var(--error-fg);
+        border-radius: 5px;
+    }
+
     .nr-title::placeholder {
         color: var(--color-ui-dulled);
     }
@@ -2080,7 +2319,8 @@
         padding: 0 8px;
         border: 0;
         border-radius: 5px;
-        background: var(--color-surface);
+        background: var(--color-bg);
+        box-shadow: 0 0 0 1px var(--color-border);
         color: var(--color-ui-muted);
         font: inherit;
         font-size: 12px;
@@ -2091,7 +2331,7 @@
 
     .nr-folder-float:hover {
         color: var(--color-text-primary);
-        background: var(--chip-bg-hover);
+        background: linear-gradient(var(--chip-bg-hover), var(--chip-bg-hover)), var(--color-bg);
     }
 
     .nr-folder-float.needs {

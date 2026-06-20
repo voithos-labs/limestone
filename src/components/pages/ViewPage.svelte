@@ -8,9 +8,11 @@
 
     let {view, editor}: { view: View; editor: EditorState } = $props();
 
-    const activeFace: ViewFace = $derived(view.faces[0]);
+    const activeFace: ViewFace = $derived(
+        view.faces.find(f => f.id === view.state.active_face_id) ?? view.faces[0]
+    );
 
-    let meta = $state({loading: true, count: 0, elapsedMs: 0});
+    let meta = $state({loading: true, count: 0, total: 0, elapsedMs: 0});
 
     // Bumped by the header's "+ New" button; the active face watches it and begins
     // a create in whatever way fits its layout (table = floating draft row at top).
@@ -27,7 +29,7 @@
                 {view}
                 loading={meta.loading}
                 count={meta.count}
-                elapsedMs={meta.elapsedMs}
+                total={meta.total}
                 onNew={() => createSignal++}
         />
     </div>

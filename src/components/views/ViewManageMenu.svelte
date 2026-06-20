@@ -1,24 +1,36 @@
 <script lang="ts">
     import {untrack} from "svelte";
-    import {ArrowLeft, Trash2, Plus, ChevronRight, Check, CircleSlash, Triangle} from "@lucide/svelte";
+    import {ArrowLeft, Trash2, Plus, ChevronRight, Check, CircleSlash, Triangle, Eye, EyeOff} from "@lucide/svelte";
     import type {ViewField, ViewFieldType} from "$lib/models/View.svelte";
-    import {CREATABLE_FIELD_TYPES} from "$lib/models/View.svelte";
+    import {CREATABLE_FIELD_TYPES, isDerived} from "$lib/models/View.svelte";
     import {getFieldIcon} from "$lib/views/filterDisplay";
+    import {fieldLabel} from "$lib/views/fieldValue";
     import Menu from "./Menu.svelte";
 
     let {
         open = $bindable(false),
         anchor,
         fields,
+        shownIds,
+        canAddFields = true,
+        onToggleVisible,
         onDelete,
         onAddField
     }: {
         open: boolean;
         anchor: HTMLElement | null;
         fields: ViewField[];
+        shownIds: string[];
+        canAddFields?: boolean;
+        onToggleVisible: (fieldId: string) => void;
         onDelete: (fieldId: string) => void;
         onAddField: (type: ViewFieldType) => void;
     } = $props();
+
+    const defaults = $derived(fields.filter((f) => isDerived(f.type)));
+    const custom = $derived(fields.filter((f) => !isDerived(f.type)));
+    const ordered = $derived([...defaults, ...custom]);
+    const shownSet = $derived(new Set(shownIds));
 
     let popEl: HTMLDivElement | null = $state(null);
     let pos: { top: number; left: number } = $state({top: 0, left: 0});
@@ -41,8 +53,8 @@
     }
 
     $effect(() => {
-        fields;
-        if (activeIndex >= fields.length) activeIndex = 0;
+        ordered;
+        if (activeIndex >= ordered.length) activeIndex = 0;
     });
 
     function position() {
@@ -51,9 +63,9 @@
         const m = popEl.getBoundingClientRect();
         const margin = 4;
         let top = a.bottom + margin;
-        let left = a.right - m.width;
+        let left = a.left;
         if (top + m.height > window.innerHeight - 8) top = Math.max(8, a.top - m.height - margin);
-        if (left < 8) left = 8;
+        if (left + m.width > window.innerWidth - 8) left = Math.max(8, a.right - m.width);
         pos = {top, left};
     }
 
@@ -68,7 +80,7 @@
 
     function onKey(e: KeyboardEvent) {
         if (!open) return;
-        const n = fields.length;
+        const n = ordered.length;
         if (e.key === 'Escape') {
             open = false;
             e.preventDefault();
@@ -133,14 +145,14 @@
 
 {#if open}
     <div class="pop" bind:this={popEl} style:top="{pos.top}px" style:left="{pos.left}px" role="menu" tabindex="-1">
-        <div class="pop-label">Custom fields</div>
+        <div class="pop-label">Fields</div>
         <div class="list">
-            {#each fields as field, i (field.id)}
+            {#snippet fieldRow(field: ViewField, i: number, isShown: boolean)}
                 {@const Icon = getFieldIcon(field.type)}
                 <div class="row" class:active={i === activeIndex} class:confirming={confirmFor === field.id}>
                     <span class="name" onmouseenter={() => activeIndex = i} role="presentation">
                         <Icon size={14} strokeWidth={1.75}/>
-                        <span class="name-text">{field.name}</span>
+                        <span class="name-text">{fieldLabel(field)}</span>
                     </span>
                     {#if confirmFor === field.id}
                         <button
@@ -160,27 +172,41 @@
                         >
                             Confirm
                         </button>
-                    {:else if i === activeIndex}
-                        {#if hasDefaultSupport(field)}
-                            <button
-                                    class="icon-btn"
-                                    type="button"
-                                    tabindex="-1"
-                                    aria-label="Set default"
-                                    title="Set default value"
-                                    onclick={(e) => { e.stopPropagation(); defaultFor = defaultFor === field.id ? null : field.id; }}
-                            >
-                                <Triangle size={14} strokeWidth={1.75}/>
-                            </button>
+                    {:else}
+                        {#if i === activeIndex}
+                            {#if hasDefaultSupport(field)}
+                                <button
+                                        class="icon-btn"
+                                        type="button"
+                                        tabindex="-1"
+                                        aria-label="Set default"
+                                        title="Set default value"
+                                        onclick={(e) => { e.stopPropagation(); defaultFor = defaultFor === field.id ? null : field.id; }}
+                                >
+                                    <Triangle size={14} strokeWidth={1.75}/>
+                                </button>
+                            {/if}
+                            {#if !isDerived(field.type)}
+                                <button
+                                        class="icon-btn danger"
+                                        type="button"
+                                        tabindex="-1"
+                                        aria-label="Delete field"
+                                        onclick={(e) => { e.stopPropagation(); confirmFor = field.id; }}
+                                >
+                                    <Trash2 size={14} strokeWidth={1.75}/>
+                                </button>
+                            {/if}
                         {/if}
                         <button
-                                class="icon-btn danger"
+                                class="icon-btn vis"
                                 type="button"
                                 tabindex="-1"
-                                aria-label="Delete field"
-                                onclick={(e) => { e.stopPropagation(); confirmFor = field.id; }}
+                                aria-label={isShown ? 'Hide in this face' : 'Show in this face'}
+                                title={isShown ? 'Hide' : 'Show'}
+                                onclick={(e) => { e.stopPropagation(); onToggleVisible(field.id); }}
                         >
-                            <Trash2 size={14} strokeWidth={1.75}/>
+                            {#if isShown}<Eye size={14} strokeWidth={1.75}/>{:else}<EyeOff size={14} strokeWidth={1.75}/>{/if}
                         </button>
                     {/if}
                 </div>
@@ -210,40 +236,56 @@
                         {/each}
                     </div>
                 {/if}
+            {/snippet}
+
+            <div class="section-label">Default</div>
+            {#each defaults as field, i (field.id)}
+                {@render fieldRow(field, i, shownSet.has(field.id))}
+            {/each}
+
+            <div class="section-label">User fields</div>
+            {#each custom as field, j (field.id)}
+                {@render fieldRow(field, defaults.length + j, shownSet.has(field.id))}
             {:else}
-                <div class="empty">No custom fields</div>
+                <div class="empty">No custom fields yet</div>
             {/each}
         </div>
 
         <div class="divider"></div>
 
-        <button
-                class="add-toggle"
-                type="button"
-                bind:this={addEl}
-                onclick={() => addOpen = !addOpen}
-        >
-            <Plus size={14} strokeWidth={1.75}/>
-            <span>Add field</span>
-            <ChevronRight size={13} strokeWidth={2}/>
-        </button>
+        {#if canAddFields}
+            <button
+                    class="add-toggle"
+                    type="button"
+                    bind:this={addEl}
+                    onclick={() => addOpen = !addOpen}
+            >
+                <Plus size={14} strokeWidth={1.75}/>
+                <span>Add field</span>
+                <ChevronRight size={13} strokeWidth={2}/>
+            </button>
+        {:else}
+            <div class="add-hint">Save the view to add fields</div>
+        {/if}
     </div>
 
-    <Menu
-            bind:open={addOpen}
-            anchor={addEl}
-            items={addItems}
-            onSelect={(v) => addField(v as ViewFieldType)}
-            minWidth={160}
-            placement="right"
-    />
+    {#if canAddFields}
+        <Menu
+                bind:open={addOpen}
+                anchor={addEl}
+                items={addItems}
+                onSelect={(v) => addField(v as ViewFieldType)}
+                minWidth={160}
+                placement="right"
+        />
+    {/if}
 {/if}
 
 <style>
     .pop {
         position: fixed;
         z-index: 1000;
-        min-width: 220px;
+        min-width: 240px;
         max-width: 320px;
         background: var(--color-bg);
         border: 1px solid var(--color-border);
@@ -253,7 +295,7 @@
         font-family: var(--font-ui);
         font-size: 13px;
         color: var(--color-text-primary);
-        max-height: 360px;
+        max-height: 420px;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -271,6 +313,15 @@
         flex: 1;
         scrollbar-width: thin;
         scrollbar-color: var(--menu-scrollbar-thumb) transparent;
+    }
+
+    .section-label {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--color-ui-muted);
+        padding: 8px 8px 4px;
     }
 
     .row {
@@ -332,6 +383,14 @@
         color: var(--color-text-primary);
     }
 
+    .icon-btn.vis {
+        color: var(--color-ui-dulled);
+    }
+
+    .row.active .icon-btn.vis {
+        color: var(--color-ui-muted);
+    }
+
     .confirm-btn {
         flex-shrink: 0;
         align-self: center;
@@ -382,6 +441,12 @@
 
     .add-toggle:hover {
         background: var(--menu-item-hover);
+    }
+
+    .add-hint {
+        padding: 6px 8px;
+        font-size: 12px;
+        color: var(--color-ui-muted);
     }
 
     .add-toggle :global(svg) {

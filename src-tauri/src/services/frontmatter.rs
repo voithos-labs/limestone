@@ -89,6 +89,19 @@ pub fn rename_view_field(fm: &mut Value, slug: &str, from: &str, to: &str) {
     }
 }
 
+/// Rename a whole view namespace ;;;; move `views.<from>` to `views.<to>`
+pub fn rename_view(fm: &mut Value, from: &str, to: &str) {
+    let Some(views) = fm.as_object_mut().and_then(|r| r.get_mut("views")) else {
+        return;
+    };
+    let Some(views) = views.as_object_mut() else {
+        return;
+    };
+    if let Some(val) = views.remove(from) {
+        views.insert(to.to_string(), val);
+    }
+}
+
 /// Rename a select/multiselect option value in-place within `views.<slug>.<field>`
 pub fn rename_view_option(fm: &mut Value, slug: &str, field: &str, from: &str, to: &str) {
     let Some(views) = fm.as_object_mut().and_then(|r| r.get_mut("views")) else {

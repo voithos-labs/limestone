@@ -14,6 +14,7 @@
         opValue,
         opOptions,
         value,
+        valuePills,
         rawValue,
         field,
         sourceId,
@@ -29,6 +30,7 @@
         opValue?: string;
         opOptions?: OpOption[];
         value?: string;
+        valuePills?: { label: string; color: number }[] | undefined;
         rawValue?: unknown;
         field?: ViewField;
         sourceId?: string;
@@ -92,7 +94,15 @@
                 onclick={handleValueClick}
                 bind:this={valueEl}
         >
-            <span class="seg-label">{value === '' ? 'empty' : value}</span>
+            {#if valuePills && valuePills.length}
+                <span class="value-pills">
+                    {#each valuePills as p (p.label)}
+                        <span class="vpill tag-c{p.color}">{p.label}</span>
+                    {/each}
+                </span>
+            {:else}
+                <span class="seg-label">{value === '' ? 'empty' : value}</span>
+            {/if}
         </button>
     {/if}
 
@@ -119,6 +129,7 @@
             anchor={valueEl}
             {field}
             value={rawValue}
+            op={opValue}
             {sourceId}
             onChange={(v) => onValueChange?.(v)}
     />
@@ -204,6 +215,25 @@
         color: var(--color-ui-muted);
         font-style: italic;
         font-weight: 400;
+    }
+
+    .value-pills {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .vpill {
+        display: inline-flex;
+        align-items: center;
+        padding: 0 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 1.5;
+        white-space: nowrap;
+        background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
+        color: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-fg-l, 30%));
     }
 
     .divider {

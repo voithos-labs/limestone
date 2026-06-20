@@ -281,9 +281,6 @@
                                 onmouseenter={() => activeIndex = i}
                         >
                             <span class="pill tag-c{opt.color}">{opt.value}</span>
-                            {#if isSelected(opt.value)}
-                                <Check class="opt-check" size={13} strokeWidth={2}/>
-                            {/if}
                         </button>
                     {/if}
                     {#if confirmDeleteFor === opt.value}
@@ -304,25 +301,30 @@
                         >
                             Confirm
                         </button>
-                    {:else if i === activeIndex}
-                        <button
-                                class="opt-icon"
-                                type="button"
-                                tabindex="-1"
-                                aria-label="Change color"
-                                onclick={(e) => { e.stopPropagation(); colorEditFor = colorEditFor === opt.value ? null : opt.value; }}
-                        >
-                            <PaintBucket size={14} strokeWidth={1.75}/>
-                        </button>
-                        <button
-                                class="opt-icon danger"
-                                type="button"
-                                tabindex="-1"
-                                aria-label="Delete option"
-                                onclick={(e) => { e.stopPropagation(); confirmDeleteFor = opt.value; colorEditFor = null; }}
-                        >
-                            <Trash2 size={14} strokeWidth={1.75}/>
-                        </button>
+                    {:else}
+                        {#if i === activeIndex}
+                            <button
+                                    class="opt-icon"
+                                    type="button"
+                                    tabindex="-1"
+                                    aria-label="Change color"
+                                    onclick={(e) => { e.stopPropagation(); colorEditFor = colorEditFor === opt.value ? null : opt.value; }}
+                            >
+                                <PaintBucket size={14} strokeWidth={1.75}/>
+                            </button>
+                            <button
+                                    class="opt-icon danger"
+                                    type="button"
+                                    tabindex="-1"
+                                    aria-label="Delete option"
+                                    onclick={(e) => { e.stopPropagation(); confirmDeleteFor = opt.value; colorEditFor = null; }}
+                            >
+                                <Trash2 size={14} strokeWidth={1.75}/>
+                            </button>
+                        {/if}
+                        <span class="opt-check" class:shown={isSelected(opt.value)}>
+                            <Check size={13} strokeWidth={2}/>
+                        </span>
                     {/if}
                 </div>
                 {#if colorEditFor === opt.value}
@@ -574,10 +576,18 @@
         background: var(--menu-item-hover);
     }
 
-    .opt :global(.opt-check) {
+    .opt-check {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
         flex-shrink: 0;
         color: var(--color-accent);
-        margin-left: auto;
+        visibility: hidden;
+    }
+
+    .opt-check.shown {
+        visibility: visible;
     }
 
     .create .create-label {

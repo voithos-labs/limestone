@@ -28,11 +28,38 @@ export function rawArrayValue(row: MemberRow, viewSlug: string, fieldName: strin
 	return [String(v)];
 }
 
+// returns a new properties JSON with views.<slug>.<field>
+export function withStatefulValue(
+	propertiesJson: string,
+	viewSlug: string,
+	fieldName: string,
+	value: unknown
+): string {
+	let props: { views?: Record<string, Record<string, unknown>> };
+	try {
+		props = JSON.parse(propertiesJson || '{}');
+	} catch {
+		props = {};
+	}
+	props.views ??= {};
+	props.views[viewSlug] ??= {};
+	const empty = value === null || value === '' || (Array.isArray(value) && value.length === 0);
+	if (empty) delete props.views[viewSlug][fieldName];
+	else props.views[viewSlug][fieldName] = value;
+	return JSON.stringify(props);
+}
+
 // dir portion of a rel_path, normalized to forward slashes
 export function folderDir(relPath: string): string {
 	const p = relPath.replace(/\\/g, '/');
 	const i = p.lastIndexOf('/');
 	return i < 0 ? '' : p.slice(0, i);
+}
+
+// file (last segment) of a rel_path, normalized to forward slashes
+export function fileName(relPath: string): string {
+	const p = relPath.replace(/\\/g, '/');
+	return p.slice(p.lastIndexOf('/') + 1);
 }
 
 export function sourceName(sources: Source[], id: string): string {

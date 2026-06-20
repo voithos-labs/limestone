@@ -3,7 +3,7 @@
     import type {FocusTarget} from "$lib/state/EditorState.svelte";
     import {getCurrentWindow} from "@tauri-apps/api/window";
 
-    import {Settings, Search, Cone, Library, Bookmark, ChevronDown, Shapes, X, GripVertical} from "@lucide/svelte";
+    import {Settings, Search, Cone, Library, Bookmark, ChevronDown, LayoutDashboard, X, GripVertical} from "@lucide/svelte";
     import {getSetting, setSetting} from "$lib/models/Settings";
 
     let {editor}: { editor: EditorState } = $props();
@@ -177,7 +177,7 @@
                     tabindex="0"
             >
                 {#if d.content.type === 'view'}
-                    <Shapes size={13}/>
+                    <LayoutDashboard size={13}/>
                 {:else if !compactTabs}
                     <span class="doc-icon"></span>
                 {/if}

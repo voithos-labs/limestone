@@ -44,9 +44,10 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { invoke } from '@tauri-apps/api/core';
 import type DocHandle from '$lib/models/DocHandle';
 import Group, { GroupType } from '$lib/models/Group';
-import type { Source } from '$lib/models/Source';
+import { getSource, listSources, type Source } from '$lib/models/Source';
 import { select } from '$lib/db';
 
 /**
@@ -69,15 +70,25 @@ export type ViewFaceType = 'table' | 'list' | 'kanban' | 'calendar' | 'pinned';
 interface ViewFaceJSON {
 	id: string;
 	type: ViewFaceType;
+	name?: string;
 	display_field_ids: string[];
 	additive_filter: FilterCompound;
 	sort: SortKey[];
 	config: Record<string, any>;
 }
 
+const FACE_TYPE_LABEL: Record<ViewFaceType, string> = {
+	table: 'Table',
+	list: 'List',
+	kanban: 'Board',
+	calendar: 'Calendar',
+	pinned: 'Pinned'
+};
+
 export class ViewFace {
 	id: string; // uuid
 	type: ViewFaceType;
+	name: string = $state('');
 	display_field_ids: string[] = $state([]); // ORDERED LIST OF FIELD IDS
 	additive_filter: FilterCompound = $state({ op: 'and', children: [] }); // View filters AND this node
 	sort: SortKey[] = $state([]);
@@ -86,10 +97,15 @@ export class ViewFace {
 	constructor(json: ViewFaceJSON) {
 		this.id = json.id;
 		this.type = json.type;
+		this.name = json.name ?? '';
 		this.display_field_ids = json.display_field_ids;
 		this.additive_filter = json.additive_filter;
 		this.sort = json.sort;
 		this.config = json.config;
+	}
+
+	get label(): string {
+		return this.name || FACE_TYPE_LABEL[this.type];
 	}
 
 	static create(
@@ -122,6 +138,7 @@ export class ViewFace {
 		return {
 			id: this.id,
 			type: this.type,
+			name: this.name,
 			display_field_ids: this.display_field_ids,
 			additive_filter: this.additive_filter,
 			sort: this.sort,
@@ -291,8 +308,8 @@ export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	number: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'is_empty', 'is_not_empty'],
 	date: ['eq', 'neq', 'before', 'on_or_before', 'after', 'on_or_after', 'is_empty', 'is_not_empty'],
 	boolean: ['eq'],
-	select: ['eq', 'neq', 'is_empty', 'is_not_empty'],
-	multiselect: ['contains', 'not_contains', 'is_empty', 'is_not_empty'], // might prune multiselect
+	select: ['eq', 'neq', 'any_of', 'is_empty', 'is_not_empty'],
+	multiselect: ['contains', 'not_contains', 'has_all', 'is_empty', 'is_not_empty'], // might prune multiselect
 	// BUILT-INS
 	title: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
 	id: ['eq', 'neq'],
@@ -346,10 +363,16 @@ interface CompiledFilter {
 	params: unknown[];
 }
 
-const SAFE_IDENT = /^[a-z0-9_-]+$/;
-function safeIdent(s: string, kind: string): string {
-	if (!SAFE_IDENT.test(s)) throw new Error(`Unsafe ${kind} identifier: ${s}`);
+const UNSAFE_SEG = /["'.\\\n\r\t]/;
+function pathSeg(s: string, kind: string): string {
+	if (!s || UNSAFE_SEG.test(s)) throw new Error(`Unsafe ${kind}: ${s}`);
 	return s;
+}
+export function sanitizeName(raw: string): string {
+	return raw
+		.replace(/["'.\\]/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
 }
 
 function resolveColumn(fieldType: ViewFieldType, fieldName: string, viewSlug: string): string {
@@ -370,7 +393,7 @@ function resolveColumn(fieldType: ViewFieldType, fieldName: string, viewSlug: st
 		case 'folder':
 			throw new Error(`${fieldType} field has no scalar column; handle separately`);
 		default:
-			return `json_extract(d.properties, '$.views.${safeIdent(viewSlug, 'view slug')}.${safeIdent(fieldName, 'field name')}')`;
+			return `json_extract(d.properties, '$.views."${pathSeg(viewSlug, 'view slug')}"."${pathSeg(fieldName, 'field name')}"')`;
 	}
 }
 
@@ -428,6 +451,25 @@ function compileLeafSql(
 		return truthy
 			? { sql: `${expr} = 1`, params: [] }
 			: { sql: `(${expr} IS NULL OR ${expr} = 0)`, params: [] };
+	}
+
+	// any of list
+	if (op === 'any_of') {
+		const vals = (Array.isArray(value) ? value : []).filter((v) => typeof v === 'string');
+		if (vals.length === 0) return { sql: '1', params: [] };
+		const ph = vals.map(() => '?').join(', ');
+		return { sql: `${expr} IN (${ph})`, params: vals };
+	}
+
+	// all of list
+	if (op === 'has_all') {
+		const vals = (Array.isArray(value) ? value : []).filter((v) => typeof v === 'string');
+		if (vals.length === 0) return { sql: '1', params: [] };
+		const ph = vals.map(() => '?').join(', ');
+		return {
+			sql: `(SELECT COUNT(DISTINCT value) FROM json_each(${expr}) WHERE value IN (${ph})) = ?`,
+			params: [...vals, vals.length]
+		};
 	}
 
 	// good lord
@@ -567,17 +609,19 @@ interface ViewJSON {
 	filter: FilterCompound;
 	faces: ViewFaceJSON[];
 	state: Record<string, any>;
+	temporary?: boolean;
 }
 
 class View {
 	id: string; // uuid
-	slug: string; // global unique view slug
+	slug: string = $state(''); // global unique view slug
 	createdAt: Date;
 	updatedAt: Date = $state(new Date());
 	fields: ViewField[] = $state([]);
 	filter: FilterCompound = $state({ op: 'and', children: [] });
 	faces: ViewFace[] = $state([]);
 	state: Record<string, any> = $state({});
+	temporary: boolean = $state(false);
 
 	constructor(json: ViewJSON) {
 		this.id = json.id;
@@ -588,6 +632,7 @@ class View {
 		this.filter = json.filter;
 		this.faces = json.faces.map((j) => new ViewFace(j));
 		this.state = json.state ?? {};
+		this.temporary = json.temporary ?? false;
 	}
 
 	static create(slug: string): View {
@@ -628,6 +673,7 @@ class View {
 			});
 		}
 
+		view.temporary = true;
 		return view;
 	}
 
@@ -641,6 +687,7 @@ class View {
 			value: source.id
 		});
 
+		view.temporary = true;
 		return view;
 	}
 
@@ -649,11 +696,44 @@ class View {
 	}
 
 	private initDefaultFaces(): void {
+		this.faces = [ViewFace.create('table', this.defaultFaceFieldIds())];
+	}
+
+	private defaultFaceFieldIds(): string[] {
 		const wanted: ViewFieldType[] = ['title', 'folder', 'tags', 'updated_at'];
-		const ids = wanted
+		return wanted
 			.map((t) => this.fields.find((f) => f.type === t)?.id)
 			.filter((id): id is string => !!id);
-		this.faces = [ViewFace.create('table', ids)];
+	}
+
+	// add a fresh table face with the default columns, return it
+	addFace(): ViewFace {
+		const face = ViewFace.create('table', this.defaultFaceFieldIds());
+		this.faces = [...this.faces, face];
+		return face;
+	}
+
+	// copy an existing face (columns, filters, sort, config) under a new id
+	duplicateFace(id: string): ViewFace | undefined {
+		const src = this.faces.find((f) => f.id === id);
+		if (!src) return undefined;
+		const json = src.toJSON();
+		const face = new ViewFace({
+			...json,
+			id: uuidv4(),
+			name: src.name ? `${src.name} copy` : '',
+			display_field_ids: [...json.display_field_ids],
+			sort: [...json.sort],
+			additive_filter: JSON.parse(JSON.stringify(json.additive_filter)),
+			config: JSON.parse(JSON.stringify(json.config))
+		});
+		this.faces = [...this.faces, face];
+		return face;
+	}
+
+	removeFace(id: string): void {
+		if (this.faces.length <= 1) return;
+		this.faces = this.faces.filter((f) => f.id !== id);
 	}
 
 	addField(field: ViewField) {
@@ -694,7 +774,8 @@ class View {
 			fields: this.fields,
 			filter: this.filter,
 			faces: this.faces,
-			state: this.state
+			state: this.state,
+			temporary: this.temporary
 		};
 	}
 
@@ -741,11 +822,86 @@ class View {
 		return select<MemberRow>(sql, params);
 	}
 
-	// ── Global View Management ──────────────────────────────────────────────────────────
+	// total matching members
+	async countMembers(opts?: { face?: ViewFace }): Promise<number> {
+		const filterNode: FilterNode = opts?.face
+			? { op: 'and', children: [this.filter, opts.face.additive_filter] }
+			: this.filter;
+		const compiled = compileFilter(filterNode, this.fields, this.slug);
+		const sql = `SELECT COUNT(*) AS n
+			FROM documents d
+			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
+		const [row] = await select<{ n: number }>(sql, [...compiled.params]);
+		return row?.n ?? 0;
+	}
 
-	// static async loadViews(): View[] {
-	// 	// todo
-	// }
+	// ── Brain Damaging Ops (multi-doc) ──────────────────────────────────────────────────
+
+	/** Rename the view slug, moving every stored `views.<old>.*` value to the new namespace */
+	async renameSlug(newSlug: string): Promise<void> {
+		const oldSlug = this.slug;
+		if (!newSlug || newSlug === oldSlug) return;
+		const sources = await listSources();
+		for (const s of sources) {
+			await invoke('bulk_rename_view', {
+				sourceId: s.id,
+				sourcePath: s.path,
+				oldSlug,
+				newSlug
+			});
+		}
+		this.slug = newSlug;
+	}
+
+	/** Rename a stateful field, moving its stored values to the new key, then update the model */
+	async renameField(field: ViewField, newName: string): Promise<void> {
+		const oldName = field.name;
+		if (!newName || newName === oldName) return;
+		const sources = await listSources();
+		for (const s of sources) {
+			await invoke('bulk_rename_view_field', {
+				sourceId: s.id,
+				sourcePath: s.path,
+				viewSlug: this.slug,
+				oldName,
+				newName
+			});
+		}
+		this.fields = this.fields.map((f) => (f.id === field.id ? { ...f, name: newName } : f));
+	}
+
+	/** Rename a select/multiselect option value across all stored documents */
+	async renameOption(field: ViewField, oldValue: string, newValue: string): Promise<void> {
+		const sources = await listSources();
+		for (const s of sources) {
+			await invoke('bulk_rename_view_option', {
+				sourceId: s.id,
+				sourcePath: s.path,
+				viewSlug: this.slug,
+				fieldName: field.name,
+				oldValue,
+				newValue
+			});
+		}
+	}
+
+	/** Write a stateful field value onto the given documents in a source */
+	async writeFieldValue(
+		sourceId: string,
+		field: ViewField,
+		value: unknown,
+		docIds: string[]
+	): Promise<void> {
+		const source = await getSource(sourceId);
+		await invoke('bulk_set_view_field', {
+			sourceId,
+			sourcePath: source.path,
+			viewSlug: this.slug,
+			fieldName: field.name,
+			value,
+			docIds
+		});
+	}
 }
 
 export default View;

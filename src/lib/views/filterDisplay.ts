@@ -63,8 +63,9 @@ export const OP_LABELS: Record<string, string> = {
 	after: 'after',
 	on_or_after: 'on or after',
 	has_any: 'any',
-	has_all: 'all',
+	has_all: 'all of',
 	has_none: 'none',
+	any_of: 'is any of',
 	in: 'in',
 	not_in: 'not in'
 };

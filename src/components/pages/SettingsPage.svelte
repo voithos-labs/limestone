@@ -568,7 +568,7 @@
     .input-number:focus,
     .input-text:focus,
     .input-select:focus {
-        border-color: var(--color-accent);
+        border-color: var(--focus-border);
     }
 
     .input-select {

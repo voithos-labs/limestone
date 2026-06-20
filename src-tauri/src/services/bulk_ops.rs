@@ -59,6 +59,11 @@ enum JournaledOp {
         old_value: String,
         new_value: String,
     },
+    RenameView {
+        source_id: String,
+        old_slug: String,
+        new_slug: String,
+    },
 }
 
 impl JournaledOp {
@@ -66,7 +71,8 @@ impl JournaledOp {
         match self {
             JournaledOp::RenameViewField { source_id, .. }
             | JournaledOp::RemoveViewField { source_id, .. }
-            | JournaledOp::RenameViewOption { source_id, .. } => source_id,
+            | JournaledOp::RenameViewOption { source_id, .. }
+            | JournaledOp::RenameView { source_id, .. } => source_id,
         }
     }
 }
@@ -172,6 +178,25 @@ impl BulkRunner {
             source_id: source_id.to_string(),
             view_slug: view_slug.to_string(),
             field_name: field_name.to_string(),
+        };
+        self.run_journaled(db, app, source_path, op).await
+    }
+
+    pub async fn rename_view(
+        &self,
+        db: &SqlitePool,
+        app: &AppHandle,
+        source_id: &str,
+        source_path: &Path,
+        old_slug: &str,
+        new_slug: &str,
+    ) -> Result<BulkResult, String> {
+        validate_ident(old_slug, "view slug")?;
+        validate_ident(new_slug, "new view slug")?;
+        let op = JournaledOp::RenameView {
+            source_id: source_id.to_string(),
+            old_slug: old_slug.to_string(),
+            new_slug: new_slug.to_string(),
         };
         self.run_journaled(db, app, source_path, op).await
     }
@@ -365,6 +390,33 @@ async fn execute(
             })
             .await
         }
+        JournaledOp::RenameView {
+            source_id,
+            old_slug,
+            new_slug,
+        } => {
+            let old_path = json_view_path(old_slug);
+            let new_path = json_view_path(new_slug);
+            let rel_paths = fetch_paths_with_field(db, source_id, &old_path).await?;
+            sqlx::query(
+                "UPDATE documents
+                 SET properties = json_remove(json_set(properties, ?1, json_extract(properties, ?2)), ?2),
+                     updated_at = datetime('now')
+                 WHERE source_id = ?3 AND json_extract(properties, ?2) IS NOT NULL",
+            )
+            .bind(&new_path)
+            .bind(&old_path)
+            .bind(source_id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let (from, to) = (old_slug.clone(), new_slug.clone());
+            write_files(app, source_path, rel_paths, move |fm| {
+                frontmatter::rename_view(fm, &from, &to);
+            })
+            .await
+        }
     }
 }
 
@@ -452,16 +504,20 @@ async fn fetch_paths_by_id(
 }
 
 fn json_path(view_slug: &str, field: &str) -> String {
-    format!("$.views.{view_slug}.{field}")
+    format!("$.views.\"{view_slug}\".\"{field}\"")
+}
+
+fn json_view_path(view_slug: &str) -> String {
+    format!("$.views.\"{view_slug}\"")
 }
 
 fn validate_ident(s: &str, what: &str) -> Result<(), String> {
     if s.is_empty() {
         return Err(format!("{what} is empty"));
     }
-    if !s
+    if s
         .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        .any(|c| c == '.' || c == '"' || c == '\'' || c == '\\' || c.is_control())
     {
         return Err(format!("{what} has unsafe characters: {s}"));
     }

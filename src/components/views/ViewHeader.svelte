@@ -1,24 +1,29 @@
 <script lang="ts">
     import type View from "$lib/models/View.svelte";
     import type {FilterNode, FilterLeaf, ViewField, ViewFieldType} from "$lib/models/View.svelte";
-    import {VIEW_FIELD_OPS} from "$lib/models/View.svelte";
+    import {VIEW_FIELD_OPS, sanitizeName} from "$lib/models/View.svelte";
     import Group from "$lib/models/Group";
     import {getSource} from "$lib/models/Source";
     import FilterChipIsland from "./FilterChipIsland.svelte";
     import Menu from "./Menu.svelte";
     import ViewManageMenu from "./ViewManageMenu.svelte";
+    import FaceSwitcher from "./FaceSwitcher.svelte";
     import {getFieldIcon, getOpLabel, opHasValue, formatFilterValue, opsFor} from "$lib/views/filterDisplay";
-    import {Plus, Funnel, ChevronLeft, ChevronRight, Search, Shapes, StickyNotePlus} from "@lucide/svelte";
-    import {isDerived} from "$lib/models/View.svelte";
+    import {fieldLabel} from "$lib/views/fieldValue";
+    import {Plus, Funnel, ChevronLeft, ChevronRight, Search, Columns3Cog, StickyNotePlus} from "@lucide/svelte";
     import {onMount} from "svelte";
 
-    let {view, loading, count, elapsedMs, onNew}: {
+    let {view, loading, count, total, onNew}: {
         view: View;
         loading: boolean;
         count: number;
-        elapsedMs: number;
+        total: number;
         onNew?: () => void;
     } = $props();
+
+    const activeFace = $derived(
+        view.faces.find(f => f.id === view.state.active_face_id) ?? view.faces[0]
+    );
 
     const fieldsById = $derived(new Map(view.fields.map((f: ViewField) => [f.id, f])));
 
@@ -99,13 +104,24 @@
         return formatFilterValue(leaf.value);
     }
 
+    function valuePillsFor(leaf: FilterLeaf, field: ViewField | undefined) {
+        if (!field || (leaf.op !== 'any_of' && leaf.op !== 'has_all')) return undefined;
+        const vals = Array.isArray(leaf.value) ? leaf.value.filter((v): v is string => typeof v === 'string') : [];
+        if (vals.length === 0) return undefined;
+        const opts = (field.config?.options ?? []) as { value: string; color: number }[];
+        return vals.map((v) => ({label: v, color: opts.find(o => o.value === v)?.color ?? 0}));
+    }
+
     function removeFilter(node: FilterLeaf) {
         const i = view.filter.children.indexOf(node);
         if (i >= 0) view.filter.children.splice(i, 1);
     }
 
     function changeOp(node: FilterLeaf, newOp: string) {
+        const wasArray = node.op === 'any_of' || node.op === 'has_all';
+        const isArray = newOp === 'any_of' || newOp === 'has_all';
         node.op = newOp;
+        if (wasArray !== isArray) node.value = isArray ? [] : null;
     }
 
     function changeValue(node: FilterLeaf, newValue: unknown) {
@@ -121,7 +137,7 @@
 
     const fieldPickerItems = $derived(view.fields.map((f: ViewField) => ({
         value: f.id,
-        label: f.name,
+        label: fieldLabel(f),
         icon: getFieldIcon(f.type)
     })));
 
@@ -160,8 +176,6 @@
     let manageEl: HTMLButtonElement | null = $state(null);
     let manageOpen = $state(false);
 
-    const customFields = $derived(view.fields.filter((f: ViewField) => !isDerived(f.type)));
-
     function deleteField(id: string) {
         view.fields = view.fields.filter((f: ViewField) => f.id !== id);
         // Drop it from every face's displayed columns + filters referencing it
@@ -176,19 +190,85 @@
     function addField(type: ViewFieldType) {
         const field = view.addFieldOfType(type);
         // Surface the new column in the active face
-        const face = view.faces[0];
-        if (face) face.display_field_ids = [...face.display_field_ids, field.id];
+        if (activeFace) activeFace.display_field_ids = [...activeFace.display_field_ids, field.id];
+    }
+
+    // ── Inline view-title (slug) editing, saved views only ───────────────────
+    let editingTitle = $state(false);
+    let titleDraft = $state('');
+    let titleInputEl: HTMLInputElement | null = $state(null);
+
+    function startTitleEdit() {
+        if (view.temporary) return;
+        titleDraft = view.slug;
+        editingTitle = true;
+        queueMicrotask(() => { titleInputEl?.focus(); titleInputEl?.select(); });
+    }
+
+    async function commitTitle() {
+        if (!editingTitle) return;
+        editingTitle = false;
+        const next = sanitizeName(titleDraft);
+        try {
+            await view.renameSlug(next);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function titleKey(e: KeyboardEvent) {
+        if (e.key === 'Enter') { e.preventDefault(); titleInputEl?.blur(); }
+        else if (e.key === 'Escape') { e.preventDefault(); editingTitle = false; }
+    }
+
+    function toggleColumn(id: string) {
+        if (!activeFace) return;
+        if (activeFace.display_field_ids.includes(id)) {
+            activeFace.display_field_ids = activeFace.display_field_ids.filter((fid: string) => fid !== id);
+        } else {
+            activeFace.display_field_ids = [...activeFace.display_field_ids, id];
+        }
     }
 </script>
 
 <header class="view-header">
-    <h2 class="view-title">{view.slug}</h2>
+    {#if editingTitle}
+        <input
+                class="title-input"
+                bind:this={titleInputEl}
+                bind:value={titleDraft}
+                style:width="{Math.max(8, titleDraft.length + 1)}ch"
+                onblur={commitTitle}
+                onkeydown={titleKey}
+        />
+    {:else if view.temporary}
+        <h2 class="view-title">{view.slug}</h2>
+    {:else}
+        <button class="view-title editable" type="button" onclick={startTitleEdit} title="Rename view">{view.slug}</button>
+    {/if}
+    {#if view.temporary}
+        <button class="save-view" type="button" onclick={() => view.temporary = false}>
+            <span>Save as view</span>
+        </button>
+    {/if}
     <span class="view-meta">
-        {#if loading}loading…{:else}{count} docs · {elapsedMs.toFixed(0)}ms{/if}
+        {#if loading}loading…{:else if total > count}showing {count} of {total}{:else}{count} docs{/if}
     </span>
 </header>
 
 <div class="filter-bar" onwheel={onFilterWheel}>
+    <FaceSwitcher {view} face={activeFace}/>
+
+    <button
+            class="manage-view"
+            type="button"
+            aria-label="Manage view"
+            bind:this={manageEl}
+            onclick={() => manageOpen = !manageOpen}
+    >
+        <Columns3Cog size={14} strokeWidth={1.75}/>
+    </button>
+
     {#if leafFilters.length > 0}
         <button
                 class="collapse-toggle"
@@ -216,11 +296,12 @@
                 {@const field = fieldsById.get(leaf.field_id)}
                 <FilterChipIsland
                         icon={getFieldIcon(field?.type)}
-                        fieldName={field?.name ?? 'unknown'}
+                        fieldName={field ? fieldLabel(field) : 'unknown'}
                         operator={getOpLabel(leaf.op)}
                         opValue={leaf.op}
                         opOptions={opsFor(field?.type)}
                         value={displayValue(leaf, field)}
+                        valuePills={valuePillsFor(leaf, field)}
                         rawValue={leaf.value}
                         {field}
                         sourceId={sourceScopeId}
@@ -261,24 +342,18 @@
         />
     </label>
 
+
     <button class="new-entry" type="button" onclick={() => onNew?.()}>
         <StickyNotePlus size={14} strokeWidth={1.75}/>
-        <span>New</span>
-    </button>
-
-    <button
-            class="manage-view"
-            type="button"
-            aria-label="Manage view"
-            bind:this={manageEl}
-            onclick={() => manageOpen = !manageOpen}
-    >
-        <Shapes size={14} strokeWidth={1.75}/>
+        <!--        <span>New</span>-->
     </button>
     <ViewManageMenu
             bind:open={manageOpen}
             anchor={manageEl}
-            fields={customFields}
+            fields={view.fields}
+            shownIds={activeFace.display_field_ids}
+            canAddFields={!view.temporary}
+            onToggleVisible={toggleColumn}
             onDelete={deleteField}
             onAddField={addField}
     />
@@ -290,6 +365,7 @@
         align-items: baseline;
         gap: 12px;
         margin-bottom: 12px;
+        padding-right: 24px;
         flex-shrink: 0;
     }
 
@@ -297,10 +373,46 @@
         margin: 0;
         font-size: 18px;
         font-weight: 600;
+        line-height: 1.2;
         color: var(--color-text-primary);
     }
 
+    .view-title.editable {
+        padding: 0 4px;
+        margin: 0 -4px;
+        border: 0;
+        background: none;
+        font-family: var(--font-ui);
+        border-radius: 4px;
+        cursor: text;
+        transition: background-color 120ms ease;
+    }
+
+    .view-title.editable:focus-visible {
+        box-shadow: none;
+    }
+
+    .view-title.editable:hover {
+        background: var(--chip-bg);
+    }
+
+    .title-input {
+        margin: 0 -4px;
+        padding: 0 4px;
+        font-family: var(--font-ui);
+        font-size: 18px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: var(--color-text-primary);
+        background: var(--color-bg);
+        border: 0;
+        border-radius: 4px;
+        box-shadow: inset 0 0 0 1px var(--color-ui-muted);
+        outline: none;
+    }
+
     .view-meta {
+        margin-left: auto;
         font-size: 12px;
         color: var(--color-ui-muted);
     }
@@ -400,7 +512,7 @@
         background: var(--chip-bg);
         border: none;
         border-radius: 6px;
-        color: var(--color-text-secondary);
+        color: var(--color-ui-muted);
         font-family: var(--font-ui);
         font-size: 12px;
         font-weight: 500;
@@ -411,6 +523,22 @@
     .new-entry:hover {
         background: var(--chip-bg-hover);
         color: var(--color-text-primary);
+    }
+
+    .save-view {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--color-ui-muted);
+        font-family: var(--font-ui);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    .save-view:hover {
+        color: var(--color-text-primary);
+        text-decoration: underline;
     }
 
     .manage-view {

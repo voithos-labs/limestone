@@ -77,3 +77,20 @@ export function formatDateISO(input: string | number | Date | null | undefined):
 		.replace('T', ' ')
 		.replace(/\.\d{3}Z$/, ' UTC');
 }
+
+function pad2(n: number): string {
+	return String(n).padStart(2, '0');
+}
+
+// SQL datetime (UTC) -> local "YYYY-MM-DDTHH:mm" for a datetime-local input
+export function sqlToWallClock(sql: string): string | null {
+	if (!sql) return null;
+	const d = new Date(sql.replace(' ', 'T') + 'Z');
+	if (isNaN(d.getTime())) return null;
+	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+// Date -> SQL datetime string "YYYY-MM-DD HH:mm:ss"
+export function toSqlDateTime(date: Date): string {
+	return date.toISOString().replace('T', ' ').slice(0, 19);
+}
