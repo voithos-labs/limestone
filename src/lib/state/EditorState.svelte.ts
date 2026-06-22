@@ -35,6 +35,7 @@
  *
  */
 
+import { v4 as uuidv4 } from 'uuid';
 import DocHandle from '$lib/models/DocHandle';
 import View from '$lib/models/View.svelte';
 
@@ -44,11 +45,15 @@ export type FocusTarget = { kind: 'tab'; id: string } | { kind: 'settings' } | {
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────────────
 
-export type TabContent = { type: 'markdown'; handle: DocHandle } | { type: 'view'; view: View };
+export type TabContent =
+	| { type: 'markdown'; handle: DocHandle }
+	| { type: 'view'; view: View }
+	| { type: 'new'; id: string };
 
 export type TabJSON =
 	| { type: 'markdown'; handleId: string; state: Record<string, any> }
-	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any> };
+	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any> }
+	| { type: 'new'; id: string; state: Record<string, any> };
 // eventualy  { type: 'view-ref'; viewId: string; state: Record<string, any> } for saved views, this
 // is for temp
 
@@ -66,11 +71,25 @@ export class TabState {
 	}
 
 	get id(): string {
-		return this.content.type === 'markdown' ? this.content.handle.id : this.content.view.id;
+		switch (this.content.type) {
+			case 'markdown':
+				return this.content.handle.id;
+			case 'view':
+				return this.content.view.id;
+			case 'new':
+				return this.content.id;
+		}
 	}
 
 	get title(): string {
-		return this.content.type === 'markdown' ? this.content.handle.title : this.content.view.slug;
+		switch (this.content.type) {
+			case 'markdown':
+				return this.content.handle.title;
+			case 'view':
+				return this.content.view.slug;
+			case 'new':
+				return 'new tab';
+		}
 	}
 
 	// dep
@@ -83,6 +102,13 @@ export class TabState {
 			return {
 				type: 'markdown',
 				handleId: this.content.handle.id,
+				state: this.state
+			};
+		}
+		if (this.content.type === 'new') {
+			return {
+				type: 'new',
+				id: this.content.id,
 				state: this.state
 			};
 		}
@@ -101,6 +127,10 @@ export class TabState {
 		return new TabState({ type: 'view', view });
 	}
 
+	static forNew(): TabState {
+		return new TabState({ type: 'new', id: uuidv4() });
+	}
+
 	static async loadFromJSON(json: TabJSON): Promise<TabState> {
 		if (json.type === 'markdown') {
 			const handle = await DocHandle.fromID(json.handleId);
@@ -109,6 +139,9 @@ export class TabState {
 		if (json.type === 'view') {
 			const view = new View(json.view);
 			return new TabState({ type: 'view', view }, json.state ?? {});
+		}
+		if (json.type === 'new') {
+			return new TabState({ type: 'new', id: json.id }, json.state ?? {});
 		}
 		throw new Error(`Unknown tab type: ${(json as { type: string }).type}`);
 	}
@@ -178,7 +211,12 @@ class EditorState {
 		const seen = new Set<string>();
 		const tabs: TabState[] = [];
 		for (const tabJson of json.tabs ?? []) {
-			const id = tabJson.type === 'markdown' ? tabJson.handleId : tabJson.view.id;
+			const id =
+				tabJson.type === 'markdown'
+					? tabJson.handleId
+					: tabJson.type === 'view'
+						? tabJson.view.id
+						: tabJson.id;
 			if (seen.has(id)) continue;
 			seen.add(id);
 			try {
@@ -231,6 +269,28 @@ class EditorState {
 	openView(view: View) {
 		this.openTab(TabState.forView(view));
 		this.focusTab({ kind: 'tab', id: view.id });
+	}
+
+	openNewTab() {
+		const tab = TabState.forNew();
+		this.openTab(tab);
+		this.focusTab({ kind: 'tab', id: tab.id });
+	}
+
+	/**
+	 * Swap the tab `oldId` for `tab` in place
+	 */
+	replaceTab(oldId: string, tab: TabState) {
+		const idx = this.tabs.findIndex((t) => t.id === oldId);
+		if (idx === -1) {
+			this.openTab(tab);
+		} else {
+			this.tabs[idx] = tab;
+		}
+		this.tabAccessOrderById = this.tabAccessOrderById.map((id) => (id === oldId ? tab.id : id));
+		if (this.focused?.kind === 'tab' && this.focused.id === oldId) {
+			this.focused = { kind: 'tab', id: tab.id };
+		}
 	}
 
 	closeTab(id: string) {

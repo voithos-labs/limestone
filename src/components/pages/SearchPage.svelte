@@ -9,7 +9,7 @@
     import {listen} from "@tauri-apps/api/event";
     import {open, confirm} from "@tauri-apps/plugin-dialog";
     import {openPath} from "@tauri-apps/plugin-opener";
-    import {Search, FolderPlus, Folder, Folders, Hash, FileText, ExternalLink, Trash2} from "@lucide/svelte";
+    import {Search, FolderPlus, Folder, Folders, Hash, ExternalLink, Trash2, TextAlignStart} from "@lucide/svelte";
     import {onMount} from "svelte";
 
     let {editor}: { editor: EditorState } = $props();
@@ -182,7 +182,7 @@
                                 <Hash size={14} />
                             {/if}
                         {:else}
-                            <FileText size={14} />
+                            <TextAlignStart size={14} />
                         {/if}
                         <span class="result-title">{@html highlightTitle(result.title, result.match_indices)}</span>
                     </span>

@@ -4,6 +4,7 @@
     import SearchPage from "../components/pages/SearchPage.svelte";
     import SettingsPage from "../components/pages/SettingsPage.svelte";
     import ViewPage from "../components/pages/ViewPage.svelte";
+    import NewTabPage from "../components/pages/NewTabPage.svelte";
     import MarkdownEditor from "../components/editor/MarkdownEditor.svelte";
     import type { TabState } from "$lib/state/EditorState.svelte";
 
@@ -35,6 +36,8 @@
                         <ViewPage view={tab.content.view} {editor}/>
                     {:else if tab.content.type === 'markdown'}
                         <MarkdownEditor {tab}/>
+                    {:else if tab.content.type === 'new'}
+                        <NewTabPage {tab} {editor}/>
                     {/if}
                 {/key}
             {:else if editor.focused?.kind === 'search'}

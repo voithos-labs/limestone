@@ -3,7 +3,7 @@
     import type {FocusTarget} from "$lib/state/EditorState.svelte";
     import {getCurrentWindow} from "@tauri-apps/api/window";
 
-    import {Settings, Search, Cone, Library, Bookmark, ChevronDown, LayoutDashboard, X, GripVertical} from "@lucide/svelte";
+    import {Settings, Search, Cone, Library, Bookmark, ChevronDown, Layers, X, GripVertical, Plus, TextSearch, TextAlignStart} from "@lucide/svelte";
     import {getSetting, setSetting} from "$lib/models/Settings";
 
     let {editor}: { editor: EditorState } = $props();
@@ -177,9 +177,11 @@
                     tabindex="0"
             >
                 {#if d.content.type === 'view'}
-                    <LayoutDashboard size={13}/>
+                    <Layers size={13}/>
+                {:else if d.content.type === 'new'}
+                    <TextSearch size={13}/>
                 {:else if !compactTabs}
-                    <span class="doc-icon"></span>
+                    <TextAlignStart class="doc-icon" size={13}/>
                 {/if}
                 <span class="tab-label">{d.title}</span>
                 <span class="tab-fade"></span>
@@ -194,6 +196,9 @@
                 </span>
             </div>
         {/each}
+        <button class="new-tab-btn" title="New tab" onclick={() => editor.openNewTab()}>
+            <Plus size={15}/>
+        </button>
     </div>
 
     <!-- Window controls -->
@@ -300,6 +305,11 @@
         transition: transform 150ms ease;
     }
 
+    .tab :global(svg) {
+        display: block;
+        flex-shrink: 0;
+    }
+
     .tab.no-transition {
         transition: none;
     }
@@ -315,31 +325,38 @@
         flex-shrink: 1;
         min-width: 32px;
         max-width: 240px;
-        padding: 0 12px;
+        padding: 0 13px 0 12px;
     }
 
     .tab.icon-tab {
         padding: 0 10px;
     }
 
-    .doc-icon {
-        display: inline-block;
-        width: 18px;
-        height: 18px;
-        margin-right: 2px;
-        background-color: currentColor;
-        mask-image: url('/assets/markdown-icon.svg');
-        mask-size: contain;
-        mask-repeat: no-repeat;
-        mask-position: center;
-        -webkit-mask-image: url('/assets/markdown-icon.svg');
-        -webkit-mask-size: contain;
-        -webkit-mask-repeat: no-repeat;
-        -webkit-mask-position: center;
+    /* ── New tab button ── */
+    .new-tab-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        margin-bottom: 6px;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--color-ui-muted);
+        cursor: pointer;
+        flex-shrink: 0;
     }
 
-    .tab.active .doc-icon {
-        background-color: var(--color-accent);
+    .new-tab-btn:hover {
+        background: var(--color-surface);
+        color: var(--color-text-secondary);
+    }
+
+    :global(.doc-icon) {
+        margin-right: 2px;
+        color: currentColor;
     }
 
     .tab:hover {
@@ -392,6 +409,8 @@
         text-overflow: ellipsis;
         flex: 1;
         min-width: 0;
+        line-height: 1.5;
+        transform: translateY(-1px);
         user-select: none;
     }
 

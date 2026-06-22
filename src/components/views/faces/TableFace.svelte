@@ -18,6 +18,7 @@
     import {sqlToWallClock, toSqlDateTime} from "$lib/views/dateFormat";
     import {searchDocuments} from "$lib/search";
     import Menu from "../Menu.svelte";
+    import IconAddColumnRight from "~icons/material-symbols/add-column-right";
     import {
         Plus,
         ArrowUpAZ,
@@ -1526,7 +1527,7 @@
                                 bind:this={addColEl}
                                 onclick={(e) => { e.stopPropagation(); addColOpen = !addColOpen; }}
                         >
-                            <Plus size={15} strokeWidth={1.75}/>
+                            <IconAddColumnRight width={16} height={16}/>
                         </button>
                     {/if}
                 </th>
