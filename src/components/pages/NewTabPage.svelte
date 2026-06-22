@@ -15,16 +15,27 @@
     import '@fontsource/jetbrains-mono/500.css';
     import '@fontsource/jetbrains-mono/800.css';
 
-    let {tab, editor}: { tab: TabState; editor: EditorState } = $props();
+    let {tab, editor}: { tab?: TabState; editor: EditorState } = $props();
 
-    let query = $state(tab.state.query ?? '');
+    let query = $state(tab?.state.query ?? '');
     let results: SearchResult[] = $state([]);
     let actionError = $state('');
     let inputEl: HTMLInputElement | undefined = $state();
 
     $effect(() => {
-        tab.state.query = query;
+        if (tab) tab.state.query = query;
     });
+
+    // When hosted in a real tab, the chosen doc/view replaces this new-tab in
+    // place; in the empty-state (no tab) it opens a fresh tab instead
+    function openInTab(next: TabState) {
+        if (tab) {
+            editor.replaceTab(tab.id, next);
+        } else {
+            editor.openTab(next);
+            editor.focusTab({kind: 'tab', id: next.id});
+        }
+    }
 
     let now = $state(new Date());
     let version = $state('');
@@ -37,6 +48,7 @@
     const dateStr = $derived(
         now.toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'})
     );
+    const ampm = $derived(now.getHours() < 12 ? 'am' : 'pm');
 
     async function doSearch() {
         if (!query.trim()) {
@@ -57,7 +69,7 @@
                 editor.focusTab({kind: 'tab', id: existing.id});
                 return;
             }
-            editor.replaceTab(tab.id, TabState.forView(View.createFromGroup(group)));
+            openInTab(TabState.forView(View.createFromGroup(group)));
             return;
         }
         if (result.kind === 'source') {
@@ -70,7 +82,7 @@
                 editor.focusTab({kind: 'tab', id: existing.id});
                 return;
             }
-            editor.replaceTab(tab.id, TabState.forView(View.createFromSource(source)));
+            openInTab(TabState.forView(View.createFromSource(source)));
             return;
         }
         const existing = editor.tabs.find(d => d.id === result.id);
@@ -79,7 +91,7 @@
             return;
         }
         const doc = await DocHandle.fromID(result.id);
-        editor.replaceTab(tab.id, TabState.forDoc(doc));
+        openInTab(TabState.forDoc(doc));
     }
 
     function onKeydown(e: KeyboardEvent) {
@@ -107,12 +119,12 @@
             return;
         }
         const doc = await DocHandle.createFromTitle(source, {title: 'Untitled'});
-        editor.replaceTab(tab.id, TabState.forDoc(doc));
+        openInTab(TabState.forDoc(doc));
     }
 
     function createNewView() {
         actionError = '';
-        editor.replaceTab(tab.id, TabState.forView(View.create('New view')));
+        openInTab(TabState.forView(View.create('New view')));
     }
 
     function highlightTitle(title: string, indices: number[]): string {
@@ -126,83 +138,85 @@
         inputEl?.focus();
         if (query.trim()) doSearch();
         getVersion().then(v => version = v);
-        const id = setInterval(() => { now = new Date(); }, 1000);
+        const id = setInterval(() => {
+            now = new Date();
+        }, 1000);
         return () => clearInterval(id);
     });
 </script>
 
 <div class="new-tab-page">
-  <div class="stack">
-    <div class="hero">
-        <div class="time">{timeStr}</div>
-        <div class="meta">
-            <div class="date">{dateStr}</div>
-            <div class="brand">limestone v{version || '0.1.0'}</div>
-        </div>
-    </div>
-
-    <div class="search" class:open={query.trim()}>
-        <div class="quick-action">
-            <Search size={18} />
-            <input
-                bind:this={inputEl}
-                class="quick-action-input"
-                type="text"
-                placeholder="quick-action..."
-                bind:value={query}
-                oninput={doSearch}
-                onkeydown={onKeydown}
-            />
-            {#if query}
-                <button class="clear-btn" title="Clear" onclick={clearQuery}>
-                    <X size={16} />
-                </button>
-            {/if}
+    <div class="stack">
+        <div class="hero">
+            <div class="time">{timeStr}<span class="ampm">{ampm}</span></div>
+            <div class="meta">
+                <div class="date">{dateStr}</div>
+                <div class="brand">limestone v{version || '0.1.0'}</div>
+            </div>
         </div>
 
-        {#if query.trim()}
-            <div class="results-dropdown">
-                {#each results as result}
-                    <button class="result" onclick={() => openResult(result)}>
+        <div class="search" class:open={query.trim()}>
+            <div class="quick-action">
+                <Search size={18}/>
+                <input
+                        bind:this={inputEl}
+                        class="quick-action-input"
+                        type="text"
+                        placeholder="quick-action..."
+                        bind:value={query}
+                        oninput={doSearch}
+                        onkeydown={onKeydown}
+                />
+                {#if query}
+                    <button class="clear-btn" title="Clear" onclick={clearQuery}>
+                        <X size={16}/>
+                    </button>
+                {/if}
+            </div>
+
+            {#if query.trim()}
+                <div class="results-dropdown">
+                    {#each results as result}
+                        <button class="result" onclick={() => openResult(result)}>
                         <span class="result-line">
                             {#if result.kind === 'source'}
-                                <Folders size={14} />
+                                <Folders size={14}/>
                             {:else if result.kind === 'group'}
                                 {#if result.group_type === 'folder'}
-                                    <Folder size={14} />
+                                    <Folder size={14}/>
                                 {:else}
-                                    <Hash size={14} />
+                                    <Hash size={14}/>
                                 {/if}
                             {:else}
-                                <TextAlignStart size={14} />
+                                <TextAlignStart size={14}/>
                             {/if}
                             <span class="result-title">{@html highlightTitle(result.title, result.match_indices)}</span>
                         </span>
-                        {#if result.rel_path}
-                            <span class="result-path">{result.rel_path}</span>
-                        {/if}
-                    </button>
-                {:else}
-                    <p class="empty">No results</p>
-                {/each}
-            </div>
-        {/if}
-    </div>
+                            {#if result.rel_path}
+                                <span class="result-path">{result.rel_path}</span>
+                            {/if}
+                        </button>
+                    {:else}
+                        <p class="empty">No results</p>
+                    {/each}
+                </div>
+            {/if}
+        </div>
 
-    <div class="actions">
-        <button class="action" onclick={createNewDocument}>
-            <IconAddNotes width={14} height={14} />
-            <span>New document</span>
-        </button>
-        <button class="action" onclick={createNewView}>
-            <LayersPlus size={13} />
-            <span>New view</span>
-        </button>
-        {#if actionError}
-            <p class="action-error">{actionError}</p>
-        {/if}
+        <div class="actions">
+            <button class="action" onclick={createNewDocument}>
+                <IconAddNotes width={14} height={14}/>
+                <span>New document</span>
+            </button>
+            <button class="action" onclick={createNewView}>
+                <LayersPlus size={13}/>
+                <span>New view</span>
+            </button>
+            {#if actionError}
+                <p class="action-error">{actionError}</p>
+            {/if}
+        </div>
     </div>
-  </div>
 </div>
 
 <style>
@@ -237,8 +251,9 @@
     }
 
     .time {
+        position: relative;
         font-family: 'JetBrains Mono', var(--font-editor), monospace;
-        font-size: 80px;
+        font-size: 72px;
         font-weight: 800;
         line-height: 1;
         letter-spacing: -0.01em;
@@ -246,12 +261,25 @@
         font-variant-numeric: tabular-nums;
     }
 
+    .ampm {
+        position: absolute;
+        top: 100%;
+        right: 2px;
+        margin-top: -6px;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0;
+        color: var(--color-ui-dulled);
+        line-height: 1;
+    }
+
     .meta {
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: flex-start;
-        gap: 14px;
+        gap: 12px;
+        padding-bottom: 2px;
     }
 
     .date {

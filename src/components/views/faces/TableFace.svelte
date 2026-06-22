@@ -286,6 +286,7 @@
 
     let reloadTimer: ReturnType<typeof setTimeout> | null = null;
     let lastSig: string | null = null;
+    let lastFaceId: string | null = null;
 
     function nodeSig(n: FilterNode): string {
         if ('children' in n) {
@@ -312,18 +313,29 @@
 
     $effect(() => {
         const sig = fullSignature();
+        const faceId = face.id;
         if (lastSig === null) {
             lastSig = sig;
+            lastFaceId = faceId;
             return;
         }
-        if (sig === lastSig) return;
+        if (sig === lastSig) {
+            lastFaceId = faceId;
+            return;
+        }
+        const faceChanged = faceId !== lastFaceId;
         lastSig = sig;
+        lastFaceId = faceId;
         // Filter/sort/search changed the row set is about to change out from
         // under the active cell, so reset it to the top-left rather than letting
         // it point at an unrelated row
         if (face.config.active_cell) face.config.active_cell = {row: 0, col: 0};
         if (reloadTimer) clearTimeout(reloadTimer);
-        reloadTimer = setTimeout(() => load(true), 100);
+        // A face switch (incl. hover preview) should reload immediately so the
+        // rows don't reshuffle ~100ms after the first paint; the debounce only
+        // exists to coalesce rapid filter/sort/search edits within one face.
+        if (faceChanged) load(true);
+        else reloadTimer = setTimeout(() => load(true), 100);
     });
 
     $effect(() => {

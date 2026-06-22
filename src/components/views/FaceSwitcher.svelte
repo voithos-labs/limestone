@@ -1,11 +1,12 @@
 <script lang="ts">
     import {untrack} from "svelte";
     import type {Component} from "svelte";
-    import {ChevronDown, Table, Columns3, List, Calendar, Pin, Layers, Pencil, Copy, Trash2, Plus, ArrowLeft, Check, ChevronUp} from "@lucide/svelte";
+    import {ChevronDown, Table, Columns3, List, Calendar, Pin, Layers, Pencil, Copy, Trash2, Plus, ArrowLeft, ChevronUp} from "@lucide/svelte";
     import type View from "$lib/models/View.svelte";
     import type {ViewFace, ViewFaceType, ViewField, FilterNode} from "$lib/models/View.svelte";
     import {getFieldIcon} from "$lib/views/filterDisplay";
     import {fieldLabel} from "$lib/views/fieldValue";
+    import {getSetting} from "$lib/models/Settings";
     import Menu from "./Menu.svelte";
     import FaceFilters from "./FaceFilters.svelte";
 
@@ -65,7 +66,29 @@
 
     function selectFace(id: string) {
         view.state.active_face_id = id;
+        clearPreview();
         open = false;
+    }
+
+    // ── Hover preview (debounced) ──────────────────────────────────────────────
+    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+    let hoverPreviewEnabled = $state(true);
+    getSetting<boolean>('views.face_hover_preview').then(v => { if (v !== null) hoverPreviewEnabled = v; });
+
+    function previewEnter(id: string) {
+        if (!hoverPreviewEnabled) return;
+        if (hoverTimer) clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => { view.previewFaceId = id; }, 5);
+    }
+
+    function previewLeave() {
+        if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+        view.previewFaceId = null;
+    }
+
+    function clearPreview() {
+        if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+        view.previewFaceId = null;
     }
 
     function addFace() {
@@ -156,6 +179,7 @@
                 window.removeEventListener('scroll', position, true);
                 document.removeEventListener('pointerdown', onDocPointerDown);
                 document.removeEventListener('keydown', onKey);
+                clearPreview();
             };
         }
         if (!open) wasOpen = false;
@@ -173,7 +197,14 @@
         <div class="pop-label">View Faces</div>
         <div class="list">
             {#each view.faces as f, i (f.id)}
-                <div class="row" class:active={f.id === view.state.active_face_id} class:confirming={confirmFor === f.id}>
+                <div
+                        class="row"
+                        class:active={f.id === view.state.active_face_id}
+                        class:confirming={confirmFor === f.id}
+                        onmouseenter={() => previewEnter(f.id)}
+                        onmouseleave={previewLeave}
+                        role="presentation"
+                >
                     {#if renamingId === f.id}
                         <span class="name as-input">
                             <input
@@ -220,7 +251,7 @@
                             </button>
                         {/if}
                         <span class="check" class:shown={f.id === view.state.active_face_id}>
-                            <Check size={13} strokeWidth={2}/>
+                            <span class="dot"></span>
                         </span>
                     {/if}
                 </div>
@@ -410,12 +441,18 @@
         justify-content: center;
         width: 20px;
         flex-shrink: 0;
-        color: var(--color-accent);
         visibility: hidden;
     }
 
     .check.shown {
         visibility: visible;
+    }
+
+    .dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--color-accent);
     }
 
     .row:hover .check {

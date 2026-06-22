@@ -45,9 +45,7 @@
             {:else if editor.focused?.kind === 'settings'}
                 <SettingsPage viewTab={session.getViewTab('settings')} {session}/>
             {:else}
-                <div class="panel-placeholder">
-                    No document selected
-                </div>
+                <NewTabPage {editor}/>
             {/if}
         </main>
     </div>
@@ -71,13 +69,4 @@
     }
 
 
-    .panel-placeholder {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        color: var(--color-ui-muted);
-        font-size: 14px;
-        text-transform: capitalize;
-    }
 </style>

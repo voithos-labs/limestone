@@ -9,7 +9,7 @@
     let {view, editor}: { view: View; editor: EditorState } = $props();
 
     const activeFace: ViewFace = $derived(
-        view.faces.find(f => f.id === view.state.active_face_id) ?? view.faces[0]
+        view.faces.find(f => f.id === (view.previewFaceId ?? view.state.active_face_id)) ?? view.faces[0]
     );
 
     let meta = $state({loading: true, count: 0, total: 0, elapsedMs: 0});

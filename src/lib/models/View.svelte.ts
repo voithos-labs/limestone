@@ -623,6 +623,9 @@ class View {
 	state: Record<string, any> = $state({});
 	temporary: boolean = $state(false);
 
+	// hover preview
+	previewFaceId: string | null = $state(null);
+
 	constructor(json: ViewJSON) {
 		this.id = json.id;
 		this.slug = json.slug;

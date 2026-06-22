@@ -2,6 +2,7 @@
     import {untrack} from "svelte";
     import {Search, Folder, FolderPlus, ChevronRight, ChevronDown, Check} from "@lucide/svelte";
     import Group, {GroupType} from "$lib/models/Group";
+    import {listSources} from "$lib/models/Source";
 
     let {
         open = $bindable(false),
@@ -22,6 +23,7 @@
     let pos: { top: number; left: number } = $state({top: 0, left: 0});
 
     let folders: Group[] = $state([]);
+    let sourceNames: Map<string, string> = $state(new Map());
     let loadError = $state('');
     let loaded = false;
     let query = $state('');
@@ -225,6 +227,9 @@
                         loaded = false;
                         loadError = String(e);
                     });
+                listSources()
+                    .then(ss => sourceNames = new Map(ss.map(s => [s.id, s.title])))
+                    .catch(() => {});
             }
             queueMicrotask(() => {
                 position();
@@ -288,6 +293,9 @@
                             {#if ancestorPath(folder)}
                                 <span class="name-path">{ancestorPath(folder)}</span>
                             {/if}
+                            {#if sourceNames.get(folder.sourceId)}
+                                <span class="source-label">{sourceNames.get(folder.sourceId)}</span>
+                            {/if}
                             {#if folder.id === value}
                                 <Check size={13} strokeWidth={2}/>
                             {/if}
@@ -344,6 +352,9 @@
                                 onmouseenter={() => activeIndex = i}>
                             <Folder size={13} strokeWidth={1.75}/>
                             <span class="name-label">{folder.slug}</span>
+                            {#if sourceNames.get(folder.sourceId)}
+                                <span class="source-label">{sourceNames.get(folder.sourceId)}</span>
+                            {/if}
                             {#if folder.id === value}
                                 <Check size={13} strokeWidth={2}/>
                             {/if}
@@ -500,6 +511,16 @@
     .name-path {
         flex: 1;
         min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 11px;
+        color: var(--color-ui-dulled);
+    }
+
+    .source-label {
+        flex-shrink: 0;
+        margin-left: auto;
+        padding-left: 8px;
         overflow: hidden;
         text-overflow: ellipsis;
         font-size: 11px;

@@ -10,7 +10,8 @@
     import FaceSwitcher from "./FaceSwitcher.svelte";
     import {getFieldIcon, getOpLabel, opHasValue, formatFilterValue, opsFor} from "$lib/views/filterDisplay";
     import {fieldLabel} from "$lib/views/fieldValue";
-    import {Plus, Funnel, ChevronLeft, ChevronRight, Search, Columns3Cog, StickyNotePlus} from "@lucide/svelte";
+    import {ListFilterPlus, Funnel, ChevronLeft, ChevronRight, Search, Columns3Cog} from "@lucide/svelte";
+    import IconAddNotes from "~icons/material-symbols/add-notes";
     import {onMount} from "svelte";
 
     let {view, loading, count, total, onNew}: {
@@ -318,7 +319,7 @@
                     bind:this={addFilterEl}
                     onclick={() => addFilterOpen = !addFilterOpen}
             >
-                <Plus size={14} strokeWidth={2}/>
+                <ListFilterPlus size={14} strokeWidth={2}/>
             </button>
         </div>
     </div>
@@ -344,7 +345,7 @@
 
 
     <button class="new-entry" type="button" onclick={() => onNew?.()}>
-        <StickyNotePlus size={14} strokeWidth={1.75}/>
+        <IconAddNotes width={17} height={17}/>
         <!--        <span>New</span>-->
     </button>
     <ViewManageMenu
