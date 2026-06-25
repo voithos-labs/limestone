@@ -47,7 +47,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
 import type DocHandle from '$lib/models/DocHandle';
 import Group, { GroupType } from '$lib/models/Group';
-import { getSource, listSources, type Source } from '$lib/models/Source';
+import { getSource, listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/db';
 
 /**
@@ -681,7 +681,7 @@ class View {
 	}
 
 	static createFromSource(source: Source): View {
-		const view = View.create(source.title);
+		const view = View.create(sourceName(source));
 		const sourceFieldId = view.fields.find((f) => f.type == 'source')!.id;
 
 		view.addBasicFilter({

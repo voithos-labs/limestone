@@ -2,7 +2,7 @@
     import type {Component} from "svelte";
     import type {ViewField} from "$lib/models/View.svelte";
     import Group, {GroupType} from "$lib/models/Group";
-    import {listSources} from "$lib/models/Source";
+    import {listSources, sourceName} from "$lib/models/Source";
     import {SquareCheck, Square} from "@lucide/svelte";
     import Menu from "./Menu.svelte";
     import InputPopover from "./InputPopover.svelte";
@@ -57,7 +57,7 @@
         if (field.type === 'source' && !sourcesLoaded) {
             sourcesLoaded = true;
             listSources()
-                .then(ss => sourceItems = ss.map(s => ({value: s.id, label: s.title})))
+                .then(ss => sourceItems = ss.map(s => ({value: s.id, label: sourceName(s)})))
                 .catch(() => {});
         }
     });

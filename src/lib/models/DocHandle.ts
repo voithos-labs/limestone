@@ -183,9 +183,12 @@ class DocHandle {
 	): Promise<DocHandle> {
 		const base = opts.title.replace(/[\\/]/g, '-');
 		const relPath = await DocHandle.uniqueRelPath(source.id, opts.dir ?? '', base);
+		// Title must match the de-duplicated filename (e.g. "Untitled 2"), not the
+		// requested title, or two files end up sharing one title in the UI
+		const title = relPath.split('/').pop()!.replace(/\.md$/i, '');
 		const doc = await DocHandle.create(
 			source,
-			opts.title,
+			title,
 			relPath,
 			opts.groupIds ?? [],
 			opts.properties ?? {}
@@ -365,6 +368,22 @@ class DocHandle {
 			newRelPath
 		});
 		this._relPath = newRelPath;
+	}
+
+	/**
+	 * Move a document into a different source (and optionally a folder within it)
+	 */
+	async moveToSource(newSource: Source, newRelPath: string): Promise<void> {
+		await invoke('move_document', {
+			sourceId: this.source.id,
+			sourcePath: this.source.path,
+			relPath: this._relPath,
+			newRelPath,
+			newSourceId: newSource.id,
+			newSourcePath: newSource.path
+		});
+		this._relPath = newRelPath;
+		(this as { source: Source }).source = newSource;
 	}
 
 	/**

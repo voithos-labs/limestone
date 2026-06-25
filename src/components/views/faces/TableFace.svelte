@@ -1195,7 +1195,7 @@
         let sid = createCtx.sourceId;
         if (!sid && effectiveFolderId) sid = folders.find(f => f.id === effectiveFolderId)?.sourceId ?? null;
         const s = sid ? sources.find(x => x.id === sid) : (sources.length === 1 ? sources[0] : undefined);
-        return s?.title ?? 'Source root';
+        return s ? sourceName(s.id) : 'Source root';
     });
 
     function startNew(opts?: { floatTop?: boolean; groupValue?: unknown; groupKey?: string }) {

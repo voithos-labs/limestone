@@ -1,435 +1,502 @@
 <script lang="ts">
     import type EditorState from "$lib/state/EditorState.svelte";
     import type {SearchResult} from "$lib/types/SearchResult";
-    import {type Source, getSource, touchSource, removeSource} from "$lib/models/Source";
+    import {getSource, touchSource, listSources, sourceName} from "$lib/models/Source";
     import DocHandle from "$lib/models/DocHandle";
     import Group from "$lib/models/Group";
     import View from "$lib/models/View.svelte";
     import {invoke} from "@tauri-apps/api/core";
+    import {readTextFile} from "@tauri-apps/plugin-fs";
     import {listen} from "@tauri-apps/api/event";
-    import {open, confirm} from "@tauri-apps/plugin-dialog";
-    import {openPath} from "@tauri-apps/plugin-opener";
-    import {Search, FolderPlus, Folder, Folders, Hash, ExternalLink, Trash2, TextAlignStart} from "@lucide/svelte";
+    import {open} from "@tauri-apps/plugin-dialog";
+    import {formatDateFriendly} from "$lib/views/dateFormat";
+    import type {MenuEntry} from "$lib/views/menuTypes";
+    import ClockHero from "../ClockHero.svelte";
+    import QuickActionBar from "../QuickActionBar.svelte";
+    import Menu from "../views/Menu.svelte";
+    import {Folders, Folder, Hash, Plus, LayersPlus, FolderPlus} from "@lucide/svelte";
+    import IconAddNotes from "~icons/material-symbols/add-notes";
     import {onMount} from "svelte";
 
     let {editor}: { editor: EditorState } = $props();
 
-    let query = $state('');
-    let results: SearchResult[] = $state([]);
-    let sources: Source[] = $state([]);
-    let addError = $state('');
-
-    async function doSearch() {
-        results = await invoke('search_documents', {query});
+    interface ViewCard {
+        id: string;
+        title: string;
+        kind: 'group' | 'source';
+        group_type: string | null;
     }
 
-    async function loadSources() {
-        sources = await invoke('get_sources');
+    interface DocCard {
+        id: string;
+        title: string;
+        relPath: string | null;
+        preview: string;
+        updatedAt: Date;
+        tags: string[];
     }
 
-    async function addSource() {
-        addError = '';
-        const selected = await open({directory: true, multiple: false});
-        if (!selected || typeof selected !== 'string') return;
+    let views: ViewCard[] = $state([]);
+    let docs: DocCard[] = $state([]);
 
-        const title = selected.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
+    // Views show a single row: render only as many cards as columns fit at the
+    // current width. Same 240px/14px basis as the docs grid so both reflow together.
+    const GRID_MIN = 240;
+    const GRID_GAP = 14;
+    let viewsWidth = $state(0);
+    const viewCols = $derived(Math.max(1, Math.floor((viewsWidth + GRID_GAP) / (GRID_MIN + GRID_GAP))));
+    const visibleViews = $derived(views.slice(0, viewCols));
+
+    // Skeleton rows for the view "database" preview: each row is [col2, col3] bar widths.
+    const ROWS = [[78, 54], [60, 40], [88, 36], [50, 62], [70, 46]];
+
+    function makePreview(body: string): string {
+        return body
+            .replace(/^#{1,6}\s+/gm, '')
+            .replace(/[*_`>]/g, '')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim()
+            .slice(0, 320);
+    }
+
+    async function loadDoc(r: SearchResult): Promise<DocCard> {
         try {
-            await invoke('create_source', {path: selected, title});
-            await loadSources();
-        } catch (e) {
-            addError = String(e);
+            const h = await DocHandle.fromID(r.id);
+            // Read the file directly (don't loadContent — that bumps accessed_at).
+            const raw = await readTextFile(`${h.source.path}/${h.relPath}`);
+            const {body} = DocHandle.deserialize(raw);
+            return {
+                id: h.id,
+                title: h.title,
+                relPath: h.relPath,
+                preview: makePreview(body),
+                updatedAt: h.updatedAt,
+                tags: h.tags.map(g => g.slug)
+            };
+        } catch {
+            return {id: r.id, title: r.title, relPath: r.rel_path, preview: '', updatedAt: new Date(0), tags: []};
         }
     }
 
-    async function revealSource(source: Source) {
-        try {
-            await openPath(source.path);
-        } catch (e) {
-            console.error('reveal failed', e);
-        }
+    async function loadRecents() {
+        const [recents, sources] = await Promise.all([
+            invoke<SearchResult[]>('search_documents', {query: ''}),
+            listSources()
+        ]);
+        views = sources.map(s => ({id: s.id, title: sourceName(s), kind: 'source' as const, group_type: null}));
+        docs = await Promise.all(recents.filter(r => r.kind === 'document').map(loadDoc));
     }
 
-    async function confirmRemoveSource(source: Source) {
-        const ok = await confirm(
-            `Remove source "${source.title}"? Indexed documents and groups from this source will be removed from Limestone. Files on disk are not touched.`,
-            {title: 'Remove source', kind: 'warning'}
-        );
-        if (!ok) return;
-        try {
-            await removeSource(source.id);
-            await loadSources();
-        } catch (e) {
-            addError = String(e);
+    function focusExistingView(slug: string): boolean {
+        const existing = editor.tabs.find(t => t.content.type === 'view' && t.content.view.slug === slug);
+        if (existing) {
+            editor.focusTab({kind: 'tab', id: existing.id});
+            return true;
         }
+        return false;
     }
 
-    async function openResult(result: SearchResult) {
-        if (result.kind === 'group') {
-            const group = await Group.fromID(result.id);
+    async function openView(v: ViewCard) {
+        if (v.kind === 'group') {
+            const group = await Group.fromID(v.id);
             group.touch();
-            const existing = editor.tabs.find(
-                t => t.content.type === 'view' && t.content.view.slug === group.slug
-            );
-            if (existing) {
-                editor.focusTab({kind: 'tab', id: existing.id});
-                return;
-            }
+            if (focusExistingView(group.slug)) return;
             editor.openView(View.createFromGroup(group));
             return;
         }
-        if (result.kind === 'source') {
-            const source = await getSource(result.id);
-            touchSource(source.id);
-            const existing = editor.tabs.find(
-                t => t.content.type === 'view' && t.content.view.slug === source.title
-            );
-            if (existing) {
-                editor.focusTab({kind: 'tab', id: existing.id});
-                return;
-            }
-            editor.openView(View.createFromSource(source));
-            return;
+        const source = await getSource(v.id);
+        touchSource(source.id);
+        if (focusExistingView(sourceName(source))) return;
+        editor.openView(View.createFromSource(source));
+    }
+
+    // ── New menu (+ ▾) ─────────────────────────────────────────────────────────
+    let newOpen = $state(false);
+    let newBtnEl: HTMLButtonElement | null = $state(null);
+
+    const newItems: MenuEntry[] = [
+        {value: 'doc', label: 'New document', icon: IconAddNotes},
+        {value: 'view', label: 'New view', icon: LayersPlus},
+        {value: 'source', label: 'New source', icon: FolderPlus}
+    ];
+
+    function handleNew(value: string) {
+        newOpen = false;
+        if (value === 'doc') newDocument();
+        else if (value === 'view') editor.openView(View.create('New view'));
+        else if (value === 'source') addSource();
+    }
+
+    async function newDocument() {
+        const srcs = await listSources();
+        const source = srcs[0];
+        if (!source) { addSource(); return; }
+        const doc = await DocHandle.createFromTitle(source, {title: 'Untitled'});
+        editor.openDoc(doc);
+    }
+
+    async function addSource() {
+        const selected = await open({directory: true, multiple: false});
+        if (!selected || typeof selected !== 'string') return;
+        const title = selected.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
+        try {
+            await invoke('create_source', {path: selected, title});
+            await loadRecents();
+        } catch (e) {
+            console.error('add source failed', e);
         }
-        const existing = editor.tabs.find(d => d.id === result.id);
+    }
+
+    async function openDoc(d: DocCard) {
+        const existing = editor.tabs.find(t => t.id === d.id);
         if (existing) {
             editor.focusTab({kind: 'tab', id: existing.id});
             return;
         }
-        const doc = await DocHandle.fromID(result.id);
+        const doc = await DocHandle.fromID(d.id);
         editor.openDoc(doc);
-        editor.focusTab({kind: 'tab', id: doc.id});
-    }
-
-    function highlightTitle(title: string, indices: number[]): string {
-        if (!indices.length) return title;
-        const chars = [...title];
-        const set = new Set(indices);
-        return chars.map((ch, i) => (set.has(i) ? `<mark>${ch}</mark>` : ch)).join('');
     }
 
     onMount(() => {
-        doSearch();
-        loadSources();
-        const unlisten = listen('source-reconciled', () => {
-            doSearch();
-            loadSources();
-        });
+        loadRecents();
+        const unlisten = listen('source-reconciled', () => loadRecents());
         return () => { unlisten.then(fn => fn()); };
     });
 </script>
 
-<div class="search-page">
-    <aside class="sources-panel">
-        <div class="sources-header">
-            <h3 class="sources-title">Sources</h3>
-            <button class="add-btn" onclick={addSource} title="Add source">
-                <FolderPlus size={14} />
+<div class="library">
+    <div class="lib-inner">
+        <div class="lib-hero">
+            <ClockHero/>
+        </div>
+        <div class="search-row">
+            <div class="search-cell">
+                <QuickActionBar {editor}/>
+            </div>
+            <button class="new-btn" bind:this={newBtnEl} title="New" onclick={() => newOpen = !newOpen}>
+                <Plus size={19}/>
             </button>
         </div>
-        {#if addError}
-            <p class="add-error">{addError}</p>
-        {/if}
-        <div class="sources-list">
-            {#each sources as source (source.id)}
-                <div class="source-item" title={source.path}>
-                    <Folder size={13} />
-                    <span class="source-name">{source.title}</span>
-                    <div class="source-actions">
-                        <button
-                            class="source-action"
-                            title="Reveal in file manager"
-                            onclick={() => revealSource(source)}
-                        >
-                            <ExternalLink size={12} />
+        <Menu bind:open={newOpen} anchor={newBtnEl} items={newItems} onSelect={handleNew} minWidth={180}/>
+
+        <section class="lib-section">
+            <h2 class="sec-title">Views</h2>
+            <div class="views-grid" bind:clientWidth={viewsWidth}>
+                {#each visibleViews as v (v.kind + v.id)}
+                        <button class="view-card" onclick={() => openView(v)}>
+                            <div class="vc-header">
+                                {#if v.kind === 'source'}
+                                    <Folders size={13}/>
+                                {:else if v.group_type === 'folder'}
+                                    <Folder size={13}/>
+                                {:else}
+                                    <Hash size={13}/>
+                                {/if}
+                                <span class="vc-title">{v.title}</span>
+                                <span class="vc-pill"></span>
+                            </div>
+                            <div class="vc-table">
+                                {#each ROWS as r}
+                                    <div class="vc-row">
+                                        <span class="vc-cell"><span class="vc-dot"></span></span>
+                                        <span class="vc-cell"><span class="vc-bar" style:width="{r[0]}%"></span></span>
+                                        <span class="vc-cell"><span class="vc-bar" style:width="{r[1]}%"></span></span>
+                                    </div>
+                                {/each}
+                            </div>
                         </button>
-                        <button
-                            class="source-action source-action-danger"
-                            title="Remove source"
-                            onclick={() => confirmRemoveSource(source)}
-                        >
-                            <Trash2 size={12} />
+                {/each}
+            </div>
+            {#if views.length === 0}
+                <p class="lib-empty">No sources yet — add one in Settings</p>
+            {/if}
+        </section>
+
+        <section class="lib-section">
+            <h2 class="sec-title">Recent documents</h2>
+            {#if docs.length}
+                <div class="docs-grid">
+                    {#each docs as d (d.id)}
+                        <button class="doc-card" onclick={() => openDoc(d)}>
+                            <div class="dc-title">{d.title}</div>
+                            {#if d.preview}
+                                <div class="dc-preview">{d.preview}</div>
+                            {/if}
+                            <div class="dc-footer">
+                                <span class="dc-time">{formatDateFriendly(d.updatedAt)}</span>
+                                {#if d.tags.length}
+                                    <span class="dc-tags">
+                                        {#each d.tags.slice(0, 3) as t}
+                                            <span class="dc-tag">{t}</span>
+                                        {/each}
+                                    </span>
+                                {/if}
+                            </div>
+                            {#if d.relPath}
+                                <div class="dc-path">{d.relPath}</div>
+                            {/if}
                         </button>
-                    </div>
+                    {/each}
                 </div>
             {:else}
-                <p class="sources-empty">No sources yet</p>
-            {/each}
-        </div>
-    </aside>
-
-    <div class="search-main">
-        <div class="search-bar">
-            <Search size={16} />
-            <input
-                class="search-input"
-                type="text"
-                placeholder="Search documents..."
-                bind:value={query}
-                oninput={doSearch}
-            />
-        </div>
-
-        <div class="results">
-            {#each results as result}
-                <button class="result" class:result-group={result.kind === 'group'} onclick={() => openResult(result)}>
-                    <span class="result-line">
-                        {#if result.kind === 'source'}
-                            <Folders size={14} />
-                        {:else if result.kind === 'group'}
-                            {#if result.group_type === 'folder'}
-                                <Folder size={14} />
-                            {:else}
-                                <Hash size={14} />
-                            {/if}
-                        {:else}
-                            <TextAlignStart size={14} />
-                        {/if}
-                        <span class="result-title">{@html highlightTitle(result.title, result.match_indices)}</span>
-                    </span>
-                    {#if result.rel_path}
-                        <span class="result-path">{result.rel_path}</span>
-                    {/if}
-                </button>
-            {:else}
-                {#if query}
-                    <p class="empty">No results</p>
-                {/if}
-            {/each}
-        </div>
+                <p class="lib-empty">No documents yet</p>
+            {/if}
+        </section>
     </div>
 </div>
 
 <style>
-    .search-page {
-        display: flex;
+    .library {
         height: 100%;
-    }
-
-    /* ── Sources sidebar ── */
-    .sources-panel {
-        display: flex;
-        flex-direction: column;
-        width: 220px;
-        padding: 48px 12px 24px;
-        border-right: 1px solid var(--color-border);
-        flex-shrink: 0;
-        gap: 8px;
-    }
-
-    .sources-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 8px;
-    }
-
-    .sources-title {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--color-ui-dulled);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    .add-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
-        padding: 0;
-        border: none;
-        border-radius: var(--radius-ui);
-        background: transparent;
-        color: var(--color-ui-muted);
-        cursor: pointer;
-    }
-
-    .add-btn:hover {
-        background: rgba(255, 255, 255, 0.05);
-        color: var(--color-text-primary);
-    }
-
-    .add-error {
-        margin: 0 8px;
-        padding: 6px 8px;
-        font-size: 11px;
-        color: var(--color-accent);
-        background: rgba(255, 0, 0, 0.05);
-        border-radius: var(--radius-ui);
-    }
-
-    .sources-list {
-        display: flex;
-        flex-direction: column;
-        gap: 1px;
         overflow-y: auto;
         scrollbar-width: none;
     }
 
-    .sources-list::-webkit-scrollbar {
+    .library::-webkit-scrollbar {
         display: none;
     }
 
-    .source-item {
+    .lib-inner {
+        max-width: 940px;
+        margin: 0 auto;
+        padding: 48px 24px 80px;
+    }
+
+    .lib-hero {
+        margin-bottom: 30px;
+    }
+
+    .search-row {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 6px 8px;
-        border-radius: var(--radius-ui);
-        color: var(--color-text-primary);
-        font-family: var(--font-ui);
-        font-size: 13px;
-        cursor: default;
+        gap: 12px;
     }
 
-    .source-item:hover {
-        background: rgba(255, 255, 255, 0.04);
-    }
-
-    .source-name {
+    .search-cell {
         flex: 1;
+        min-width: 0;
+    }
+
+    .new-btn {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        height: 46px;
+        padding: 0 14px;
+        flex-shrink: 0;
+        border: 1px solid var(--color-border);
+        border-radius: 14px;
+        background: var(--color-bg-opaque, var(--color-bg));
+        color: var(--color-text-secondary);
+        cursor: pointer;
+    }
+
+    .new-btn:hover {
+        color: var(--color-text-primary);
+        border-color: var(--color-ui-muted);
+    }
+
+    .lib-section {
+        margin-top: 40px;
+    }
+
+    .sec-title {
+        margin: 0 0 14px;
+        font-family: var(--font-ui);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--color-ui-muted);
+    }
+
+    /* ── Views (basic database cards) ── */
+    .views-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 14px;
+    }
+
+    .view-card {
+        display: flex;
+        flex-direction: column;
+        padding: 0;
+        border: 1px solid var(--color-border);
+        border-radius: 10px;
+        background: var(--color-bg-opaque, var(--color-bg));
+        overflow: hidden;
+        cursor: pointer;
+        text-align: left;
+        font-family: var(--font-ui);
+        transition: border-color 120ms ease;
+    }
+
+    .view-card:hover {
+        border-color: var(--color-ui-muted);
+    }
+
+    .vc-header {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 12px 14px;
+        color: var(--color-text-primary);
+    }
+
+    .vc-header :global(svg) {
+        flex-shrink: 0;
+        color: var(--color-ui-muted);
+    }
+
+    .vc-title {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .vc-pill {
+        width: 26px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--color-accent);
+        flex-shrink: 0;
+    }
+
+    .vc-table {
+        display: flex;
+        flex-direction: column;
+        border-top: 1px solid var(--color-border);
+    }
+
+    .vc-row {
+        display: grid;
+        grid-template-columns: 26px 1fr 1fr;
+        align-items: center;
+        height: 18px;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .vc-row:last-child {
+        border-bottom: none;
+    }
+
+    .vc-cell {
+        display: flex;
+        align-items: center;
+        height: 100%;
+        padding: 0 10px;
+        border-right: 1px solid var(--color-border);
+    }
+
+    .vc-cell:last-child {
+        border-right: none;
+    }
+
+    .vc-dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--color-ui-muted);
+        opacity: 0.55;
+        flex-shrink: 0;
+    }
+
+    .vc-bar {
+        height: 6px;
+        border-radius: 999px;
+        background: var(--color-ui-muted);
+        opacity: 0.28;
+    }
+
+    /* ── Documents (Google Keep masonry) ── */
+    .docs-grid {
+        columns: 240px;
+        column-gap: 14px;
+    }
+
+    .doc-card {
+        display: inline-block;
+        width: 100%;
+        margin: 0 0 14px;
+        padding: 14px 16px;
+        border: 1px solid var(--color-border);
+        border-radius: 10px;
+        background: var(--color-bg-opaque, var(--color-bg));
+        cursor: pointer;
+        text-align: left;
+        font-family: var(--font-ui);
+        break-inside: avoid;
+        transition: border-color 120ms ease;
+    }
+
+    .doc-card:hover {
+        border-color: var(--color-ui-muted);
+    }
+
+    .dc-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--color-text-primary);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    .source-actions {
-        display: flex;
-        gap: 2px;
-        flex-shrink: 0;
-        visibility: hidden;
+    .dc-preview {
+        margin-top: 6px;
+        font-size: 12.5px;
+        line-height: 1.5;
+        color: var(--color-text-secondary);
+        white-space: pre-wrap;
+        display: -webkit-box;
+        -webkit-line-clamp: 9;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
     }
 
-    .source-item:hover .source-actions {
-        visibility: visible;
-    }
-
-    .source-action {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 20px;
-        height: 20px;
-        padding: 0;
-        border: none;
-        border-radius: var(--radius-ui);
-        background: transparent;
-        color: var(--color-ui-muted);
-        cursor: pointer;
-    }
-
-    .source-action:hover {
-        background: rgba(255, 255, 255, 0.06);
-        color: var(--color-text-primary);
-    }
-
-    .source-action-danger:hover {
-        color: var(--color-accent);
-    }
-
-    .sources-empty {
-        padding: 6px 8px;
-        font-size: 12px;
-        color: var(--color-ui-muted);
-    }
-
-    /* ── Search main ── */
-    .search-main {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        max-width: 600px;
-        margin: 0 auto;
-        padding: 48px 24px 24px;
-    }
-
-    .search-bar {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 14px;
-        background: var(--color-bg);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-surface);
-        color: var(--color-ui-muted);
-        flex-shrink: 0;
-    }
-
-    .search-input {
-        flex: 1;
-        background: transparent;
-        border: none;
-        outline: none;
-        color: var(--color-text-primary);
-        font-family: var(--font-ui);
-        font-size: 15px;
-    }
-
-    .search-input::placeholder {
-        color: var(--color-ui-muted);
-    }
-
-    .results {
-        display: flex;
-        flex-direction: column;
-        margin-top: 12px;
-        overflow-y: auto;
-        scrollbar-width: none;
-    }
-
-    .results::-webkit-scrollbar {
-        display: none;
-    }
-
-    .result {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 2px;
-        padding: 10px 14px;
-        border: none;
-        border-radius: var(--radius-ui);
-        background: transparent;
-        color: var(--color-text-primary);
-        font-family: var(--font-ui);
-        font-size: 14px;
-        cursor: pointer;
-        text-align: left;
-    }
-
-    .result:hover {
-        background: rgba(255, 255, 255, 0.04);
-    }
-
-    .result-line {
+    .dc-footer {
         display: flex;
         align-items: center;
         gap: 8px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+    }
+
+    .dc-time {
+        font-size: 11px;
         color: var(--color-ui-muted);
     }
 
-    .result-title {
-        font-weight: 500;
-        color: var(--color-text-primary);
+    .dc-tags {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
     }
 
-    .result-path {
-        font-size: 12px;
+    .dc-tag {
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: var(--chip-bg);
+        font-size: 11px;
+        color: var(--color-ui-dulled);
+    }
+
+    .dc-path {
+        margin-top: 6px;
+        font-size: 11px;
         color: var(--color-ui-muted);
-        padding-left: 22px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    .empty {
-        padding: 10px 14px;
+    .lib-empty {
         color: var(--color-ui-muted);
-        font-size: 14px;
-    }
-
-    :global(.result mark) {
-        background: rgba(255, 255, 0, 0.2);
-        color: var(--color-accent);
-        padding: 0;
+        font-size: 13px;
     }
 </style>

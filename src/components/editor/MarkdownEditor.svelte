@@ -16,15 +16,35 @@
     import {syntaxHighlighting, HighlightStyle, syntaxTree} from '@codemirror/language';
     import {tags} from '@lezer/highlight';
     import type {TabState} from "$lib/state/EditorState.svelte";
+    import type EditorStateModel from "$lib/state/EditorState.svelte";
     import {getSetting} from "$lib/models/Settings";
+    import {confirm} from "@tauri-apps/plugin-dialog";
+    import DocumentHero from "../DocumentHero.svelte";
 
     let {
         tab,
+        editor,
         onchange,
     }: {
         tab: TabState;
+        editor?: EditorStateModel;
         onchange?: (value: string) => void;
     } = $props();
+
+    async function deleteDoc() {
+        if (!handle) return;
+        const ok = await confirm(
+            `Delete "${handle.title}"? This removes the file from disk.`,
+            {title: 'Delete document', kind: 'warning'}
+        );
+        if (!ok) return;
+        try {
+            await handle.delete();
+            editor?.closeTab(tab.id);
+        } catch (e) {
+            console.error('delete failed', e);
+        }
+    }
 
     let handle = $derived(tab.handle);
     let zoom = $state(tab.state.zoom ?? 16);
@@ -310,29 +330,42 @@
     });
 </script>
 
-<div
-    class="cm-wrapper"
-    class:scrolling
-    bind:this={container}
-    style="--editor-font-size: {zoom}px"
->
-    {#if showThumb}
-        <div
-            class="scroll-thumb"
-            style="height: {thumbHeight}px; transform: translateY({thumbTop}px);"
-            onpointerdown={startThumbDrag}
-        ></div>
+<div class="doc-view">
+    {#if handle}
+        <DocumentHero {handle} onDelete={deleteDoc}/>
     {/if}
+    <div
+        class="cm-wrapper"
+        class:scrolling
+        bind:this={container}
+        style="--editor-font-size: {zoom}px"
+    >
+        {#if showThumb}
+            <div
+                class="scroll-thumb"
+                style="height: {thumbHeight}px; transform: translateY({thumbTop}px);"
+                onpointerdown={startThumbDrag}
+            ></div>
+        {/if}
+    </div>
 </div>
 
 <style>
-    .cm-wrapper {
-        position: relative;
+    .doc-view {
+        display: flex;
+        flex-direction: column;
         width: 100%;
         height: 100%;
         max-width: var(--page-max-width, none);
         margin-left: auto;
         margin-right: auto;
+    }
+
+    .cm-wrapper {
+        position: relative;
+        width: 100%;
+        flex: 1;
+        min-height: 0;
     }
 
     .cm-wrapper::before,

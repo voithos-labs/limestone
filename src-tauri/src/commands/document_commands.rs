@@ -140,10 +140,15 @@ pub async fn move_document(
     source_path: String,
     rel_path: String,
     new_rel_path: String,
+    new_source_id: Option<String>,
+    new_source_path: Option<String>,
 ) -> Result<(), String> {
-    let source = std::path::Path::new(&source_path);
-    let old_full = source.join(&rel_path);
-    let new_full = source.join(&new_rel_path);
+    let dest_source_id = new_source_id.unwrap_or_else(|| source_id.clone());
+    let dest_source_path = new_source_path.unwrap_or_else(|| source_path.clone());
+
+    let old_full = std::path::Path::new(&source_path).join(&rel_path);
+    let dest_source = std::path::Path::new(&dest_source_path);
+    let new_full = dest_source.join(&new_rel_path);
 
     move_file(&old_full, &new_full).map_err(|e| e.to_string())?;
 
@@ -156,10 +161,18 @@ pub async fn move_document(
             .map_err(|e| e.to_string())?;
 
     if let Some(doc_id) = doc_id {
+        if dest_source_id != source_id {
+            sqlx::query("UPDATE documents SET source_id = ?1 WHERE id = ?2")
+                .bind(&dest_source_id)
+                .bind(&doc_id)
+                .execute(&app_data.db)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
         index_document(
             &app_data.db,
-            &source_id,
-            source,
+            &dest_source_id,
+            dest_source,
             &doc_id,
             &new_rel_path,
             1024,

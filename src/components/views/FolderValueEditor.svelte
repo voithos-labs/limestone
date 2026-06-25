@@ -1,20 +1,22 @@
 <script lang="ts">
     import {untrack} from "svelte";
-    import {Search, Folder, FolderPlus, ChevronRight, ChevronDown, Check} from "@lucide/svelte";
+    import {Search, Folder, FolderPlus, FolderRoot, ChevronRight, ChevronDown, Check} from "@lucide/svelte";
     import Group, {GroupType} from "$lib/models/Group";
-    import {listSources} from "$lib/models/Source";
+    import {listSources, sourceName} from "$lib/models/Source";
 
     let {
         open = $bindable(false),
         anchor,
         value,
         sourceId,
+        rootOption = false,
         onChange
     }: {
         open: boolean;
         anchor: HTMLElement | null;
         value: string | null;
         sourceId?: string;
+        rootOption?: boolean;
         onChange: (id: string) => void;
     } = $props();
 
@@ -228,7 +230,7 @@
                         loadError = String(e);
                     });
                 listSources()
-                    .then(ss => sourceNames = new Map(ss.map(s => [s.id, s.title])))
+                    .then(ss => sourceNames = new Map(ss.map(s => [s.id, sourceName(s)])))
                     .catch(() => {});
             }
             queueMicrotask(() => {
@@ -321,6 +323,21 @@
                     <div class="empty">No folders</div>
                 {/if}
             {:else}
+                {#if rootOption}
+                    <div class="folder-row root-row">
+                        <span class="disclosure-spacer"></span>
+                        <button
+                                class="folder-name"
+                                type="button"
+                                tabindex="-1"
+                                onclick={() => pick('')}
+                                onmouseenter={() => activeIndex = -1}
+                        >
+                            <FolderRoot size={13} strokeWidth={1.75}/>
+                            <span class="name-label">Source root</span>
+                        </button>
+                    </div>
+                {/if}
                 {#each treeRows as item, i (item.folder.id)}
                     {@const folder = item.folder}
                     {@const expanded = expandedIds.has(folder.id)}
@@ -475,6 +492,10 @@
     }
 
     .folder-row.active .folder-name {
+        background: var(--menu-item-hover);
+    }
+
+    .root-row .folder-name:hover {
         background: var(--menu-item-hover);
     }
 

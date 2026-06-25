@@ -24,6 +24,18 @@
         if (persistTimer) clearTimeout(persistTimer);
         persistTimer = setTimeout(() => session!.persist(), 200);
     });
+
+    // When nothing valid is focused (no tabs, or a stale focus), fall back to the library tab.
+    $effect(() => {
+        const ed = session?.editors[0];
+        if (!ed) return;
+        const f = ed.focused;
+        const valid =
+            f?.kind === 'search' ||
+            f?.kind === 'settings' ||
+            (f?.kind === 'tab' && ed.tabs.some(t => t.id === f.id));
+        if (!valid) ed.focusTab({kind: 'search'});
+    });
 </script>
 {#if session}
     {@const editor = session.editors[0]}
@@ -35,7 +47,7 @@
                     {#if tab.content.type === 'view'}
                         <ViewPage view={tab.content.view} {editor}/>
                     {:else if tab.content.type === 'markdown'}
-                        <MarkdownEditor {tab}/>
+                        <MarkdownEditor {tab} {editor}/>
                     {:else if tab.content.type === 'new'}
                         <NewTabPage {tab} {editor}/>
                     {/if}
@@ -45,7 +57,9 @@
             {:else if editor.focused?.kind === 'settings'}
                 <SettingsPage viewTab={session.getViewTab('settings')} {session}/>
             {:else}
-                <NewTabPage {editor}/>
+                <div class="panel-placeholder">
+                    No document selected
+                </div>
             {/if}
         </main>
     </div>
@@ -68,5 +82,13 @@
         overflow: hidden;
     }
 
-
+    .panel-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--color-ui-muted);
+        font-size: 14px;
+        text-transform: capitalize;
+    }
 </style>

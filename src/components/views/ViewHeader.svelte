@@ -3,7 +3,7 @@
     import type {FilterNode, FilterLeaf, ViewField, ViewFieldType} from "$lib/models/View.svelte";
     import {VIEW_FIELD_OPS, sanitizeName} from "$lib/models/View.svelte";
     import Group from "$lib/models/Group";
-    import {getSource} from "$lib/models/Source";
+    import {getSource, sourceName} from "$lib/models/Source";
     import FilterChipIsland from "./FilterChipIsland.svelte";
     import Menu from "./Menu.svelte";
     import ViewManageMenu from "./ViewManageMenu.svelte";
@@ -75,7 +75,7 @@
             if (id in sourceNames) continue;
             getSource(id)
                 .then(s => {
-                    sourceNames = {...sourceNames, [id]: s.title};
+                    sourceNames = {...sourceNames, [id]: sourceName(s)};
                 })
                 .catch(() => {
                     sourceNames = {...sourceNames, [id]: id};

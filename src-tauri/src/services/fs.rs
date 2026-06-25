@@ -35,5 +35,11 @@ pub fn move_file(src: &Path, dest: &Path) -> io::Result<()> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::rename(src, dest)
+    match fs::rename(src, dest) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            fs::copy(src, dest)?;
+            fs::remove_file(src)
+        }
+    }
 }
