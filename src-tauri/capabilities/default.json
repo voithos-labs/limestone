@@ -12,7 +12,10 @@
 		"core:window:allow-close",
 		"core:webview:allow-set-webview-zoom",
 		"opener:default",
-		"opener:allow-open-path",
+		{
+			"identifier": "opener:allow-open-path",
+			"allow": [{ "path": "**" }]
+		},
 		"fs:default",
 		"fs:allow-read",
 		"fs:allow-write",

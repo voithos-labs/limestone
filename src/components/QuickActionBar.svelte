@@ -7,7 +7,7 @@
     import Group from "$lib/models/Group";
     import View from "$lib/models/View.svelte";
     import {invoke} from "@tauri-apps/api/core";
-    import {Search, Folder, Folders, Hash, X, TextAlignStart} from "@lucide/svelte";
+    import {Search, Folder, Folders, Hash, X, TextAlignStart, Layers} from "@lucide/svelte";
     import {onMount} from "svelte";
 
     let {
@@ -41,14 +41,36 @@
     }
 
     async function doSearch() {
-        if (!query.trim()) {
+        const q = query.trim();
+        if (!q) {
             results = [];
             return;
         }
-        results = await invoke('search_documents', {query});
+        const docResults: SearchResult[] = await invoke('search_documents', {query});
+        // Saved views live in views.json (frontend)
+        const ql = q.toLowerCase();
+        const viewResults: SearchResult[] = (await View.listSaved())
+            .filter(v => v.slug.toLowerCase().includes(ql))
+            .map(v => ({
+                id: v.id, title: v.slug, rel_path: null,
+                score: 0, match_indices: [], kind: 'view' as const, group_type: null, emoji: v.emoji
+            }));
+        results = [...viewResults, ...docResults];
     }
 
     async function openResult(result: SearchResult) {
+        if (result.kind === 'view') {
+            const existing = editor.tabs.find(
+                t => t.content.type === 'view' && t.content.view.id === result.id
+            );
+            if (existing) {
+                editor.focusTab({kind: 'tab', id: existing.id});
+                return;
+            }
+            const saved = (await View.listSaved()).find(v => v.id === result.id);
+            if (saved) openInTab(TabState.forView(saved));
+            return;
+        }
         if (result.kind === 'group') {
             const group = await Group.fromID(result.id);
             group.touch();
@@ -137,7 +159,13 @@
             {#each results as result}
                 <button class="result" onclick={() => openResult(result)}>
                     <span class="result-line">
-                        {#if result.kind === 'source'}
+                        {#if result.kind === 'view'}
+                            {#if result.emoji}
+                                <span class="result-emoji">{result.emoji}</span>
+                            {:else}
+                                <Layers size={14}/>
+                            {/if}
+                        {:else if result.kind === 'source'}
                             <Folders size={14}/>
                         {:else if result.kind === 'group'}
                             {#if result.group_type === 'folder'}
@@ -276,6 +304,14 @@
         align-items: center;
         gap: 8px;
         color: var(--color-ui-muted);
+    }
+
+    .result-emoji {
+        font-size: 14px;
+        line-height: 1;
+        width: 14px;
+        text-align: center;
+        flex-shrink: 0;
     }
 
     .result-title {

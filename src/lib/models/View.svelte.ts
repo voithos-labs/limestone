@@ -49,6 +49,7 @@ import type DocHandle from '$lib/models/DocHandle';
 import Group, { GroupType } from '$lib/models/Group';
 import { getSource, listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/db';
+import { saveViewJSON, deleteSavedView, listSavedViewJSON } from '$lib/models/savedViews';
 
 /**
  * okay so a Face instance is 1:1 with a view-component, e.g. table, kanban etc.
@@ -610,6 +611,7 @@ interface ViewJSON {
 	faces: ViewFaceJSON[];
 	state: Record<string, any>;
 	temporary?: boolean;
+	emoji?: string;
 }
 
 class View {
@@ -622,6 +624,7 @@ class View {
 	faces: ViewFace[] = $state([]);
 	state: Record<string, any> = $state({});
 	temporary: boolean = $state(false);
+	emoji: string = $state(''); // user-set per-view emoji
 
 	// hover preview
 	previewFaceId: string | null = $state(null);
@@ -636,6 +639,7 @@ class View {
 		this.faces = json.faces.map((j) => new ViewFace(j));
 		this.state = json.state ?? {};
 		this.temporary = json.temporary ?? false;
+		this.emoji = json.emoji ?? '';
 	}
 
 	static create(slug: string): View {
@@ -764,8 +768,20 @@ class View {
 		this.filter.children.push(filter);
 	}
 
+	/** Persist this view to views.json and mark it as a saved (non-temporary) view. */
 	async save() {
-		// todo
+		this.temporary = false;
+		await saveViewJSON(this.toJSON());
+	}
+
+	/** Remove this view from views.json; it becomes a temporary view again. */
+	async unsave() {
+		this.temporary = true;
+		await deleteSavedView(this.id);
+	}
+
+	static async listSaved(): Promise<View[]> {
+		return (await listSavedViewJSON()).map((j) => new View(j));
 	}
 
 	toJSON(): ViewJSON {
@@ -778,7 +794,8 @@ class View {
 			filter: this.filter,
 			faces: this.faces,
 			state: this.state,
-			temporary: this.temporary
+			temporary: this.temporary,
+			emoji: this.emoji
 		};
 	}
 

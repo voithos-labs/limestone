@@ -1,9 +1,8 @@
 <script lang="ts">
     import type EditorState from "$lib/state/EditorState.svelte";
     import type {SearchResult} from "$lib/types/SearchResult";
-    import {getSource, touchSource, listSources, sourceName} from "$lib/models/Source";
+    import {listSources} from "$lib/models/Source";
     import DocHandle from "$lib/models/DocHandle";
-    import Group from "$lib/models/Group";
     import View from "$lib/models/View.svelte";
     import {invoke} from "@tauri-apps/api/core";
     import {readTextFile} from "@tauri-apps/plugin-fs";
@@ -14,18 +13,11 @@
     import ClockHero from "../ClockHero.svelte";
     import QuickActionBar from "../QuickActionBar.svelte";
     import Menu from "../views/Menu.svelte";
-    import {Folders, Folder, Hash, Plus, LayersPlus, FolderPlus} from "@lucide/svelte";
+    import {Layers, Plus, LayersPlus, FolderPlus} from "@lucide/svelte";
     import IconAddNotes from "~icons/material-symbols/add-notes";
     import {onMount} from "svelte";
 
     let {editor}: { editor: EditorState } = $props();
-
-    interface ViewCard {
-        id: string;
-        title: string;
-        kind: 'group' | 'source';
-        group_type: string | null;
-    }
 
     interface DocCard {
         id: string;
@@ -36,16 +28,16 @@
         tags: string[];
     }
 
-    let views: ViewCard[] = $state([]);
+    let savedViews: View[] = $state([]);
     let docs: DocCard[] = $state([]);
 
-    // Views show a single row: render only as many cards as columns fit at the
-    // current width. Same 240px/14px basis as the docs grid so both reflow together.
+    // Recent views show a single row: render only as many cards as columns fit at
+    // the current width. Same 240px/14px basis as the docs grid so both reflow together.
     const GRID_MIN = 240;
     const GRID_GAP = 14;
     let viewsWidth = $state(0);
     const viewCols = $derived(Math.max(1, Math.floor((viewsWidth + GRID_GAP) / (GRID_MIN + GRID_GAP))));
-    const visibleViews = $derived(views.slice(0, viewCols));
+    const visibleViews = $derived(savedViews.slice(0, viewCols));
 
     // Skeleton rows for the view "database" preview: each row is [col2, col3] bar widths.
     const ROWS = [[78, 54], [60, 40], [88, 36], [50, 62], [70, 46]];
@@ -80,35 +72,21 @@
     }
 
     async function loadRecents() {
-        const [recents, sources] = await Promise.all([
+        const [recents, saved] = await Promise.all([
             invoke<SearchResult[]>('search_documents', {query: ''}),
-            listSources()
+            View.listSaved()
         ]);
-        views = sources.map(s => ({id: s.id, title: sourceName(s), kind: 'source' as const, group_type: null}));
+        savedViews = saved.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
         docs = await Promise.all(recents.filter(r => r.kind === 'document').map(loadDoc));
     }
 
-    function focusExistingView(slug: string): boolean {
-        const existing = editor.tabs.find(t => t.content.type === 'view' && t.content.view.slug === slug);
+    function openSavedView(v: View) {
+        const existing = editor.tabs.find(t => t.content.type === 'view' && t.content.view.id === v.id);
         if (existing) {
             editor.focusTab({kind: 'tab', id: existing.id});
-            return true;
-        }
-        return false;
-    }
-
-    async function openView(v: ViewCard) {
-        if (v.kind === 'group') {
-            const group = await Group.fromID(v.id);
-            group.touch();
-            if (focusExistingView(group.slug)) return;
-            editor.openView(View.createFromGroup(group));
             return;
         }
-        const source = await getSource(v.id);
-        touchSource(source.id);
-        if (focusExistingView(sourceName(source))) return;
-        editor.openView(View.createFromSource(source));
+        editor.openView(v);
     }
 
     // ── New menu (+ ▾) ─────────────────────────────────────────────────────────
@@ -181,19 +159,17 @@
         <Menu bind:open={newOpen} anchor={newBtnEl} items={newItems} onSelect={handleNew} minWidth={180}/>
 
         <section class="lib-section">
-            <h2 class="sec-title">Views</h2>
+            <h2 class="sec-title">Recent Views</h2>
             <div class="views-grid" bind:clientWidth={viewsWidth}>
-                {#each visibleViews as v (v.kind + v.id)}
-                        <button class="view-card" onclick={() => openView(v)}>
+                {#each visibleViews as v (v.id)}
+                        <button class="view-card" onclick={() => openSavedView(v)}>
                             <div class="vc-header">
-                                {#if v.kind === 'source'}
-                                    <Folders size={13}/>
-                                {:else if v.group_type === 'folder'}
-                                    <Folder size={13}/>
+                                {#if v.emoji}
+                                    <span class="vc-emoji">{v.emoji}</span>
                                 {:else}
-                                    <Hash size={13}/>
+                                    <Layers size={13}/>
                                 {/if}
-                                <span class="vc-title">{v.title}</span>
+                                <span class="vc-title">{v.slug}</span>
                                 <span class="vc-pill"></span>
                             </div>
                             <div class="vc-table">
@@ -208,8 +184,8 @@
                         </button>
                 {/each}
             </div>
-            {#if views.length === 0}
-                <p class="lib-empty">No sources yet — add one in Settings</p>
+            {#if savedViews.length === 0}
+                <p class="lib-empty">No saved views yet</p>
             {/if}
         </section>
 
@@ -347,6 +323,12 @@
     .vc-header :global(svg) {
         flex-shrink: 0;
         color: var(--color-ui-muted);
+    }
+
+    .vc-emoji {
+        font-size: 14px;
+        line-height: 1;
+        flex-shrink: 0;
     }
 
     .vc-title {

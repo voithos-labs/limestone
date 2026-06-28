@@ -51,19 +51,21 @@ export type TabContent =
 	| { type: 'new'; id: string };
 
 export type TabJSON =
-	| { type: 'markdown'; handleId: string; state: Record<string, any> }
-	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any> }
-	| { type: 'new'; id: string; state: Record<string, any> };
+	| { type: 'markdown'; handleId: string; state: Record<string, any>; pinned?: boolean }
+	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any>; pinned?: boolean }
+	| { type: 'new'; id: string; state: Record<string, any>; pinned?: boolean };
 // eventualy  { type: 'view-ref'; viewId: string; state: Record<string, any> } for saved views, this
 // is for temp
 
 export class TabState {
 	content: TabContent;
 	state: Record<string, any> = $state({});
+	pinned: boolean = $state(false);
 
-	constructor(content: TabContent, state: Record<string, any> = {}) {
+	constructor(content: TabContent, state: Record<string, any> = {}, pinned = false) {
 		this.content = content;
 		this.state = state;
+		this.pinned = pinned;
 	}
 
 	get type(): TabContent['type'] {
@@ -102,20 +104,23 @@ export class TabState {
 			return {
 				type: 'markdown',
 				handleId: this.content.handle.id,
-				state: this.state
+				state: this.state,
+				pinned: this.pinned
 			};
 		}
 		if (this.content.type === 'new') {
 			return {
 				type: 'new',
 				id: this.content.id,
-				state: this.state
+				state: this.state,
+				pinned: this.pinned
 			};
 		}
 		return {
 			type: 'view',
 			view: this.content.view.toJSON(),
-			state: this.state
+			state: this.state,
+			pinned: this.pinned
 		};
 	}
 
@@ -134,14 +139,14 @@ export class TabState {
 	static async loadFromJSON(json: TabJSON): Promise<TabState> {
 		if (json.type === 'markdown') {
 			const handle = await DocHandle.fromID(json.handleId);
-			return new TabState({ type: 'markdown', handle }, json.state ?? {});
+			return new TabState({ type: 'markdown', handle }, json.state ?? {}, json.pinned ?? false);
 		}
 		if (json.type === 'view') {
 			const view = new View(json.view);
-			return new TabState({ type: 'view', view }, json.state ?? {});
+			return new TabState({ type: 'view', view }, json.state ?? {}, json.pinned ?? false);
 		}
 		if (json.type === 'new') {
-			return new TabState({ type: 'new', id: json.id }, json.state ?? {});
+			return new TabState({ type: 'new', id: json.id }, json.state ?? {}, json.pinned ?? false);
 		}
 		throw new Error(`Unknown tab type: ${(json as { type: string }).type}`);
 	}
@@ -319,6 +324,39 @@ class EditorState {
 		if (fromIndex === toIndex) return;
 		const [tab] = this.tabs.splice(fromIndex, 1);
 		this.tabs.splice(toIndex, 0, tab);
+	}
+
+	get pinnedCount(): number {
+		return this.tabs.filter((t) => t.pinned).length;
+	}
+
+	reorderTab(fromIndex: number, toIndex: number, pinned: boolean) {
+		const [tab] = this.tabs.splice(fromIndex, 1);
+		tab.pinned = pinned;
+		const pinnedRem = this.tabs.filter((t) => t.pinned).length;
+		const dest = pinned
+			? Math.min(Math.max(toIndex, 0), pinnedRem)
+			: Math.min(Math.max(toIndex, pinnedRem), this.tabs.length);
+		this.tabs.splice(dest, 0, tab);
+	}
+
+	togglePin(id: string) {
+		const idx = this.tabs.findIndex((t) => t.id === id);
+		if (idx === -1) return;
+		const [tab] = this.tabs.splice(idx, 1);
+		tab.pinned = !tab.pinned;
+		const pinnedRem = this.tabs.filter((t) => t.pinned).length;
+		this.tabs.splice(pinnedRem, 0, tab);
+	}
+
+	isPinned(id: string): boolean {
+		return this.tabs.find((t) => t.id === id)?.pinned ?? false;
+	}
+
+	/** Close all unpinned tabs (pinned tabs are kept). */
+	closeUnpinned() {
+		const toClose = this.tabs.filter((t) => !t.pinned).map((t) => t.id);
+		for (const id of toClose) this.closeTab(id);
 	}
 
 	/**

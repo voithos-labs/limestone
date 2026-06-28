@@ -1669,6 +1669,11 @@
         {/if}
         </tbody>
     </table>
+    <div class="tf-footer">
+        {#if loading}loading...
+        {:else if total > rows.length}showing {rows.length} of {total}{:else}{rows.length}docs
+        {/if}
+    </div>
 </LeanScroll>
 
 <FolderValueEditor
@@ -1736,6 +1741,14 @@
 
 
 <style>
+    .tf-footer {
+        padding: 8px 16px 16px;
+        font-family: var(--font-ui);
+        font-size: 11px;
+        color: var(--color-ui-muted);
+        text-align: right;
+    }
+
     .error {
         margin: 0 0 12px;
         padding: 8px 12px;

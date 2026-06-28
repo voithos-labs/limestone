@@ -1,11 +1,12 @@
 <script lang="ts">
     import TopBar from "../components/nav/TopBar.svelte";
     import Session from "$lib/models/Session";
-    import SearchPage from "../components/pages/SearchPage.svelte";
+    import LibraryPage from "../components/pages/LibraryPage.svelte";
     import SettingsPage from "../components/pages/SettingsPage.svelte";
     import ViewPage from "../components/pages/ViewPage.svelte";
     import NewTabPage from "../components/pages/NewTabPage.svelte";
     import MarkdownEditor from "../components/editor/MarkdownEditor.svelte";
+    import ContextMenu from "../components/ContextMenu.svelte";
     import type { TabState } from "$lib/state/EditorState.svelte";
 
     let session = $state<Session>();
@@ -53,7 +54,7 @@
                     {/if}
                 {/key}
             {:else if editor.focused?.kind === 'search'}
-                <SearchPage {editor}/>
+                <LibraryPage {editor}/>
             {:else if editor.focused?.kind === 'settings'}
                 <SettingsPage viewTab={session.getViewTab('settings')} {session}/>
             {:else}
@@ -63,6 +64,7 @@
             {/if}
         </main>
     </div>
+    <ContextMenu/>
 {/if}
 
 <style>

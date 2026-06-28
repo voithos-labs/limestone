@@ -8,17 +8,15 @@
     import Menu from "./Menu.svelte";
     import ViewManageMenu from "./ViewManageMenu.svelte";
     import FaceSwitcher from "./FaceSwitcher.svelte";
+    import EmojiPicker from "./EmojiPicker.svelte";
     import {getFieldIcon, getOpLabel, opHasValue, formatFilterValue, opsFor} from "$lib/views/filterDisplay";
     import {fieldLabel} from "$lib/views/fieldValue";
     import {ListFilterPlus, Funnel, ChevronLeft, ChevronRight, Search, Columns3Cog} from "@lucide/svelte";
     import IconAddNotes from "~icons/material-symbols/add-notes";
     import {onMount} from "svelte";
 
-    let {view, loading, count, total, onNew}: {
+    let {view, onNew}: {
         view: View;
-        loading: boolean;
-        count: number;
-        total: number;
         onNew?: () => void;
     } = $props();
 
@@ -194,32 +192,41 @@
         if (activeFace) activeFace.display_field_ids = [...activeFace.display_field_ids, field.id];
     }
 
-    // ── Inline view-title (slug) editing, saved views only ───────────────────
-    let editingTitle = $state(false);
-    let titleDraft = $state('');
-    let titleInputEl: HTMLInputElement | null = $state(null);
+    // ── Inline view-title (slug) editing — type-in-place, saved views only ────
+    let slugDraft = $state(view.slug);
 
-    function startTitleEdit() {
-        if (view.temporary) return;
-        titleDraft = view.slug;
-        editingTitle = true;
-        queueMicrotask(() => { titleInputEl?.focus(); titleInputEl?.select(); });
-    }
-
-    async function commitTitle() {
-        if (!editingTitle) return;
-        editingTitle = false;
-        const next = sanitizeName(titleDraft);
+    async function commitSlug() {
+        const next = sanitizeName(slugDraft);
+        if (!next || next === view.slug) {
+            slugDraft = view.slug;
+            return;
+        }
         try {
             await view.renameSlug(next);
+            slugDraft = view.slug;
         } catch (e) {
             console.error(e);
+            slugDraft = view.slug;
         }
     }
 
-    function titleKey(e: KeyboardEvent) {
-        if (e.key === 'Enter') { e.preventDefault(); titleInputEl?.blur(); }
-        else if (e.key === 'Escape') { e.preventDefault(); editingTitle = false; }
+    function slugKey(e: KeyboardEvent) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            (e.currentTarget as HTMLInputElement).blur();
+        } else if (e.key === 'Escape') {
+            slugDraft = view.slug;
+            (e.currentTarget as HTMLInputElement).blur();
+        }
+    }
+
+    // ── Emoji ─────────────────────────────────────────────────────────────────
+    let emojiOpen = $state(false);
+    let emojiAnchor: HTMLElement | null = $state(null);
+
+    function setEmoji(emoji: string) {
+        view.emoji = emoji;
+        if (!view.temporary) view.save().catch(err => console.error('save view failed', err));
     }
 
     function toggleColumn(id: string) {
@@ -233,29 +240,31 @@
 </script>
 
 <header class="view-header">
-    {#if editingTitle}
-        <input
-                class="title-input"
-                bind:this={titleInputEl}
-                bind:value={titleDraft}
-                style:width="{Math.max(8, titleDraft.length + 1)}ch"
-                onblur={commitTitle}
-                onkeydown={titleKey}
-        />
-    {:else if view.temporary}
+    <button class="view-emoji" bind:this={emojiAnchor} title="Set an emoji" onclick={() => emojiOpen = !emojiOpen}>
+        {#if view.emoji}{view.emoji}{:else}<span class="view-emoji-empty">☆</span>{/if}
+    </button>
+    {#if view.temporary}
         <h2 class="view-title">{view.slug}</h2>
     {:else}
-        <button class="view-title editable" type="button" onclick={startTitleEdit} title="Rename view">{view.slug}</button>
+        <span class="title-field">
+            <span class="title-ghost">{slugDraft || ' '}</span>
+            <input
+                    class="title-input"
+                    bind:value={slugDraft}
+                    onblur={commitSlug}
+                    onkeydown={slugKey}
+                    spellcheck="false"
+            />
+        </span>
     {/if}
     {#if view.temporary}
-        <button class="save-view" type="button" onclick={() => view.temporary = false}>
+        <button class="save-view" type="button" onclick={() => view.save().catch(e => console.error('save view failed', e))}>
             <span>Save as view</span>
         </button>
     {/if}
-    <span class="view-meta">
-        {#if loading}loading…{:else if total > count}showing {count} of {total}{:else}{count} docs{/if}
-    </span>
 </header>
+
+<EmojiPicker bind:open={emojiOpen} anchor={emojiAnchor} onPick={setEmoji}/>
 
 <div class="filter-bar" onwheel={onFilterWheel}>
     <FaceSwitcher {view} face={activeFace}/>
@@ -363,11 +372,38 @@
 <style>
     .view-header {
         display: flex;
-        align-items: baseline;
-        gap: 12px;
+        align-items: center;
+        gap: 4px;
         margin-bottom: 12px;
         padding-right: 24px;
         flex-shrink: 0;
+    }
+
+    .view-emoji {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.6em;
+        height: 1.6em;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        font-size: 18px;
+        line-height: 1;
+        color: var(--color-text-primary);
+        cursor: pointer;
+        flex-shrink: 0;
+        align-self: center;
+    }
+
+    .view-emoji:hover {
+        background: var(--chip-bg);
+    }
+
+    .view-emoji-empty {
+        color: var(--color-ui-dulled);
+        opacity: 0.6;
     }
 
     .view-title {
@@ -376,46 +412,39 @@
         font-weight: 600;
         line-height: 1.2;
         color: var(--color-text-primary);
+        transform: translateY(-1px);
     }
 
-    .view-title.editable {
-        padding: 0 4px;
-        margin: 0 -4px;
-        border: 0;
-        background: none;
-        font-family: var(--font-ui);
-        border-radius: 4px;
-        cursor: text;
-        transition: background-color 120ms ease;
+    .title-field {
+        position: relative;
+        display: inline-block;
+        max-width: 100%;
+        transform: translateY(-1px);
     }
 
-    .view-title.editable:focus-visible {
-        box-shadow: none;
-    }
-
-    .view-title.editable:hover {
-        background: var(--chip-bg);
-    }
-
+    .title-ghost,
     .title-input {
-        margin: 0 -4px;
-        padding: 0 4px;
         font-family: var(--font-ui);
         font-size: 18px;
         font-weight: 600;
         line-height: 1.2;
-        color: var(--color-text-primary);
-        background: var(--color-bg);
-        border: 0;
-        border-radius: 4px;
-        box-shadow: inset 0 0 0 1px var(--color-ui-muted);
-        outline: none;
+        letter-spacing: -0.01em;
+        padding: 0;
     }
 
-    .view-meta {
-        margin-left: auto;
-        font-size: 12px;
-        color: var(--color-ui-muted);
+    .title-ghost {
+        white-space: pre;
+        visibility: hidden;
+    }
+
+    .title-input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        border: none;
+        outline: none;
+        background: transparent;
+        color: var(--color-text-primary);
     }
 
     .filter-bar {
@@ -527,6 +556,7 @@
     }
 
     .save-view {
+        margin-left: auto;
         background: none;
         border: none;
         padding: 0;
