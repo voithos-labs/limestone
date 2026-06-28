@@ -1,15 +1,41 @@
 <script lang="ts">
     import type EditorState from "$lib/state/EditorState.svelte";
-    import type {FocusTarget} from "$lib/state/EditorState.svelte";
+    import type {FocusTarget, TabState} from "$lib/state/EditorState.svelte";
     import {getCurrentWindow} from "@tauri-apps/api/window";
 
-    import {Settings, Search, Cone, Library, Bookmark, ChevronDown, LayoutDashboard, X, GripVertical} from "@lucide/svelte";
+    import {
+        Settings,
+        Search,
+        Cone,
+        Library,
+        Bookmark,
+        ChevronDown,
+        Layers,
+        X,
+        GripVertical,
+        Plus,
+        TextSearch,
+        TextAlignStart,
+        Pin,
+        PinOff,
+        CircleX
+    } from "@lucide/svelte";
     import {getSetting, setSetting} from "$lib/models/Settings";
+    import {ctxMenu, type CtxEntry} from "$lib/contextMenu.svelte";
+    import {fade} from "svelte/transition";
 
     let {editor}: { editor: EditorState } = $props();
 
     let compactTabs = $state(true);
-    getSetting<boolean>('appearance.compact_tabs').then(v => { if (v !== null) compactTabs = v; });
+    getSetting<boolean>('appearance.compact_tabs').then(v => {
+        if (v !== null) compactTabs = v;
+    });
+
+    // Collapse pinned tabs to just their icon
+    let collapsePinned = $state(true);
+    getSetting<boolean>('appearance.collapse_pinned_tabs').then(v => {
+        if (v !== null) collapsePinned = v;
+    });
 
     const settingsTab: FocusTarget = {kind: 'settings'};
     const searchTab: FocusTarget = {kind: 'search'};
@@ -24,6 +50,11 @@
     let tabWidths: number[] = [];
     let tabLefts: number[] = [];
     let tabEls: HTMLElement[] = $state([]);
+
+    // Pinned tabs occupy the front of the strip; a divider separates them from the
+    // open tabs. Dragging reorders within a zone only — pinning is deliberate (the
+    // tab context menu), never an accident of dragging.
+    let pinnedCount = $derived(editor.tabs.filter(t => t.pinned).length);
 
     function onPointerDown(e: PointerEvent, index: number) {
         if ((e.target as HTMLElement).closest('.close-btn')) return;
@@ -46,17 +77,25 @@
 
     function onPointerMove(e: PointerEvent) {
         if (dragDocId === null) return;
-        dragDeltaX = e.clientX - dragStartX;
+
+        // A tab reorders only within its own pinned/unpinned zone
+        const draggedPinned = editor.tabs[originalIndex].pinned;
+        const zoneStart = draggedPinned ? 0 : pinnedCount;
+        const zoneEnd = (draggedPinned ? pinnedCount - 1 : tabWidths.length - 1);
+
+        const minDelta = tabLefts[zoneStart] - tabLefts[originalIndex];
+        const maxDelta = (tabLefts[zoneEnd] + tabWidths[zoneEnd]) - (tabLefts[originalIndex] + tabWidths[originalIndex]);
+        dragDeltaX = Math.max(minDelta, Math.min(maxDelta, e.clientX - dragStartX));
 
         const draggedLeft = tabLefts[originalIndex] + dragDeltaX;
         const draggedRight = draggedLeft + tabWidths[originalIndex];
 
         let newIndex = originalIndex;
-        for (let i = originalIndex + 1; i < tabEls.length; i++) {
+        for (let i = originalIndex + 1; i <= zoneEnd; i++) {
             if (draggedRight > tabLefts[i] + tabWidths[i] / 2) newIndex = i;
             else break;
         }
-        for (let i = originalIndex - 1; i >= 0; i--) {
+        for (let i = originalIndex - 1; i >= zoneStart; i--) {
             if (draggedLeft < tabLefts[i] + tabWidths[i] / 2) newIndex = i;
             else break;
         }
@@ -79,15 +118,41 @@
         return '';
     }
 
+    function endDrag() {
+        dragDocId = null;
+        dragDeltaX = 0;
+        dropIndex = -1;
+    }
+
     function onPointerUp() {
         if (dragDocId !== null && dropIndex !== originalIndex) {
             suppressTransition = true;
             editor.moveTab(originalIndex, dropIndex);
-            requestAnimationFrame(() => { suppressTransition = false; });
+            requestAnimationFrame(() => {
+                suppressTransition = false;
+            });
         }
-        dragDocId = null;
-        dragDeltaX = 0;
-        dropIndex = -1;
+        endDrag();
+    }
+
+    // ── Per-tab context menu ─────────────────────────────────────────────────────
+    function tabMenu(tab: TabState): CtxEntry[] {
+        const pinned = tab.pinned;
+        return [
+            {
+                label: pinned ? 'Unpin' : 'Pin',
+                icon: pinned ? PinOff : Pin,
+                action: () => editor.togglePin(tab.id)
+            },
+            {divider: true},
+            {label: 'Close', icon: X, action: () => editor.closeTab(tab.id)},
+            {
+                label: 'Close all',
+                icon: CircleX,
+                action: () => editor.closeUnpinned(),
+                disabled: editor.tabs.every(t => t.pinned)
+            }
+        ];
     }
 
     // ── Window controls ─────────────────────────────────────────────────────────
@@ -124,7 +189,7 @@
 <nav class="nav-bar" onmousedown={handleDrag}>
     <!-- Drag handle -->
     <div class="drag-handle">
-        <GripVertical size={16} />
+        <GripVertical size={16}/>
     </div>
 
     <!-- Pinned icon tabs -->
@@ -148,10 +213,10 @@
     </div>
 
     <!-- Bookmarks dropdown -->
-<!--    <button class="dropdown-btn" title="Bookmarks">-->
-<!--        <Bookmark size={16}/>-->
-<!--        <ChevronDown size={12}/>-->
-<!--    </button>-->
+    <!--    <button class="dropdown-btn" title="Bookmarks">-->
+    <!--        <Bookmark size={16}/>-->
+    <!--        <ChevronDown size={12}/>-->
+    <!--    </button>-->
 
     <!-- Divider -->
     <div class="divider"></div>
@@ -160,12 +225,20 @@
     <div class="tabs-scroll">
         {#each editor.tabs as d, i (d.id)}
             {@const target: FocusTarget = {kind: 'tab', id: d.id}}
+            {#if i === pinnedCount && pinnedCount > 0}
+                <div class="pin-divider" transition:fade={{duration: 150}}></div>
+            {/if}
+            {@const collapsed = d.pinned && collapsePinned}
             <div
                     class="tab"
                     class:active={editor.isTabFocused(target)}
+                    class:pinned={d.pinned}
+                    class:collapsed={collapsed}
                     class:dragging={dragDocId === d.id}
                     class:no-transition={suppressTransition}
                     style:transform={tabTransform(i)}
+                    title={collapsed ? d.title : null}
+                    use:ctxMenu={() => tabMenu(d)}
                     onclick={() => editor.focusTab(target)}
                     onpointerdown={(e) => onPointerDown(e, i)}
                     onpointermove={onPointerMove}
@@ -177,9 +250,15 @@
                     tabindex="0"
             >
                 {#if d.content.type === 'view'}
-                    <LayoutDashboard size={13}/>
-                {:else if !compactTabs}
-                    <span class="doc-icon"></span>
+                    {#if d.content.view.emoji}
+                        <span class="tab-emoji">{d.content.view.emoji}</span>
+                    {:else}
+                        <Layers size={13}/>
+                    {/if}
+                {:else if d.content.type === 'new'}
+                    <TextSearch size={13}/>
+                {:else if !compactTabs || collapsed}
+                    <TextAlignStart class="doc-icon" size={13}/>
                 {/if}
                 <span class="tab-label">{d.title}</span>
                 <span class="tab-fade"></span>
@@ -194,6 +273,9 @@
                 </span>
             </div>
         {/each}
+        <button class="new-tab-btn" title="New tab" onclick={() => editor.openNewTab()}>
+            <Plus size={15}/>
+        </button>
     </div>
 
     <!-- Window controls -->
@@ -260,10 +342,26 @@
         height: 22px;
         margin: 0 -6px 9px 2px;
         background: var(--color-border);
+        border-radius: 999px;
         flex-shrink: 0;
     }
 
     :global([data-theme-transparent="true"]) .divider {
+        background: var(--color-ui-muted);
+    }
+
+    /* ── Pinned/open separator (within the tab strip) ── */
+    .pin-divider {
+        width: 1px;
+        height: 22px;
+        margin: 0 3px 9px;
+        background: var(--color-border);
+        border-radius: 999px;
+        flex-shrink: 0;
+        align-self: flex-end;
+    }
+
+    :global([data-theme-transparent="true"]) .pin-divider {
         background: var(--color-ui-muted);
     }
 
@@ -300,6 +398,11 @@
         transition: transform 150ms ease;
     }
 
+    .tab :global(svg) {
+        display: block;
+        flex-shrink: 0;
+    }
+
     .tab.no-transition {
         transition: none;
     }
@@ -315,31 +418,58 @@
         flex-shrink: 1;
         min-width: 32px;
         max-width: 240px;
-        padding: 0 12px;
+        padding: 0 13px 0 12px;
     }
 
     .tab.icon-tab {
         padding: 0 10px;
     }
 
-    .doc-icon {
-        display: inline-block;
-        width: 18px;
-        height: 18px;
-        margin-right: 2px;
-        background-color: currentColor;
-        mask-image: url('/assets/markdown-icon.svg');
-        mask-size: contain;
-        mask-repeat: no-repeat;
-        mask-position: center;
-        -webkit-mask-image: url('/assets/markdown-icon.svg');
-        -webkit-mask-size: contain;
-        -webkit-mask-repeat: no-repeat;
-        -webkit-mask-position: center;
+    /* Collapsed pinned tabs: fixed-width icon-only anchors */
+    .tabs-scroll .tab.collapsed {
+        width: 34px;
+        min-width: 34px;
+        max-width: none;
+        padding-left: 0;
+        padding-right: 0;
+        justify-content: center;
     }
 
-    .tab.active .doc-icon {
-        background-color: var(--color-accent);
+    .tab.collapsed .tab-label {
+        display: none;
+    }
+
+    .tab-emoji {
+        font-size: 14px;
+        line-height: 1;
+        flex-shrink: 0;
+    }
+
+    /* ── New tab button ── */
+    .new-tab-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        margin-bottom: 6px;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--color-ui-muted);
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .new-tab-btn:hover {
+        background: var(--color-surface);
+        color: var(--color-text-secondary);
+    }
+
+    :global(.doc-icon) {
+        margin-right: 2px;
+        color: currentColor;
     }
 
     .tab:hover {
@@ -392,6 +522,8 @@
         text-overflow: ellipsis;
         flex: 1;
         min-width: 0;
+        line-height: 1.5;
+        transform: translateY(-1px);
         user-select: none;
     }
 
@@ -425,6 +557,11 @@
     .tab:hover .close-zone {
         background: linear-gradient(to right, transparent, var(--color-surface) 50%);
         opacity: 1;
+    }
+
+    /* Pinned tabs can't be closed directly;;;; unpin to close */
+    .tab.pinned .close-zone {
+        display: none;
     }
 
     .close-btn {

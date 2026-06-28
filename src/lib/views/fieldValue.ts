@@ -1,6 +1,6 @@
 import type { MemberRow, ViewField, ViewFieldType } from '$lib/models/View.svelte';
 import { CREATABLE_FIELD_TYPES } from '$lib/models/View.svelte';
-import type { Source } from '$lib/models/Source';
+import { sourceName as sourceFolderName, type Source } from '$lib/models/Source';
 import { formatDateFriendly, formatDateISO, formatViewDate } from './dateFormat';
 
 // reads a per-view stateful field value (views.<slug>.<field>) off a row's props
@@ -63,7 +63,8 @@ export function fileName(relPath: string): string {
 }
 
 export function sourceName(sources: Source[], id: string): string {
-	return sources.find((s) => s.id === id)?.title ?? 'Source root';
+	const s = sources.find((s) => s.id === id);
+	return s ? sourceFolderName(s) : 'Source root';
 }
 
 // css class for a select/multiselect/tag value: configured option colour, else a hash

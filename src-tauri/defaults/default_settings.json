@@ -1,12 +1,16 @@
 {
 	"appearance": {
 		"compact_tabs": true,
+		"collapse_pinned_tabs": true,
 		"editor_font_size": 14,
 		"ui_scale_percent": 100,
 		"max_page_width": 1200
 	},
 	"documents": {
 		"use_yaml_frontmatter": true
+	},
+	"views": {
+		"face_hover_preview": true
 	},
 	"indexing": {
 		"frontmatter_read_buffer_size": 1024

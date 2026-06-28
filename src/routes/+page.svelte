@@ -1,10 +1,12 @@
 <script lang="ts">
     import TopBar from "../components/nav/TopBar.svelte";
     import Session from "$lib/models/Session";
-    import SearchPage from "../components/pages/SearchPage.svelte";
+    import LibraryPage from "../components/pages/LibraryPage.svelte";
     import SettingsPage from "../components/pages/SettingsPage.svelte";
     import ViewPage from "../components/pages/ViewPage.svelte";
+    import NewTabPage from "../components/pages/NewTabPage.svelte";
     import MarkdownEditor from "../components/editor/MarkdownEditor.svelte";
+    import ContextMenu from "../components/ContextMenu.svelte";
     import type { TabState } from "$lib/state/EditorState.svelte";
 
     let session = $state<Session>();
@@ -23,6 +25,18 @@
         if (persistTimer) clearTimeout(persistTimer);
         persistTimer = setTimeout(() => session!.persist(), 200);
     });
+
+    // When nothing valid is focused (no tabs, or a stale focus), fall back to the library tab.
+    $effect(() => {
+        const ed = session?.editors[0];
+        if (!ed) return;
+        const f = ed.focused;
+        const valid =
+            f?.kind === 'search' ||
+            f?.kind === 'settings' ||
+            (f?.kind === 'tab' && ed.tabs.some(t => t.id === f.id));
+        if (!valid) ed.focusTab({kind: 'search'});
+    });
 </script>
 {#if session}
     {@const editor = session.editors[0]}
@@ -34,11 +48,13 @@
                     {#if tab.content.type === 'view'}
                         <ViewPage view={tab.content.view} {editor}/>
                     {:else if tab.content.type === 'markdown'}
-                        <MarkdownEditor {tab}/>
+                        <MarkdownEditor {tab} {editor}/>
+                    {:else if tab.content.type === 'new'}
+                        <NewTabPage {tab} {editor}/>
                     {/if}
                 {/key}
             {:else if editor.focused?.kind === 'search'}
-                <SearchPage {editor}/>
+                <LibraryPage {editor}/>
             {:else if editor.focused?.kind === 'settings'}
                 <SettingsPage viewTab={session.getViewTab('settings')} {session}/>
             {:else}
@@ -48,6 +64,7 @@
             {/if}
         </main>
     </div>
+    <ContextMenu/>
 {/if}
 
 <style>
@@ -66,7 +83,6 @@
         border-radius: 8px;
         overflow: hidden;
     }
-
 
     .panel-placeholder {
         display: flex;

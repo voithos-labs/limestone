@@ -1,13 +1,19 @@
 <script lang="ts">
     import {getAllSettings, setSetting, type SettingValue} from "$lib/models/Settings";
+    import {listSources, removeSource, sourceName, type Source} from "$lib/models/Source";
+    import {select} from "$lib/db";
+    import {invoke} from "@tauri-apps/api/core";
+    import {open} from "@tauri-apps/plugin-dialog";
+    import {openPath} from "@tauri-apps/plugin-opener";
     import type Session from "$lib/models/Session";
     import type {ViewTab} from "$lib/models/Session";
     import {onMount} from "svelte";
-    import {RotateCw, Search} from "@lucide/svelte";
+    import {RotateCw, Search, FolderPlus, Folders, ExternalLink, Trash2, X} from "@lucide/svelte";
 
     let {viewTab, session}: { viewTab: ViewTab; session: Session } = $props();
 
     const APPEARANCE = 'appearance';
+    const SOURCES = 'sources';
     const SCALE_KEY = 'ui_scale_percent';
     const SCALE_PRESETS = [75, 90, 100, 110, 125, 150, 175, 200];
 
@@ -20,11 +26,64 @@
     });
     let scaleShowCustom = $derived(scaleCustomMode || !SCALE_PRESETS.includes(scalePercent));
     let sections = $derived(Object.keys(settings).filter(s => s !== APPEARANCE));
-    let allSections = $derived([APPEARANCE, ...sections]);
+    let allSections = $derived([APPEARANCE, SOURCES, ...sections]);
     let activeSection = $state('');
     let dirty = $state(false);
     let searchQuery = $state('');
     let themes: string[] = $state([]);
+
+    // ── Sources tab ──────────────────────────────────────────────────────────
+    let sources: Source[] = $state([]);
+    let sourceCounts: Record<string, number> = $state({});
+    let confirmingRemoveId: string | null = $state(null);
+    let sourceError = $state('');
+
+    async function loadSources() {
+        sources = await listSources();
+        confirmingRemoveId = null;
+        for (const s of sources) countSource(s.id);
+    }
+
+    async function countSource(id: string) {
+        try {
+            const [row] = await select<{ c: number }>(
+                `SELECT COUNT(*) as c FROM documents WHERE source_id = ?1 AND deleted_at IS NULL`,
+                [id]
+            );
+            sourceCounts[id] = row?.c ?? 0;
+        } catch { /* leave count unknown */ }
+    }
+
+    async function addSource() {
+        sourceError = '';
+        const selected = await open({directory: true, multiple: false});
+        if (!selected || typeof selected !== 'string') return;
+        const title = selected.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
+        try {
+            await invoke('create_source', {path: selected, title});
+            await loadSources();
+        } catch (e) {
+            sourceError = String(e);
+        }
+    }
+
+    async function confirmRemove(s: Source) {
+        try {
+            await removeSource(s.id);
+            confirmingRemoveId = null;
+            await loadSources();
+        } catch (e) {
+            sourceError = String(e);
+        }
+    }
+
+    async function revealSource(s: Source) {
+        try {
+            await openPath(s.path);
+        } catch (e) {
+            console.error('reveal failed', e);
+        }
+    }
 
     onMount(async () => {
         settings = await getAllSettings();
@@ -32,6 +91,7 @@
         const saved = viewTab.state?.activeSection;
         activeSection = (saved && allSections.includes(saved)) ? saved : APPEARANCE;
         if (!SCALE_PRESETS.includes(scalePercent)) scaleCustomMode = true;
+        loadSources();
     });
 
     function saveTabState() {
@@ -114,6 +174,13 @@
                 onclick={() => selectSection(APPEARANCE)}
         >
             Appearance
+        </button>
+        <button
+                class="section-btn"
+                class:active={!isSearching && activeSection === SOURCES}
+                onclick={() => selectSection(SOURCES)}
+        >
+            Sources
         </button>
         {#each sections as section}
             <button
@@ -289,6 +356,55 @@
                         </div>
                     </div>
                     {/if}
+                {/each}
+            </div>
+        {:else if activeSection === SOURCES}
+            <div class="section-header">
+                <h2 class="section-title">Sources</h2>
+                <button class="add-source-btn" onclick={addSource}>
+                    <FolderPlus size={14} />
+                    Add source
+                </button>
+            </div>
+            {#if sourceError}
+                <p class="source-error">{sourceError}</p>
+            {/if}
+            <div class="sources-list">
+                {#each sources as s (s.id)}
+                    <div class="source-card">
+                        <div class="src-main">
+                            <Folders size={16} />
+                            <div class="src-text">
+                                <span class="src-title">{sourceName(s)}</span>
+                                <span class="src-path" title={s.path}>{s.path}</span>
+                            </div>
+                        </div>
+                        <div class="src-right">
+                            <span class="src-count">
+                                {#if sourceCounts[s.id] === undefined}
+                                    …
+                                {:else}
+                                    {sourceCounts[s.id]} {sourceCounts[s.id] === 1 ? 'doc' : 'docs'}
+                                {/if}
+                            </span>
+                            {#if confirmingRemoveId === s.id}
+                                <span class="confirm-text">Remove?</span>
+                                <button class="src-btn" title="Cancel" onclick={() => confirmingRemoveId = null}>
+                                    <X size={14} />
+                                </button>
+                                <button class="src-btn confirm" onclick={() => confirmRemove(s)}>Remove</button>
+                            {:else}
+                                <button class="src-btn" title="Reveal in file manager" onclick={() => revealSource(s)}>
+                                    <ExternalLink size={14} />
+                                </button>
+                                <button class="src-btn danger" title="Remove source" onclick={() => confirmingRemoveId = s.id}>
+                                    <Trash2 size={14} />
+                                </button>
+                            {/if}
+                        </div>
+                    </div>
+                {:else}
+                    <p class="sources-empty">No sources yet</p>
                 {/each}
             </div>
         {:else if activeSection}
@@ -586,5 +702,141 @@
     .input-select option {
         background: var(--color-surface);
         color: var(--color-text-primary);
+    }
+
+    /* ── Sources tab ── */
+    .add-source-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-ui);
+        background: transparent;
+        color: var(--color-text-secondary);
+        font-family: var(--font-ui);
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .add-source-btn:hover {
+        background: var(--chip-bg);
+        color: var(--color-text-primary);
+    }
+
+    .source-error {
+        margin: 0 0 12px;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: var(--color-accent);
+        background: var(--error-bg);
+        border-radius: var(--radius-ui);
+    }
+
+    .sources-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .source-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 14px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-ui);
+    }
+
+    .src-main {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+    }
+
+    .src-main :global(svg) {
+        flex-shrink: 0;
+        color: var(--color-ui-muted);
+    }
+
+    .src-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+    }
+
+    .src-title {
+        font-size: 14px;
+        color: var(--color-text-primary);
+    }
+
+    .src-path {
+        font-size: 12px;
+        color: var(--color-ui-muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .src-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+    .src-count {
+        font-size: 12px;
+        color: var(--color-ui-muted);
+        white-space: nowrap;
+    }
+
+    .confirm-text {
+        font-size: 12px;
+        color: var(--color-text-secondary);
+    }
+
+    .src-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 26px;
+        height: 26px;
+        padding: 0 8px;
+        border: none;
+        border-radius: var(--radius-ui);
+        background: transparent;
+        color: var(--color-ui-muted);
+        font-family: var(--font-ui);
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .src-btn:hover {
+        background: var(--chip-bg);
+        color: var(--color-text-primary);
+    }
+
+    .src-btn.danger:hover {
+        color: var(--color-accent);
+    }
+
+    .src-btn.confirm {
+        background: var(--color-accent);
+        color: white;
+    }
+
+    .src-btn.confirm:hover {
+        opacity: 0.9;
+        color: white;
+    }
+
+    .sources-empty {
+        padding: 12px 4px;
+        color: var(--color-ui-muted);
+        font-size: 13px;
     }
 </style>

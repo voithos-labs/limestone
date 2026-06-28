@@ -18,6 +18,7 @@
     import {sqlToWallClock, toSqlDateTime} from "$lib/views/dateFormat";
     import {searchDocuments} from "$lib/search";
     import Menu from "../Menu.svelte";
+    import IconAddColumnRight from "~icons/material-symbols/add-column-right";
     import {
         Plus,
         ArrowUpAZ,
@@ -285,6 +286,7 @@
 
     let reloadTimer: ReturnType<typeof setTimeout> | null = null;
     let lastSig: string | null = null;
+    let lastFaceId: string | null = null;
 
     function nodeSig(n: FilterNode): string {
         if ('children' in n) {
@@ -311,18 +313,29 @@
 
     $effect(() => {
         const sig = fullSignature();
+        const faceId = face.id;
         if (lastSig === null) {
             lastSig = sig;
+            lastFaceId = faceId;
             return;
         }
-        if (sig === lastSig) return;
+        if (sig === lastSig) {
+            lastFaceId = faceId;
+            return;
+        }
+        const faceChanged = faceId !== lastFaceId;
         lastSig = sig;
+        lastFaceId = faceId;
         // Filter/sort/search changed the row set is about to change out from
         // under the active cell, so reset it to the top-left rather than letting
         // it point at an unrelated row
         if (face.config.active_cell) face.config.active_cell = {row: 0, col: 0};
         if (reloadTimer) clearTimeout(reloadTimer);
-        reloadTimer = setTimeout(() => load(true), 100);
+        // A face switch (incl. hover preview) should reload immediately so the
+        // rows don't reshuffle ~100ms after the first paint; the debounce only
+        // exists to coalesce rapid filter/sort/search edits within one face.
+        if (faceChanged) load(true);
+        else reloadTimer = setTimeout(() => load(true), 100);
     });
 
     $effect(() => {
@@ -1182,7 +1195,7 @@
         let sid = createCtx.sourceId;
         if (!sid && effectiveFolderId) sid = folders.find(f => f.id === effectiveFolderId)?.sourceId ?? null;
         const s = sid ? sources.find(x => x.id === sid) : (sources.length === 1 ? sources[0] : undefined);
-        return s?.title ?? 'Source root';
+        return s ? sourceName(s.id) : 'Source root';
     });
 
     function startNew(opts?: { floatTop?: boolean; groupValue?: unknown; groupKey?: string }) {
@@ -1526,7 +1539,7 @@
                                 bind:this={addColEl}
                                 onclick={(e) => { e.stopPropagation(); addColOpen = !addColOpen; }}
                         >
-                            <Plus size={15} strokeWidth={1.75}/>
+                            <IconAddColumnRight width={16} height={16}/>
                         </button>
                     {/if}
                 </th>
@@ -1656,6 +1669,11 @@
         {/if}
         </tbody>
     </table>
+    <div class="tf-footer">
+        {#if loading}loading...
+        {:else if total > rows.length}showing {rows.length} of {total}{:else}{rows.length}docs
+        {/if}
+    </div>
 </LeanScroll>
 
 <FolderValueEditor
@@ -1723,6 +1741,14 @@
 
 
 <style>
+    .tf-footer {
+        padding: 8px 16px 16px;
+        font-family: var(--font-ui);
+        font-size: 11px;
+        color: var(--color-ui-muted);
+        text-align: right;
+    }
+
     .error {
         margin: 0 0 12px;
         padding: 8px 12px;

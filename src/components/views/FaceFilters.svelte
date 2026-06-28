@@ -4,7 +4,7 @@
     import type {ViewFace, ViewField, FilterLeaf, FilterNode} from "$lib/models/View.svelte";
     import {VIEW_FIELD_OPS} from "$lib/models/View.svelte";
     import Group from "$lib/models/Group";
-    import {getSource} from "$lib/models/Source";
+    import {getSource, sourceName} from "$lib/models/Source";
     import {getFieldIcon, getOpLabel, opHasValue, formatFilterValue, opsFor} from "$lib/views/filterDisplay";
     import {fieldLabel} from "$lib/views/fieldValue";
     import FilterChipIsland from "./FilterChipIsland.svelte";
@@ -47,7 +47,7 @@
         for (const id of sourceIds) {
             if (id in sourceNames) continue;
             getSource(id)
-                .then(s => { sourceNames = {...sourceNames, [id]: s.title}; })
+                .then(s => { sourceNames = {...sourceNames, [id]: sourceName(s)}; })
                 .catch(() => { sourceNames = {...sourceNames, [id]: id}; });
         }
     });

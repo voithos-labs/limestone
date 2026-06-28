@@ -1,19 +1,22 @@
 <script lang="ts">
     import {untrack} from "svelte";
-    import {Search, Folder, FolderPlus, ChevronRight, ChevronDown, Check} from "@lucide/svelte";
+    import {Search, Folder, FolderPlus, FolderRoot, ChevronRight, ChevronDown, Check} from "@lucide/svelte";
     import Group, {GroupType} from "$lib/models/Group";
+    import {listSources, sourceName} from "$lib/models/Source";
 
     let {
         open = $bindable(false),
         anchor,
         value,
         sourceId,
+        rootOption = false,
         onChange
     }: {
         open: boolean;
         anchor: HTMLElement | null;
         value: string | null;
         sourceId?: string;
+        rootOption?: boolean;
         onChange: (id: string) => void;
     } = $props();
 
@@ -22,6 +25,7 @@
     let pos: { top: number; left: number } = $state({top: 0, left: 0});
 
     let folders: Group[] = $state([]);
+    let sourceNames: Map<string, string> = $state(new Map());
     let loadError = $state('');
     let loaded = false;
     let query = $state('');
@@ -225,6 +229,9 @@
                         loaded = false;
                         loadError = String(e);
                     });
+                listSources()
+                    .then(ss => sourceNames = new Map(ss.map(s => [s.id, sourceName(s)])))
+                    .catch(() => {});
             }
             queueMicrotask(() => {
                 position();
@@ -288,6 +295,9 @@
                             {#if ancestorPath(folder)}
                                 <span class="name-path">{ancestorPath(folder)}</span>
                             {/if}
+                            {#if sourceNames.get(folder.sourceId)}
+                                <span class="source-label">{sourceNames.get(folder.sourceId)}</span>
+                            {/if}
                             {#if folder.id === value}
                                 <Check size={13} strokeWidth={2}/>
                             {/if}
@@ -313,6 +323,21 @@
                     <div class="empty">No folders</div>
                 {/if}
             {:else}
+                {#if rootOption}
+                    <div class="folder-row root-row">
+                        <span class="disclosure-spacer"></span>
+                        <button
+                                class="folder-name"
+                                type="button"
+                                tabindex="-1"
+                                onclick={() => pick('')}
+                                onmouseenter={() => activeIndex = -1}
+                        >
+                            <FolderRoot size={13} strokeWidth={1.75}/>
+                            <span class="name-label">Source root</span>
+                        </button>
+                    </div>
+                {/if}
                 {#each treeRows as item, i (item.folder.id)}
                     {@const folder = item.folder}
                     {@const expanded = expandedIds.has(folder.id)}
@@ -344,6 +369,9 @@
                                 onmouseenter={() => activeIndex = i}>
                             <Folder size={13} strokeWidth={1.75}/>
                             <span class="name-label">{folder.slug}</span>
+                            {#if sourceNames.get(folder.sourceId)}
+                                <span class="source-label">{sourceNames.get(folder.sourceId)}</span>
+                            {/if}
                             {#if folder.id === value}
                                 <Check size={13} strokeWidth={2}/>
                             {/if}
@@ -467,6 +495,10 @@
         background: var(--menu-item-hover);
     }
 
+    .root-row .folder-name:hover {
+        background: var(--menu-item-hover);
+    }
+
     .folder-name {
         display: flex;
         align-items: center;
@@ -500,6 +532,16 @@
     .name-path {
         flex: 1;
         min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 11px;
+        color: var(--color-ui-dulled);
+    }
+
+    .source-label {
+        flex-shrink: 0;
+        margin-left: auto;
+        padding-left: 8px;
         overflow: hidden;
         text-overflow: ellipsis;
         font-size: 11px;
