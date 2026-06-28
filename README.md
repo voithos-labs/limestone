@@ -1,5 +1,5 @@
 # LIMESTONE (V4 (fml))
-<img width="1348" height="944" alt="image" src="https://github.com/user-attachments/assets/3f753258-6adc-4b32-a2ac-27cb6bb4d09c" />
+<img width="1095" height="894" alt="image" src="https://github.com/user-attachments/assets/c8d1e968-7b47-4d9f-802e-a07608fa8c3b" />
 
 ## Dev Commands
 
@@ -16,31 +16,15 @@ npm run format
 ```
 
 ## Structure
+*slabs = views* ; dev name
+<img width="5280" height="3584" alt="image" src="https://github.com/user-attachments/assets/db91b6b1-b27a-41fc-9596-e909cd96e91f" />
 
-### Files
+## Working idea for history and cloud sync
+<img width="3456" height="2816" alt="image" src="https://github.com/user-attachments/assets/03eeed74-87c8-472c-87d2-ed9c927202bd" />
 
-So here's what I'm thinking:
 
-```
-app_data_dir/                    # stateful app data
-├── sources.json
-├── groups.json
-├── views.json
-├── settings.json
-├── workspace.json
-└── history/
-    └── {uuid}.automerge
-
-app_cache_dir/                   # cache
-├── index.db
-└── tantivy/
-
-SOURCE/                          # any mounted folder
-├── .limestone.json              # source policy, ignore, etc.
-└── ...files
-```
-
-(nice: https://tree.nathanfriend.com)
+## Dataflow *outdated*
+<img width="6336" height="3360" alt="image" src="https://github.com/user-attachments/assets/5e0326b0-af55-4c45-bb18-5b82fc8452d0" />
 
 ## Tools
 
