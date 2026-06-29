@@ -41,12 +41,12 @@
         display: flex;
         align-items: stretch;
         justify-content: center;
-        gap: 18px;
+        gap: 13.5px;
     }
 
     .time {
         font-family: 'JetBrains Mono', var(--font-editor), monospace;
-        font-size: 72px;
+        font-size: 54px;
         font-weight: 800;
         line-height: 1;
         letter-spacing: -0.01em;
@@ -59,13 +59,13 @@
         flex-direction: column;
         justify-content: center;
         align-items: flex-start;
-        gap: 12px;
-        padding-bottom: 2px;
+        gap: 9px;
+        padding-bottom: 1.5px;
     }
 
     .date {
         font-family: 'JetBrains Mono', var(--font-editor), monospace;
-        font-size: 30px;
+        font-size: 22.5px;
         font-weight: 500;
         line-height: 1;
         letter-spacing: -0.06em;
@@ -75,7 +75,7 @@
 
     .brand {
         font-family: 'JetBrains Mono', var(--font-editor), monospace;
-        font-size: 17px;
+        font-size: 13px;
         font-weight: 400;
         line-height: 1;
         letter-spacing: 0.08em;
