@@ -65,9 +65,14 @@ pub fn run() {
             .unwrap_or_default()
             .sources;
 
-            // Allow fs access to all source dirs
+            let assets_path = global_data_path.join("assets");
+            std::fs::create_dir_all(&assets_path)?;
+            let _ = app.asset_protocol_scope().allow_directory(&assets_path, true);
+
+            // Allow fs and asset access to all source dirs
             for source in &sources {
                 let _ = app.fs_scope().allow_directory(&source.path, true);
+                let _ = app.asset_protocol_scope().allow_directory(&source.path, true);
             }
 
             let initial_settings = services::JsonSettingsStore::for_app(app.handle()).load_merged();
@@ -140,6 +145,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::source_commands::get_sources,
             commands::source_commands::get_source_by_id,
+            commands::source_commands::get_source_config,
+            commands::source_commands::set_source_config,
             commands::source_commands::create_source,
             commands::source_commands::delete_source,
             commands::source_commands::touch_source,
@@ -160,6 +167,8 @@ pub fn run() {
             commands::bulk_ops_commands::bulk_remove_view_field,
             commands::db_commands::sql_select,
             commands::db_commands::sql_execute,
+            commands::asset_commands::import_global_asset,
+            commands::asset_commands::import_global_asset_bytes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

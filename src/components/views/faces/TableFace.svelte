@@ -911,6 +911,18 @@
         queueMicrotask(() => tableEl?.focus());
     }
 
+    // A committed face switch hands focus back to the grid so keyboard nav keeps working
+    let prevFaceId: string | undefined;
+    $effect(() => {
+        const id = view.state.active_face_id;
+        const prev = prevFaceId;
+        prevFaceId = id;
+        if (prev === undefined || prev === id) return;
+        const a = document.activeElement as HTMLElement | null;
+        const inField = !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+        if (!inField) focusTable();
+    });
+
     // Keep the active cell in bounds across reloads / column changes
     $effect(() => {
         if (!activeCell) return;
@@ -1780,7 +1792,21 @@
 
     .basic-table tbody td.active-cell,
     .basic-table tbody tr:hover td.active-cell {
+        background: transparent;
+        position: relative;
+    }
+
+    .basic-table tbody td {
+        scroll-margin-top: var(--row-h);
+    }
+
+    .basic-table:focus-within tbody td.active-cell::after {
+        content: '';
+        position: absolute;
+        inset: 4px 1px;
+        border-radius: 7px;
         background: var(--cell-active-bg, rgba(127, 127, 127, 0.16));
+        pointer-events: none;
     }
 
     .basic-table th,

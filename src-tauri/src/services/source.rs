@@ -37,7 +37,59 @@ pub struct Sources {
     pub sources: Vec<Source>,
 }
 
-pub fn create_source(title: Option<String>, path: PathBuf) -> Result<Source, std::io::Error> {
+fn default_asset_location() -> String {
+    "assets".to_string()
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct SourceConfig {
+    #[serde(default)]
+    pub note_location: String,
+    #[serde(default = "default_asset_location")]
+    pub asset_location: String,
+}
+
+impl Default for SourceConfig {
+    fn default() -> Self {
+        Self {
+            note_location: String::new(),
+            asset_location: default_asset_location(),
+        }
+    }
+}
+
+pub fn read_source_config(source_path: &Path) -> SourceConfig {
+    fs::read_to_string(source_path.join(".limestone.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<SourceConfig>(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn write_source_config(source_path: &Path, config: &SourceConfig) -> std::io::Result<()> {
+    let config_path = source_path.join(".limestone.json");
+    let mut root = fs::read_to_string(&config_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({ "ignore": [".limestone/", "assets/", ".*"] }));
+    if let Some(obj) = root.as_object_mut() {
+        obj.insert(
+            "note_location".into(),
+            serde_json::Value::String(config.note_location.clone()),
+        );
+        obj.insert(
+            "asset_location".into(),
+            serde_json::Value::String(config.asset_location.clone()),
+        );
+    }
+    fs::write(&config_path, serde_json::to_string_pretty(&root).unwrap())
+}
+
+pub fn create_source(
+    title: Option<String>,
+    path: PathBuf,
+    note_location: Option<String>,
+    asset_location: Option<String>,
+) -> Result<Source, std::io::Error> {
     fs::create_dir_all(&path)?;
     let title = title.unwrap_or_else(|| {
         path.file_name()
@@ -46,16 +98,11 @@ pub fn create_source(title: Option<String>, path: PathBuf) -> Result<Source, std
             .to_string()
     });
 
-    let config_path = path.join(".limestone.json");
-    if !config_path.exists() {
-        let default_config = serde_json::json!({
-            "ignore": [".limestone/", "assets/", ".*"]
-        });
-        let _ = fs::write(
-            &config_path,
-            serde_json::to_string_pretty(&default_config).unwrap(),
-        );
-    }
+    let config = SourceConfig {
+        note_location: note_location.unwrap_or_default(),
+        asset_location: asset_location.unwrap_or_else(default_asset_location),
+    };
+    let _ = write_source_config(&path, &config);
 
     Ok(Source::new(title, path))
 }

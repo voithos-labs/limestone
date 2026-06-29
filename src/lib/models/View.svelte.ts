@@ -612,6 +612,7 @@ interface ViewJSON {
 	state: Record<string, any>;
 	temporary?: boolean;
 	emoji?: string;
+	cover?: string;
 }
 
 class View {
@@ -625,6 +626,7 @@ class View {
 	state: Record<string, any> = $state({});
 	temporary: boolean = $state(false);
 	emoji: string = $state(''); // user-set per-view emoji
+	cover: string = $state('');
 
 	// hover preview
 	previewFaceId: string | null = $state(null);
@@ -640,6 +642,7 @@ class View {
 		this.state = json.state ?? {};
 		this.temporary = json.temporary ?? false;
 		this.emoji = json.emoji ?? '';
+		this.cover = json.cover ?? '';
 	}
 
 	static create(slug: string): View {
@@ -795,7 +798,8 @@ class View {
 			faces: this.faces,
 			state: this.state,
 			temporary: this.temporary,
-			emoji: this.emoji
+			emoji: this.emoji,
+			cover: this.cover
 		};
 	}
 

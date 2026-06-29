@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod bulk_ops;
 pub mod frontmatter;
 pub mod fs;
@@ -8,5 +9,8 @@ mod user;
 
 pub use bulk_ops::BulkRunner;
 pub use settings::{dot_get, JsonSettingsStore};
-pub use source::{create_source, index_document, reconcile_source, Source, Sources};
+pub use source::{
+    create_source, index_document, read_source_config, reconcile_source, write_source_config,
+    Source, SourceConfig, Sources,
+};
 pub use user::User;

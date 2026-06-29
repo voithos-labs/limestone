@@ -1,3 +1,4 @@
+pub mod asset_commands;
 pub mod bulk_ops_commands;
 pub mod db_commands;
 pub mod document_commands;
