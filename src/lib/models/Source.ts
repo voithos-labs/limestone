@@ -8,6 +8,11 @@ export interface Source {
 	accessed_at: string;
 }
 
+export interface SourceConfig {
+	note_location: string;
+	asset_location: string;
+}
+
 /** A source's display name is just its folder (the basename of its path). */
 export function sourceName(source: Pick<Source, 'path' | 'title'>): string {
 	return source.path.split(/[\\/]/).filter(Boolean).pop() || source.title;
@@ -29,4 +34,25 @@ export async function touchSource(id: string): Promise<void> {
 
 export async function removeSource(id: string): Promise<void> {
 	await invoke('delete_source', { id });
+}
+
+export async function createSource(path: string, title: string, config: SourceConfig): Promise<Source> {
+	return await invoke<Source>('create_source', {
+		path,
+		title,
+		noteLocation: config.note_location,
+		assetLocation: config.asset_location
+	});
+}
+
+export async function getSourceConfig(id: string): Promise<SourceConfig> {
+	return await invoke<SourceConfig>('get_source_config', { id });
+}
+
+export async function setSourceConfig(id: string, config: SourceConfig): Promise<void> {
+	await invoke('set_source_config', {
+		id,
+		noteLocation: config.note_location,
+		assetLocation: config.asset_location
+	});
 }

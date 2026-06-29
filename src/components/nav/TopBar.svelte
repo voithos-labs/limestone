@@ -22,7 +22,6 @@
     } from "@lucide/svelte";
     import {getSetting, setSetting} from "$lib/models/Settings";
     import {ctxMenu, type CtxEntry} from "$lib/contextMenu.svelte";
-    import {fade} from "svelte/transition";
 
     let {editor}: { editor: EditorState } = $props();
 
@@ -226,7 +225,7 @@
         {#each editor.tabs as d, i (d.id)}
             {@const target: FocusTarget = {kind: 'tab', id: d.id}}
             {#if i === pinnedCount && pinnedCount > 0}
-                <div class="pin-divider" transition:fade={{duration: 150}}></div>
+                <div class="pin-divider"></div>
             {/if}
             {@const collapsed = d.pinned && collapsePinned}
             <div

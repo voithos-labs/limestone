@@ -87,12 +87,15 @@ pub fn create_source(
     app_data: State<AppData>,
     path: String,
     title: String,
+    note_location: Option<String>,
+    asset_location: Option<String>,
 ) -> Result<Source, String> {
     let candidate = PathBuf::from(&path);
     let mut sources = load_sources(&app);
     check_source_conflict(&candidate, &sources)?;
 
-    let source = services::create_source(Some(title), candidate).map_err(|e| e.to_string())?;
+    let source = services::create_source(Some(title), candidate, note_location, asset_location)
+        .map_err(|e| e.to_string())?;
 
     // add fs access to new source dir
     let _ = app.fs_scope().allow_directory(&source.path, true);
@@ -113,6 +116,36 @@ pub fn get_sources(app: AppHandle) -> Vec<Source> {
 #[tauri::command]
 pub fn get_source_by_id(app: AppHandle, id: Uuid) -> Option<Source> {
     load_sources(&app).into_iter().find(|v| v.id == id)
+}
+
+#[tauri::command]
+pub fn get_source_config(app: AppHandle, id: Uuid) -> Result<services::SourceConfig, String> {
+    let source = load_sources(&app)
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "source not found".to_string())?;
+    Ok(services::read_source_config(&source.path))
+}
+
+#[tauri::command]
+pub fn set_source_config(
+    app: AppHandle,
+    id: Uuid,
+    note_location: String,
+    asset_location: String,
+) -> Result<(), String> {
+    let source = load_sources(&app)
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "source not found".to_string())?;
+    services::write_source_config(
+        &source.path,
+        &services::SourceConfig {
+            note_location,
+            asset_location,
+        },
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -11,13 +11,13 @@
     import EmojiPicker from "./EmojiPicker.svelte";
     import {getFieldIcon, getOpLabel, opHasValue, formatFilterValue, opsFor} from "$lib/views/filterDisplay";
     import {fieldLabel} from "$lib/views/fieldValue";
-    import {ListFilterPlus, Funnel, ChevronLeft, ChevronRight, Search, Columns3Cog} from "@lucide/svelte";
-    import IconAddNotes from "~icons/material-symbols/add-notes";
+    import {ListFilterPlus, Funnel, ChevronLeft, ChevronRight, Search, Columns3Cog, EllipsisVertical} from "@lucide/svelte";
     import {onMount} from "svelte";
 
-    let {view, onNew}: {
+    let {view, hasCover = false, onMore}: {
         view: View;
-        onNew?: () => void;
+        hasCover?: boolean;
+        onMore?: (anchor: HTMLElement) => void;
     } = $props();
 
     const activeFace = $derived(
@@ -239,27 +239,33 @@
     }
 </script>
 
-<header class="view-header">
-    <button class="view-emoji" bind:this={emojiAnchor} title="Set an emoji" onclick={() => emojiOpen = !emojiOpen}>
-        {#if view.emoji}{view.emoji}{:else}<span class="view-emoji-empty">☆</span>{/if}
-    </button>
-    {#if view.temporary}
-        <h2 class="view-title">{view.slug}</h2>
-    {:else}
-        <span class="title-field">
-            <span class="title-ghost">{slugDraft || ' '}</span>
-            <input
-                    class="title-input"
-                    bind:value={slugDraft}
-                    onblur={commitSlug}
-                    onkeydown={slugKey}
-                    spellcheck="false"
-            />
-        </span>
-    {/if}
+<header class="view-header" class:has-cover={hasCover}>
+    <div class="title-block" class:on-cover={hasCover}>
+        <button class="view-emoji" bind:this={emojiAnchor} title="Set an emoji" onclick={() => emojiOpen = !emojiOpen}>
+            {#if view.emoji}{view.emoji}{:else}<span class="view-emoji-empty">☆</span>{/if}
+        </button>
+        {#if view.temporary}
+            <h2 class="view-title">{view.slug}</h2>
+        {:else}
+            <span class="title-field">
+                <span class="title-ghost">{slugDraft || ' '}</span>
+                <input
+                        class="title-input"
+                        bind:value={slugDraft}
+                        onblur={commitSlug}
+                        onkeydown={slugKey}
+                        spellcheck="false"
+                />
+            </span>
+        {/if}
+    </div>
     {#if view.temporary}
         <button class="save-view" type="button" onclick={() => view.save().catch(e => console.error('save view failed', e))}>
             <span>Save as view</span>
+        </button>
+    {:else if !view.cover}
+        <button class="more-btn" type="button" aria-label="More" onclick={(e) => onMore?.(e.currentTarget as HTMLElement)}>
+            <EllipsisVertical size={16}/>
         </button>
     {/if}
 </header>
@@ -268,16 +274,6 @@
 
 <div class="filter-bar" onwheel={onFilterWheel}>
     <FaceSwitcher {view} face={activeFace}/>
-
-    <button
-            class="manage-view"
-            type="button"
-            aria-label="Manage view"
-            bind:this={manageEl}
-            onclick={() => manageOpen = !manageOpen}
-    >
-        <Columns3Cog size={14} strokeWidth={1.75}/>
-    </button>
 
     {#if leafFilters.length > 0}
         <button
@@ -353,9 +349,14 @@
     </label>
 
 
-    <button class="new-entry" type="button" onclick={() => onNew?.()}>
-        <IconAddNotes width={17} height={17}/>
-        <!--        <span>New</span>-->
+    <button
+            class="manage-view"
+            type="button"
+            aria-label="Manage view"
+            bind:this={manageEl}
+            onclick={() => manageOpen = !manageOpen}
+    >
+        <Columns3Cog size={14} strokeWidth={1.75}/>
     </button>
     <ViewManageMenu
             bind:open={manageOpen}
@@ -377,6 +378,27 @@
         margin-bottom: 12px;
         padding-right: 24px;
         flex-shrink: 0;
+    }
+
+    .view-header.has-cover {
+        align-items: flex-start;
+    }
+
+    .title-block {
+        display: contents;
+    }
+
+    .title-block.on-cover {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        position: relative;
+        z-index: 1;
+        margin-top: -32px;
+        margin-left: -24px;
+        padding: 8px 20px 6px 24px;
+        background: var(--color-surface);
+        border-radius: 0 10px 0 0;
     }
 
     .view-emoji {
@@ -532,30 +554,30 @@
         color: var(--color-text-primary);
     }
 
-    .new-entry {
+    .more-btn {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        justify-content: center;
+        margin-left: auto;
+        width: 28px;
         height: 28px;
-        padding: 0 11px;
-        flex-shrink: 0;
-        background: var(--chip-bg);
+        padding: 0;
         border: none;
         border-radius: 6px;
+        background: transparent;
         color: var(--color-ui-muted);
-        font-family: var(--font-ui);
-        font-size: 12px;
-        font-weight: 500;
         cursor: pointer;
-        transition: background-color 120ms ease, color 120ms ease;
     }
 
-    .new-entry:hover {
-        background: var(--chip-bg-hover);
-        color: var(--color-text-primary);
+    .more-btn:hover {
+        color: var(--color-text-secondary);
+        background: var(--chip-bg);
     }
 
     .save-view {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
         margin-left: auto;
         background: none;
         border: none;

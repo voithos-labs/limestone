@@ -2,13 +2,12 @@
     import {getAllSettings, setSetting, type SettingValue} from "$lib/models/Settings";
     import {listSources, removeSource, sourceName, type Source} from "$lib/models/Source";
     import {select} from "$lib/db";
-    import {invoke} from "@tauri-apps/api/core";
-    import {open} from "@tauri-apps/plugin-dialog";
     import {openPath} from "@tauri-apps/plugin-opener";
+    import SourceDialog from "../SourceDialog.svelte";
     import type Session from "$lib/models/Session";
     import type {ViewTab} from "$lib/models/Session";
     import {onMount} from "svelte";
-    import {RotateCw, Search, FolderPlus, Folders, ExternalLink, Trash2, X} from "@lucide/svelte";
+    import {RotateCw, Search, FolderPlus, Folders, ExternalLink, Trash2, X, Pencil} from "@lucide/svelte";
 
     let {viewTab, session}: { viewTab: ViewTab; session: Session } = $props();
 
@@ -38,6 +37,10 @@
     let confirmingRemoveId: string | null = $state(null);
     let sourceError = $state('');
 
+    let dialogOpen = $state(false);
+    let dialogMode: 'create' | 'edit' = $state('create');
+    let dialogSource: Source | null = $state(null);
+
     async function loadSources() {
         sources = await listSources();
         confirmingRemoveId = null;
@@ -54,17 +57,18 @@
         } catch { /* leave count unknown */ }
     }
 
-    async function addSource() {
+    function addSource() {
         sourceError = '';
-        const selected = await open({directory: true, multiple: false});
-        if (!selected || typeof selected !== 'string') return;
-        const title = selected.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
-        try {
-            await invoke('create_source', {path: selected, title});
-            await loadSources();
-        } catch (e) {
-            sourceError = String(e);
-        }
+        dialogMode = 'create';
+        dialogSource = null;
+        dialogOpen = true;
+    }
+
+    function editSource(s: Source) {
+        sourceError = '';
+        dialogMode = 'edit';
+        dialogSource = s;
+        dialogOpen = true;
     }
 
     async function confirmRemove(s: Source) {
@@ -394,6 +398,9 @@
                                 </button>
                                 <button class="src-btn confirm" onclick={() => confirmRemove(s)}>Remove</button>
                             {:else}
+                                <button class="src-btn" title="Edit source" onclick={() => editSource(s)}>
+                                    <Pencil size={14} />
+                                </button>
                                 <button class="src-btn" title="Reveal in file manager" onclick={() => revealSource(s)}>
                                     <ExternalLink size={14} />
                                 </button>
@@ -456,6 +463,8 @@
         {/if}
     </div>
 </div>
+
+<SourceDialog bind:open={dialogOpen} mode={dialogMode} source={dialogSource} onSaved={loadSources}/>
 
 <style>
     .settings-page {
