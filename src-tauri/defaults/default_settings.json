@@ -10,7 +10,7 @@
 		"use_yaml_frontmatter": true
 	},
 	"views": {
-		"face_hover_preview": true
+		"scroll_entire_view": true
 	},
 	"indexing": {
 		"frontmatter_read_buffer_size": 1024

@@ -39,17 +39,19 @@
     import {deriveCreateContext, folderLinkChain, folderPath} from "$lib/views/createDefaults";
     import FolderValueEditor from "../FolderValueEditor.svelte";
     import CellEditor from "../CellEditor.svelte";
+    import CellTextEditor from "../CellTextEditor.svelte";
     import CellValue from "../CellValue.svelte";
     import FolderCrumb from "../FolderCrumb.svelte";
     import LeanScroll from "../LeanScroll.svelte";
     import {onMount} from "svelte";
 
-    let {view, face, onMeta, onOpenRow, createSignal = 0}: {
+    let {view, face, onMeta, onOpenRow, createSignal = 0, flow = false}: {
         view: View;
         face: ViewFace;
         onMeta?: (m: { loading: boolean; count: number; total: number; elapsedMs: number }) => void;
         onOpenRow?: (rowId: string) => void;
         createSignal?: number;
+        flow?: boolean;
     } = $props();
 
     const query = $derived((view.state.search as string | undefined) ?? '');
@@ -552,7 +554,7 @@
         if (!isDerived(menuField.type)) {
             items.push(confirmingDelete
                 ? {value: 'delete_confirm', label: 'Confirm delete', icon: Trash2}
-                : {value: 'delete', label: 'Delete', icon: Trash2});
+                : {value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true});
         }
         return items;
     });
@@ -1002,20 +1004,30 @@
     function onTableKeydown(e: KeyboardEvent) {
         // The draft row owns the keyboard entirely while creating.
         if (creating) return;
-        const t = e.target as HTMLElement | null;
-        // Only drive grid nav when focus is on the table itself; let other focused
-        // controls (the title button, search, menus) handle their own keys.
-        if (t && t !== tableEl && !tableEl?.contains(t)) return;
-        if (t && t !== tableEl) {
-            const tag = t.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return;
-        }
         if (editOpen) return;
+        const t = e.target as HTMLElement | null;
 
         const isEdit = e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar';
         const arrows = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
-        const navKey = arrows.includes(e.key) || isEdit || e.key === 'Tab' || e.key === 'Escape';
+        const isArrow = arrows.includes(e.key);
+        const navKey = isArrow || isEdit || e.key === 'Tab' || e.key === 'Escape';
         if (!navKey || rows.length === 0 || columns.length === 0) return;
+
+        // Never hijack typing or menu/listbox/dialog key handling.
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable
+            || t.closest('[role="menu"], [role="listbox"], [role="dialog"]'))) return;
+
+        const inTable = !t || t === tableEl || !!tableEl?.contains(t);
+
+        // Focus loose in the view: any arrow key arms the grid at the first cell.
+        if (!inTable) {
+            if (!isArrow) return;
+            scrollOnNext = true;
+            setActiveCell({row: visualRowOrder[0] ?? 0, col: 0});
+            focusTable();
+            e.preventDefault();
+            return;
+        }
 
         if (!activeCell) {
             // First nav keypress (incl. Tab) arms the grid at the top-left rather
@@ -1404,7 +1416,7 @@
     <CellValue {field} {row} viewSlug={view.slug} {sources}/>
 {/snippet}
 
-<LeanScroll>
+<LeanScroll {flow}>
     <table
             class="basic-table"
             bind:this={tableEl}
@@ -1630,10 +1642,14 @@
                                         tabindex="-1"
                                         onclick={(e) => { e.stopPropagation(); startTitleEdit(row); }}
                                 >{@render cellInner(col.field, row)}</span>
+                                {/if}
+                            {:else if isLast}
+                                <span class="cell-text">{@render cellInner(col.field, row)}</span>
+                                <div class="row-actions">
                                     {#if onOpenRow}
                                         <button
                                                 type="button"
-                                                class="row-action title-open"
+                                                class="row-action"
                                                 aria-label="Open in tab"
                                                 title="Open in tab"
                                                 onclick={(e) => { e.stopPropagation(); onOpenRow?.(row.id); }}
@@ -1641,18 +1657,16 @@
                                             <SquareArrowOutUpRight size={13} strokeWidth={1.75}/>
                                         </button>
                                     {/if}
-                                {/if}
-                            {:else if isLast}
-                                <span class="cell-text">{@render cellInner(col.field, row)}</span>
-                                <button
-                                        type="button"
-                                        class="row-action row-menu-btn"
-                                        aria-label="Row actions"
-                                        title="Actions"
-                                        onclick={(e) => { e.stopPropagation(); openRowMenu(e, row.id); }}
-                                >
-                                    <Ellipsis size={15} strokeWidth={1.75}/>
-                                </button>
+                                    <button
+                                            type="button"
+                                            class="row-action row-menu-btn"
+                                            aria-label="Row actions"
+                                            title="Actions"
+                                            onclick={(e) => { e.stopPropagation(); openRowMenu(e, row.id); }}
+                                    >
+                                        <Ellipsis size={15} strokeWidth={1.75}/>
+                                    </button>
+                                </div>
                             {:else}
                                 {@render cellInner(col.field, row)}
                             {/if}
@@ -1740,15 +1754,24 @@
 />
 
 {#if editingField && editingRow}
-    <CellEditor
-            bind:open={editOpen}
-            anchor={editAnchor}
-            field={editingField}
-            value={editingValue}
-            sourceId={editingRow.source_id}
-            onChange={(v) => { if (editingField && editingRow) writeCell(editingField, editingRow, v); }}
-            onRenameOption={(oldV, newV) => { if (editingField) renameOption(editingField, oldV, newV); }}
-    />
+    {#if editingField.type === 'text'}
+        <CellTextEditor
+                bind:open={editOpen}
+                anchor={editAnchor}
+                value={editingValue == null ? '' : String(editingValue)}
+                onCommit={(v) => { if (editingField && editingRow) writeCell(editingField, editingRow, v); }}
+        />
+    {:else}
+        <CellEditor
+                bind:open={editOpen}
+                anchor={editAnchor}
+                field={editingField}
+                value={editingValue}
+                sourceId={editingRow.source_id}
+                onChange={(v) => { if (editingField && editingRow) writeCell(editingField, editingRow, v); }}
+                onRenameOption={(oldV, newV) => { if (editingField) renameOption(editingField, oldV, newV); }}
+        />
+    {/if}
 {/if}
 
 
@@ -2024,7 +2047,7 @@
 
     .basic-table th.last,
     .basic-table td.last-data {
-        padding-right: 36px;
+        padding-right: 60px;
     }
 
     .basic-table tbody td.last-data,
@@ -2040,12 +2063,27 @@
         white-space: nowrap;
     }
 
-    .row-action {
+    .row-actions {
         position: absolute;
         right: 12px;
         top: 0;
         bottom: 0;
         margin: auto 0;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease;
+        z-index: 5;
+    }
+
+    .basic-table tbody tr:hover .row-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .row-action {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -2056,41 +2094,10 @@
         border: 0;
         color: var(--color-ui-dulled);
         cursor: pointer;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 120ms ease, color 120ms ease;
-        z-index: 5;
-    }
-
-    .basic-table tbody tr:hover .row-action {
-        opacity: 1;
-        pointer-events: auto;
+        transition: color 120ms ease;
     }
 
     .row-action:hover {
-        color: var(--color-text-primary);
-    }
-
-    /* Open-in-tab: padded pill with an opaque backing so the title text never
-       shows through (the cell surface is the row's resting/hover colour). */
-    .title-open {
-        width: auto;
-        height: 22px;
-        padding: 0 6px;
-        gap: 4px;
-        border-radius: 5px;
-        background: var(--color-bg);
-        box-shadow: 0 0 0 1px var(--color-border);
-        color: var(--color-ui-muted);
-    }
-
-    .basic-table tbody tr:hover .title-open {
-        /* opaque: row hover tint composited onto the solid page background */
-        background: linear-gradient(var(--row-hover-bg, rgba(127, 127, 127, 0.06)), var(--row-hover-bg, rgba(127, 127, 127, 0.06))), var(--color-bg);
-    }
-
-    .basic-table tbody tr:hover .title-open:hover {
-        background: linear-gradient(var(--chip-bg-hover), var(--chip-bg-hover)), var(--color-bg);
         color: var(--color-text-primary);
     }
 
@@ -2099,14 +2106,19 @@
     }
 
     .title-input {
+        box-sizing: border-box;
+        display: inline-block;
+        vertical-align: middle;
         width: 100%;
-        height: calc(var(--row-h) - 8px);
-        padding: 0 6px;
-        border: 1px solid var(--focus-border);
-        border-radius: 5px;
-        background: var(--color-bg);
+        height: auto;
+        margin: 0;
+        padding: 0;
+        border: none;
+        border-radius: 0;
+        background: transparent;
         font: inherit;
         font-weight: 500;
+        line-height: 1.4;
         color: var(--color-text-primary);
         outline: none;
     }

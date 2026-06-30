@@ -3,7 +3,7 @@
     import {Tween} from "svelte/motion";
     import {cubicOut} from "svelte/easing";
 
-    let {children}: { children: Snippet } = $props();
+    let {children, flow = false}: { children: Snippet; flow?: boolean } = $props();
 
     let scroller: HTMLDivElement;
     let content: HTMLDivElement;
@@ -150,7 +150,7 @@
     });
 </script>
 
-<div class="cs-wrapper" class:scrolling class:has-hbar={showHBar}>
+<div class="cs-wrapper" class:scrolling class:has-hbar={showHBar} class:flow>
     <div class="cs-scroller" bind:this={scroller} onscroll={onScroll}>
         <div class="cs-content" bind:this={content}>
             {@render children()}
@@ -185,11 +185,23 @@
         display: flex;
     }
 
+    .cs-wrapper.flow {
+        flex: none;
+        min-height: 0;
+        display: block;
+    }
+
     .cs-scroller {
         flex: 1;
         min-height: 0;
         overflow: auto;
         scrollbar-width: none;
+    }
+
+    .cs-wrapper.flow .cs-scroller {
+        flex: none;
+        min-height: 0;
+        overflow: visible;
     }
 
     .cs-scroller::-webkit-scrollbar {

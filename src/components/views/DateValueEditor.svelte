@@ -430,7 +430,7 @@
                 spellcheck="false"
                 autocomplete="off"
                 onfocus={() => textFocused = true}
-                onblur={() => { textFocused = false; commitText(); }}
+                onblur={(e) => { textFocused = false; if (popEl?.contains(e.relatedTarget as Node)) return; commitText(); }}
                 onkeydown={(e) => {
                     if (e.key === 'Enter') { e.preventDefault(); commitText(); }
                     else if (e.key === 'Escape') { e.preventDefault(); open = false; return; }
