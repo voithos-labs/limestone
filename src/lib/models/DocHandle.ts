@@ -337,11 +337,13 @@ class DocHandle {
 	 * 3. Trigger FTS reindexing, in the background, don't wait for it.
 	 */
 	async saveContent(body: string): Promise<void> {
+		this.updatedAt = new Date();
 		const contents = await this.serialize(body);
 		await invoke('write_document', {
 			sourcePath: this.source.path,
 			relPath: this._relPath,
-			contents
+			contents,
+			updatedAt: this.updatedAt.toISOString()
 		});
 	}
 

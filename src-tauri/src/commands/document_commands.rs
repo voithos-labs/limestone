@@ -19,19 +19,20 @@ pub async fn write_document(
     source_path: String,
     rel_path: String,
     contents: String,
+    updated_at: String,
 ) -> Result<(), String> {
     let full_path = std::path::Path::new(&source_path).join(&rel_path);
 
     atomic_write(&full_path, contents.as_bytes()).map_err(|e| e.to_string())?;
 
-    sqlx::query(
-        "UPDATE documents SET mtime = ?1, updated_at = datetime('now') WHERE rel_path = ?2",
-    )
-    .bind(mtime(&full_path))
-    .bind(&rel_path)
-    .execute(&app_data.db)
-    .await
-    .map_err(|e| e.to_string())?;
+    let updated_sql = iso_to_sql(&updated_at)?;
+    sqlx::query("UPDATE documents SET mtime = ?1, updated_at = ?2 WHERE rel_path = ?3")
+        .bind(mtime(&full_path))
+        .bind(&updated_sql)
+        .bind(&rel_path)
+        .execute(&app_data.db)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
