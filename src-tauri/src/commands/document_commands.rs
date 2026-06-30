@@ -16,6 +16,7 @@ fn mtime(path: &std::path::Path) -> i64 {
 #[tauri::command]
 pub async fn write_document(
     app_data: State<'_, AppData>,
+    source_id: String,
     source_path: String,
     rel_path: String,
     contents: String,
@@ -26,13 +27,16 @@ pub async fn write_document(
     atomic_write(&full_path, contents.as_bytes()).map_err(|e| e.to_string())?;
 
     let updated_sql = iso_to_sql(&updated_at)?;
-    sqlx::query("UPDATE documents SET mtime = ?1, updated_at = ?2 WHERE rel_path = ?3")
-        .bind(mtime(&full_path))
-        .bind(&updated_sql)
-        .bind(&rel_path)
-        .execute(&app_data.db)
-        .await
-        .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "UPDATE documents SET mtime = ?1, updated_at = ?2 WHERE source_id = ?3 AND rel_path = ?4",
+    )
+    .bind(mtime(&full_path))
+    .bind(&updated_sql)
+    .bind(&source_id)
+    .bind(&rel_path)
+    .execute(&app_data.db)
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }

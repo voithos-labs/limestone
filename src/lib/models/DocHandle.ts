@@ -340,6 +340,7 @@ class DocHandle {
 		this.updatedAt = new Date();
 		const contents = await this.serialize(body);
 		await invoke('write_document', {
+			sourceId: this.source.id,
 			sourcePath: this.source.path,
 			relPath: this._relPath,
 			contents,
