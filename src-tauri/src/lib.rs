@@ -144,6 +144,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::source_commands::get_sources,
+            commands::source_commands::is_git_repo,
             commands::source_commands::get_source_by_id,
             commands::source_commands::get_source_config,
             commands::source_commands::set_source_config,

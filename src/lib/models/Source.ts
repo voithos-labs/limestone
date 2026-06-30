@@ -6,6 +6,7 @@ export interface Source {
 	path: string;
 	created_at: string;
 	accessed_at: string;
+	use_frontmatter: boolean;
 }
 
 export interface SourceConfig {
@@ -36,13 +37,23 @@ export async function removeSource(id: string): Promise<void> {
 	await invoke('delete_source', { id });
 }
 
-export async function createSource(path: string, title: string, config: SourceConfig): Promise<Source> {
+export async function createSource(
+	path: string,
+	title: string,
+	config: SourceConfig,
+	useFrontmatter: boolean
+): Promise<Source> {
 	return await invoke<Source>('create_source', {
 		path,
 		title,
 		noteLocation: config.note_location,
-		assetLocation: config.asset_location
+		assetLocation: config.asset_location,
+		useFrontmatter
 	});
+}
+
+export async function isGitRepo(path: string): Promise<boolean> {
+	return await invoke<boolean>('is_git_repo', { path });
 }
 
 export async function getSourceConfig(id: string): Promise<SourceConfig> {

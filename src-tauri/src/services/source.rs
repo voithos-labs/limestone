@@ -9,6 +9,10 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use uuid::Uuid;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Source {
     pub title: String,
@@ -16,6 +20,8 @@ pub struct Source {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
     pub accessed_at: DateTime<Utc>,
+    #[serde(default = "default_true")]
+    pub use_frontmatter: bool,
 }
 
 impl Source {
@@ -27,6 +33,7 @@ impl Source {
             id: Uuid::new_v4(),
             created_at: now,
             accessed_at: now,
+            use_frontmatter: true,
         }
     }
 }
@@ -89,6 +96,7 @@ pub fn create_source(
     path: PathBuf,
     note_location: Option<String>,
     asset_location: Option<String>,
+    use_frontmatter: bool,
 ) -> Result<Source, std::io::Error> {
     fs::create_dir_all(&path)?;
     let title = title.unwrap_or_else(|| {
@@ -104,7 +112,9 @@ pub fn create_source(
     };
     let _ = write_source_config(&path, &config);
 
-    Ok(Source::new(title, path))
+    let mut source = Source::new(title, path);
+    source.use_frontmatter = use_frontmatter;
+    Ok(source)
 }
 
 // ---------------------
@@ -771,7 +781,7 @@ async fn cleanup_orphan_groups(db: &SqlitePool) -> sqlx::Result<()> {
 }
 
 /// Sync tags from frontmatter into groups (tags are global, source_id is null)
-async fn sync_tags(
+pub(crate) async fn sync_tags(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     doc_id: &str,
     tags: &[String],

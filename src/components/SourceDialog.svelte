@@ -1,5 +1,5 @@
 <script lang="ts">
-    import {createSource, getSourceConfig, setSourceConfig, sourceName, type Source} from "$lib/models/Source";
+    import {createSource, getSourceConfig, isGitRepo, setSourceConfig, sourceName, type Source} from "$lib/models/Source";
     import {open as openDialog} from "@tauri-apps/plugin-dialog";
     import {Folder} from "@lucide/svelte";
 
@@ -13,6 +13,7 @@
     let folderPath = $state('');
     let noteLocation = $state('');
     let assetLocation = $state('assets');
+    let useFrontmatter = $state(true);
     let error = $state('');
     let busy = $state(false);
 
@@ -34,6 +35,7 @@
                 folderPath = '';
                 noteLocation = '';
                 assetLocation = 'assets';
+                useFrontmatter = true;
             }
         }
         if (!open) wasOpen = false;
@@ -41,7 +43,10 @@
 
     async function chooseFolder() {
         const sel = await openDialog({directory: true, multiple: false});
-        if (typeof sel === 'string') folderPath = sel;
+        if (typeof sel === 'string') {
+            folderPath = sel;
+            useFrontmatter = !(await isGitRepo(sel));
+        }
     }
 
     async function submit() {
@@ -56,7 +61,7 @@
                     return;
                 }
                 const title = folderPath.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
-                await createSource(folderPath, title, config);
+                await createSource(folderPath, title, config, useFrontmatter);
             } else if (source) {
                 await setSourceConfig(source.id, config);
             }
@@ -100,6 +105,20 @@
                 <span class="label">Asset location</span>
                 <input class="input" type="text" bind:value={assetLocation} placeholder="assets" spellcheck="false"/>
             </label>
+
+            {#if mode === 'create'}
+                <label class="toggle-row">
+                    <input type="checkbox" bind:checked={useFrontmatter}/>
+                    <span class="toggle-text">Store metadata in YAML frontmatter</span>
+                </label>
+                {#if !useFrontmatter}
+                    <p class="hint">
+                        Off by default for Git repos, to keep files clean. Documents here can't have
+                        tags, custom properties, or editable created/updated dates — only their body,
+                        name, and folder.
+                    </p>
+                {/if}
+            {/if}
 
             {#if error}<p class="err">{error}</p>{/if}
 
@@ -199,6 +218,26 @@
         white-space: nowrap;
         color: var(--color-ui-muted);
         cursor: default;
+    }
+
+    .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        cursor: pointer;
+    }
+
+    .toggle-text {
+        font-size: 13px;
+        color: var(--color-text-primary);
+    }
+
+    .hint {
+        margin: 0 0 12px;
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--color-ui-muted);
     }
 
     .err {

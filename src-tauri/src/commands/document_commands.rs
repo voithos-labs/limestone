@@ -1,8 +1,9 @@
+use crate::commands::source_commands::source_uses_frontmatter;
 use crate::services::fs::{atomic_write, move_file};
-use crate::services::{frontmatter, index_document};
+use crate::services::{fm_properties, frontmatter, index_document, sync_tags};
 use crate::AppData;
 use chrono::{DateTime, Utc};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 fn mtime(path: &std::path::Path) -> i64 {
     std::fs::metadata(path)
@@ -27,17 +28,70 @@ pub async fn write_document(
     atomic_write(&full_path, contents.as_bytes()).map_err(|e| e.to_string())?;
 
     let updated_sql = iso_to_sql(&updated_at)?;
-    sqlx::query(
-        "UPDATE documents SET mtime = ?1, updated_at = ?2 WHERE source_id = ?3 AND rel_path = ?4",
-    )
-    .bind(mtime(&full_path))
-    .bind(&updated_sql)
-    .bind(&source_id)
-    .bind(&rel_path)
-    .execute(&app_data.db)
-    .await
-    .map_err(|e| e.to_string())?;
+    let mtime = mtime(&full_path);
+    let (fm, _) = frontmatter::split_content(&contents);
 
+    let mut tx = app_data.db.begin().await.map_err(|e| e.to_string())?;
+
+    if let Some(fm) = fm {
+        let properties = fm_properties(&fm);
+        let created_sql = fm
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .and_then(|s| iso_to_sql(s).ok());
+
+        sqlx::query(
+            "UPDATE documents
+             SET mtime = ?1, updated_at = ?2, properties = ?3,
+                 created_at = COALESCE(?4, created_at)
+             WHERE source_id = ?5 AND rel_path = ?6",
+        )
+        .bind(mtime)
+        .bind(&updated_sql)
+        .bind(&properties)
+        .bind(created_sql.as_deref())
+        .bind(&source_id)
+        .bind(&rel_path)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let tags: Vec<String> = fm
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let doc_id: Option<String> =
+            sqlx::query_scalar("SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2")
+                .bind(&source_id)
+                .bind(&rel_path)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| e.to_string())?;
+        if let Some(doc_id) = doc_id {
+            sync_tags(&mut tx, &doc_id, &tags)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    } else {
+        sqlx::query(
+            "UPDATE documents SET mtime = ?1, updated_at = ?2 WHERE source_id = ?3 AND rel_path = ?4",
+        )
+        .bind(mtime)
+        .bind(&updated_sql)
+        .bind(&source_id)
+        .bind(&rel_path)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -88,12 +142,21 @@ fn iso_to_sql(s: &str) -> Result<String, String> {
 #[tauri::command]
 pub async fn save_document_meta(
     app_data: State<'_, AppData>,
+    app: AppHandle,
     id: String,
+    source_id: String,
     source_path: String,
     rel_path: String,
     created_at: Option<String>,
     updated_at: Option<String>,
 ) -> Result<(), String> {
+    if !source_uses_frontmatter(&app, &source_id) {
+        return Err(
+            "This source stores documents without frontmatter, so per-document metadata can't be saved here."
+                .into(),
+        );
+    }
+
     let full_path = std::path::Path::new(&source_path).join(&rel_path);
 
     // Patch frontmatter on fs

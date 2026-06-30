@@ -874,8 +874,20 @@
         wasEditOpen = open;
     });
 
+    const NO_METADATA_REASON =
+        'This source stores files without frontmatter, so tags, properties, and dates can’t be saved on its documents.';
+
+    function sourceUsesFrontmatter(sourceId: string): boolean {
+        return sources.find(s => s.id === sourceId)?.use_frontmatter ?? true;
+    }
+
+    function metaBlocked(field: ViewField, row: Row): boolean {
+        return isEditable(field) && field.type !== 'folder' && !sourceUsesFrontmatter(row.source_id);
+    }
+
     function onCellClick(e: MouseEvent, field: ViewField, row: Row) {
         if (!isEditable(field)) return;
+        if (metaBlocked(field, row)) return;
         if (field.type === 'boolean') {
             const cur = rawStatefulValue(field, row);
             writeCell(field, row, cur === true ? false : true);
@@ -987,6 +999,7 @@
         const row = rows[activeCell.row];
         const col = columns[activeCell.col];
         if (!row || !col || !isEditable(col.field)) return;
+        if (metaBlocked(col.field, row)) return;
         if (col.field.type === 'boolean') {
             const cur = rawStatefulValue(col.field, row);
             writeCell(col.field, row, cur === true ? false : true);
@@ -1431,13 +1444,16 @@
                     {@const isLast = idx === lastDataIndex}
                     {@const isCheck = idx === checkColIndex}
                     {@const editable = isEditable(col.field)}
+                    {@const blocked = metaBlocked(col.field, draftRow)}
                     <td
                             class={cellClassFor(col.field.type)}
                             class:last-data={isLast}
                             class:check-col={isCheck}
                             class:editable
+                            class:meta-blocked={blocked}
                             class:nr-divider={idx !== columns.length - 1}
                             style={cellStyle(col)}
+                            title={blocked ? NO_METADATA_REASON : undefined}
                     >
                         {#if col.field.type === 'title'}
                             <input
@@ -1613,16 +1629,18 @@
                     {#each columns as col, idx (col.field.id)}
                         {@const isLast = idx === lastDataIndex}
                         {@const editable = isEditable(col.field)}
+                        {@const blocked = metaBlocked(col.field, row)}
                         {@const isCheck = idx === checkColIndex}
                         <td
                                 class={cellClassFor(col.field.type)}
                                 class:last-data={isLast}
                                 class:editable
+                                class:meta-blocked={blocked}
                                 class:check-col={isCheck}
                                 class:active-cell={isActive(rowIdx, idx)}
                                 data-cell={`${rowIdx}-${idx}`}
                                 style={cellStyle(col)}
-                                title={isCheck ? undefined : titleFor(col.field, row)}
+                                title={isCheck ? undefined : (blocked ? NO_METADATA_REASON : titleFor(col.field, row))}
                                 onclick={(e) => onCellPointer(e, rowIdx, idx, col.field, row)}
                         >
                             {#if col.field.type === 'title'}
@@ -1791,6 +1809,10 @@
         color: var(--color-accent);
         background: var(--error-bg);
         border-radius: var(--radius-ui);
+    }
+
+    .meta-blocked.editable {
+        cursor: not-allowed;
     }
 
     .basic-table {

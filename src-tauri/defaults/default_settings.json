@@ -6,9 +6,6 @@
 		"ui_scale_percent": 100,
 		"max_page_width": 1200
 	},
-	"documents": {
-		"use_yaml_frontmatter": true
-	},
 	"views": {
 		"scroll_entire_view": true
 	},

@@ -1,3 +1,4 @@
+use crate::commands::source_commands::source_uses_frontmatter;
 use crate::services::bulk_ops::BulkResult;
 use crate::AppData;
 use serde_json::Value;
@@ -15,6 +16,9 @@ pub async fn bulk_set_view_field(
     value: Value,
     doc_ids: Vec<String>,
 ) -> Result<BulkResult, String> {
+    if !source_uses_frontmatter(&app, &source_id) {
+        return Err("This source stores documents without frontmatter, so per-document metadata can't be saved here.".into());
+    }
     app_data
         .bulk
         .set_view_field(

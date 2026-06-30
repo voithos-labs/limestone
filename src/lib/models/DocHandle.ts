@@ -16,9 +16,8 @@ import yaml from 'js-yaml';
 
 // Internal
 import { select, execute, parseUtc } from '$lib/db';
-import type { Source } from './Source';
+import { getSource, type Source } from './Source';
 import Group, { type GroupRow } from './Group';
-import { getSetting } from './Settings';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
@@ -140,7 +139,8 @@ class DocHandle {
 			title: row.source_title,
 			path: row.source_path,
 			created_at: '',
-			accessed_at: ''
+			accessed_at: '',
+			use_frontmatter: true
 		});
 		const groups: GroupRow[] = row.groups_json ? JSON.parse(row.groups_json) : [];
 		doc.groups = groups.filter((r) => r.id !== null).map((r) => new Group(r));
@@ -267,8 +267,8 @@ class DocHandle {
 	 * Serialize frontmatter + body into a full file string.
 	 */
 	async serialize(body: string): Promise<string> {
-		const useFrontmatter = await getSetting<boolean>('documents.use_yaml_frontmatter');
-		if (useFrontmatter === false) return body;
+		const source = await getSource(this.source.id);
+		if (source.use_frontmatter === false) return body;
 
 		const fm = this.toFrontmatter();
 		const fmStr = yaml.dump(fm, { lineWidth: -1, sortKeys: false });
@@ -395,6 +395,7 @@ class DocHandle {
 	async saveMeta(meta: { createdAt?: Date; updatedAt?: Date }): Promise<void> {
 		await invoke('save_document_meta', {
 			id: this.id,
+			sourceId: this.source.id,
 			sourcePath: this.source.path,
 			relPath: this._relPath,
 			createdAt: meta.createdAt ? meta.createdAt.toISOString() : null,

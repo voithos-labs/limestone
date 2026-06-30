@@ -23,6 +23,14 @@ fn load_sources(app: &AppHandle) -> Vec<Source> {
     sources
 }
 
+pub(crate) fn source_uses_frontmatter(app: &AppHandle, source_id: &str) -> bool {
+    load_sources(app)
+        .iter()
+        .find(|s| s.id.to_string() == source_id)
+        .map(|s| s.use_frontmatter)
+        .unwrap_or(true)
+}
+
 fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
     let pool = app_data.db.clone();
     let source_path = source.path.clone();
@@ -89,13 +97,20 @@ pub fn create_source(
     title: String,
     note_location: Option<String>,
     asset_location: Option<String>,
+    use_frontmatter: bool,
 ) -> Result<Source, String> {
     let candidate = PathBuf::from(&path);
     let mut sources = load_sources(&app);
     check_source_conflict(&candidate, &sources)?;
 
-    let source = services::create_source(Some(title), candidate, note_location, asset_location)
-        .map_err(|e| e.to_string())?;
+    let source = services::create_source(
+        Some(title),
+        candidate,
+        note_location,
+        asset_location,
+        use_frontmatter,
+    )
+    .map_err(|e| e.to_string())?;
 
     // add fs access to new source dir
     let _ = app.fs_scope().allow_directory(&source.path, true);
@@ -111,6 +126,18 @@ pub fn create_source(
 #[tauri::command]
 pub fn get_sources(app: AppHandle) -> Vec<Source> {
     load_sources(&app)
+}
+
+#[tauri::command]
+pub fn is_git_repo(path: String) -> bool {
+    let mut dir: Option<&Path> = Some(Path::new(&path));
+    while let Some(d) = dir {
+        if d.join(".git").exists() {
+            return true;
+        }
+        dir = d.parent();
+    }
+    false
 }
 
 #[tauri::command]
