@@ -119,7 +119,7 @@ pub async fn rename_document(
         .and_then(|s| s.to_str())
         .unwrap_or(&new_name);
 
-    sqlx::query("UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, updated_at = datetime('now') WHERE rel_path = ?4")
+    sqlx::query("UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3 WHERE rel_path = ?4")
         .bind(&new_rel)
         .bind(title)
         .bind(mtime(&new_full))

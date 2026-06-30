@@ -581,7 +581,7 @@ pub async fn apply_operations(
                     .unwrap_or("Untitled");
 
                 sqlx::query(
-                    "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, updated_at = datetime('now') WHERE source_id = ?4 AND rel_path = ?5",
+                    "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3 WHERE source_id = ?4 AND rel_path = ?5",
                 )
                 .bind(new_path)
                 .bind(title)
@@ -864,7 +864,7 @@ pub async fn index_document(
 
     let mut tx = db.begin().await?;
     sqlx::query(
-        "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4, updated_at = datetime('now') WHERE id = ?5",
+        "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4 WHERE id = ?5",
     )
     .bind(rel_path)
     .bind(title)

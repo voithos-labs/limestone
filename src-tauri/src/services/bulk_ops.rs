@@ -121,7 +121,7 @@ impl BulkRunner {
         let path = json_path(view_slug, field_name);
         let placeholders = doc_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(
-            "UPDATE documents SET properties = json_set(properties, ?, json(?)), updated_at = datetime('now')
+            "UPDATE documents SET properties = json_set(properties, ?, json(?))
              WHERE source_id = ? AND id IN ({placeholders})"
         );
         let mut q = sqlx::query(&sql)
@@ -302,8 +302,7 @@ async fn execute(
             let rel_paths = fetch_paths_with_field(db, source_id, &old_path).await?;
             sqlx::query(
                 "UPDATE documents
-                 SET properties = json_remove(json_set(properties, ?1, json_extract(properties, ?2)), ?2),
-                     updated_at = datetime('now')
+                 SET properties = json_remove(json_set(properties, ?1, json_extract(properties, ?2)), ?2)
                  WHERE source_id = ?3 AND json_extract(properties, ?2) IS NOT NULL",
             )
             .bind(&new_path)
@@ -328,7 +327,7 @@ async fn execute(
             let rel_paths = fetch_paths_with_field(db, source_id, &path).await?;
             sqlx::query(
                 "UPDATE documents
-                 SET properties = json_remove(properties, ?1), updated_at = datetime('now')
+                 SET properties = json_remove(properties, ?1)
                  WHERE source_id = ?2 AND json_extract(properties, ?1) IS NOT NULL",
             )
             .bind(&path)
@@ -368,7 +367,7 @@ async fn execute(
             let rel_paths: Vec<String> = rows.iter().map(|(_, p)| p.clone()).collect();
             sqlx::query(
                 "UPDATE documents
-                 SET properties = json_set(properties, ?1, ?2), updated_at = datetime('now')
+                 SET properties = json_set(properties, ?1, ?2)
                  WHERE source_id = ?3 AND json_extract(properties, ?1) = ?4",
             )
             .bind(&path)
@@ -400,8 +399,7 @@ async fn execute(
             let rel_paths = fetch_paths_with_field(db, source_id, &old_path).await?;
             sqlx::query(
                 "UPDATE documents
-                 SET properties = json_remove(json_set(properties, ?1, json_extract(properties, ?2)), ?2),
-                     updated_at = datetime('now')
+                 SET properties = json_remove(json_set(properties, ?1, json_extract(properties, ?2)), ?2)
                  WHERE source_id = ?3 AND json_extract(properties, ?2) IS NOT NULL",
             )
             .bind(&new_path)
