@@ -11,7 +11,7 @@
     import {Hash, EllipsisVertical, Trash2, Folders} from "@lucide/svelte";
     import {onMount} from "svelte";
 
-    let {handle, onDelete}: { handle: DocHandle; onDelete?: () => void } = $props();
+    let {handle, onDelete, compact = false}: { handle: DocHandle; onDelete?: () => void; compact?: boolean } = $props();
 
     let title = $state(handle.title);
     let relPath = $state(handle.relPath);
@@ -131,7 +131,7 @@
 </script>
 
 <div class="doc-hero">
-    <div class="hero-inner">
+    <div class="hero-inner" class:compact>
         <div class="title-row">
             <span class="title-left">
                 <span class="title-field">
@@ -199,9 +199,13 @@
     }
 
     .hero-inner {
-        max-width: 700px;
+        max-width: var(--page-max-width, 1200px);
         margin: 0 auto;
         padding: 34px 24px 6px;
+    }
+
+    .hero-inner.compact {
+        padding: 10px 0 6px;
     }
 
     /* ── Title row (editable filename + ext, kebab) ── */

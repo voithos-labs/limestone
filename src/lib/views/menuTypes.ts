@@ -5,6 +5,7 @@ export interface MenuItem {
 	label: string;
 	icon?: Component;
 	children?: MenuItem[];
+	keepOpen?: boolean;
 }
 
 export interface MenuDivider {

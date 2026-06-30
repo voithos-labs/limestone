@@ -66,7 +66,7 @@ import { saveViewJSON, deleteSavedView, listSavedViewJSON } from '$lib/models/sa
  * faces: table, list, kanban, calendar, pinned doc
  *
  */
-export type ViewFaceType = 'table' | 'list' | 'kanban' | 'calendar' | 'pinned';
+export type ViewFaceType = 'table' | 'list' | 'kanban' | 'calendar' | 'pinned' | 'journal';
 
 interface ViewFaceJSON {
 	id: string;
@@ -83,7 +83,8 @@ const FACE_TYPE_LABEL: Record<ViewFaceType, string> = {
 	list: 'List',
 	kanban: 'Board',
 	calendar: 'Calendar',
-	pinned: 'Pinned'
+	pinned: 'Pinned',
+	journal: 'Journal'
 };
 
 export class ViewFace {
@@ -628,8 +629,6 @@ class View {
 	emoji: string = $state(''); // user-set per-view emoji
 	cover: string = $state('');
 
-	// hover preview
-	previewFaceId: string | null = $state(null);
 
 	constructor(json: ViewJSON) {
 		this.id = json.id;
@@ -716,9 +715,9 @@ class View {
 			.filter((id): id is string => !!id);
 	}
 
-	// add a fresh table face with the default columns, return it
-	addFace(): ViewFace {
-		const face = ViewFace.create('table', this.defaultFaceFieldIds());
+	// add a fresh face with the default columns, return it
+	addFace(type: ViewFaceType = 'table'): ViewFace {
+		const face = ViewFace.create(type, this.defaultFaceFieldIds());
 		this.faces = [...this.faces, face];
 		return face;
 	}

@@ -1,19 +1,18 @@
 <script lang="ts">
     import {untrack} from "svelte";
     import type {Component} from "svelte";
-    import {ChevronDown, Table, Columns3, List, Calendar, Pin, Layers, Pencil, Copy, Trash2, Plus, ArrowLeft, ChevronUp} from "@lucide/svelte";
+    import {ChevronDown, Table, Columns3, List, Calendar, Pin, Layers, Pencil, Copy, Trash2, Plus, ArrowLeft, ChevronUp, NotebookText} from "@lucide/svelte";
     import type View from "$lib/models/View.svelte";
     import type {ViewFace, ViewFaceType, ViewField, FilterNode} from "$lib/models/View.svelte";
     import {getFieldIcon} from "$lib/views/filterDisplay";
     import {fieldLabel} from "$lib/views/fieldValue";
-    import {getSetting} from "$lib/models/Settings";
     import Menu from "./Menu.svelte";
     import FaceFilters from "./FaceFilters.svelte";
 
     let {view, face}: { view: View; face: ViewFace } = $props();
 
     const FACE_ICON: Record<ViewFaceType, Component> = {
-        table: Table, kanban: Columns3, list: List, calendar: Calendar, pinned: Pin
+        table: Table, kanban: Columns3, list: List, calendar: Calendar, pinned: Pin, journal: NotebookText
     };
     const faceIcon = (t: ViewFaceType) => FACE_ICON[t] ?? Table;
     const SwitchIcon = $derived(faceIcon(face.type));
@@ -66,33 +65,19 @@
 
     function selectFace(id: string) {
         view.state.active_face_id = id;
-        clearPreview();
         open = false;
     }
 
-    // ── Hover preview (debounced) ──────────────────────────────────────────────
-    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
-    let hoverPreviewEnabled = $state(true);
-    getSetting<boolean>('views.face_hover_preview').then(v => { if (v !== null) hoverPreviewEnabled = v; });
+    let addFaceOpen = $state(false);
+    let addFaceEl: HTMLElement | null = $state(null);
+    const ADD_FACE_ITEMS = [
+        {value: 'table', label: 'Table', icon: Table},
+        {value: 'journal', label: 'Journal', icon: NotebookText}
+    ];
 
-    function previewEnter(id: string) {
-        if (!hoverPreviewEnabled) return;
-        if (hoverTimer) clearTimeout(hoverTimer);
-        hoverTimer = setTimeout(() => { view.previewFaceId = id; }, 5);
-    }
-
-    function previewLeave() {
-        if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-        view.previewFaceId = null;
-    }
-
-    function clearPreview() {
-        if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-        view.previewFaceId = null;
-    }
-
-    function addFace() {
-        const f = view.addFace();
+    function addFaceOfType(type: string) {
+        addFaceOpen = false;
+        const f = view.addFace(type as ViewFaceType);
         view.state.active_face_id = f.id;
         startRename(f);
     }
@@ -179,7 +164,6 @@
                 window.removeEventListener('scroll', position, true);
                 document.removeEventListener('pointerdown', onDocPointerDown);
                 document.removeEventListener('keydown', onKey);
-                clearPreview();
             };
         }
         if (!open) wasOpen = false;
@@ -201,9 +185,6 @@
                         class="row"
                         class:active={f.id === view.state.active_face_id}
                         class:confirming={confirmFor === f.id}
-                        onmouseenter={() => previewEnter(f.id)}
-                        onmouseleave={previewLeave}
-                        role="presentation"
                 >
                     {#if renamingId === f.id}
                         <span class="name as-input">
@@ -256,10 +237,11 @@
                     {/if}
                 </div>
             {/each}
-            <button class="action add-face" type="button" onclick={addFace}>
+            <button class="action add-face" type="button" bind:this={addFaceEl} onclick={() => addFaceOpen = !addFaceOpen}>
                 <Plus size={14} strokeWidth={1.75}/>
                 <span>Add face</span>
             </button>
+            <Menu bind:open={addFaceOpen} anchor={addFaceEl} items={ADD_FACE_ITEMS} onSelect={addFaceOfType} minWidth={150}/>
         </div>
 
         <div class="divider"></div>

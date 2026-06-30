@@ -162,18 +162,14 @@
         }
     });
 
-    function pick(value: string) {
-        onSelect(value);
-        if (!multiple) open = false;
-    }
-
     function activate(entry: MenuItem, rowEl: HTMLElement | null) {
         if (entry.children && entry.children.length > 0) {
             subItems = entry.children;
             subAnchor = rowEl;
             subOpen = true;
         } else {
-            pick(entry.value);
+            onSelect(entry.value);
+            if (!multiple && !entry.keepOpen) open = false;
         }
     }
 
@@ -246,6 +242,8 @@
                             <Check size={13} strokeWidth={2}/>
                         {/if}
                     </button>
+                {:else if entry.section}
+                    <div class="menu-section">{entry.section}</div>
                 {:else}
                     <div class="menu-divider" role="separator"></div>
                 {/if}
@@ -394,5 +392,14 @@
         height: 1px;
         margin: 4px 6px;
         background: var(--color-border);
+    }
+
+    .menu-section {
+        padding: 6px 10px 2px;
+        color: var(--color-ui-dulled);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
     }
 </style>

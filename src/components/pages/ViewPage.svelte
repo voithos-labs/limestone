@@ -5,18 +5,33 @@
     import DocHandle from "$lib/models/DocHandle";
     import ViewHeader from "../views/ViewHeader.svelte";
     import TableFace from "../views/faces/TableFace.svelte";
+    import JournalFace from "../views/faces/JournalFace.svelte";
     import {convertFileSrc} from "@tauri-apps/api/core";
     import {appDataDir, join} from "@tauri-apps/api/path";
     import Menu from "../views/Menu.svelte";
     import CoverSourceDialog from "../CoverSourceDialog.svelte";
     import type {MenuEntry} from "$lib/views/menuTypes";
+    import {getSetting} from "$lib/models/Settings";
     import {Crop, X, Check, EllipsisVertical, Trash2, ImageUp, Plus} from "@lucide/svelte";
 
     let {view, editor}: { view: View; editor: EditorState } = $props();
 
+    let scrollAll = $state(true);
+    getSetting<boolean>('views.scroll_entire_view').then(v => {
+        if (v !== null) scrollAll = v;
+    });
+
     const activeFace: ViewFace = $derived(
-        view.faces.find(f => f.id === (view.previewFaceId ?? view.state.active_face_id)) ?? view.faces[0]
+        view.faces.find(f => f.id === view.state.active_face_id) ?? view.faces[0]
     );
+
+    // The table keeps its own scroll (horizontal bar + sticky header)
+    const bodyFlow = $derived(scrollAll && activeFace?.type !== 'table');
+    let bodyEl: HTMLDivElement | null = $state(null);
+    $effect(() => {
+        const id = activeFace?.id;
+        if (id && bodyEl) bodyEl.scrollTop = 0;
+    });
 
     // Bumped by the header's "+ New" button; the active face watches it and begins
     // a create in whatever way fits its layout (table = floating draft row at top).
@@ -75,7 +90,9 @@
             const abs = await join(await appDataDir(), 'assets', ref);
             if (!cancelled) coverUrl = convertFileSrc(abs);
         })();
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+        };
     });
 
     function persist() {
@@ -163,72 +180,80 @@
 </script>
 
 <div class="view-page">
-    {#if coverUrl}
-        <div
-                class="view-cover"
-                class:cropping
-                role="presentation"
-                style:background-image="url('{coverUrl}')"
-                style:background-position="{geo.x}% {geo.y}%"
-                style:background-size="{geo.z * 100}%"
-                onpointerdown={cropPointerDown}
-                onpointermove={cropPointerMove}
-                onpointerup={cropPointerUp}
-                onpointerleave={cropPointerUp}
-                onwheel={cropWheel}
-        >
-            {#if cropping}
-                <div class="crop-frame">
-                    <span class="cc tl"></span>
-                    <span class="cc tr"></span>
-                    <span class="cc bl"></span>
-                    <span class="cc br"></span>
-                </div>
-            {:else}
-                <div class="cover-actions top">
-                    <button class="cover-btn" type="button" title="More" onclick={openMore}>
-                        <EllipsisVertical size={14}/>
-                    </button>
-                </div>
-            {/if}
-            <div class="cover-actions">
+    <div class="view-body" class:flow={bodyFlow} bind:this={bodyEl}>
+        {#if coverUrl}
+            <div
+                    class="view-cover"
+                    class:cropping
+                    role="presentation"
+                    style:background-image="url('{coverUrl}')"
+                    style:background-position="{geo.x}% {geo.y}%"
+                    style:background-size="{geo.z * 100}%"
+                    onpointerdown={cropPointerDown}
+                    onpointermove={cropPointerMove}
+                    onpointerup={cropPointerUp}
+                    onpointerleave={cropPointerUp}
+                    onwheel={cropWheel}
+            >
                 {#if cropping}
-                    <button class="cover-btn" type="button" title="Confirm" onclick={confirmCrop}>
-                        <Check size={14}/>
-                    </button>
+                    <div class="crop-frame">
+                        <span class="cc tl"></span>
+                        <span class="cc tr"></span>
+                        <span class="cc bl"></span>
+                        <span class="cc br"></span>
+                    </div>
                 {:else}
-                    <button class="cover-btn" type="button" title="Crop" onclick={startCrop}>
-                        <Crop size={14}/>
-                    </button>
-                    <button class="cover-btn" type="button" title="Replace" onclick={pickCover}>
-                        <ImageUp size={14}/>
-                    </button>
-                    <button class="cover-btn" type="button" title="Remove" onclick={removeCover}>
-                        <X size={14}/>
-                    </button>
+                    <div class="cover-actions top">
+                        <button class="cover-btn" type="button" title="More" onclick={openMore}>
+                            <EllipsisVertical size={14}/>
+                        </button>
+                    </div>
                 {/if}
+                <div class="cover-actions">
+                    {#if cropping}
+                        <button class="cover-btn" type="button" title="Confirm" onclick={confirmCrop}>
+                            <Check size={14}/>
+                        </button>
+                    {:else}
+                        <button class="cover-btn" type="button" title="Crop" onclick={startCrop}>
+                            <Crop size={14}/>
+                        </button>
+                        <button class="cover-btn" type="button" title="Replace" onclick={pickCover}>
+                            <ImageUp size={14}/>
+                        </button>
+                        <button class="cover-btn" type="button" title="Remove" onclick={removeCover}>
+                            <X size={14}/>
+                        </button>
+                    {/if}
+                </div>
             </div>
-        </div>
-    {/if}
+        {/if}
 
-    <div class="view-chrome" class:has-cover={!!view.cover}>
-        <ViewHeader
-                {view}
-                hasCover={!!view.cover}
-                onMore={(anchor) => { moreAnchor = anchor; moreOpen = true; }}
-        />
+        <div class="view-chrome" class:has-cover={!!view.cover}>
+            <ViewHeader
+                    {view}
+                    hasCover={!!view.cover}
+                    onMore={(anchor) => { moreAnchor = anchor; moreOpen = true; }}
+            />
+        </div>
+
+        {#if activeFace?.type === 'journal'}
+            <JournalFace {view} face={activeFace} flow={scrollAll}/>
+        {:else}
+            <TableFace
+                    {view}
+                    face={activeFace}
+                    {onOpenRow}
+                    {createSignal}
+            />
+        {/if}
     </div>
 
-    <TableFace
-            {view}
-            face={activeFace}
-            {onOpenRow}
-            {createSignal}
-    />
-
-    <button class="new-fab" type="button" title="New note" onclick={() => createSignal++}>
-        <Plus size={18} strokeWidth={2}/>
-    </button>
+    {#if activeFace?.type !== 'journal'}
+        <button class="new-fab" type="button" title="New note" onclick={() => createSignal++}>
+            <Plus size={18} strokeWidth={2}/>
+        </button>
+    {/if}
 </div>
 
 <Menu bind:open={moreOpen} anchor={moreAnchor} items={moreItems} onSelect={onMoreSelect} minWidth={170}/>
@@ -245,6 +270,23 @@
         margin-left: auto;
         margin-right: auto;
         overflow: hidden;
+    }
+
+    .view-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .view-body.flow {
+        display: block;
+        overflow-y: auto;
+        scrollbar-width: none;
+    }
+
+    .view-body.flow::-webkit-scrollbar {
+        display: none;
     }
 
     .new-fab {

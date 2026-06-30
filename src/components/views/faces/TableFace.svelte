@@ -45,12 +45,13 @@
     import LeanScroll from "../LeanScroll.svelte";
     import {onMount} from "svelte";
 
-    let {view, face, onMeta, onOpenRow, createSignal = 0}: {
+    let {view, face, onMeta, onOpenRow, createSignal = 0, flow = false}: {
         view: View;
         face: ViewFace;
         onMeta?: (m: { loading: boolean; count: number; total: number; elapsedMs: number }) => void;
         onOpenRow?: (rowId: string) => void;
         createSignal?: number;
+        flow?: boolean;
     } = $props();
 
     const query = $derived((view.state.search as string | undefined) ?? '');
@@ -553,7 +554,7 @@
         if (!isDerived(menuField.type)) {
             items.push(confirmingDelete
                 ? {value: 'delete_confirm', label: 'Confirm delete', icon: Trash2}
-                : {value: 'delete', label: 'Delete', icon: Trash2});
+                : {value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true});
         }
         return items;
     });
@@ -1415,7 +1416,7 @@
     <CellValue {field} {row} viewSlug={view.slug} {sources}/>
 {/snippet}
 
-<LeanScroll>
+<LeanScroll {flow}>
     <table
             class="basic-table"
             bind:this={tableEl}

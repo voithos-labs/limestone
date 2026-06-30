@@ -25,10 +25,12 @@
         tab,
         editor,
         onchange,
+        flow = false,
     }: {
         tab: TabState;
         editor?: EditorStateModel;
         onchange?: (value: string) => void;
+        flow?: boolean;
     } = $props();
 
     async function deleteDoc() {
@@ -110,23 +112,25 @@
     let initApplied = false;
 
     let content: string = $state('');
+    let loaded = $state(false);
 
     $effect(() => {
-        handle?.loadContent().then((c) => content = c)
+        loaded = false;
+        handle?.loadContent().then((c) => { content = c; loaded = true; });
     })
 
 
     const theme = EditorView.theme({
         '&': {
-            height: '100%',
+            height: flow ? 'auto' : '100%',
             fontSize: 'var(--editor-font-size, 16px)',
             backgroundColor: 'transparent',
         },
         '.cm-content': {
             fontFamily: 'var(--font-editor)',
             lineHeight: '1.6',
-            padding: '48px 24px',
-            maxWidth: '700px',
+            padding: flow ? '16px 0 48px' : '48px 24px',
+            maxWidth: 'var(--page-max-width, 1200px)',
             margin: '0 auto',
             caretColor: 'var(--color-text-primary)',
         },
@@ -134,7 +138,7 @@
             borderLeftColor: 'var(--color-text-primary)',
         },
         '.cm-scroller': {
-            overflow: 'auto',
+            overflow: flow ? 'visible' : 'auto',
             scrollbarWidth: 'none',
         },
         '.cm-scroller::-webkit-scrollbar': {
@@ -302,22 +306,22 @@
             view.dispatch({
                 changes: { from: 0, to: current.length, insert: content },
             });
-            if (!initApplied) {
-                requestAnimationFrame(() => {
-                    if (!view) return;
-                    const initialCursorPos = tab.state.cursorPos;
-                    const initialScrollTop = tab.state.scrollTop;
-                    if (initialCursorPos !== undefined) {
-                        const pos = Math.min(initialCursorPos, view.state.doc.length);
-                        view.dispatch({ selection: { anchor: pos } });
-                    }
-                    if (initialScrollTop !== undefined) {
-                        view.scrollDOM.scrollTop = initialScrollTop;
-                    }
-                    view.focus();
-                    initApplied = true;
-                });
-            }
+        }
+        if (loaded && !initApplied) {
+            requestAnimationFrame(() => {
+                if (!view) return;
+                const initialCursorPos = tab.state.cursorPos;
+                const initialScrollTop = tab.state.scrollTop;
+                if (initialCursorPos !== undefined) {
+                    const pos = Math.min(initialCursorPos, view.state.doc.length);
+                    view.dispatch({ selection: { anchor: pos } });
+                }
+                if (initialScrollTop !== undefined) {
+                    view.scrollDOM.scrollTop = initialScrollTop;
+                }
+                if (!flow) view.focus();
+                initApplied = true;
+            });
         }
     });
 
@@ -330,13 +334,14 @@
     });
 </script>
 
-<div class="doc-view">
+<div class="doc-view" class:flow>
     {#if handle}
-        <DocumentHero {handle} onDelete={deleteDoc}/>
+        <DocumentHero {handle} onDelete={deleteDoc} compact={flow}/>
     {/if}
     <div
         class="cm-wrapper"
         class:scrolling
+        class:flow
         bind:this={container}
         style="--editor-font-size: {zoom}px"
     >
@@ -366,6 +371,24 @@
         width: 100%;
         flex: 1;
         min-height: 0;
+    }
+
+    .doc-view.flow {
+        height: auto;
+    }
+
+    .cm-wrapper.flow {
+        flex: none;
+        min-height: 0;
+    }
+
+    .cm-wrapper.flow :global(.cm-editor) {
+        height: auto;
+    }
+
+    .cm-wrapper.flow::before,
+    .cm-wrapper.flow::after {
+        display: none;
     }
 
     .cm-wrapper::before,
