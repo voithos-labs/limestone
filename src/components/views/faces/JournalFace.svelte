@@ -287,8 +287,10 @@
                 groupIds,
                 properties
             });
-            if (key === 'created_at') await doc.saveMeta({createdAt: selected});
-            else if (key === 'updated_at') await doc.saveMeta({updatedAt: selected});
+            if (source.use_frontmatter) {
+                if (key === 'created_at') await doc.saveMeta({createdAt: selected});
+                else if (key === 'updated_at') await doc.saveMeta({updatedAt: selected});
+            }
             await loadRows();
         } catch (e) {
             console.error('create entry failed', e);

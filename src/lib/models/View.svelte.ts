@@ -50,6 +50,7 @@ import Group, { GroupType } from '$lib/models/Group';
 import { getSource, listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/db';
 import { saveViewJSON, deleteSavedView, listSavedViewJSON } from '$lib/models/savedViews';
+import { toasts } from '$lib/toasts.svelte';
 
 /**
  * okay so a Face instance is 1:1 with a view-component, e.g. table, kanban etc.
@@ -864,15 +865,19 @@ class View {
 		const oldSlug = this.slug;
 		if (!newSlug || newSlug === oldSlug) return;
 		const sources = await listSources();
+		const results: BulkResult[] = [];
 		for (const s of sources) {
-			await invoke('bulk_rename_view', {
-				sourceId: s.id,
-				sourcePath: s.path,
-				oldSlug,
-				newSlug
-			});
+			results.push(
+				await invoke<BulkResult>('bulk_rename_view', {
+					sourceId: s.id,
+					sourcePath: s.path,
+					oldSlug,
+					newSlug
+				})
+			);
 		}
 		this.slug = newSlug;
+		toastBulkFailures(results);
 	}
 
 	/** Rename a stateful field, moving its stored values to the new key, then update the model */
@@ -880,31 +885,39 @@ class View {
 		const oldName = field.name;
 		if (!newName || newName === oldName) return;
 		const sources = await listSources();
+		const results: BulkResult[] = [];
 		for (const s of sources) {
-			await invoke('bulk_rename_view_field', {
-				sourceId: s.id,
-				sourcePath: s.path,
-				viewSlug: this.slug,
-				oldName,
-				newName
-			});
+			results.push(
+				await invoke<BulkResult>('bulk_rename_view_field', {
+					sourceId: s.id,
+					sourcePath: s.path,
+					viewSlug: this.slug,
+					oldName,
+					newName
+				})
+			);
 		}
 		this.fields = this.fields.map((f) => (f.id === field.id ? { ...f, name: newName } : f));
+		toastBulkFailures(results);
 	}
 
 	/** Rename a select/multiselect option value across all stored documents */
 	async renameOption(field: ViewField, oldValue: string, newValue: string): Promise<void> {
 		const sources = await listSources();
+		const results: BulkResult[] = [];
 		for (const s of sources) {
-			await invoke('bulk_rename_view_option', {
-				sourceId: s.id,
-				sourcePath: s.path,
-				viewSlug: this.slug,
-				fieldName: field.name,
-				oldValue,
-				newValue
-			});
+			results.push(
+				await invoke<BulkResult>('bulk_rename_view_option', {
+					sourceId: s.id,
+					sourcePath: s.path,
+					viewSlug: this.slug,
+					fieldName: field.name,
+					oldValue,
+					newValue
+				})
+			);
 		}
+		toastBulkFailures(results);
 	}
 
 	/** Write a stateful field value onto the given documents in a source */
@@ -952,12 +965,25 @@ export function describeBulkFailure(r: BulkResult): string {
 		case 'no_space':
 			return "Couldn't save changes: your disk is out of space.";
 		case 'invalid_data':
-			return `${n} ${noun} couldn't be read: unsupported file encoding.`;
+			return `${n} ${noun} couldn't be read: their content couldn't be parsed.`;
 		case 'locked':
 			return `${n} ${noun} are in use by another app. Close them and retry.`;
 		default:
 			return `${n} ${noun} couldn't be saved.`;
 	}
+}
+
+export function toastBulkFailures(results: BulkResult[]): void {
+	const failures = results.flatMap((r) => r.failures);
+	if (failures.length === 0) return;
+	toasts.push(
+		describeBulkFailure({
+			touched: results.reduce((n, r) => n + r.touched, 0),
+			failed: failures.length,
+			failures,
+			source_unreachable: results.some((r) => r.source_unreachable)
+		})
+	);
 }
 
 export default View;

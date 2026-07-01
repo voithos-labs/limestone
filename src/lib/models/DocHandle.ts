@@ -91,6 +91,7 @@ class DocHandle {
 		properties: Record<string, unknown> = {}
 	): Promise<DocHandle> {
 		const id = uuidv4();
+		if (!source.use_frontmatter) properties = {};
 
 		// insert new doc stub
 		await execute(
@@ -212,13 +213,12 @@ class DocHandle {
 
 	async addGroups(groupIds: string[]): Promise<void> {
 		if (groupIds.length === 0) return;
-		const placeholders = groupIds.map((_, i) => `(?${i * 2 + 1}, ?${i * 2 + 2})`).join(', ');
-		const params = groupIds.flatMap((gid) => [this.id, gid]);
+		const placeholders = groupIds.map((_, i) => `?${i + 2}`).join(', ');
+		const typeFilter = this.source.use_frontmatter ? '' : " AND group_type != 'tag'";
 		await execute(
-			`INSERT
-            OR IGNORE INTO document_groups (document_id, group_id) VALUES
-            ${placeholders}`,
-			params
+			`INSERT OR IGNORE INTO document_groups (document_id, group_id)
+             SELECT ?1, id FROM groups WHERE id IN (${placeholders})${typeFilter}`,
+			[this.id, ...groupIds]
 		);
 		await this.fetchGroups();
 	}

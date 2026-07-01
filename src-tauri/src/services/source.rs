@@ -609,21 +609,15 @@ pub async fn apply_operations(
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| mtime_str.clone());
-                let accessed_at = fm
-                    .and_then(|f| f.get("accessed_at"))
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| mtime_str.clone());
 
                 sqlx::query(
-                    "UPDATE documents SET title = ?1, mtime = ?2, properties = ?3, updated_at = ?4, accessed_at = ?5
-                     WHERE source_id = ?6 AND rel_path = ?7",
+                    "UPDATE documents SET title = ?1, mtime = ?2, properties = ?3, updated_at = ?4
+                     WHERE source_id = ?5 AND rel_path = ?6",
                 )
                 .bind(title)
                 .bind(mtime)
                 .bind(&properties)
                 .bind(&updated_at)
-                .bind(&accessed_at)
                 .bind(source_id)
                 .bind(rel_path)
                 .execute(&mut *tx)

@@ -8,6 +8,12 @@ use std::path::Path;
 pub fn rewrite_frontmatter(path: &Path, mutate: impl Fn(&mut Value)) -> io::Result<()> {
     let content = fs::read_to_string(path)?;
     let (existing, body) = split_content(&content);
+    if existing.is_none() && has_unparsed_fence(&content) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "existing frontmatter could not be parsed",
+        ));
+    }
     let mut fm = existing.unwrap_or_else(|| Value::Object(Map::new()));
     mutate(&mut fm);
     let next = format_content(&fm, body)?;
@@ -15,6 +21,18 @@ pub fn rewrite_frontmatter(path: &Path, mutate: impl Fn(&mut Value)) -> io::Resu
         return Ok(());
     }
     fast_write(path, next.as_bytes())
+}
+
+fn has_unparsed_fence(content: &str) -> bool {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return false;
+    }
+    let after_open = &trimmed[3..];
+    let Some(close) = find_closing_fence(after_open) else {
+        return false;
+    };
+    serde_yml::from_str::<Value>(&after_open[..close]).is_err()
 }
 
 pub fn split_content(content: &str) -> (Option<Value>, &str) {
