@@ -336,7 +336,23 @@ class DocHandle {
 	 * ALL GOOD:
 	 * 3. Trigger FTS reindexing, in the background, don't wait for it.
 	 */
+	private async refreshMetaFromDisk(): Promise<void> {
+		let raw: string;
+		try {
+			raw = await readTextFile(`${this.source.path}/${this._relPath}`);
+		} catch {
+			return;
+		}
+		const { frontmatter } = DocHandle.deserialize(raw);
+		if (!frontmatter) return;
+		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
+		this.properties = remaining;
+		if (created_at) this.createdAt = new Date(created_at);
+		this.groups = await Group.fromSlugs(tags, this.source.id);
+	}
+
 	async saveContent(body: string): Promise<void> {
+		await this.refreshMetaFromDisk();
 		this.updatedAt = new Date();
 		const contents = await this.serialize(body);
 		await invoke('write_document', {

@@ -1,7 +1,8 @@
 <script lang="ts">
     import {createSource, getSourceConfig, isGitRepo, setSourceConfig, sourceName, type Source} from "$lib/models/Source";
     import {open as openDialog} from "@tauri-apps/plugin-dialog";
-    import {Folder} from "@lucide/svelte";
+    import {Folder, GitBranch} from "@lucide/svelte";
+    import Toggle from "./Toggle.svelte";
 
     let {open = $bindable(false), mode, source = null, onSaved}: {
         open: boolean;
@@ -14,6 +15,7 @@
     let noteLocation = $state('');
     let assetLocation = $state('assets');
     let useFrontmatter = $state(true);
+    let isGit = $state(false);
     let error = $state('');
     let busy = $state(false);
 
@@ -36,6 +38,7 @@
                 noteLocation = '';
                 assetLocation = 'assets';
                 useFrontmatter = true;
+                isGit = false;
             }
         }
         if (!open) wasOpen = false;
@@ -45,7 +48,8 @@
         const sel = await openDialog({directory: true, multiple: false});
         if (typeof sel === 'string') {
             folderPath = sel;
-            useFrontmatter = !(await isGitRepo(sel));
+            isGit = await isGitRepo(sel);
+            useFrontmatter = !isGit;
         }
     }
 
@@ -107,17 +111,21 @@
             </label>
 
             {#if mode === 'create'}
-                <label class="toggle-row">
-                    <input type="checkbox" bind:checked={useFrontmatter}/>
-                    <span class="toggle-text">Store metadata in YAML frontmatter</span>
-                </label>
-                {#if !useFrontmatter}
-                    <p class="hint">
-                        Off by default for Git repos, to keep files clean. Documents here can't have
-                        tags, custom properties, or editable created/updated dates — only their body,
-                        name, and folder.
-                    </p>
-                {/if}
+                <div class="fm-field">
+                    {#if isGit}
+                        <span class="git-note"><GitBranch size={12}/> Off by default for Git repos</span>
+                    {/if}
+                    <div class="toggle-row">
+                        <Toggle bind:checked={useFrontmatter}/>
+                        <span class="toggle-text">Store metadata in YAML frontmatter</span>
+                    </div>
+                    {#if !useFrontmatter}
+                        <p class="hint">
+                            Documents can't have custom properties including a static id, which means:
+                            no edit history and lower functionality within views.
+                        </p>
+                    {/if}
+                </div>
             {/if}
 
             {#if error}<p class="err">{error}</p>{/if}
@@ -220,12 +228,23 @@
         cursor: default;
     }
 
+    .fm-field {
+        margin-bottom: 14px;
+    }
+
+    .git-note {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-bottom: 6px;
+        font-size: 12px;
+        color: var(--color-ui-muted);
+    }
+
     .toggle-row {
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-bottom: 8px;
-        cursor: pointer;
     }
 
     .toggle-text {
@@ -234,7 +253,7 @@
     }
 
     .hint {
-        margin: 0 0 12px;
+        margin: 6px 0 0;
         font-size: 12px;
         line-height: 1.4;
         color: var(--color-ui-muted);

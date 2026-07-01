@@ -8,7 +8,8 @@
      */
     import type View from "$lib/models/View.svelte";
     import type {FilterNode, ViewFace, SortKey, ViewField, ViewFieldType, MemberRow} from "$lib/models/View.svelte";
-    import {isLeafActive, isDerived, CREATABLE_FIELD_TYPES, sanitizeName} from "$lib/models/View.svelte";
+    import {isLeafActive, isDerived, CREATABLE_FIELD_TYPES, sanitizeName, describeBulkFailure} from "$lib/models/View.svelte";
+    import {toasts} from "$lib/toasts.svelte";
     import {getFieldIcon} from "$lib/views/filterDisplay";
     import {
         rawStatefulValue as rawStateful, statefulValue as stateful, rawArrayValue as rawArray,
@@ -1110,8 +1111,13 @@
             return;
         }
         try {
-            await view.writeFieldValue(row.source_id, field, value, [row.id]);
+            const result = await view.writeFieldValue(row.source_id, field, value, [row.id]);
             applyLocal(row.id, field.name, value);
+            if (result.failed > 0) {
+                toasts.push(describeBulkFailure(result), {
+                    action: {label: 'Retry', run: () => writeCell(field, row, value)}
+                });
+            }
             // if this field is filtered/sorted on, re-pull so membership and
             // order stay correct. silent so no loading flash, keyed rows just diff
             if (fieldAffectsView(field.id)) load(true);
@@ -1715,7 +1721,7 @@
     </table>
     <div class="tf-footer">
         {#if loading}loading...
-        {:else if total > rows.length}showing {rows.length} of {total}{:else}{rows.length}docs
+        {:else if total > rows.length}showing {rows.length} of {total}{:else}{rows.length} {rows.length === 1 ? 'doc' : 'docs'}
         {/if}
     </div>
 </LeanScroll>
@@ -1799,7 +1805,7 @@
         font-family: var(--font-ui);
         font-size: 11px;
         color: var(--color-ui-muted);
-        text-align: right;
+        text-align: center;
     }
 
     .error {

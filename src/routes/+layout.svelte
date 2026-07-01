@@ -3,6 +3,7 @@
     import {onMount} from 'svelte';
     import {getCurrentWebview} from '@tauri-apps/api/webview';
     import {getSetting} from '$lib/models/Settings';
+    import ToastHost from '../components/ToastHost.svelte';
     import '../app.css';
 
     let {children}: { children: Snippet } = $props();
@@ -20,3 +21,4 @@
 </script>
 
 {@render children()}
+<ToastHost/>

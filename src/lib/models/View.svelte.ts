@@ -629,7 +629,6 @@ class View {
 	emoji: string = $state(''); // user-set per-view emoji
 	cover: string = $state('');
 
-
 	constructor(json: ViewJSON) {
 		this.id = json.id;
 		this.slug = json.slug;
@@ -914,9 +913,9 @@ class View {
 		field: ViewField,
 		value: unknown,
 		docIds: string[]
-	): Promise<void> {
+	): Promise<BulkResult> {
 		const source = await getSource(sourceId);
-		await invoke('bulk_set_view_field', {
+		return await invoke<BulkResult>('bulk_set_view_field', {
 			sourceId,
 			sourcePath: source.path,
 			viewSlug: this.slug,
@@ -924,6 +923,40 @@ class View {
 			value,
 			docIds
 		});
+	}
+}
+
+export interface BulkFailure {
+	rel_path: string;
+	kind: string;
+}
+
+export interface BulkResult {
+	touched: number;
+	failed: number;
+	failures: BulkFailure[];
+	source_unreachable: boolean;
+}
+
+export function describeBulkFailure(r: BulkResult): string {
+	if (r.source_unreachable) {
+		return "Couldn't save changes: the source folder is unavailable. Check that the drive or folder is connected.";
+	}
+	const n = r.failed;
+	const noun: 'notes' | 'note' = n === 1 ? 'note' : 'notes';
+	switch (r.failures[0]?.kind) {
+		case 'permission':
+			return `${n} ${noun} couldn't be saved: they're read-only or you don't have permission.`;
+		case 'not_found':
+			return `${n} ${noun} couldn't be found: they may have moved, been deleted, or not yet downloaded from your sync app.`;
+		case 'no_space':
+			return "Couldn't save changes: your disk is out of space.";
+		case 'invalid_data':
+			return `${n} ${noun} couldn't be read: unsupported file encoding.`;
+		case 'locked':
+			return `${n} ${noun} are in use by another app. Close them and retry.`;
+		default:
+			return `${n} ${noun} couldn't be saved.`;
 	}
 }
 

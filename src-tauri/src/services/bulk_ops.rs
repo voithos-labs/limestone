@@ -26,9 +26,32 @@ use tauri::async_runtime::Mutex;
 use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize)]
+pub struct BulkFailure {
+    pub rel_path: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct BulkResult {
     pub touched: usize,
     pub failed: usize,
+    pub failures: Vec<BulkFailure>,
+    pub source_unreachable: bool,
+}
+
+fn classify_io(e: &std::io::Error) -> String {
+    use std::io::ErrorKind;
+    let kind = match e.kind() {
+        ErrorKind::NotFound => "not_found",
+        ErrorKind::PermissionDenied => "permission",
+        ErrorKind::InvalidData => "invalid_data",
+        _ => match e.raw_os_error() {
+            Some(28) | Some(112) => "no_space",
+            Some(32) | Some(33) => "locked",
+            _ => "other",
+        },
+    };
+    kind.to_string()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -115,6 +138,8 @@ impl BulkRunner {
             return Ok(BulkResult {
                 touched: 0,
                 failed: 0,
+                failures: Vec::new(),
+                source_unreachable: false,
             });
         }
 
@@ -429,6 +454,8 @@ async fn write_files(
         return Ok(BulkResult {
             touched: 0,
             failed: 0,
+            failures: Vec::new(),
+            source_unreachable: false,
         });
     }
     let app = app.clone();
@@ -436,7 +463,7 @@ async fn write_files(
 
     tauri::async_runtime::spawn_blocking(move || {
         let done = AtomicUsize::new(0);
-        let failed = AtomicUsize::new(0);
+        let failures = std::sync::Mutex::new(Vec::<BulkFailure>::new());
         let step = (total / 50).max(50);
 
         rel_paths.par_iter().for_each(|rel| {
@@ -448,15 +475,21 @@ async fn write_files(
                     }
                 }
                 Err(e) => {
-                    eprintln!("bulk write failed for {rel}: {e}");
-                    failed.fetch_add(1, Ordering::Relaxed);
+                    failures.lock().unwrap().push(BulkFailure {
+                        rel_path: rel.clone(),
+                        kind: classify_io(&e),
+                    });
                 }
             }
         });
 
+        let failures = failures.into_inner().unwrap();
+        let source_unreachable = !failures.is_empty() && std::fs::metadata(&source_path).is_err();
         BulkResult {
             touched: done.into_inner(),
-            failed: failed.into_inner(),
+            failed: failures.len(),
+            failures,
+            source_unreachable,
         }
     })
     .await
