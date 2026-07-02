@@ -1,9 +1,3 @@
----
-id: da597ec2-6c45-45b2-99b2-428acf1a2f1e
-tags: []
-created_at: 2026-04-10T20:16:06.000Z
-updated_at: 2026-07-02T04:05:51.921Z
----
 # TODO n shit
 
 **Major**
