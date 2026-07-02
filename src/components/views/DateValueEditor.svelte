@@ -7,12 +7,14 @@
         anchor,
         value,
         mode = 'date',
+        allowTime = true,
         onChange
     }: {
         open: boolean;
         anchor: HTMLElement | null;
         value: unknown;
         mode?: 'date' | 'datetime';
+        allowTime?: boolean;
         onChange: (value: string | null) => void;
     } = $props();
 
@@ -503,7 +505,7 @@
                 {mode === 'datetime' ? 'Now' : 'Today'}
             </button>
             <div class="foot-right">
-                {#if mode === 'date' && !hasTime}
+                {#if allowTime && mode === 'date' && !hasTime}
                     <button type="button" class="foot-btn" onclick={addTime}>
                         <Clock size={12} strokeWidth={1.75}/>
                         Add time

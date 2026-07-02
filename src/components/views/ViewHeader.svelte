@@ -11,7 +11,7 @@
     import EmojiPicker from "./EmojiPicker.svelte";
     import {getFieldIcon, getOpLabel, opHasValue, formatFilterValue, opsFor} from "$lib/views/filterDisplay";
     import {fieldLabel} from "$lib/views/fieldValue";
-    import {ListFilterPlus, Funnel, ChevronLeft, ChevronRight, Search, Columns3Cog, EllipsisVertical} from "@lucide/svelte";
+    import {ListFilterPlus, Funnel, ChevronLeft, ChevronRight, Search, Columns3Cog, EllipsisVertical, X} from "@lucide/svelte";
     import {onMount} from "svelte";
 
     let {view, hasCover = false, onMore}: {
@@ -345,6 +345,11 @@
                 value={(view.state.search ?? '')}
                 oninput={(e) => view.state.search = (e.currentTarget as HTMLInputElement).value}
         />
+        {#if view.state.search}
+            <button class="search-clear" type="button" title="Clear" onclick={() => view.state.search = ''}>
+                <X size={12} strokeWidth={2}/>
+            </button>
+        {/if}
     </label>
 
 
@@ -636,7 +641,8 @@
         color: var(--color-text-secondary);
     }
 
-    .search-chip:focus-within {
+    .search-chip:focus-within,
+    .search-chip:has(.search-input:not(:placeholder-shown)) {
         background: var(--chip-bg-hover);
         color: var(--color-text-secondary);
     }
@@ -654,5 +660,25 @@
 
     .search-input::placeholder {
         color: var(--color-ui-muted);
+    }
+
+    .search-clear {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 16px;
+        height: 16px;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--color-ui-muted);
+        cursor: pointer;
+    }
+
+    .search-clear:hover {
+        color: var(--color-text-primary);
+        background: var(--chip-bg-hover);
     }
 </style>
