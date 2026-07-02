@@ -47,6 +47,7 @@ fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
         {
             eprintln!("reconcile failed: {e}");
         }
+        let _ = services::cleanup_orphan_tag_groups(&pool).await;
         let _ = app_handle.emit("source-reconciled", &source_id);
     });
 }

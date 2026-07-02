@@ -68,7 +68,7 @@ pub fn split_content(content: &str) -> (Option<Value>, &str) {
     }
 }
 
-fn find_closing_fence(after_open: &str) -> Option<usize> {
+pub(crate) fn find_closing_fence(after_open: &str) -> Option<usize> {
     let mut from = 0;
     loop {
         let rel = after_open[from..].find("---")?;

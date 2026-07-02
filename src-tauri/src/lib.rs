@@ -137,23 +137,36 @@ pub fn run() {
                 });
             }
 
-            for source in sources {
+            {
                 let app_handle = app.handle().clone();
                 let pool = pool.clone();
                 tauri::async_runtime::spawn(async move {
-                    let source_id = source.id.to_string();
-                    if let Err(e) = services::reconcile_source(
-                        &source.path,
-                        &source_id,
-                        &pool,
-                        &["md"],
-                        fm_buf_size,
-                    )
-                    .await
-                    {
-                        eprintln!("Reconciliation failed: {e}");
+                    let mut tasks = Vec::new();
+                    for source in sources {
+                        let app_handle = app_handle.clone();
+                        let pool = pool.clone();
+                        tasks.push(tauri::async_runtime::spawn(async move {
+                            let source_id = source.id.to_string();
+                            if let Err(e) = services::reconcile_source(
+                                &source.path,
+                                &source_id,
+                                &pool,
+                                &["md"],
+                                fm_buf_size,
+                            )
+                            .await
+                            {
+                                eprintln!("Reconciliation failed: {e}");
+                            }
+                            let _ = app_handle.emit("source-reconciled", &source_id);
+                        }));
                     }
-                    let _ = app_handle.emit("source-reconciled", &source_id);
+                    for task in tasks {
+                        let _ = task.await;
+                    }
+                    if let Err(e) = services::cleanup_orphan_tag_groups(&pool).await {
+                        eprintln!("tag cleanup failed: {e}");
+                    }
                 });
             }
 

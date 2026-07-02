@@ -3,13 +3,51 @@ use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use uuid::Uuid;
 
+// ── Overview (BAF: Big Ass File) ──────────────────────────────────────────────────────────
+/// This contains, broadly:
+/// 1. The source data model definition & associated helpers
+/// 2. source scanning and reconciliation logic (big and ugly)
+///
+/// Due to the size of the file, I will give a brief overview here.
+///
+/// *Source Model*
+///
+/// Okay, so, a 'source' is a saved folder resource for the app. It is a static path that is indexed
+/// by limestone and made accessible and searchable to the user -- an added folder.
+///
+/// Per source, there is basic metadata, a UUID for db reference, and the boolean property
+/// `use_frontmatter`, which enables the use of frontmatter in the source's .md documents, which
+/// supports more features downstream.
+///
+/// *Scan & Reconciliation*
+///
+/// Little complicated, but basically:
+/// PER SOURCE, RUN IN PARALLEL
+/// 1. Walks source dir, collecting rel_path (to source) and mtime for .md documents
+/// 2. Loads all documents from the db (cache)
+/// 3. Diffs source dir to db documents
+///     - same path AND same mtime => unchanged
+///     - same path AND NOT same mtime => modified
+///     - on disk but not found in db (by rel_path) => new_paths
+///     - in db but not found on disk => missing, delete from cache (TODO: soft-delete, recoverable)
+///          -> later can prompt to restore for autpmerge history in UI, and allows a better missing
+///             doc page
+/// 4. Extract and parse frontmatter, quickly ideally
+/// 5. Resolve id-first for each read file, dupes get re-keyed
+/// 6. Commit changes
+/// 7. Cleanup orphaned groups
+///
+
+// ── Model ────────────────────────────────────────────────────────────────────────────
+
+// annoying derive helper
 fn default_true() -> bool {
     true
 }
@@ -118,9 +156,7 @@ pub fn create_source(
     Ok(source)
 }
 
-// ---------------------
-// Reconciliation types
-// ---------------------
+// ── The Big Scan ─────────────────────────────────────────────────────────────────────
 
 const KNOWN_FM_KEYS: &[&str] = &["id", "tags", "created_at", "updated_at", "accessed_at"];
 
@@ -148,26 +184,20 @@ pub struct ReconciliationDiff {
 }
 
 #[derive(Debug)]
-pub enum DbOperation {
-    Insert {
-        rel_path: String,
-        mtime: i64,
-    },
-    UpdatePath {
-        old_path: String,
-        new_path: String,
-        mtime: i64,
-    },
-    UpdateContent {
-        rel_path: String,
-        mtime: i64,
-    },
-    Delete {
-        rel_path: String,
-    },
+pub struct ResolvedDoc {
+    pub id: String,
+    pub rel_path: String,
+    pub mtime: i64,
+    pub existing: bool,
+    pub moved: bool,
+    pub rewrite_id: bool,
 }
 
-// ── Source Scan ──────────────────────────────────────────────────────────────────────
+#[derive(Debug)]
+pub struct ReconcilePlan {
+    pub docs: Vec<ResolvedDoc>,
+    pub delete_ids: Vec<String>,
+}
 
 fn load_ignore_patterns(source_path: &Path) -> Option<globset::GlobSet> {
     let config_path = source_path.join(".limestone.json");
@@ -228,7 +258,7 @@ pub fn walk_source(source_path: &Path, extensions: &[&str]) -> Vec<(String, i64)
             .ok()
             .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .map(|d| d.as_secs() as i64)
+            .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
 
         entries.push((rel_path, mtime));
@@ -291,187 +321,198 @@ pub fn extract_frontmatter(
         .collect()
 }
 
+// escalate the read window until the closing fence fits (or the whole file is in)
 fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<serde_json::Value> {
-    let mut file = fs::File::open(path).ok()?;
-    let mut buf = vec![0u8; buffer_size];
-    let n = file.read(&mut buf).ok()?;
-    let content = std::str::from_utf8(&buf[..n]).ok()?;
+    let mut limit = buffer_size.max(64) as u64;
+    loop {
+        let mut buf = Vec::new();
+        fs::File::open(path)
+            .ok()?
+            .take(limit)
+            .read_to_end(&mut buf)
+            .ok()?;
+        let whole_file = (buf.len() as u64) < limit;
 
-    let content = content.trim_start();
-    if !content.starts_with("---") {
-        return None;
+        // tolerate a multibyte char split at the window edge
+        let content = match std::str::from_utf8(&buf) {
+            Ok(s) => s,
+            Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).ok()?,
+        };
+        let trimmed = content.trim_start();
+        if !trimmed.starts_with("---") {
+            return None;
+        }
+        let after_open = &trimmed[3..];
+        if let Some(close) = frontmatter::find_closing_fence(after_open) {
+            return serde_yml::from_str(&after_open[..close]).ok();
+        }
+        if whole_file {
+            return None;
+        }
+        let next = limit.saturating_mul(16).min(1 << 22);
+        if next == limit {
+            return None;
+        }
+        limit = next;
     }
-
-    let after_open = &content[3..];
-    let close = after_open.find("---")?;
-    let yaml_str = &after_open[..close];
-
-    serde_yml::from_str(yaml_str).ok()
 }
 
-/// Resolve changes to db from fs given diff
-pub fn resolve_changes(
-    diff: ReconciliationDiff,
+// Id-first resolution: every read (new/modified) file resolves to exactly one document id
+pub fn resolve_plan(
+    diff: &ReconciliationDiff,
     frontmatter: &[(String, Option<serde_json::Value>)],
     db_id_to_path: &HashMap<String, String>,
-) -> Vec<DbOperation> {
-    let mut ops = Vec::new();
-
-    // Build lookup
-    let fm_map: HashMap<&str, &(String, Option<serde_json::Value>)> = frontmatter
+    foreign_ids: &HashSet<String>,
+) -> ReconcilePlan {
+    let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
         .iter()
-        .map(|entry| (entry.0.as_str(), entry))
+        .map(|(p, fm)| (p.as_str(), fm.as_ref()))
         .collect();
-
-    // New paths with extracted frontmatter
-    let new_fm: HashMap<&str, Option<&serde_json::Value>> = diff
-        .new_paths
-        .iter()
-        .map(|(p, _)| {
-            let fm = fm_map.get(p.as_str()).and_then(|(_, fm)| fm.as_ref());
-            (p.as_str(), fm)
-        })
-        .collect();
-
-    // path -> id
     let db_path_to_id: HashMap<&str, &str> = db_id_to_path
         .iter()
         .map(|(id, path)| (path.as_str(), id.as_str()))
         .collect();
+    let unchanged: HashSet<&str> = diff.unchanged.iter().map(|p| p.as_str()).collect();
 
-    // Track which missing paths were resolved as renames
-    let mut resolved_missing: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    // Modified paths that are handled
-    let mut modified_handled: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    // Track modified paths where the ID changed (vacated by old ID: VACATED!)
-    let mut vacated: HashMap<&str, &str> = HashMap::new(); // modified_path -> old_id
+    let mut read_paths: Vec<(&str, i64)> = diff
+        .modified
+        .iter()
+        .chain(diff.new_paths.iter())
+        .map(|(p, m)| (p.as_str(), *m))
+        .collect();
+    read_paths.sort();
 
-    // prescan modified files for ID changes
-    for (path, _mtime) in &diff.modified {
-        let fm = fm_map.get(path.as_str()).and_then(|(_, fm)| fm.as_ref());
-        let new_id = fm.and_then(|f| f.get("id")).and_then(|v| v.as_str());
-        let old_id = db_path_to_id.get(path.as_str()).copied();
+    let claims: HashMap<&str, &str> = read_paths
+        .iter()
+        .filter_map(|(p, _)| {
+            fm_map
+                .get(p)
+                .copied()
+                .flatten()
+                .and_then(|f| f.get("id"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|id| (*p, id))
+        })
+        .collect();
 
-        if let (Some(new_id), Some(old_id)) = (new_id, old_id) {
-            if new_id != old_id {
-                vacated.insert(path.as_str(), old_id);
-            }
-        }
-    }
+    let mut assigned: HashSet<&str> = HashSet::new();
+    let mut docs: Vec<ResolvedDoc> = Vec::new();
+    let mut claimless: Vec<(&str, i64)> = Vec::new();
 
-    // Deferred ops for inbound moves to modified paths (must apply after vacating ops)
-    let mut deferred_inbound: Vec<DbOperation> = Vec::new();
-
-    // Pre-resolve modified paths with inbound moves (e.g. UUID-B moved from bar.md to foo.md)
-    // this is for handling the external swap case
-    for (path, mtime) in &diff.modified {
-        if !vacated.contains_key(path.as_str()) {
+    for (path, mtime) in &read_paths {
+        let Some(&claim) = claims.get(path) else {
+            claimless.push((path, *mtime));
             continue;
-        }
-        let fm = fm_map.get(path.as_str()).and_then(|(_, fm)| fm.as_ref());
-        let new_id = fm.and_then(|f| f.get("id")).and_then(|v| v.as_str());
-
-        if let Some(new_id) = new_id {
-            if let Some(old_path) = db_id_to_path.get(new_id) {
-                if diff.missing.contains(old_path) {
-                    resolved_missing.insert(old_path.as_str());
-                    modified_handled.insert(path.as_str());
-                    deferred_inbound.push(DbOperation::UpdatePath {
-                        old_path: old_path.clone(),
-                        new_path: path.clone(),
-                        mtime: *mtime,
-                    });
-                    deferred_inbound.push(DbOperation::UpdateContent {
-                        rel_path: path.clone(),
-                        mtime: *mtime,
-                    });
-                }
-            }
-        }
-    }
-
-    // Handle new paths (including vacating + move, before deferred inbound)
-    for (path, mtime) in &diff.new_paths {
-        let fm = new_fm.get(path.as_str()).copied().flatten();
-
-        if let Some(id) = fm.and_then(|f| f.get("id")).and_then(|v| v.as_str()) {
-            if let Some(old_path) = db_id_to_path.get(id) {
-                if diff.missing.contains(old_path) {
-                    resolved_missing.insert(old_path.as_str());
-                    ops.push(DbOperation::UpdatePath {
-                        old_path: old_path.clone(),
-                        new_path: path.clone(),
-                        mtime: *mtime,
-                    });
-                    continue;
-                }
-                // ID vacated a modified path -- just rename (I think)
-                if vacated.get(old_path.as_str()) == Some(&id) {
-                    ops.push(DbOperation::UpdatePath {
-                        old_path: old_path.clone(),
-                        new_path: path.clone(),
-                        mtime: *mtime,
-                    });
-                    continue;
-                }
-            }
-        }
-
-        ops.push(DbOperation::Insert {
-            rel_path: path.clone(),
-            mtime: *mtime,
-        });
-    }
-
-    // Now apply inbound moves (path is vacated by ops above)
-    ops.extend(deferred_inbound);
-
-    // Handle modified paths (skip those handled as moves)
-    for (path, mtime) in &diff.modified {
-        if modified_handled.contains(path.as_str()) {
-            continue;
-        }
-        ops.push(DbOperation::UpdateContent {
-            rel_path: path.clone(),
-            mtime: *mtime,
-        });
-    }
-
-    // Handle missing paths not resolved as renames
-    for path in &diff.missing {
-        if !resolved_missing.contains(path.as_str()) {
-            ops.push(DbOperation::Delete {
-                rel_path: path.clone(),
+        };
+        let holder = db_id_to_path.get(claim).map(|p| p.as_str());
+        // a claim is granted unless the id's current holder keeps it (duplicate)
+        let granted = !assigned.contains(claim)
+            && !foreign_ids.contains(claim)
+            && match holder {
+                Some(q) if q == *path => true,
+                Some(q) => !unchanged.contains(q) && claims.get(q) != Some(&claim),
+                None => true,
+            };
+        if granted {
+            assigned.insert(claim);
+            docs.push(ResolvedDoc {
+                id: claim.to_string(),
+                rel_path: path.to_string(),
+                mtime: *mtime,
+                existing: holder.is_some(),
+                moved: holder.is_some_and(|q| q != *path),
+                rewrite_id: false,
+            });
+        } else {
+            docs.push(ResolvedDoc {
+                id: Uuid::new_v4().to_string(),
+                rel_path: path.to_string(),
+                mtime: *mtime,
+                existing: false,
+                moved: false,
+                rewrite_id: true,
             });
         }
     }
 
-    ops
+    for (path, mtime) in claimless {
+        let existing = db_path_to_id
+            .get(path)
+            .copied()
+            .filter(|id| !assigned.contains(id));
+        if let Some(id) = existing {
+            assigned.insert(id);
+        }
+        docs.push(ResolvedDoc {
+            id: existing
+                .map(str::to_string)
+                .unwrap_or_else(|| Uuid::new_v4().to_string()),
+            rel_path: path.to_string(),
+            mtime,
+            existing: existing.is_some(),
+            moved: false,
+            rewrite_id: false,
+        });
+    }
+
+    let keep: HashSet<&str> = docs
+        .iter()
+        .map(|d| d.id.as_str())
+        .chain(
+            unchanged
+                .iter()
+                .filter_map(|p| db_path_to_id.get(p).copied()),
+        )
+        .collect();
+    let delete_ids: Vec<String> = db_id_to_path
+        .keys()
+        .filter(|id| !keep.contains(id.as_str()))
+        .cloned()
+        .collect();
+
+    ReconcilePlan { docs, delete_ids }
 }
 
 /// Read the file's creation time, fall back to mtime if the
 /// platform/filesystem doent expose it
-fn fs_birth_secs(path: &Path, fallback_mtime: i64) -> i64 {
+fn fs_birth_ms(path: &Path, fallback_mtime: i64) -> i64 {
     fs::metadata(path)
         .ok()
         .and_then(|m| m.created().ok())
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64)
+        .map(|d| d.as_millis() as i64)
         .unwrap_or(fallback_mtime)
 }
 
-fn fs_mtime_secs(path: &Path) -> i64 {
+fn fs_mtime_ms(path: &Path) -> i64 {
     fs::metadata(path)
         .ok()
         .and_then(|m| m.modified().ok())
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64)
+        .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
 }
 
-/// Apply all ops
-pub async fn apply_operations(
-    operations: &[DbOperation],
+fn fm_tags(fm: Option<&serde_json::Value>) -> Vec<String> {
+    fm.and_then(|f| f.get("tags"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn fm_date(fm: Option<&serde_json::Value>, key: &str) -> Option<i64> {
+    fm.and_then(|f| f.get(key))
+        .and_then(|v| v.as_str())
+        .and_then(frontmatter::date_ms)
+}
+
+pub async fn apply_plan(
+    plan: &ReconcilePlan,
     frontmatter: &[(String, Option<serde_json::Value>)],
     source_id: &str,
     source_path: &Path,
@@ -482,170 +523,85 @@ pub async fn apply_operations(
         .map(|(p, fm)| (p.as_str(), fm.as_ref()))
         .collect();
 
+    // duplicates get a fresh id written back so they stay stable across runs
+    for doc in plan.docs.iter().filter(|d| d.rewrite_id) {
+        let id = doc.id.clone();
+        let _ = frontmatter::rewrite_frontmatter(&source_path.join(&doc.rel_path), move |fm| {
+            if let Some(obj) = fm.as_object_mut() {
+                obj.insert("id".into(), serde_json::Value::String(id.clone()));
+            }
+        });
+    }
+
     let mut tx = db.begin().await?;
 
-    for op in operations {
-        match op {
-            DbOperation::Insert { rel_path, mtime } => {
-                // todo: this is ugly, might want a document struct to work around for this
-                let fm = fm_map.get(rel_path.as_str()).copied().flatten();
-                let doc_id = fm
-                    .and_then(|f| f.get("id"))
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| Uuid::new_v4().to_string());
-                let title = Path::new(rel_path)
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Untitled");
-                let properties = fm.map(fm_properties).unwrap_or_else(|| "{}".to_string());
-                // Prefer frontmatter dates; otherwise derive from filesystem so
-                // imported files retain their real history instead of all
-                // being stamped with the moment of indexing.
-                let full_path = source_path.join(rel_path);
-                let mtime_ms = *mtime * 1000;
-                let created_at = fm
-                    .and_then(|f| f.get("created_at"))
-                    .and_then(|v| v.as_str())
-                    .and_then(frontmatter::date_ms)
-                    .unwrap_or_else(|| fs_birth_secs(&full_path, *mtime) * 1000);
-                let updated_at = fm
-                    .and_then(|f| f.get("updated_at"))
-                    .and_then(|v| v.as_str())
-                    .and_then(frontmatter::date_ms)
-                    .unwrap_or(mtime_ms);
-                let accessed_at = fm
-                    .and_then(|f| f.get("accessed_at"))
-                    .and_then(|v| v.as_str())
-                    .and_then(frontmatter::date_ms)
-                    .unwrap_or(mtime_ms);
+    for id in &plan.delete_ids {
+        sqlx::query("DELETE FROM documents WHERE id = ?1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+    }
 
-                sqlx::query(
-                    "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                )
-                .bind(&doc_id)
-                .bind(source_id)
-                .bind(rel_path)
-                .bind(title)
-                .bind(mtime)
-                .bind(&properties)
-                .bind(created_at)
-                .bind(updated_at)
-                .bind(accessed_at)
-                .execute(&mut *tx)
-                .await?;
+    // park moved rows on collision-free temp paths before final paths are assigned
+    for doc in plan.docs.iter().filter(|d| d.moved) {
+        sqlx::query("UPDATE documents SET rel_path = ?1 WHERE id = ?2")
+            .bind(format!("/{}", doc.id))
+            .bind(&doc.id)
+            .execute(&mut *tx)
+            .await?;
+    }
 
-                // Sync tags
-                if let Some(fm) = fm {
-                    let tags: Vec<String> = fm
-                        .get("tags")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(String::from))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    sync_tags(&mut tx, &doc_id, &tags).await?;
-                }
+    for doc in &plan.docs {
+        let fm = fm_map.get(doc.rel_path.as_str()).copied().flatten();
+        let title = Path::new(&doc.rel_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Untitled");
+        let properties = fm.map(fm_properties).unwrap_or_else(|| "{}".to_string());
+        let full_path = source_path.join(&doc.rel_path);
+        let mtime = if doc.rewrite_id {
+            fs_mtime_ms(&full_path)
+        } else {
+            doc.mtime
+        };
+        let updated_at = fm_date(fm, "updated_at").unwrap_or(mtime);
 
-                sync_folders(&mut tx, source_id, &doc_id, rel_path).await?;
-            }
-
-            DbOperation::UpdatePath {
-                old_path,
-                new_path,
-                mtime,
-            } => {
-                let doc_id: Option<String> = sqlx::query_scalar(
-                    "SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2",
-                )
-                .bind(source_id)
-                .bind(old_path)
-                .fetch_optional(&mut *tx)
-                .await?;
-
-                let title = Path::new(new_path)
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Untitled");
-
-                sqlx::query(
-                    "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3 WHERE source_id = ?4 AND rel_path = ?5",
-                )
-                .bind(new_path)
-                .bind(title)
-                .bind(mtime)
-                .bind(source_id)
-                .bind(old_path)
-                .execute(&mut *tx)
-                .await?;
-
-                if let Some(doc_id) = doc_id {
-                    sync_folders(&mut tx, source_id, &doc_id, new_path).await?;
-                }
-            }
-
-            DbOperation::UpdateContent { rel_path, mtime } => {
-                let fm = fm_map.get(rel_path.as_str()).copied().flatten();
-                let title = Path::new(rel_path)
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Untitled");
-                let properties = fm.map(fm_properties).unwrap_or_else(|| "{}".to_string());
-                let updated_at = fm
-                    .and_then(|f| f.get("updated_at"))
-                    .and_then(|v| v.as_str())
-                    .and_then(frontmatter::date_ms)
-                    .unwrap_or(*mtime * 1000);
-
-                sqlx::query(
-                    "UPDATE documents SET title = ?1, mtime = ?2, properties = ?3, updated_at = ?4
-                     WHERE source_id = ?5 AND rel_path = ?6",
-                )
-                .bind(title)
-                .bind(mtime)
-                .bind(&properties)
-                .bind(updated_at)
-                .bind(source_id)
-                .bind(rel_path)
-                .execute(&mut *tx)
-                .await?;
-
-                // Re-sync tags
-                if let Some(fm) = fm {
-                    let tags: Vec<String> = fm
-                        .get("tags")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(String::from))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let doc_id: Option<String> = sqlx::query_scalar(
-                        "SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2",
-                    )
-                    .bind(source_id)
-                    .bind(rel_path)
-                    .fetch_optional(&mut *tx)
-                    .await?;
-                    if let Some(doc_id) = doc_id {
-                        sync_tags(&mut tx, &doc_id, &tags).await?;
-                    }
-                }
-            }
-
-            DbOperation::Delete { rel_path } => {
-                sqlx::query("DELETE FROM documents WHERE source_id = ?1 AND rel_path = ?2")
-                    .bind(source_id)
-                    .bind(rel_path)
-                    .execute(&mut *tx)
-                    .await?;
-            }
+        if doc.existing {
+            sqlx::query(
+                "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4, updated_at = ?5
+                 WHERE id = ?6",
+            )
+            .bind(&doc.rel_path)
+            .bind(title)
+            .bind(mtime)
+            .bind(&properties)
+            .bind(updated_at)
+            .bind(&doc.id)
+            .execute(&mut *tx)
+            .await?;
+        } else {
+            let created_at = fm_date(fm, "created_at")
+                .unwrap_or_else(|| fs_birth_ms(&full_path, mtime));
+            let accessed_at = fm_date(fm, "accessed_at").unwrap_or(mtime);
+            sqlx::query(
+                "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )
+            .bind(&doc.id)
+            .bind(source_id)
+            .bind(&doc.rel_path)
+            .bind(title)
+            .bind(mtime)
+            .bind(&properties)
+            .bind(created_at)
+            .bind(updated_at)
+            .bind(accessed_at)
+            .execute(&mut *tx)
+            .await?;
         }
+
+        sync_tags(&mut tx, &doc.id, &fm_tags(fm)).await?;
+        sync_folders(&mut tx, source_id, &doc.id, &doc.rel_path).await?;
     }
 
     tx.commit().await
@@ -750,23 +706,32 @@ async fn sync_folders(
     Ok(())
 }
 
-/// Remove groups with no document associations
-async fn cleanup_orphan_groups(db: &SqlitePool) -> sqlx::Result<()> {
-    // Tags: delete any with zero members
+const ORPHAN_TAG_GRACE_MS: i64 = 60_000;
+
+// age guard: never collect tags younger than the grace window (may be mid-creation in the UI)
+pub async fn cleanup_orphan_tag_groups(db: &SqlitePool) -> sqlx::Result<()> {
+    let cutoff = Utc::now().timestamp_millis() - ORPHAN_TAG_GRACE_MS;
     sqlx::query(
         "DELETE FROM groups WHERE group_type = 'tag'
+         AND created_at < ?1
          AND id NOT IN (SELECT group_id FROM document_groups)",
     )
+    .bind(cutoff)
     .execute(db)
     .await?;
+    Ok(())
+}
 
-    // Folders: repeatedly prune leaves with no documents and no children
+// repeatedly prune this source's folder leaves with no documents and no children
+async fn cleanup_orphan_folder_groups(db: &SqlitePool, source_id: &str) -> sqlx::Result<()> {
     loop {
         let result = sqlx::query(
             "DELETE FROM groups WHERE group_type = 'folder'
+             AND source_id = ?1
              AND id NOT IN (SELECT group_id FROM document_groups)
              AND id NOT IN (SELECT parent_group_id FROM groups WHERE parent_group_id IS NOT NULL)",
         )
+        .bind(source_id)
         .execute(db)
         .await?;
 
@@ -822,24 +787,6 @@ pub(crate) async fn sync_tags(
     Ok(())
 }
 
-///
-/// Reconcile a Source
-///
-/// Little complicated, but basically:
-///
-/// 1. Walks source dir, collecting rel_path (to source) and mtime for .md documents
-/// 2. Loads all documents from this source in the db (cached)
-/// 3. Diffs source dir to db documents for this source
-///     - same path AND same mtime => unchanged
-///     - same path AND NOT same mtime => modifiedd
-///     - on disk but not found in db (by rel_path) => new_paths
-///     - in db but not found on disk => missing (later can prompt to restore for autpmerge history in UI)
-/// 4. Extract and parse frontmatter, quickly ideally
-/// 5. Resolve documents (little complicated, but handles a few cases like external file name swaps)
-/// 6. Commit changes
-/// 7. Cleanup orphaned groups
-///
-
 pub async fn index_document(
     db: &SqlitePool,
     source_id: &str,
@@ -858,7 +805,7 @@ pub async fn index_document(
         .as_ref()
         .map(fm_properties)
         .unwrap_or_else(|| "{}".to_string());
-    let mtime = fs_mtime_secs(&full);
+    let mtime = fs_mtime_ms(&full);
 
     let mut tx = db.begin().await?;
     sqlx::query(
@@ -941,11 +888,19 @@ pub async fn reconcile_source(
         .collect();
     let frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
 
-    let operations = resolve_changes(diff, &frontmatter, &db_id_to_path);
-    let ops_count = operations.len();
+    let foreign_ids: HashSet<String> =
+        sqlx::query_scalar("SELECT id FROM documents WHERE source_id != ?1")
+            .bind(source_id)
+            .fetch_all(db)
+            .await?
+            .into_iter()
+            .collect();
 
-    apply_operations(&operations, &frontmatter, source_id, source_path, db).await?;
-    cleanup_orphan_groups(db).await?;
+    let plan = resolve_plan(&diff, &frontmatter, &db_id_to_path, &foreign_ids);
+    let ops_count = plan.docs.len() + plan.delete_ids.len();
+
+    apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
+    cleanup_orphan_folder_groups(db, source_id).await?;
 
     let source_title = source_path
         .file_name()
@@ -960,4 +915,186 @@ pub async fn reconcile_source(
         ops_count
     );
     Ok(())
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn fm(id: &str) -> Option<serde_json::Value> {
+        Some(json!({ "id": id }))
+    }
+
+    fn plan(
+        unchanged: &[&str],
+        modified: &[&str],
+        new_paths: &[&str],
+        missing: &[&str],
+        frontmatter: &[(&str, Option<serde_json::Value>)],
+        db: &[(&str, &str)],
+        foreign: &[&str],
+    ) -> ReconcilePlan {
+        let diff = ReconciliationDiff {
+            unchanged: unchanged.iter().map(|s| s.to_string()).collect(),
+            modified: modified.iter().map(|s| (s.to_string(), 1)).collect(),
+            new_paths: new_paths.iter().map(|s| (s.to_string(), 1)).collect(),
+            missing: missing.iter().map(|s| s.to_string()).collect(),
+        };
+        let frontmatter: Vec<(String, Option<serde_json::Value>)> = frontmatter
+            .iter()
+            .map(|(p, f)| (p.to_string(), f.clone()))
+            .collect();
+        let db_id_to_path: HashMap<String, String> = db
+            .iter()
+            .map(|(id, p)| (id.to_string(), p.to_string()))
+            .collect();
+        let foreign_ids: HashSet<String> = foreign.iter().map(|s| s.to_string()).collect();
+        resolve_plan(&diff, &frontmatter, &db_id_to_path, &foreign_ids)
+    }
+
+    fn doc<'a>(p: &'a ReconcilePlan, path: &str) -> &'a ResolvedDoc {
+        p.docs.iter().find(|d| d.rel_path == path).unwrap()
+    }
+
+    #[test]
+    fn duplicate_of_unchanged_file_gets_fresh_id() {
+        let p = plan(
+            &["a.md"],
+            &[],
+            &["a copy.md"],
+            &[],
+            &[("a copy.md", fm("id-a"))],
+            &[("id-a", "a.md")],
+            &[],
+        );
+        let d = doc(&p, "a copy.md");
+        assert_ne!(d.id, "id-a");
+        assert!(d.rewrite_id);
+        assert!(!d.existing);
+        assert!(p.delete_ids.is_empty());
+    }
+
+    #[test]
+    fn duplicate_of_modified_holder_loses_to_holder() {
+        let p = plan(
+            &[],
+            &["a.md"],
+            &["a copy.md"],
+            &[],
+            &[("a.md", fm("id-a")), ("a copy.md", fm("id-a"))],
+            &[("id-a", "a.md")],
+            &[],
+        );
+        assert_eq!(doc(&p, "a.md").id, "id-a");
+        assert!(doc(&p, "a copy.md").rewrite_id);
+    }
+
+    #[test]
+    fn pure_swap_moves_both_rows() {
+        let p = plan(
+            &[],
+            &["a.md", "b.md"],
+            &[],
+            &[],
+            &[("a.md", fm("id-b")), ("b.md", fm("id-a"))],
+            &[("id-a", "a.md"), ("id-b", "b.md")],
+            &[],
+        );
+        let a = doc(&p, "a.md");
+        let b = doc(&p, "b.md");
+        assert_eq!(a.id, "id-b");
+        assert_eq!(b.id, "id-a");
+        assert!(a.moved && b.moved);
+        assert!(a.existing && b.existing);
+        assert!(p.delete_ids.is_empty());
+    }
+
+    #[test]
+    fn replaced_content_inserts_new_id_and_deletes_old() {
+        let p = plan(
+            &[],
+            &["a.md"],
+            &[],
+            &[],
+            &[("a.md", fm("id-new"))],
+            &[("id-old", "a.md")],
+            &[],
+        );
+        let d = doc(&p, "a.md");
+        assert_eq!(d.id, "id-new");
+        assert!(!d.existing);
+        assert_eq!(p.delete_ids, vec!["id-old".to_string()]);
+    }
+
+    #[test]
+    fn rename_is_a_move_not_delete_insert() {
+        let p = plan(
+            &[],
+            &[],
+            &["b.md"],
+            &["a.md"],
+            &[("b.md", fm("id-a"))],
+            &[("id-a", "a.md")],
+            &[],
+        );
+        let d = doc(&p, "b.md");
+        assert_eq!(d.id, "id-a");
+        assert!(d.existing && d.moved);
+        assert!(p.delete_ids.is_empty());
+    }
+
+    #[test]
+    fn vacated_path_gets_indexed_same_pass() {
+        let p = plan(
+            &[],
+            &["a.md"],
+            &["c.md"],
+            &[],
+            &[("a.md", fm("id-2")), ("c.md", fm("id-1"))],
+            &[("id-1", "a.md")],
+            &[],
+        );
+        assert_eq!(doc(&p, "c.md").id, "id-1");
+        assert!(doc(&p, "c.md").moved);
+        let a = doc(&p, "a.md");
+        assert_eq!(a.id, "id-2");
+        assert!(!a.existing);
+        assert!(p.delete_ids.is_empty());
+    }
+
+    #[test]
+    fn cross_source_copy_gets_fresh_id() {
+        let p = plan(
+            &[],
+            &[],
+            &["a.md"],
+            &[],
+            &[("a.md", fm("id-elsewhere"))],
+            &[],
+            &["id-elsewhere"],
+        );
+        let d = doc(&p, "a.md");
+        assert_ne!(d.id, "id-elsewhere");
+        assert!(d.rewrite_id);
+    }
+
+    #[test]
+    fn claimless_modified_keeps_row_and_missing_deletes() {
+        let p = plan(
+            &[],
+            &["a.md"],
+            &[],
+            &["gone.md"],
+            &[("a.md", None)],
+            &[("id-a", "a.md"), ("id-gone", "gone.md")],
+            &[],
+        );
+        let d = doc(&p, "a.md");
+        assert_eq!(d.id, "id-a");
+        assert!(d.existing && !d.moved && !d.rewrite_id);
+        assert_eq!(p.delete_ids, vec!["id-gone".to_string()]);
+    }
 }
