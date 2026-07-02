@@ -21,7 +21,17 @@
  */
 
 import { select, execute, parseUtc } from '$lib/db';
-import { v4 as uuidv4 } from 'uuid';
+import { v5 as uuidv5 } from 'uuid';
+
+const GROUP_NS = '6ba7b812-9dad-11d1-80b4-00c04fd430c8';
+
+function tagGroupId(slug: string): string {
+	return uuidv5(`tag:${slug}`, GROUP_NS);
+}
+
+function folderGroupId(sourceId: string, path: string): string {
+	return uuidv5(`folder:${sourceId}:${path}`, GROUP_NS);
+}
 
 // just wasting lines at this point
 export enum GroupType {
@@ -70,7 +80,8 @@ class Group {
 		groupType: GroupType = GroupType.Tag,
 		parentGroupId: string | undefined = undefined
 	): Promise<Group> {
-		const id = uuidv4();
+		const id =
+			groupType === GroupType.Folder ? folderGroupId(sourceId ?? '', slug) : tagGroupId(slug);
 
 		await execute(
 			`INSERT INTO groups (id, source_id, slug, group_type, parent_group_id)
