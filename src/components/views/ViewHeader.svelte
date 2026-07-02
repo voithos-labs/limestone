@@ -226,7 +226,6 @@
 
     function setEmoji(emoji: string) {
         view.emoji = emoji;
-        if (!view.temporary) view.save().catch(err => console.error('save view failed', err));
     }
 
     function toggleColumn(id: string) {

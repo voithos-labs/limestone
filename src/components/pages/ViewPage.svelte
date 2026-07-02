@@ -1,4 +1,5 @@
 <script lang="ts">
+    import {onDestroy} from "svelte";
     import type View from "$lib/models/View.svelte";
     import type {ViewFace} from "$lib/models/View.svelte";
     import type EditorState from "$lib/state/EditorState.svelte";
@@ -95,9 +96,25 @@
         };
     });
 
-    function persist() {
-        if (!view.temporary) view.save().catch(e => console.error('save view failed', e));
-    }
+    let lastSig = '';
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+    $effect(() => {
+        const sig = JSON.stringify(view.toJSON(), (k, v) =>
+            k === 'active_cell' || k === 'search' || k === 'temporary' ? undefined : v);
+        if (lastSig === '') { lastSig = sig; return; }
+        if (sig === lastSig || view.temporary) return;
+        lastSig = sig;
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            saveTimer = null;
+            view.save().catch(e => console.error('save view failed', e));
+        }, 400);
+    });
+
+    onDestroy(() => {
+        if (saveTimer && !view.temporary) view.save().catch(() => {});
+    });
 
     let coverDialogOpen = $state(false);
 
@@ -108,7 +125,6 @@
     function removeCover() {
         view.cover = '';
         cropping = false;
-        persist();
     }
 
     function startCrop() {
@@ -123,7 +139,6 @@
         const {ref} = parseCover(view.cover);
         view.cover = buildCover(ref, cropX, cropY, cropZoom);
         cropping = false;
-        persist();
     }
 
     function cropPointerDown(e: PointerEvent) {
@@ -257,7 +272,7 @@
 </div>
 
 <Menu bind:open={moreOpen} anchor={moreAnchor} items={moreItems} onSelect={onMoreSelect} minWidth={170}/>
-<CoverSourceDialog bind:open={coverDialogOpen} onPicked={(ref) => { view.cover = ref; persist(); }}/>
+<CoverSourceDialog bind:open={coverDialogOpen} onPicked={(ref) => { view.cover = ref; }}/>
 
 <style>
     .view-page {
