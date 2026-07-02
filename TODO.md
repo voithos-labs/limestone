@@ -1,7 +1,10 @@
 # TODO n shit
 
+For launch:
+
 **Major**
 
+- [ ] In-house editor
 - [ ] Document history
 - [ ] Global shortcuts
 - [ ] Executable code blocks (with env config)
