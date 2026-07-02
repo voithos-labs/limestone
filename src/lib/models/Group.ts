@@ -21,16 +21,13 @@
  */
 
 import { select, execute, parseUtc } from '$lib/db';
-import { v5 as uuidv5 } from 'uuid';
-
-const GROUP_NS = '6ba7b812-9dad-11d1-80b4-00c04fd430c8';
 
 function tagGroupId(slug: string): string {
-	return uuidv5(`tag:${slug}`, GROUP_NS);
+	return `tag:${slug}`;
 }
 
 function folderGroupId(sourceId: string, path: string): string {
-	return uuidv5(`folder:${sourceId}:${path}`, GROUP_NS);
+	return `folder:${sourceId}:${path}`;
 }
 
 // just wasting lines at this point
@@ -124,10 +121,7 @@ class Group {
 	}
 
 	static async list(): Promise<Group[]> {
-		const rows = await select<GroupRow>(
-			`SELECT * FROM groups ORDER BY slug ASC`,
-			[]
-		);
+		const rows = await select<GroupRow>(`SELECT * FROM groups ORDER BY slug ASC`, []);
 		return rows.map((r) => new Group(r));
 	}
 

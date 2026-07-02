@@ -662,11 +662,11 @@ pub async fn apply_operations(
 
 /// Ensure folder groups exist for a document's path and link the document to all ancestors
 fn tag_group_id(slug: &str) -> String {
-    Uuid::new_v5(&Uuid::NAMESPACE_OID, format!("tag:{slug}").as_bytes()).to_string()
+    format!("tag:{slug}")
 }
 
 fn folder_group_id(source_id: &str, path: &str) -> String {
-    Uuid::new_v5(&Uuid::NAMESPACE_OID, format!("folder:{source_id}:{path}").as_bytes()).to_string()
+    format!("folder:{source_id}:{path}")
 }
 
 async fn sync_folders(
