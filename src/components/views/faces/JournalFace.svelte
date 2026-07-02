@@ -1,9 +1,3 @@
-<script module lang="ts">
-    // Session-scoped (survives tab switches, cleared on reload/restart) so a fresh
-    // load lands on the present while tab-switching keeps your place.
-    const sessionSelected = new Map<string, Date>();
-</script>
-
 <script lang="ts">
     import type View from "$lib/models/View.svelte";
     import type {ViewFace} from "$lib/models/View.svelte";
@@ -32,6 +26,13 @@
         return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
     }
 
+    function parseDay(s: unknown): Date | null {
+        if (typeof s !== 'string') return null;
+        const parts = s.split('-').map(Number);
+        if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) return null;
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+
     function dayKey(d: Date): string {
         return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
     }
@@ -58,7 +59,7 @@
         return d.toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric'});
     }
 
-    const initSelected = sessionSelected.get(view.slug) ?? today;
+    const initSelected = parseDay(face.config.selected_day) ?? today;
     let selected = $state(initSelected);
     let windowEndDays = $state(0);
     let cardW = $state(0);
@@ -306,7 +307,7 @@
     }
 
     $effect(() => {
-        sessionSelected.set(view.slug, selected);
+        face.config.selected_day = isoDay(selected);
     });
 
     function page(dir: number) {
