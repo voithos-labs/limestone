@@ -39,7 +39,7 @@ create table if not exists groups (
     source_id text references sources(id) on delete cascade, -- nullable, only folder groups need this, tags are global
     slug text not null, -- title
     group_type text not null default 'tag' check (group_type in ('tag', 'folder')), -- tag, folder
-    parent_group_id text references groups(id) on delete set null,
+    parent_group_id text references groups(id) on delete cascade,
     created_at text not null default (datetime('now')),
     updated_at text not null default (datetime('now')),
     accessed_at text not null default (datetime('now')),

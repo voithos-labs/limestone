@@ -16,6 +16,7 @@ pub struct SearchResult {
     pub id: String,
     pub title: String,
     pub rel_path: Option<String>,
+    pub source_id: Option<String>,
     pub score: f64,
     pub match_indices: Vec<u32>,
     pub kind: SearchResultKind,
@@ -56,6 +57,7 @@ struct DocEntry {
     id: String,
     title: String,
     rel_path: Option<String>,
+    source_id: Option<String>,
     accessed_at: Option<String>,
 }
 
@@ -65,6 +67,7 @@ impl DocEntry {
             id: self.id.clone(),
             title: self.title.clone(),
             rel_path: self.rel_path.clone(),
+            source_id: self.source_id.clone(),
             score: 0.0,
             match_indices: Vec::new(),
             kind: SearchResultKind::Document,
@@ -76,6 +79,7 @@ impl DocEntry {
 struct Container {
     id: String,
     title: String,
+    source_id: Option<String>,
     accessed_at: Option<String>,
     kind: SearchResultKind,
     group_type: Option<String>,
@@ -87,6 +91,7 @@ impl Container {
             id: self.id.clone(),
             title: self.title.clone(),
             rel_path: None,
+            source_id: self.source_id.clone(),
             score: 0.0,
             match_indices: (0..match_len).collect(),
             kind: self.kind,
@@ -96,10 +101,10 @@ impl Container {
 }
 
 async fn load_docs(db: &SqlitePool, limit: Option<usize>) -> Vec<DocEntry> {
-    let rows: Vec<(String, String, Option<String>, Option<String>)> = match limit {
+    let rows: Vec<(String, String, Option<String>, Option<String>, Option<String>)> = match limit {
         Some(n) => {
             sqlx::query_as(
-                "SELECT id, title, rel_path, accessed_at FROM documents WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT ?1",
+                "SELECT id, title, rel_path, source_id, accessed_at FROM documents WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT ?1",
             )
             .bind(n as i64)
             .fetch_all(db)
@@ -107,7 +112,7 @@ async fn load_docs(db: &SqlitePool, limit: Option<usize>) -> Vec<DocEntry> {
         }
         None => {
             sqlx::query_as(
-                "SELECT id, title, rel_path, accessed_at FROM documents WHERE deleted_at IS NULL",
+                "SELECT id, title, rel_path, source_id, accessed_at FROM documents WHERE deleted_at IS NULL",
             )
             .fetch_all(db)
             .await
@@ -116,10 +121,11 @@ async fn load_docs(db: &SqlitePool, limit: Option<usize>) -> Vec<DocEntry> {
     .unwrap_or_default();
 
     rows.into_iter()
-        .map(|(id, title, rel_path, accessed_at)| DocEntry {
+        .map(|(id, title, rel_path, source_id, accessed_at)| DocEntry {
             id,
             title,
             rel_path,
+            source_id,
             accessed_at,
         })
         .collect()
@@ -127,8 +133,8 @@ async fn load_docs(db: &SqlitePool, limit: Option<usize>) -> Vec<DocEntry> {
 
 async fn load_groups_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<Container> {
     let pattern = format!("{}%", query.to_lowercase());
-    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT id, slug, group_type, accessed_at FROM groups WHERE lower(slug) LIKE ?1 ORDER BY length(slug) ASC, slug ASC LIMIT ?2",
+    let rows: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT id, slug, group_type, source_id, accessed_at FROM groups WHERE lower(slug) LIKE ?1 ORDER BY length(slug) ASC, slug ASC LIMIT ?2",
     )
     .bind(pattern)
     .bind(limit as i64)
@@ -137,9 +143,10 @@ async fn load_groups_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<C
     .unwrap_or_default();
 
     rows.into_iter()
-        .map(|(id, title, group_type, accessed_at)| Container {
+        .map(|(id, title, group_type, source_id, accessed_at)| Container {
             id,
             title,
+            source_id,
             accessed_at,
             kind: SearchResultKind::Group,
             group_type: Some(group_type),
@@ -148,8 +155,8 @@ async fn load_groups_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<C
 }
 
 async fn load_groups_recent(db: &SqlitePool, limit: usize) -> Vec<Container> {
-    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT id, slug, group_type, accessed_at FROM groups ORDER BY accessed_at DESC LIMIT ?1",
+    let rows: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT id, slug, group_type, source_id, accessed_at FROM groups ORDER BY accessed_at DESC LIMIT ?1",
     )
     .bind(limit as i64)
     .fetch_all(db)
@@ -157,9 +164,10 @@ async fn load_groups_recent(db: &SqlitePool, limit: usize) -> Vec<Container> {
     .unwrap_or_default();
 
     rows.into_iter()
-        .map(|(id, title, group_type, accessed_at)| Container {
+        .map(|(id, title, group_type, source_id, accessed_at)| Container {
             id,
             title,
+            source_id,
             accessed_at,
             kind: SearchResultKind::Group,
             group_type: Some(group_type),
@@ -182,6 +190,7 @@ async fn load_sources_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<
         .map(|(id, title, accessed_at)| Container {
             id,
             title,
+            source_id: None,
             accessed_at,
             kind: SearchResultKind::Source,
             group_type: None,
@@ -202,6 +211,7 @@ async fn load_sources_recent(db: &SqlitePool, limit: usize) -> Vec<Container> {
         .map(|(id, title, accessed_at)| Container {
             id,
             title,
+            source_id: None,
             accessed_at,
             kind: SearchResultKind::Source,
             group_type: None,

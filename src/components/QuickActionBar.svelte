@@ -2,7 +2,7 @@
     import type EditorState from "$lib/state/EditorState.svelte";
     import {TabState} from "$lib/state/EditorState.svelte";
     import type {SearchResult} from "$lib/types/SearchResult";
-    import {getSource, touchSource, sourceName} from "$lib/models/Source";
+    import {getSource, touchSource, sourceName, listSources, type Source} from "$lib/models/Source";
     import DocHandle from "$lib/models/DocHandle";
     import Group from "$lib/models/Group";
     import View from "$lib/models/View.svelte";
@@ -25,6 +25,14 @@
     let query = $state(tab?.state.query ?? '');
     let results: SearchResult[] = $state([]);
     let inputEl: HTMLInputElement | undefined = $state();
+    let sources: Source[] = $state([]);
+
+    // Documents and folder groups carry a source_id; show that source as a chip.
+    // Views have none, and source results are themselves a source, so both skip it.
+    function resultSource(result: SearchResult): Source | null {
+        if (!result.source_id) return null;
+        return sources.find(s => s.id === result.source_id) ?? null;
+    }
 
     $effect(() => {
         if (tab) tab.state.query = query;
@@ -52,7 +60,7 @@
         const viewResults: SearchResult[] = (await View.listSaved())
             .filter(v => v.slug.toLowerCase().includes(ql))
             .map(v => ({
-                id: v.id, title: v.slug, rel_path: null,
+                id: v.id, title: v.slug, rel_path: null, source_id: null,
                 score: 0, match_indices: [], kind: 'view' as const, group_type: null, emoji: v.emoji
             }));
         results = [...viewResults, ...docResults];
@@ -132,6 +140,9 @@
     onMount(() => {
         if (autofocus) inputEl?.focus();
         if (query.trim()) doSearch();
+        listSources()
+            .then(ss => sources = ss)
+            .catch(() => {});
     });
 </script>
 
@@ -157,29 +168,35 @@
     {#if query.trim()}
         <div class="results-dropdown">
             {#each results as result}
-                <button class="result" onclick={() => openResult(result)}>
-                    <span class="result-line">
-                        {#if result.kind === 'view'}
-                            {#if result.emoji}
-                                <span class="result-emoji">{result.emoji}</span>
+                {@const src = resultSource(result)}
+                <button class="result" class:row={src} onclick={() => openResult(result)}>
+                    <span class="result-main">
+                        <span class="result-line">
+                            {#if result.kind === 'view'}
+                                {#if result.emoji}
+                                    <span class="result-emoji">{result.emoji}</span>
+                                {:else}
+                                    <Layers size={14}/>
+                                {/if}
+                            {:else if result.kind === 'source'}
+                                <Folders size={14}/>
+                            {:else if result.kind === 'group'}
+                                {#if result.group_type === 'folder'}
+                                    <Folder size={14}/>
+                                {:else}
+                                    <Hash size={14}/>
+                                {/if}
                             {:else}
-                                <Layers size={14}/>
+                                <TextAlignStart size={14}/>
                             {/if}
-                        {:else if result.kind === 'source'}
-                            <Folders size={14}/>
-                        {:else if result.kind === 'group'}
-                            {#if result.group_type === 'folder'}
-                                <Folder size={14}/>
-                            {:else}
-                                <Hash size={14}/>
-                            {/if}
-                        {:else}
-                            <TextAlignStart size={14}/>
+                            <span class="result-title">{@html highlightTitle(result.title, result.match_indices)}</span>
+                        </span>
+                        {#if result.rel_path && result.kind === 'document'}
+                            <span class="result-path">{result.rel_path}</span>
                         {/if}
-                        <span class="result-title">{@html highlightTitle(result.title, result.match_indices)}</span>
                     </span>
-                    {#if result.rel_path}
-                        <span class="result-path">{result.rel_path}</span>
+                    {#if src}
+                        <span class="src-chip"><Folders size={11}/>{sourceName(src)}</span>
                     {/if}
                 </button>
             {:else}
@@ -295,6 +312,21 @@
         text-align: left;
     }
 
+    .result.row {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .result-main {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        min-width: 0;
+    }
+
     .result:hover {
         background: rgba(255, 255, 255, 0.04);
     }
@@ -323,6 +355,23 @@
         font-size: 12px;
         color: var(--color-ui-muted);
         padding-left: 22px;
+    }
+
+    .src-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: var(--chip-bg);
+        color: var(--color-text-secondary);
+        font-size: 12px;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .src-chip :global(svg) {
+        color: var(--color-ui-muted);
     }
 
     .empty {

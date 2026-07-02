@@ -1,8 +1,9 @@
 <script lang="ts">
-    import {onDestroy} from "svelte";
+    import {onMount, onDestroy} from "svelte";
     import type View from "$lib/models/View.svelte";
-    import type {ViewFace} from "$lib/models/View.svelte";
+    import type {ViewFace, FilterLeaf} from "$lib/models/View.svelte";
     import type EditorState from "$lib/state/EditorState.svelte";
+    import {listSources} from "$lib/models/Source";
     import DocHandle from "$lib/models/DocHandle";
     import ViewHeader from "../views/ViewHeader.svelte";
     import TableFace from "../views/faces/TableFace.svelte";
@@ -116,6 +117,20 @@
         if (saveTimer && !view.temporary) view.save().catch(() => {});
     });
 
+    let sourceRemoved = $state(false);
+
+    onMount(async () => {
+        const sourceField = view.fields.find(f => f.type === 'source');
+        if (!sourceField) return;
+        const leaf = view.filter.children.find(
+            (n): n is FilterLeaf => 'field_id' in n && n.field_id === sourceField.id && n.op === 'eq'
+        );
+        const sid = leaf && typeof leaf.value === 'string' ? leaf.value : undefined;
+        if (!sid) return;
+        const sources = await listSources();
+        sourceRemoved = !sources.some(s => s.id === sid);
+    });
+
     let coverDialogOpen = $state(false);
 
     function pickCover() {
@@ -195,6 +210,14 @@
 </script>
 
 <div class="view-page">
+    {#if sourceRemoved}
+        <div class="source-removed">
+            <p class="source-removed-msg">Source <strong>{view.slug}</strong> was removed.</p>
+            <button class="source-removed-close" type="button" onclick={() => editor.closeTab(view.id)}>
+                Close tab
+            </button>
+        </div>
+    {:else}
     <div class="view-body" class:flow={bodyFlow} bind:this={bodyEl}>
         {#if coverUrl}
             <div
@@ -269,6 +292,7 @@
             <Plus size={18} strokeWidth={2}/>
         </button>
     {/if}
+    {/if}
 </div>
 
 <Menu bind:open={moreOpen} anchor={moreAnchor} items={moreItems} onSelect={onMoreSelect} minWidth={170}/>
@@ -285,6 +309,42 @@
         margin-left: auto;
         margin-right: auto;
         overflow: hidden;
+    }
+
+    .source-removed {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        height: 100%;
+        font-family: var(--font-ui);
+        color: var(--color-ui-muted);
+    }
+
+    .source-removed-msg {
+        margin: 0;
+        font-size: 14px;
+    }
+
+    .source-removed-msg strong {
+        color: var(--color-text-primary);
+        font-weight: 600;
+    }
+
+    .source-removed-close {
+        padding: 6px 14px;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--color-text-primary);
+        font-family: var(--font-ui);
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .source-removed-close:hover {
+        background: var(--menu-item-hover);
     }
 
     .view-body {

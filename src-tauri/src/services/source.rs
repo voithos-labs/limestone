@@ -661,6 +661,14 @@ pub async fn apply_operations(
 }
 
 /// Ensure folder groups exist for a document's path and link the document to all ancestors
+fn tag_group_id(slug: &str) -> String {
+    Uuid::new_v5(&Uuid::NAMESPACE_OID, format!("tag:{slug}").as_bytes()).to_string()
+}
+
+fn folder_group_id(source_id: &str, path: &str) -> String {
+    Uuid::new_v5(&Uuid::NAMESPACE_OID, format!("folder:{source_id}:{path}").as_bytes()).to_string()
+}
+
 async fn sync_folders(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     source_id: &str,
@@ -691,8 +699,13 @@ async fn sync_folders(
     .await?;
 
     let mut parent_id: Option<String> = None;
+    let mut path_acc = String::new();
 
     for slug in &segments {
+        if !path_acc.is_empty() {
+            path_acc.push('/');
+        }
+        path_acc.push_str(slug);
         let existing: Option<String> = match &parent_id {
             Some(pid) => {
                 sqlx::query_scalar(
@@ -718,7 +731,7 @@ async fn sync_folders(
         let group_id = match existing {
             Some(id) => id,
             None => {
-                let id = Uuid::new_v4().to_string();
+                let id = folder_group_id(source_id, &path_acc);
                 sqlx::query(
                     "INSERT INTO groups (id, source_id, slug, group_type, parent_group_id) VALUES (?1, ?2, ?3, 'folder', ?4)",
                 )
@@ -794,7 +807,7 @@ pub(crate) async fn sync_tags(
             "INSERT INTO groups (id, slug, group_type) VALUES (?1, ?2, 'tag')
              ON CONFLICT(slug, group_type) DO NOTHING",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(tag_group_id(tag))
         .bind(tag)
         .execute(&mut **tx)
         .await?;

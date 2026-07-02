@@ -203,15 +203,15 @@ pub async fn delete_source(
     app_data: State<'_, AppData>,
     id: Uuid,
 ) -> Result<(), String> {
-    let mut sources = load_sources(&app);
-    sources.retain(|s| s.id != id);
-    save_sources(&app, &sources)?;
-
     sqlx::query("DELETE FROM sources WHERE id = ?1")
         .bind(id.to_string())
         .execute(&app_data.db)
         .await
         .map_err(|e| e.to_string())?;
+
+    let mut sources = load_sources(&app);
+    sources.retain(|s| s.id != id);
+    save_sources(&app, &sources)?;
 
     Ok(())
 }
