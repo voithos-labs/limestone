@@ -1,3 +1,9 @@
+<script module lang="ts">
+    // Session-scoped (survives tab switches, cleared on reload/restart) so a fresh
+    // load lands on the present while tab-switching keeps your place.
+    const sessionSelected = new Map<string, Date>();
+</script>
+
 <script lang="ts">
     import type View from "$lib/models/View.svelte";
     import type {ViewFace} from "$lib/models/View.svelte";
@@ -11,7 +17,7 @@
     import type {MenuEntry} from "$lib/views/menuTypes";
     import DateValueEditor from "../DateValueEditor.svelte";
     import MarkdownEditor from "../../editor/MarkdownEditor.svelte";
-    import {ChevronLeft, ChevronRight, SlidersHorizontal, Check, Calendar} from "@lucide/svelte";
+    import {ChevronLeft, ChevronRight, SlidersHorizontal, ScanBarcode, ScanLine} from "@lucide/svelte";
 
     let {view, face, flow = false}: { view: View; face: ViewFace; flow?: boolean } = $props();
 
@@ -52,16 +58,9 @@
         return d.toLocaleDateString(undefined, {weekday: 'long', month: 'long', day: 'numeric'});
     }
 
-    function parseDay(s: unknown): Date {
-        if (typeof s === 'string') {
-            const [y, m, d] = s.split('-').map(Number);
-            if (y && m && d) return new Date(y, m - 1, d);
-        }
-        return today;
-    }
-
-    let selected = $state(parseDay(face.config.selected_day));
-    let pageOffset = $state(0);
+    const initSelected = sessionSelected.get(view.slug) ?? today;
+    let selected = $state(initSelected);
+    let windowEndDays = $state(0);
     let cardW = $state(0);
     let rows = $state<any[]>([]);
 
@@ -76,9 +75,19 @@
         Math.floor((cardW + GAP) / (DAY_W + GAP))
     ));
 
-    // Derive the right edge from an integer page offset so offset 0 is always
-    // "today second-to-last", even if the count shifts between renders.
-    const windowEnd = $derived(addDays(tomorrow, pageOffset * visibleCount));
+    // Right edge as a day offset from tomorrow (0 = today second-to-last). Arrows
+    // snap to a page grid so they never drift; drag moves it day-by-day.
+    const windowEnd = $derived(addDays(tomorrow, windowEndDays));
+
+    // Once the strip is measured, grid-snap the window to the restored day so it
+    // lands in a consistent page (not forced second-to-last).
+    let didInitWindow = false;
+    $effect(() => {
+        if (didInitWindow || cardW === 0) return;
+        didInitWindow = true;
+        const dt = Math.round((initSelected.getTime() - tomorrow.getTime()) / 86400000);
+        windowEndDays = Math.ceil(dt / visibleCount) * visibleCount;
+    });
 
     const visibleDays = $derived.by(() => {
         const n = visibleCount;
@@ -165,13 +174,11 @@
         {kind: 'divider', section: 'Date field'},
         ...dateFieldItems,
         {kind: 'divider'},
-        {value: '__jump', label: 'Jump to date', icon: Calendar},
-        {value: '__activity', label: 'Activity row', icon: showActivity ? Check : undefined}
+        {value: '__activity', label: 'Activity timeline', icon: showActivity ? ScanLine : ScanBarcode}
     ]);
 
     function onOpt(value: string) {
         if (value === '__activity') face.config.show_activity = !showActivity;
-        else if (value === '__jump') jumpOpen = true;
         else face.config.date_field = value;
         optOpen = false;
     }
@@ -179,20 +186,27 @@
     function onJumpDate(v: string | null) {
         if (!v) return;
         const [y, m, d] = v.split('-').map(Number);
-        if (y && m && d) selectDay(new Date(y, m - 1, d));
+        if (y && m && d) {
+            const dt = startOfDay(new Date(y, m - 1, d));
+            selectDay(dt);
+            scrollBarTo(dt);
+        }
     }
 
     const SPARK_CELL = 8;
     const SPARK_GAP = 3;
-    let sparkW = $state(0);
-    const sparkCount = $derived(Math.max(1, Math.floor((sparkW + SPARK_GAP) / (SPARK_CELL + SPARK_GAP))));
+    const SPARK_STEP = SPARK_CELL + SPARK_GAP;
+    // Timeline covers the current year up to tomorrow; years are traversed via the
+    // year field and date picker, not by scrolling the bar (keeps it short/snappy).
+    const sparkStart = new Date(today.getFullYear(), 0, 1);
+    const SPARK_DAYS = Math.round((tomorrow.getTime() - sparkStart.getTime()) / 86400000) + 1;
+    const sparkContentW = SPARK_DAYS * SPARK_CELL + (SPARK_DAYS - 1) * SPARK_GAP;
 
     const sparkDays = $derived.by(() => {
         const set = entries;
-        const n = sparkCount;
         const out: { date: Date; on: boolean; first: boolean; label: string }[] = [];
-        for (let i = n - 1; i >= 0; i--) {
-            const cur = addDays(today, -i);
+        for (let i = 0; i < SPARK_DAYS; i++) {
+            const cur = addDays(sparkStart, i);
             const first = cur.getDate() === 1;
             out.push({
                 date: cur,
@@ -204,19 +218,15 @@
         return out;
     });
 
-    const sparkRowW = $derived(sparkCount * SPARK_CELL + (sparkCount - 1) * SPARK_GAP);
-    const sparkSlack = $derived(Math.max(0, sparkW - sparkRowW));
-
     const sparkMonths = $derived.by(() => {
-        const step = SPARK_CELL + SPARK_GAP;
         const LABEL_W = 38;
         const TODAY_W = 36;
-        const todayLeft = sparkRowW - TODAY_W;
+        const todayLeft = sparkContentW - SPARK_STEP - TODAY_W;
         const out: { leftPx: number; label: string }[] = [];
         let lastRight = -Infinity;
         sparkDays.forEach((d, i) => {
             if (!d.first) return;
-            const left = i * step;
+            const left = i * SPARK_STEP;
             if (left < lastRight) return;
             if (left + LABEL_W > todayLeft) return;
             out.push({leftPx: left, label: d.label});
@@ -225,18 +235,83 @@
         return out;
     });
 
+    // Drag scrolls the activity bar itself; the strip above stays the fine view.
+    let sparkEl: HTMLElement | null = $state(null);
+    let sparkAtEnd = $state(true);
+    let dragMoved = false;
+    function sparkPointerDown(e: PointerEvent) {
+        if (e.button !== 0 || !sparkEl) return;
+        dragMoved = false;
+        const el = sparkEl;
+        const baseX = e.clientX;
+        const baseScroll = el.scrollLeft;
+        function move(ev: PointerEvent) {
+            const dx = ev.clientX - baseX;
+            if (Math.abs(dx) > 3) dragMoved = true;
+            el.scrollLeft = baseScroll - dx;
+        }
+        function up() {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+        }
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    }
+
+    // Start scrolled to today (right edge) when the bar appears.
+    $effect(() => {
+        if (!showActivity || !sparkEl) return;
+        const el = sparkEl;
+        requestAnimationFrame(() => { el.scrollLeft = el.scrollWidth; });
+    });
+
     function selectDay(d: Date) {
         selected = d;
-        const diff = Math.round((d.getTime() - tomorrow.getTime()) / 86400000);
-        pageOffset = Math.ceil(diff / visibleCount);
+        // Snap to the same page grid as the arrows so the window stays consistent
+        // (the date lands wherever it falls in that page, not always second-to-last).
+        const dt = Math.round((d.getTime() - tomorrow.getTime()) / 86400000);
+        windowEndDays = Math.ceil(dt / visibleCount) * visibleCount;
+    }
+
+    const atPresent = $derived(sameDay(selected, today) && windowEndDays === 0 && sparkAtEnd);
+
+    function returnToPresent() {
+        selectDay(today);
+        if (sparkEl) sparkEl.scrollLeft = sparkEl.scrollWidth;
+    }
+
+    let pickerAnchor: HTMLElement | null = $state(null);
+    function openPicker(el: HTMLElement) {
+        pickerAnchor = el;
+        jumpOpen = true;
+    }
+
+    function sparkWheel(e: WheelEvent) {
+        if (!sparkEl) return;
+        e.preventDefault();
+        sparkEl.scrollLeft += e.deltaY + e.deltaX;
+    }
+
+    function sparkScroll() {
+        if (!sparkEl) return;
+        sparkAtEnd = sparkEl.scrollLeft >= sparkEl.scrollWidth - sparkEl.clientWidth - 2;
+    }
+
+    function scrollBarTo(d: Date) {
+        if (!sparkEl) return;
+        const diff = Math.round((d.getTime() - sparkStart.getTime()) / 86400000);
+        if (diff < 0 || diff >= SPARK_DAYS) return;
+        const el = sparkEl;
+        requestAnimationFrame(() => { el.scrollLeft = 3 + diff * SPARK_STEP + SPARK_CELL - el.clientWidth; });
     }
 
     $effect(() => {
-        face.config.selected_day = isoDay(selected);
+        sessionSelected.set(view.slug, selected);
     });
 
     function page(dir: number) {
-        pageOffset += dir;
+        const cur = Math.round(windowEndDays / visibleCount);
+        windowEndDays = (cur + dir) * visibleCount;
     }
 
     function isoDay(d: Date): string {
@@ -329,32 +404,45 @@
         </div>
 
         {#if showActivity}
-            <div class="spark" bind:clientWidth={sparkW}>
-                <div class="spark-row">
-                    {#each sparkDays as d (dayKey(d.date))}
-                        <button
-                                class="spark-cell"
-                                class:on={d.on}
-                                class:sel={sameDay(d.date, selected)}
-                                type="button"
-                                title={fullDate(d.date)}
-                                aria-label={fullDate(d.date)}
-                                onclick={() => selectDay(d.date)}
-                        ></button>
-                    {/each}
-                </div>
-                <div class="spark-months">
-                    {#each sparkMonths as m (m.leftPx)}
-                        <span class="spark-mlabel" style="left: {m.leftPx}px">{m.label}</span>
-                    {/each}
-                    <span class="spark-mlabel today" style="right: {sparkSlack}px">Today</span>
+            <div class="spark" bind:this={sparkEl} onpointerdown={sparkPointerDown} onwheel={sparkWheel} onscroll={sparkScroll} role="presentation">
+                <div class="spark-inner" style="width: {sparkContentW + 6}px">
+                    <div class="spark-row">
+                        {#each sparkDays as d (dayKey(d.date))}
+                            <button
+                                    class="spark-cell"
+                                    class:on={d.on}
+                                    class:sel={sameDay(d.date, selected)}
+                                    type="button"
+                                    title={fullDate(d.date)}
+                                    aria-label={fullDate(d.date)}
+                                    onclick={() => { if (!dragMoved) selectDay(d.date); }}
+                            ></button>
+                        {/each}
+                    </div>
+                    <div class="spark-months">
+                        {#each sparkMonths as m (m.leftPx)}
+                            <span class="spark-mlabel" style="left: {m.leftPx}px">{m.label}</span>
+                        {/each}
+                        <span class="spark-mlabel today" style="right: {SPARK_STEP}px">Today</span>
+                    </div>
                 </div>
             </div>
         {/if}
 
         <div class="controls">
-            <button class="ctl" type="button" aria-label="Journal options" bind:this={optEl} onclick={() => optOpen = !optOpen}>
-                <SlidersHorizontal size={15} strokeWidth={1.75}/>
+            <button
+                    class="nav-year"
+                    class:pinned={!atPresent}
+                    type="button"
+                    aria-label="Jump to date"
+                    onclick={(e) => openPicker(e.currentTarget)}
+            >{selected.toLocaleDateString(undefined, {month: 'short', year: 'numeric'})}</button>
+            {#if !atPresent}
+                <span class="nav-sep">·</span>
+                <button class="return-present" type="button" onclick={returnToPresent}>Today</button>
+            {/if}
+            <button class="ctl opt" type="button" aria-label="Journal options" bind:this={optEl} onclick={() => optOpen = !optOpen}>
+                <SlidersHorizontal size={14} strokeWidth={1.75}/>
             </button>
         </div>
     </div>
@@ -374,7 +462,7 @@
 </div>
 
 <Menu bind:open={optOpen} anchor={optEl} items={menuItems} onSelect={onOpt} selected={dateFieldKey} minWidth={170}/>
-<DateValueEditor bind:open={jumpOpen} anchor={optEl} value={isoDay(selected)} onChange={onJumpDate}/>
+<DateValueEditor bind:open={jumpOpen} anchor={pickerAnchor} value={isoDay(selected)} allowTime={false} onChange={onJumpDate}/>
 
 <style>
     .journal {
@@ -394,6 +482,20 @@
 
     .spark {
         padding: 12px 0 2px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        touch-action: none;
+        user-select: none;
+    }
+
+    .spark::-webkit-scrollbar {
+        display: none;
+    }
+
+    .spark-inner {
+        position: relative;
+        box-sizing: border-box;
+        padding: 0 3px;
     }
 
     .spark-row {
@@ -409,11 +511,15 @@
         border: none;
         border-radius: 2px;
         background: color-mix(in srgb, var(--color-accent) 9%, transparent);
-        cursor: pointer;
+        cursor: inherit;
     }
 
     .spark-cell.on {
         background: var(--color-accent);
+    }
+
+    .spark-cell:hover {
+        box-shadow: 0 0 0 1px var(--color-ui-muted);
     }
 
     .spark-cell.sel {
@@ -436,6 +542,7 @@
         color: var(--color-ui-muted);
         white-space: nowrap;
         transform: translateX(-1px);
+        pointer-events: none;
     }
 
     .spark-mlabel.today {
@@ -445,7 +552,7 @@
     }
 
     .entry {
-        margin-top: 0;
+        margin-top: 8px;
     }
 
     .journal:not(.flow) .entry {
@@ -511,15 +618,65 @@
 
     .controls {
         display: flex;
-        justify-content: flex-end;
+        align-items: center;
         padding-top: 4px;
+    }
+
+    .controls .ctl {
+        margin-left: auto;
         opacity: 0;
         transition: opacity 120ms ease;
     }
 
+    .nav-year {
+        padding: 0;
+        margin: 0;
+        border: none;
+        background: transparent;
+        color: var(--color-ui-muted);
+        font-family: var(--font-ui);
+        font-size: 11px;
+        cursor: pointer;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 120ms ease;
+    }
+
+    .nav-year.pinned {
+        opacity: 1;
+    }
+
+    .nav-year:hover {
+        text-decoration: underline;
+        color: var(--color-text-secondary);
+    }
+
+    .nav-sep {
+        margin: 0 6px;
+        color: var(--color-ui-dulled);
+        font-size: 11px;
+    }
+
+    .return-present {
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: var(--color-ui-muted);
+        font-family: var(--font-ui);
+        font-size: 11px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .return-present:hover {
+        text-decoration: underline;
+        color: var(--color-text-secondary);
+    }
+
     .day-nav:hover .nav-left,
     .day-nav:hover .nav-right,
-    .day-nav:hover .controls {
+    .day-nav:hover .nav-year,
+    .day-nav:hover .controls .ctl {
         opacity: 1;
     }
 
