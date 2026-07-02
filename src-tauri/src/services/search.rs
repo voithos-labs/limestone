@@ -58,7 +58,7 @@ struct DocEntry {
     title: String,
     rel_path: Option<String>,
     source_id: Option<String>,
-    accessed_at: Option<String>,
+    accessed_at: Option<i64>,
 }
 
 impl DocEntry {
@@ -80,7 +80,7 @@ struct Container {
     id: String,
     title: String,
     source_id: Option<String>,
-    accessed_at: Option<String>,
+    accessed_at: Option<i64>,
     kind: SearchResultKind,
     group_type: Option<String>,
 }
@@ -101,7 +101,7 @@ impl Container {
 }
 
 async fn load_docs(db: &SqlitePool, limit: Option<usize>) -> Vec<DocEntry> {
-    let rows: Vec<(String, String, Option<String>, Option<String>, Option<String>)> = match limit {
+    let rows: Vec<(String, String, Option<String>, Option<String>, Option<i64>)> = match limit {
         Some(n) => {
             sqlx::query_as(
                 "SELECT id, title, rel_path, source_id, accessed_at FROM documents WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT ?1",
@@ -133,7 +133,7 @@ async fn load_docs(db: &SqlitePool, limit: Option<usize>) -> Vec<DocEntry> {
 
 async fn load_groups_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<Container> {
     let pattern = format!("{}%", query.to_lowercase());
-    let rows: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
+    let rows: Vec<(String, String, String, Option<String>, Option<i64>)> = sqlx::query_as(
         "SELECT id, slug, group_type, source_id, accessed_at FROM groups WHERE lower(slug) LIKE ?1 ORDER BY length(slug) ASC, slug ASC LIMIT ?2",
     )
     .bind(pattern)
@@ -155,7 +155,7 @@ async fn load_groups_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<C
 }
 
 async fn load_groups_recent(db: &SqlitePool, limit: usize) -> Vec<Container> {
-    let rows: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
+    let rows: Vec<(String, String, String, Option<String>, Option<i64>)> = sqlx::query_as(
         "SELECT id, slug, group_type, source_id, accessed_at FROM groups ORDER BY accessed_at DESC LIMIT ?1",
     )
     .bind(limit as i64)
@@ -177,7 +177,7 @@ async fn load_groups_recent(db: &SqlitePool, limit: usize) -> Vec<Container> {
 
 async fn load_sources_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<Container> {
     let pattern = format!("{}%", query.to_lowercase());
-    let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+    let rows: Vec<(String, String, Option<i64>)> = sqlx::query_as(
         "SELECT id, title, accessed_at FROM sources WHERE lower(title) LIKE ?1 ORDER BY length(title) ASC, title ASC LIMIT ?2",
     )
     .bind(pattern)
@@ -199,7 +199,7 @@ async fn load_sources_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<
 }
 
 async fn load_sources_recent(db: &SqlitePool, limit: usize) -> Vec<Container> {
-    let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+    let rows: Vec<(String, String, Option<i64>)> = sqlx::query_as(
         "SELECT id, title, accessed_at FROM sources ORDER BY accessed_at DESC LIMIT ?1",
     )
     .bind(limit as i64)
@@ -219,16 +219,10 @@ async fn load_sources_recent(db: &SqlitePool, limit: usize) -> Vec<Container> {
         .collect()
 }
 
-fn days_since(accessed_at: &Option<String>, default_days: f64) -> f64 {
-    let now = chrono::Utc::now();
+fn days_since(accessed_at: &Option<i64>, default_days: f64) -> f64 {
+    let now_ms = chrono::Utc::now().timestamp_millis();
     accessed_at
-        .as_deref()
-        .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok())
-        .map(|dt| {
-            let accessed = dt.and_utc();
-            let duration = now.signed_duration_since(accessed);
-            duration.num_hours().max(0) as f64 / 24.0
-        })
+        .map(|ms| ((now_ms - ms).max(0) as f64) / 86_400_000.0)
         .unwrap_or(default_days)
 }
 
@@ -237,16 +231,15 @@ async fn search_recents(db: &SqlitePool, limit: usize) -> Vec<SearchResult> {
     let mut containers = load_groups_recent(db, limit).await;
     containers.extend(load_sources_recent(db, limit).await);
 
-    let mut merged: Vec<(String, SearchResult)> =
+    let mut merged: Vec<(i64, SearchResult)> =
         Vec::with_capacity(docs.len() + containers.len());
     for doc in &docs {
-        merged.push((doc.accessed_at.clone().unwrap_or_default(), doc.to_result()));
+        merged.push((doc.accessed_at.unwrap_or(0), doc.to_result()));
     }
     for c in &containers {
-        merged.push((c.accessed_at.clone().unwrap_or_default(), c.to_result(0)));
+        merged.push((c.accessed_at.unwrap_or(0), c.to_result(0)));
     }
 
-    // accessed_at is 'YYYY-MM-DD HH:MM:SS' ;;;;;;;; might want to switch all to ms since epoch
     merged.sort_by(|a, b| b.0.cmp(&a.0));
     merged.truncate(limit);
     merged.into_iter().map(|(_, r)| r).collect()

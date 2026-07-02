@@ -9,13 +9,30 @@ mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
+const SCHEMA_VERSION: i64 = 1;
 
 pub async fn create_pool(
     path: &std::path::Path,
 ) -> Result<SqlitePool, Box<dyn std::error::Error + Send + Sync>> {
     let url = format!("sqlite:{}?mode=rwc", path.display());
     let pool = SqlitePool::connect(&url).await?;
+    let version: i64 = sqlx::query_scalar("PRAGMA user_version")
+        .fetch_one(&pool)
+        .await?;
+    if version != SCHEMA_VERSION {
+        sqlx::raw_sql(
+            "DROP TABLE IF EXISTS document_groups;
+             DROP TABLE IF EXISTS documents;
+             DROP TABLE IF EXISTS groups;
+             DROP TABLE IF EXISTS sources;",
+        )
+        .execute(&pool)
+        .await?;
+    }
     sqlx::raw_sql(SCHEMA).execute(&pool).await?;
+    sqlx::raw_sql(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
+        .execute(&pool)
+        .await?;
     Ok(pool)
 }
 

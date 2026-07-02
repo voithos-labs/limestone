@@ -51,6 +51,7 @@ import { getSource, listSources, sourceName, type Source } from '$lib/models/Sou
 import { select } from '$lib/db';
 import { saveViewJSON, deleteSavedView, listSavedViewJSON } from '$lib/models/savedViews';
 import { toasts } from '$lib/toasts.svelte';
+import { wallClockToMs } from '$lib/views/dateFormat';
 
 /**
  * okay so a Face instance is 1:1 with a view-component, e.g. table, kanban etc.
@@ -446,6 +447,10 @@ function compileLeafSql(
 	if (field.type === 'folder') return compileFolderLeaf(op, value);
 	if (field.type === 'tags') return compileTagsLeaf(op, value);
 
+	if (field.type === 'created_at' || field.type === 'updated_at') {
+		value = wallClockToMs(value) ?? value;
+	}
+
 	const expr = resolveColumn(field.type, field.name, viewSlug);
 
 	// Booleans: an unset prop (NULL) reads as false
@@ -597,8 +602,8 @@ export interface MemberRow {
 	id: string;
 	title: string;
 	rel_path: string;
-	created_at: string;
-	updated_at: string;
+	created_at: number;
+	updated_at: number;
 	properties: string;
 	source_id: string;
 }

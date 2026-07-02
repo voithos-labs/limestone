@@ -15,9 +15,9 @@ create table if not exists sources (
     id text primary key not null,
     title text not null,
     path text not null,
-    created_at text not null default (datetime('now')),
-    updated_at text not null default (datetime('now')),
-    accessed_at text not null default (datetime('now'))
+    created_at integer not null default (unixepoch() * 1000),
+    updated_at integer not null default (unixepoch() * 1000),
+    accessed_at integer not null default (unixepoch() * 1000)
 ) strict;
 
 create table if not exists documents (
@@ -26,11 +26,11 @@ create table if not exists documents (
     document_type text not null default 'md',
     rel_path text not null,
     title text not null,
-    created_at text not null default (datetime('now')),
-    updated_at text not null default (datetime('now')),
-    accessed_at text not null default (datetime('now')),
+    created_at integer not null default (unixepoch() * 1000),
+    updated_at integer not null default (unixepoch() * 1000),
+    accessed_at integer not null default (unixepoch() * 1000),
     mtime integer,
-    deleted_at text,
+    deleted_at integer,
     properties text not null default '{}' check (json_valid(properties))
 ) strict;
 
@@ -40,9 +40,9 @@ create table if not exists groups (
     slug text not null, -- title
     group_type text not null default 'tag' check (group_type in ('tag', 'folder')), -- tag, folder
     parent_group_id text references groups(id) on delete cascade,
-    created_at text not null default (datetime('now')),
-    updated_at text not null default (datetime('now')),
-    accessed_at text not null default (datetime('now')),
+    created_at integer not null default (unixepoch() * 1000),
+    updated_at integer not null default (unixepoch() * 1000),
+    accessed_at integer not null default (unixepoch() * 1000),
     -- okay to get the full prop flexibility potential (like notion) you need props with default values per-group
     -- can just define in a basic json, schema will have to be enforced in code on-parse. Will add when needed.
     check (

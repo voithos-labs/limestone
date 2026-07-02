@@ -20,7 +20,7 @@
  * 		I mean we kind of have this on full reload but ya know, prob want it to work while in the app
  */
 
-import { select, execute, parseUtc } from '$lib/db';
+import { select, execute } from '$lib/db';
 
 function tagGroupId(slug: string): string {
 	return `tag:${slug}`;
@@ -42,9 +42,9 @@ export interface GroupRow {
 	slug: string;
 	group_type: string;
 	parent_group_id: string | null;
-	created_at: string;
-	updated_at: string;
-	accessed_at: string;
+	created_at: number;
+	updated_at: number;
+	accessed_at: number;
 }
 
 class Group {
@@ -62,8 +62,8 @@ class Group {
 		this.id = row.id;
 		this.slug = row.slug;
 		this.groupType = row.group_type as GroupType;
-		this.createdAt = parseUtc(row.created_at);
-		this.updatedAt = parseUtc(row.updated_at);
+		this.createdAt = new Date(row.created_at);
+		this.updatedAt = new Date(row.updated_at);
 		this.parentGroupId = row.parent_group_id ?? undefined;
 		this.sourceId = row.source_id ?? undefined;
 	}
@@ -72,14 +72,12 @@ class Group {
 	 * Create a new group
 	 */
 	private static async create(
+		id: string,
 		slug: string,
-		sourceId?: string,
-		groupType: GroupType = GroupType.Tag,
-		parentGroupId: string | undefined = undefined
+		sourceId: string | undefined,
+		groupType: GroupType,
+		parentGroupId: string | undefined
 	): Promise<Group> {
-		const id =
-			groupType === GroupType.Folder ? folderGroupId(sourceId ?? '', slug) : tagGroupId(slug);
-
 		await execute(
 			`INSERT INTO groups (id, source_id, slug, group_type, parent_group_id)
              VALUES (?1, ?2, ?3, ?4, ?5)`,
@@ -96,28 +94,31 @@ class Group {
 		return new Group(row);
 	}
 
-	// okay wtf was I on writing the above create
-
 	/**
 	 * Create a tag group
 	 *
 	 * Tags are global and the slug must be unique
 	 */
 	static async createTag(slug: string): Promise<Group> {
-		return Group.create(slug, undefined, GroupType.Tag, undefined);
+		return Group.create(tagGroupId(slug), slug, undefined, GroupType.Tag, undefined);
 	}
 
 	/**
 	 * Create a folder group
-	 *
-	 * NOTE: only folders in the root of a source have parentGroupId NULL; leave blank
 	 */
 	static async createFolder(
 		slug: string,
 		sourceId: string,
-		parentGroupId?: string
+		parent?: { id: string; path: string }
 	): Promise<Group> {
-		return Group.create(slug, sourceId, GroupType.Folder, parentGroupId);
+		const path = parent ? `${parent.path}/${slug}` : slug;
+		return Group.create(
+			folderGroupId(sourceId, path),
+			slug,
+			sourceId,
+			GroupType.Folder,
+			parent?.id
+		);
 	}
 
 	static async list(): Promise<Group[]> {
@@ -139,24 +140,24 @@ class Group {
 	async touch(): Promise<void> {
 		await execute(
 			`UPDATE groups
-             SET accessed_at = datetime('now')
+             SET accessed_at = ?2
              WHERE id = ?1`,
-			[this.id]
+			[this.id, Date.now()]
 		);
 	}
 
 	async updateSlug(newSlug: string): Promise<void> {
 		//todo: this has to actually find and replace all slugs in documents too
-		const [{ updated_at }] = await select<{ updated_at: string }>(
+		const now = Date.now();
+		await execute(
 			`UPDATE groups
              SET slug = ?1,
-                 updated_at = datetime('now')
-             WHERE id = ?2
-             RETURNING updated_at`,
-			[newSlug, this.id]
+                 updated_at = ?3
+             WHERE id = ?2`,
+			[newSlug, this.id, now]
 		);
 		(this as { slug: string }).slug = newSlug;
-		this.updatedAt = parseUtc(updated_at);
+		this.updatedAt = new Date(now);
 	}
 
 	static async fromSlugs(slugs: string[], sourceId: string): Promise<Group[]> {

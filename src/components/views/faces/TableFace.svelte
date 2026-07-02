@@ -16,7 +16,7 @@
         tagClass as tagClassOf, valueFor as valueOf, titleFor as titleOf, folderDir, fileName,
         sourceName as sourceNameOf, isEditable, isMetaField, fieldLabel, withStatefulValue
     } from "$lib/views/fieldValue";
-    import {sqlToWallClock, toSqlDateTime} from "$lib/views/dateFormat";
+    import {toWallClock} from "$lib/views/dateFormat";
     import {searchDocuments} from "$lib/search";
     import Menu from "../Menu.svelte";
     import IconAddColumnRight from "~icons/material-symbols/add-column-right";
@@ -733,10 +733,10 @@
     let floatTop = $state(false);
     let creatingGroupKey: string | null = $state(null);
     // createdAt captured once per draft so prefilled date columns are stable
-    let draft: { title: string; values: Record<string, unknown>; createdAt: string } = $state({
+    let draft: { title: string; values: Record<string, unknown>; createdAt: number } = $state({
         title: '',
         values: {},
-        createdAt: ''
+        createdAt: 0
     });
 
     const createCtx = $derived(deriveCreateContext(view, face, folders));
@@ -845,8 +845,8 @@
     const editingValue = $derived.by(() => {
         if (!editingField || !editingRow) return null;
         if (isMetaField(editingField.type)) {
-            const sql = editingField.type === 'created_at' ? editingRow.created_at : editingRow.updated_at;
-            return sqlToWallClock(sql);
+            const ms = editingField.type === 'created_at' ? editingRow.created_at : editingRow.updated_at;
+            return toWallClock(ms);
         }
         if (editingField.type === 'folder') {
             return folderIdForPath(editingRow.rel_path, editingRow.source_id);
@@ -1154,13 +1154,13 @@
         if (isNaN(date.getTime())) return;
 
         if (row.id === DRAFT_ID) {
-            draft = {...draft, createdAt: date.toISOString()};
+            draft = {...draft, createdAt: date.getTime()};
             return;
         }
         try {
             const doc = await DocHandle.fromID(row.id);
             await doc.saveMeta(type === 'created_at' ? {createdAt: date} : {updatedAt: date});
-            rows = rows.map(r => r.id === row.id ? {...r, [type]: toSqlDateTime(date)} : r);
+            rows = rows.map(r => r.id === row.id ? {...r, [type]: date.getTime()} : r);
         } catch (e) {
             error = String(e);
         }
@@ -1252,7 +1252,7 @@
             if (v === null || v === undefined || v === '') delete values[groupField.name];
             else values[groupField.name] = v;
         }
-        draft = {title: '', values, createdAt: new Date().toISOString()};
+        draft = {title: '', values, createdAt: Date.now()};
         folderOverride = undefined;
         queueMicrotask(() => newTitleInput?.focus());
     }

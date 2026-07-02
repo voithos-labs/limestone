@@ -1,3 +1,4 @@
+use crate::services::frontmatter;
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -448,15 +449,6 @@ pub fn resolve_changes(
     ops
 }
 
-/// Format an epoch-seconds timestamp the way `datetime('now')` does
-/// (`YYYY-MM-DD HH:MM:SS`)
-fn epoch_to_sql(secs: i64) -> String {
-    DateTime::<Utc>::from_timestamp(secs, 0)
-        .unwrap_or_else(Utc::now)
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string()
-}
-
 /// Read the file's creation time, fall back to mtime if the
 /// platform/filesystem doent expose it
 fn fs_birth_secs(path: &Path, fallback_mtime: i64) -> i64 {
@@ -512,22 +504,22 @@ pub async fn apply_operations(
                 // imported files retain their real history instead of all
                 // being stamped with the moment of indexing.
                 let full_path = source_path.join(rel_path);
-                let mtime_str = epoch_to_sql(*mtime);
+                let mtime_ms = *mtime * 1000;
                 let created_at = fm
                     .and_then(|f| f.get("created_at"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| epoch_to_sql(fs_birth_secs(&full_path, *mtime)));
+                    .and_then(frontmatter::date_ms)
+                    .unwrap_or_else(|| fs_birth_secs(&full_path, *mtime) * 1000);
                 let updated_at = fm
                     .and_then(|f| f.get("updated_at"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| mtime_str.clone());
+                    .and_then(frontmatter::date_ms)
+                    .unwrap_or(mtime_ms);
                 let accessed_at = fm
                     .and_then(|f| f.get("accessed_at"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| mtime_str.clone());
+                    .and_then(frontmatter::date_ms)
+                    .unwrap_or(mtime_ms);
 
                 sqlx::query(
                     "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
@@ -539,9 +531,9 @@ pub async fn apply_operations(
                 .bind(title)
                 .bind(mtime)
                 .bind(&properties)
-                .bind(&created_at)
-                .bind(&updated_at)
-                .bind(&accessed_at)
+                .bind(created_at)
+                .bind(updated_at)
+                .bind(accessed_at)
                 .execute(&mut *tx)
                 .await?;
 
@@ -603,12 +595,11 @@ pub async fn apply_operations(
                     .and_then(|s| s.to_str())
                     .unwrap_or("Untitled");
                 let properties = fm.map(fm_properties).unwrap_or_else(|| "{}".to_string());
-                let mtime_str = epoch_to_sql(*mtime);
                 let updated_at = fm
                     .and_then(|f| f.get("updated_at"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| mtime_str.clone());
+                    .and_then(frontmatter::date_ms)
+                    .unwrap_or(*mtime * 1000);
 
                 sqlx::query(
                     "UPDATE documents SET title = ?1, mtime = ?2, properties = ?3, updated_at = ?4
@@ -617,7 +608,7 @@ pub async fn apply_operations(
                 .bind(title)
                 .bind(mtime)
                 .bind(&properties)
-                .bind(&updated_at)
+                .bind(updated_at)
                 .bind(source_id)
                 .bind(rel_path)
                 .execute(&mut *tx)

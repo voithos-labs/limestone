@@ -1,9 +1,5 @@
 function parseDate(input: string | number | Date): Date | null {
-	if (input instanceof Date) return isNaN(input.getTime()) ? null : input;
-	let d = new Date(input);
-	if (isNaN(d.getTime()) && typeof input === 'string') {
-		d = new Date(input.replace(' ', 'T') + (input.includes('Z') ? '' : 'Z'));
-	}
+	const d = input instanceof Date ? input : new Date(input);
 	return isNaN(d.getTime()) ? null : d;
 }
 
@@ -82,15 +78,22 @@ function pad2(n: number): string {
 	return String(n).padStart(2, '0');
 }
 
-// SQL datetime (UTC) -> local "YYYY-MM-DDTHH:mm" for a datetime-local input
-export function sqlToWallClock(sql: string): string | null {
-	if (!sql) return null;
-	const d = new Date(sql.replace(' ', 'T') + 'Z');
-	if (isNaN(d.getTime())) return null;
+export function toWallClock(input: string | number | Date): string | null {
+	if (input === '' || input === null || input === undefined) return null;
+	const d = parseDate(input);
+	if (!d) return null;
 	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-// Date -> SQL datetime string "YYYY-MM-DD HH:mm:ss"
-export function toSqlDateTime(date: Date): string {
-	return date.toISOString().replace('T', ' ').slice(0, 19);
+export function wallClockToMs(value: unknown): number | null {
+	if (typeof value === 'number') return value;
+	if (typeof value !== 'string' || !value) return null;
+	const m = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+	if (m) {
+		const [, y, mo, d, hh, mm] = m;
+		const date = new Date(+y, +mo - 1, +d, hh ? +hh : 0, mm ? +mm : 0);
+		return isNaN(date.getTime()) ? null : date.getTime();
+	}
+	const d = new Date(value);
+	return isNaN(d.getTime()) ? null : d.getTime();
 }

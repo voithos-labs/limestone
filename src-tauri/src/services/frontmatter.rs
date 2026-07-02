@@ -4,6 +4,20 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+pub fn date_ms(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.timestamp_millis());
+    }
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        return Some(ndt.and_utc().timestamp_millis());
+    }
+    if let Ok(nd) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return Some(nd.and_hms_opt(0, 0, 0)?.and_utc().timestamp_millis());
+    }
+    None
+}
+
 /// It's in the name, rewrite frontmatter, preserve contents
 pub fn rewrite_frontmatter(path: &Path, mutate: impl Fn(&mut Value)) -> io::Result<()> {
     let content = fs::read_to_string(path)?;

@@ -13,8 +13,3 @@ export async function execute(
 ): Promise<{ rows_affected: number; last_insert_rowid: number }> {
 	return invoke('sql_execute', { query, params });
 }
-
-/** Parse a SQLite datetime string (always UTC) into a Date */
-export function parseUtc(s: string): Date {
-	return new Date(s + 'Z');
-}

@@ -188,7 +188,8 @@ pub async fn touch_source(
     }
     save_sources(&app, &sources)?;
 
-    sqlx::query("UPDATE sources SET accessed_at = datetime('now') WHERE id = ?1")
+    sqlx::query("UPDATE sources SET accessed_at = ?1 WHERE id = ?2")
+        .bind(now.timestamp_millis())
         .bind(id.to_string())
         .execute(&app_data.db)
         .await

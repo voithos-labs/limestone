@@ -15,7 +15,7 @@ import { invoke } from '@tauri-apps/api/core';
 import yaml from 'js-yaml';
 
 // Internal
-import { select, execute, parseUtc } from '$lib/db';
+import { select, execute } from '$lib/db';
 import { getSource, type Source } from './Source';
 import Group, { type GroupRow } from './Group';
 
@@ -31,11 +31,11 @@ export interface DocumentRow {
 	document_type: string;
 	rel_path: string;
 	title: string;
-	created_at: string;
-	updated_at: string;
-	accessed_at: string;
+	created_at: number;
+	updated_at: number;
+	accessed_at: number;
 	mtime: number | null;
-	deleted_at: string | null;
+	deleted_at: number | null;
 	properties: string;
 }
 
@@ -77,10 +77,10 @@ class DocHandle {
 		this.groups = [];
 		this.properties =
 			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
-		this.createdAt = parseUtc(row.created_at);
-		this.updatedAt = parseUtc(row.updated_at);
-		this.accessedAt = parseUtc(row.accessed_at);
-		this.deletedAt = row.deleted_at ? parseUtc(row.deleted_at) : undefined;
+		this.createdAt = new Date(row.created_at);
+		this.updatedAt = new Date(row.updated_at);
+		this.accessedAt = new Date(row.accessed_at);
+		this.deletedAt = row.deleted_at ? new Date(row.deleted_at) : undefined;
 	}
 
 	static async create(
@@ -315,14 +315,14 @@ class DocHandle {
 		}
 
 		// update accessed_at
-		const [{ accessed_at }] = await select<{ accessed_at: string }>(
+		const now = Date.now();
+		await execute(
 			`UPDATE documents
-             SET accessed_at = datetime('now')
-             WHERE id = ?1
-             RETURNING accessed_at`,
-			[this.id]
+             SET accessed_at = ?2
+             WHERE id = ?1`,
+			[this.id, now]
 		);
-		this.accessedAt = parseUtc(accessed_at);
+		this.accessedAt = new Date(now);
 
 		return body;
 	}
@@ -360,7 +360,7 @@ class DocHandle {
 			sourcePath: this.source.path,
 			relPath: this._relPath,
 			contents,
-			updatedAt: this.updatedAt.toISOString()
+			updatedAt: this.updatedAt.getTime()
 		});
 	}
 

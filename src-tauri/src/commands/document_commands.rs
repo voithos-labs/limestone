@@ -2,7 +2,6 @@ use crate::commands::source_commands::source_uses_frontmatter;
 use crate::services::fs::{atomic_write, move_file};
 use crate::services::{fm_properties, frontmatter, index_document, sync_tags};
 use crate::AppData;
-use chrono::{DateTime, Utc};
 use tauri::{AppHandle, State};
 
 fn mtime(path: &std::path::Path) -> i64 {
@@ -21,13 +20,12 @@ pub async fn write_document(
     source_path: String,
     rel_path: String,
     contents: String,
-    updated_at: String,
+    updated_at: i64,
 ) -> Result<(), String> {
     let full_path = std::path::Path::new(&source_path).join(&rel_path);
 
     atomic_write(&full_path, contents.as_bytes()).map_err(|e| e.to_string())?;
 
-    let updated_sql = iso_to_sql(&updated_at)?;
     let mtime = mtime(&full_path);
     let (fm, _) = frontmatter::split_content(&contents);
 
@@ -35,10 +33,10 @@ pub async fn write_document(
 
     if let Some(fm) = fm {
         let properties = fm_properties(&fm);
-        let created_sql = fm
+        let created_ms = fm
             .get("created_at")
             .and_then(|v| v.as_str())
-            .and_then(|s| iso_to_sql(s).ok());
+            .and_then(frontmatter::date_ms);
 
         sqlx::query(
             "UPDATE documents
@@ -47,9 +45,9 @@ pub async fn write_document(
              WHERE source_id = ?5 AND rel_path = ?6",
         )
         .bind(mtime)
-        .bind(&updated_sql)
+        .bind(updated_at)
         .bind(&properties)
-        .bind(created_sql.as_deref())
+        .bind(created_ms)
         .bind(&source_id)
         .bind(&rel_path)
         .execute(&mut *tx)
@@ -83,7 +81,7 @@ pub async fn write_document(
             "UPDATE documents SET mtime = ?1, updated_at = ?2 WHERE source_id = ?3 AND rel_path = ?4",
         )
         .bind(mtime)
-        .bind(&updated_sql)
+        .bind(updated_at)
         .bind(&source_id)
         .bind(&rel_path)
         .execute(&mut *tx)
@@ -131,14 +129,6 @@ pub async fn rename_document(
     Ok(new_rel)
 }
 
-/// Parse a JS ISO
-fn iso_to_sql(s: &str) -> Result<String, String> {
-    let dt = DateTime::parse_from_rfc3339(s)
-        .map_err(|e| e.to_string())?
-        .with_timezone(&Utc);
-    Ok(dt.format("%Y-%m-%d %H:%M:%S").to_string())
-}
-
 #[tauri::command]
 pub async fn save_document_meta(
     app_data: State<'_, AppData>,
@@ -180,8 +170,8 @@ pub async fn save_document_meta(
     })
     .map_err(|e| e.to_string())?;
 
-    let created_sql = created_at.as_deref().map(iso_to_sql).transpose()?;
-    let updated_sql = updated_at.as_deref().map(iso_to_sql).transpose()?;
+    let created_ms = created_at.as_deref().and_then(frontmatter::date_ms);
+    let updated_ms = updated_at.as_deref().and_then(frontmatter::date_ms);
 
     sqlx::query(
         "UPDATE documents
@@ -190,8 +180,8 @@ pub async fn save_document_meta(
              mtime = ?3
          WHERE id = ?4",
     )
-    .bind(created_sql)
-    .bind(updated_sql)
+    .bind(created_ms)
+    .bind(updated_ms)
     .bind(mtime(&full_path))
     .bind(&id)
     .execute(&app_data.db)
