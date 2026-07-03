@@ -1,6 +1,8 @@
 use crate::commands::source_commands::source_uses_frontmatter;
 use crate::services::fs::{atomic_write, move_file};
-use crate::services::{fm_properties, frontmatter, index_document, sync_tags};
+use crate::services::{
+    cleanup_orphan_folder_groups, fm_properties, frontmatter, index_document, sync_tags,
+};
 use crate::AppData;
 use tauri::{AppHandle, State};
 
@@ -237,6 +239,11 @@ pub async fn move_document(
         )
         .await
         .map_err(|e| e.to_string())?;
+        if dest_source_id != source_id {
+            cleanup_orphan_folder_groups(&app_data.db, &source_id)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
     }
 
     Ok(())
@@ -258,6 +265,19 @@ pub async fn delete_document(
         Err(e) => return Err(e.to_string()),
     }
 
+    let source_id: Option<String> =
+        sqlx::query_scalar("SELECT source_id FROM documents WHERE id = ?1")
+            .bind(&id)
+            .fetch_optional(&app_data.db)
+            .await
+            .map_err(|e| e.to_string())?;
+    let group_ids: Vec<String> =
+        sqlx::query_scalar("SELECT group_id FROM document_groups WHERE document_id = ?1")
+            .bind(&id)
+            .fetch_all(&app_data.db)
+            .await
+            .map_err(|e| e.to_string())?;
+
     // Drop the row + its group memberships (folder/tag links)
     sqlx::query("DELETE FROM document_groups WHERE document_id = ?1")
         .bind(&id)
@@ -269,6 +289,22 @@ pub async fn delete_document(
         .execute(&app_data.db)
         .await
         .map_err(|e| e.to_string())?;
+
+    for group_id in &group_ids {
+        sqlx::query(
+            "DELETE FROM groups WHERE id = ?1 AND group_type = 'tag'
+             AND id NOT IN (SELECT group_id FROM document_groups)",
+        )
+        .bind(group_id)
+        .execute(&app_data.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(source_id) = source_id {
+        cleanup_orphan_folder_groups(&app_data.db, &source_id)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }

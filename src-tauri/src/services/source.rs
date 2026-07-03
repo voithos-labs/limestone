@@ -188,6 +188,7 @@ pub struct ResolvedDoc {
     pub id: String,
     pub rel_path: String,
     pub mtime: i64,
+    pub db_mtime: Option<i64>,
     pub existing: bool,
     pub moved: bool,
     pub rewrite_id: bool,
@@ -361,16 +362,16 @@ fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<serde_json::Value
 pub fn resolve_plan(
     diff: &ReconciliationDiff,
     frontmatter: &[(String, Option<serde_json::Value>)],
-    db_id_to_path: &HashMap<String, String>,
+    db_docs: &HashMap<String, (String, i64)>,
     foreign_ids: &HashSet<String>,
 ) -> ReconcilePlan {
     let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
         .iter()
         .map(|(p, fm)| (p.as_str(), fm.as_ref()))
         .collect();
-    let db_path_to_id: HashMap<&str, &str> = db_id_to_path
+    let db_path_to_id: HashMap<&str, &str> = db_docs
         .iter()
-        .map(|(id, path)| (path.as_str(), id.as_str()))
+        .map(|(id, (path, _))| (path.as_str(), id.as_str()))
         .collect();
     let unchanged: HashSet<&str> = diff.unchanged.iter().map(|p| p.as_str()).collect();
 
@@ -405,7 +406,7 @@ pub fn resolve_plan(
             claimless.push((path, *mtime));
             continue;
         };
-        let holder = db_id_to_path.get(claim).map(|p| p.as_str());
+        let holder = db_docs.get(claim).map(|(p, _)| p.as_str());
         // a claim is granted unless the id's current holder keeps it (duplicate)
         let granted = !assigned.contains(claim)
             && !foreign_ids.contains(claim)
@@ -420,6 +421,7 @@ pub fn resolve_plan(
                 id: claim.to_string(),
                 rel_path: path.to_string(),
                 mtime: *mtime,
+                db_mtime: db_docs.get(claim).map(|(_, m)| *m),
                 existing: holder.is_some(),
                 moved: holder.is_some_and(|q| q != *path),
                 rewrite_id: false,
@@ -429,6 +431,7 @@ pub fn resolve_plan(
                 id: Uuid::new_v4().to_string(),
                 rel_path: path.to_string(),
                 mtime: *mtime,
+                db_mtime: None,
                 existing: false,
                 moved: false,
                 rewrite_id: true,
@@ -450,6 +453,7 @@ pub fn resolve_plan(
                 .unwrap_or_else(|| Uuid::new_v4().to_string()),
             rel_path: path.to_string(),
             mtime,
+            db_mtime: existing.and_then(|id| db_docs.get(id).map(|(_, m)| *m)),
             existing: existing.is_some(),
             moved: false,
             rewrite_id: false,
@@ -465,7 +469,7 @@ pub fn resolve_plan(
                 .filter_map(|p| db_path_to_id.get(p).copied()),
         )
         .collect();
-    let delete_ids: Vec<String> = db_id_to_path
+    let delete_ids: Vec<String> = db_docs
         .keys()
         .filter(|id| !keep.contains(id.as_str()))
         .cloned()
@@ -535,7 +539,14 @@ pub async fn apply_plan(
 
     let mut tx = db.begin().await?;
 
+    let mut unlinked_groups: Vec<String> = Vec::new();
     for id in &plan.delete_ids {
+        let group_ids: Vec<String> =
+            sqlx::query_scalar("SELECT group_id FROM document_groups WHERE document_id = ?1")
+                .bind(id)
+                .fetch_all(&mut *tx)
+                .await?;
+        unlinked_groups.extend(group_ids);
         sqlx::query("DELETE FROM documents WHERE id = ?1")
             .bind(id)
             .execute(&mut *tx)
@@ -543,12 +554,16 @@ pub async fn apply_plan(
     }
 
     // park moved rows on collision-free temp paths before final paths are assigned
+    // every write is conditional on the snapshot mtime so a concurrent in-app edit wins
     for doc in plan.docs.iter().filter(|d| d.moved) {
-        sqlx::query("UPDATE documents SET rel_path = ?1 WHERE id = ?2")
-            .bind(format!("/{}", doc.id))
-            .bind(&doc.id)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "UPDATE documents SET rel_path = ?1 WHERE id = ?2 AND coalesce(mtime, 0) = ?3",
+        )
+        .bind(format!("/{}", doc.id))
+        .bind(&doc.id)
+        .bind(doc.db_mtime.unwrap_or(0))
+        .execute(&mut *tx)
+        .await?;
     }
 
     for doc in &plan.docs {
@@ -566,10 +581,10 @@ pub async fn apply_plan(
         };
         let updated_at = fm_date(fm, "updated_at").unwrap_or(mtime);
 
-        if doc.existing {
+        let wrote = if doc.existing {
             sqlx::query(
                 "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4, updated_at = ?5
-                 WHERE id = ?6",
+                 WHERE id = ?6 AND coalesce(mtime, 0) = ?7",
             )
             .bind(&doc.rel_path)
             .bind(title)
@@ -577,15 +592,19 @@ pub async fn apply_plan(
             .bind(&properties)
             .bind(updated_at)
             .bind(&doc.id)
+            .bind(doc.db_mtime.unwrap_or(0))
             .execute(&mut *tx)
-            .await?;
+            .await?
+            .rows_affected()
+                > 0
         } else {
             let created_at = fm_date(fm, "created_at")
                 .unwrap_or_else(|| fs_birth_ms(&full_path, mtime));
             let accessed_at = fm_date(fm, "accessed_at").unwrap_or(mtime);
             sqlx::query(
                 "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT DO NOTHING",
             )
             .bind(&doc.id)
             .bind(source_id)
@@ -597,11 +616,26 @@ pub async fn apply_plan(
             .bind(updated_at)
             .bind(accessed_at)
             .execute(&mut *tx)
-            .await?;
-        }
+            .await?
+            .rows_affected()
+                > 0
+        };
 
-        sync_tags(&mut tx, &doc.id, &fm_tags(fm)).await?;
-        sync_folders(&mut tx, source_id, &doc.id, &doc.rel_path).await?;
+        // a lost write means a race edit is faster
+        if wrote {
+            sync_tags(&mut tx, &doc.id, &fm_tags(fm)).await?;
+            sync_folders(&mut tx, source_id, &doc.id, &doc.rel_path).await?;
+        }
+    }
+
+    for group_id in &unlinked_groups {
+        sqlx::query(
+            "DELETE FROM groups WHERE id = ?1 AND group_type = 'tag'
+             AND id NOT IN (SELECT group_id FROM document_groups)",
+        )
+        .bind(group_id)
+        .execute(&mut *tx)
+        .await?;
     }
 
     tx.commit().await
@@ -723,7 +757,7 @@ pub async fn cleanup_orphan_tag_groups(db: &SqlitePool) -> sqlx::Result<()> {
 }
 
 // repeatedly prune this source's folder leaves with no documents and no children
-async fn cleanup_orphan_folder_groups(db: &SqlitePool, source_id: &str) -> sqlx::Result<()> {
+pub(crate) async fn cleanup_orphan_folder_groups(db: &SqlitePool, source_id: &str) -> sqlx::Result<()> {
     loop {
         let result = sqlx::query(
             "DELETE FROM groups WHERE group_type = 'folder'
@@ -749,6 +783,13 @@ pub(crate) async fn sync_tags(
     doc_id: &str,
     tags: &[String],
 ) -> sqlx::Result<()> {
+    let old_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT group_id FROM document_groups WHERE document_id = ?1 AND group_id IN (SELECT id FROM groups WHERE source_id IS NULL AND group_type = 'tag')",
+    )
+    .bind(doc_id)
+    .fetch_all(&mut **tx)
+    .await?;
+
     // Clear existing tag associations for this document
     sqlx::query(
         "DELETE FROM document_groups WHERE document_id = ?1 AND group_id IN (SELECT id FROM groups WHERE source_id IS NULL AND group_type = 'tag')",
@@ -780,6 +821,17 @@ pub(crate) async fn sync_tags(
         )
         .bind(doc_id)
         .bind(&group_id)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    // tags this doc just left die with their last member
+    for old_id in &old_ids {
+        sqlx::query(
+            "DELETE FROM groups WHERE id = ?1
+             AND id NOT IN (SELECT group_id FROM document_groups)",
+        )
+        .bind(old_id)
         .execute(&mut **tx)
         .await?;
     }
@@ -834,6 +886,7 @@ pub async fn index_document(
     }
 
     tx.commit().await?;
+    cleanup_orphan_folder_groups(db, source_id).await?;
     Ok(())
 }
 
@@ -873,9 +926,9 @@ pub async fn reconcile_source(
         .iter()
         .map(|(_, path, mtime)| (path.clone(), *mtime))
         .collect();
-    let db_id_to_path: HashMap<String, String> = db_rows
+    let db_docs: HashMap<String, (String, i64)> = db_rows
         .into_iter()
-        .map(|(id, path, _)| (id, path))
+        .map(|(id, path, mtime)| (id, (path, mtime)))
         .collect();
 
     let diff = diff_against_db(&db_entries, &fs_entries);
@@ -896,7 +949,7 @@ pub async fn reconcile_source(
             .into_iter()
             .collect();
 
-    let plan = resolve_plan(&diff, &frontmatter, &db_id_to_path, &foreign_ids);
+    let plan = resolve_plan(&diff, &frontmatter, &db_docs, &foreign_ids);
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
@@ -947,12 +1000,12 @@ mod tests {
             .iter()
             .map(|(p, f)| (p.to_string(), f.clone()))
             .collect();
-        let db_id_to_path: HashMap<String, String> = db
+        let db_docs: HashMap<String, (String, i64)> = db
             .iter()
-            .map(|(id, p)| (id.to_string(), p.to_string()))
+            .map(|(id, p)| (id.to_string(), (p.to_string(), 0)))
             .collect();
         let foreign_ids: HashSet<String> = foreign.iter().map(|s| s.to_string()).collect();
-        resolve_plan(&diff, &frontmatter, &db_id_to_path, &foreign_ids)
+        resolve_plan(&diff, &frontmatter, &db_docs, &foreign_ids)
     }
 
     fn doc<'a>(p: &'a ReconcilePlan, path: &str) -> &'a ResolvedDoc {

@@ -47,7 +47,6 @@ fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
         {
             eprintln!("reconcile failed: {e}");
         }
-        let _ = services::cleanup_orphan_tag_groups(&pool).await;
         let _ = app_handle.emit("source-reconciled", &source_id);
     });
 }
@@ -208,6 +207,10 @@ pub async fn delete_source(
     sqlx::query("DELETE FROM sources WHERE id = ?1")
         .bind(id.to_string())
         .execute(&app_data.db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    services::cleanup_orphan_tag_groups(&app_data.db)
         .await
         .map_err(|e| e.to_string())?;
 
