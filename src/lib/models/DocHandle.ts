@@ -60,6 +60,7 @@ class DocHandle {
 	readonly id: string; // primary id
 	private _relPath: string; // path relative to source root
 	readonly source: Source; // source instance, for data and UI
+	private hasFile = true;
 
 	title: string;
 	groups: Group[];
@@ -182,6 +183,7 @@ class DocHandle {
 			groupIds?: string[];
 			properties?: Record<string, unknown>;
 			body?: string;
+			draft?: boolean;
 		}
 	): Promise<DocHandle> {
 		const base = opts.title.replace(/[\\/]/g, '-');
@@ -196,7 +198,11 @@ class DocHandle {
 			opts.groupIds ?? [],
 			opts.properties ?? {}
 		);
-		await doc.saveContent(opts.body ?? '');
+		if (opts.draft && !opts.body) {
+			doc.hasFile = false;
+		} else {
+			await doc.saveContent(opts.body ?? '');
+		}
 		return doc;
 	}
 
@@ -214,6 +220,7 @@ class DocHandle {
 	}
 
 	async setTags(slugs: string[]): Promise<void> {
+		await this.ensureFile();
 		await invoke('set_document_tags', {
 			id: this.id,
 			sourceId: this.source.id,
@@ -289,7 +296,13 @@ class DocHandle {
 	 * Read file from disk, parse frontmatter, return contents
 	 */
 	async loadContent(): Promise<string> {
-		const raw = await readTextFile(`${this.source.path}/${this._relPath}`);
+		let raw: string;
+		try {
+			raw = await readTextFile(`${this.source.path}/${this._relPath}`);
+		} catch {
+			this.hasFile = false;
+			return '';
+		}
 		const { frontmatter, body } = DocHandle.deserialize(raw);
 
 		if (frontmatter) {
@@ -348,6 +361,11 @@ class DocHandle {
 			contents,
 			updatedAt: this.updatedAt.getTime()
 		});
+		this.hasFile = true;
+	}
+
+	private async ensureFile(): Promise<void> {
+		if (!this.hasFile) await this.saveContent('');
 	}
 
 	/** Delete the document from disk and the index. */
@@ -366,6 +384,7 @@ class DocHandle {
 	 * @param newRelPath Path, relative to source, to move the document to
 	 */
 	async moveToPath(newRelPath: string): Promise<void> {
+		await this.ensureFile();
 		await invoke('move_document', {
 			sourceId: this.source.id,
 			sourcePath: this.source.path,
@@ -379,6 +398,7 @@ class DocHandle {
 	 * Move a document into a different source (and optionally a folder within it)
 	 */
 	async moveToSource(newSource: Source, newRelPath: string): Promise<void> {
+		await this.ensureFile();
 		await invoke('move_document', {
 			sourceId: this.source.id,
 			sourcePath: this.source.path,
@@ -395,6 +415,7 @@ class DocHandle {
 	 * will update this to allow mutation of other fields, for now need to easily update dates
 	 */
 	async saveMeta(meta: { createdAt?: Date; updatedAt?: Date }): Promise<void> {
+		await this.ensureFile();
 		await invoke('save_document_meta', {
 			id: this.id,
 			sourceId: this.source.id,
@@ -413,6 +434,7 @@ class DocHandle {
 	 * @param newName
 	 */
 	async rename(newName: string): Promise<void> {
+		await this.ensureFile();
 		const newRel: string = await invoke('rename_document', {
 			sourceId: this.source.id,
 			sourcePath: this.source.path,

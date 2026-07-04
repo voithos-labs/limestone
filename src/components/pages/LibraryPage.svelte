@@ -110,7 +110,7 @@
         const srcs = await listSources();
         const source = srcs[0];
         if (!source) { addSource(); return; }
-        const doc = await DocHandle.createFromTitle(source, {title: 'Untitled'});
+        const doc = await DocHandle.createFromTitle(source, {title: 'Untitled', draft: true});
         editor.openDoc(doc);
     }
 

@@ -22,7 +22,7 @@
             actionError = 'Add a source before creating a document';
             return;
         }
-        const doc = await DocHandle.createFromTitle(source, {title: 'Untitled'});
+        const doc = await DocHandle.createFromTitle(source, {title: 'Untitled', draft: true});
         editor.replaceTab(tab.id, TabState.forDoc(doc));
     }
 
