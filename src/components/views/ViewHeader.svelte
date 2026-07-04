@@ -177,14 +177,7 @@
     let manageOpen = $state(false);
 
     function deleteField(id: string) {
-        view.fields = view.fields.filter((f: ViewField) => f.id !== id);
-        // Drop it from every face's displayed columns + filters referencing it
-        for (const face of view.faces) {
-            face.display_field_ids = face.display_field_ids.filter((fid: string) => fid !== id);
-        }
-        view.filter.children = view.filter.children.filter(
-            (n: FilterNode) => !('field_id' in n) || n.field_id !== id
-        );
+        view.removeField(id);
     }
 
     function addField(type: ViewFieldType) {

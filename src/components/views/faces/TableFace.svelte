@@ -609,16 +609,8 @@
         if (face.config.column_widths) delete face.config.column_widths[fid];
     }
 
-    // remove a field from the view entirely, plus every face's columns + filters
     function deleteField(fid: string) {
-        view.fields = view.fields.filter(f => f.id !== fid);
-        for (const f of view.faces) {
-            f.display_field_ids = f.display_field_ids.filter(id => id !== fid);
-            if (f.config.column_widths) delete f.config.column_widths[fid];
-        }
-        view.filter.children = view.filter.children.filter(
-            (n) => !('field_id' in n) || n.field_id !== fid
-        );
+        view.removeField(fid);
     }
 
     let renameDraft = $state('');

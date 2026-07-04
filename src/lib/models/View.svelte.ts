@@ -577,6 +577,13 @@ function compileNode(
 	return compileLeafSql(field, node.op, node.value, viewSlug);
 }
 
+function pruneFieldFromFilter(node: FilterCompound, fieldId: string): void {
+	node.children = node.children.filter((c) => 'children' in c || c.field_id !== fieldId);
+	for (const child of node.children) {
+		if ('children' in child) pruneFieldFromFilter(child, fieldId);
+	}
+}
+
 function compileFilter(
 	filter: FilterNode | null,
 	fields: ViewField[],
@@ -759,6 +766,18 @@ class View {
 
 	addField(field: ViewField) {
 		this.fields.push(field);
+	}
+
+	removeField(fieldId: string) {
+		this.fields = this.fields.filter((f) => f.id !== fieldId);
+		pruneFieldFromFilter(this.filter, fieldId);
+		for (const face of this.faces) {
+			face.display_field_ids = face.display_field_ids.filter((id) => id !== fieldId);
+			pruneFieldFromFilter(face.additive_filter, fieldId);
+			face.sort = face.sort.filter((k) => k.field_id !== fieldId);
+			if (face.config.group_by === fieldId) delete face.config.group_by;
+			if (face.config.column_widths) delete face.config.column_widths[fieldId];
+		}
 	}
 
 	/**

@@ -42,6 +42,10 @@
         );
         if (!ok) return;
         try {
+            if (saveTimer) {
+                clearTimeout(saveTimer);
+                saveTimer = null;
+            }
             await handle.delete();
             editor?.closeTab(tab.id);
         } catch (e) {
