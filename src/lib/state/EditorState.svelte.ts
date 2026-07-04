@@ -38,6 +38,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import DocHandle from '$lib/models/DocHandle';
 import View from '$lib/models/View.svelte';
+import { listSavedViewJSON } from '$lib/models/savedViews';
 
 // ── Focus (used elsewhere) ───────────────────────────────────────────────────────────
 
@@ -53,9 +54,9 @@ export type TabContent =
 export type TabJSON =
 	| { type: 'markdown'; handleId: string; state: Record<string, any>; pinned?: boolean }
 	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any>; pinned?: boolean }
+	| { type: 'view-ref'; viewId: string; state: Record<string, any>; pinned?: boolean }
 	| { type: 'new'; id: string; state: Record<string, any>; pinned?: boolean };
-// eventualy  { type: 'view-ref'; viewId: string; state: Record<string, any> } for saved views, this
-// is for temp
+// 'view' inlines the full JSON
 
 export class TabState {
 	content: TabContent;
@@ -116,6 +117,14 @@ export class TabState {
 				pinned: this.pinned
 			};
 		}
+		if (!this.content.view.temporary) {
+			return {
+				type: 'view-ref',
+				viewId: this.content.view.id,
+				state: this.state,
+				pinned: this.pinned
+			};
+		}
 		return {
 			type: 'view',
 			view: this.content.view.toJSON(),
@@ -143,6 +152,12 @@ export class TabState {
 		}
 		if (json.type === 'view') {
 			const view = new View(json.view);
+			return new TabState({ type: 'view', view }, json.state ?? {}, json.pinned ?? false);
+		}
+		if (json.type === 'view-ref') {
+			const saved = (await listSavedViewJSON()).find((v) => v.id === json.viewId);
+			if (!saved) throw new Error(`Saved view not found: ${json.viewId}`);
+			const view = new View(saved);
 			return new TabState({ type: 'view', view }, json.state ?? {}, json.pinned ?? false);
 		}
 		if (json.type === 'new') {
@@ -221,7 +236,9 @@ class EditorState {
 					? tabJson.handleId
 					: tabJson.type === 'view'
 						? tabJson.view.id
-						: tabJson.id;
+						: tabJson.type === 'view-ref'
+							? tabJson.viewId
+							: tabJson.id;
 			if (seen.has(id)) continue;
 			seen.add(id);
 			try {

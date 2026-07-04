@@ -546,8 +546,7 @@ fn validate_ident(s: &str, what: &str) -> Result<(), String> {
     if s.is_empty() {
         return Err(format!("{what} is empty"));
     }
-    if s
-        .chars()
+    if s.chars()
         .any(|c| c == '.' || c == '"' || c == '\'' || c == '\\' || c.is_control())
     {
         return Err(format!("{what} has unsafe characters: {s}"));

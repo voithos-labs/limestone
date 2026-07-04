@@ -46,10 +46,9 @@
     import LeanScroll from "../LeanScroll.svelte";
     import {onMount} from "svelte";
 
-    let {view, face, onMeta, onOpenRow, createSignal = 0, flow = false}: {
+    let {view, face, onOpenRow, createSignal = 0, flow = false}: {
         view: View;
         face: ViewFace;
-        onMeta?: (m: { loading: boolean; count: number; total: number; elapsedMs: number }) => void;
         onOpenRow?: (rowId: string) => void;
         createSignal?: number;
         flow?: boolean;
@@ -65,14 +64,10 @@
 
     const MIN_COL_WIDTH = 60;
 
-    const PERF = true;
-    const tInit = performance.now();
-
     let rows: Row[] = $state([]);
     let total = $state(0);
     let error = $state('');
     let loading = $state(true);
-    let elapsedMs = $state(0);
 
     const columns: ColumnDef[] = $derived(
         face.display_field_ids
@@ -211,7 +206,6 @@
     async function load(silent = false) {
         if (!silent) loading = true;
         error = '';
-        const start = performance.now();
         try {
             const q = query.trim();
             if (q) {
@@ -236,7 +230,6 @@
         } catch (e) {
             error = String(e);
         } finally {
-            elapsedMs = performance.now() - start;
             loading = false;
         }
     }
@@ -255,18 +248,6 @@
     let sources: Source[] = $state([]);
 
     onMount(() => {
-        if (PERF) {
-            const warm = rows.length > 0;
-            const tMount = performance.now();
-            requestAnimationFrame(() => {
-                const tFrame = performance.now();
-                console.log(
-                    `[perf] TableFace warm=${warm} rows=${rows.length} cols=${columns.length}` +
-                    ` | init→mount ${(tMount - tInit).toFixed(1)}ms` +
-                    ` | mount→frame ${(tFrame - tMount).toFixed(1)}ms`
-                );
-            });
-        }
         load();
         Group.list()
             .then((gs) => (folders = gs.filter((g) => g.groupType === GroupType.Folder)))
@@ -339,10 +320,6 @@
         // exists to coalesce rapid filter/sort/search edits within one face.
         if (faceChanged) load(true);
         else reloadTimer = setTimeout(() => load(true), 100);
-    });
-
-    $effect(() => {
-        onMeta?.({loading, count: rows.length, total, elapsedMs});
     });
 
     function startResize(e: PointerEvent, col: ColumnDef) {

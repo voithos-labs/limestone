@@ -22,10 +22,6 @@
 
 import { select, execute } from '$lib/db';
 
-function tagGroupId(slug: string): string {
-	return `tag:${slug}`;
-}
-
 function folderGroupId(sourceId: string, path: string): string {
 	return `folder:${sourceId}:${path}`;
 }
@@ -95,15 +91,6 @@ class Group {
 	}
 
 	/**
-	 * Create a tag group
-	 *
-	 * Tags are global and the slug must be unique
-	 */
-	static async createTag(slug: string): Promise<Group> {
-		return Group.create(tagGroupId(slug), slug, undefined, GroupType.Tag, undefined);
-	}
-
-	/**
 	 * Create a folder group
 	 */
 	static async createFolder(
@@ -135,6 +122,16 @@ class Group {
 		);
 		if (!row) throw new Error(`Group not found: ${id}`);
 		return new Group(row);
+	}
+
+	static async fromIDs(ids: string[]): Promise<Group[]> {
+		if (ids.length === 0) return [];
+		const placeholders = ids.map((_, i) => `?${i + 1}`).join(', ');
+		const rows = await select<GroupRow>(
+			`SELECT * FROM groups WHERE id IN (${placeholders})`,
+			ids
+		);
+		return rows.map((r) => new Group(r));
 	}
 
 	async touch(): Promise<void> {

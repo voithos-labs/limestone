@@ -556,14 +556,12 @@ pub async fn apply_plan(
     // park moved rows on collision-free temp paths before final paths are assigned
     // every write is conditional on the snapshot mtime so a concurrent in-app edit wins
     for doc in plan.docs.iter().filter(|d| d.moved) {
-        sqlx::query(
-            "UPDATE documents SET rel_path = ?1 WHERE id = ?2 AND coalesce(mtime, 0) = ?3",
-        )
-        .bind(format!("/{}", doc.id))
-        .bind(&doc.id)
-        .bind(doc.db_mtime.unwrap_or(0))
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("UPDATE documents SET rel_path = ?1 WHERE id = ?2 AND coalesce(mtime, 0) = ?3")
+            .bind(format!("/{}", doc.id))
+            .bind(&doc.id)
+            .bind(doc.db_mtime.unwrap_or(0))
+            .execute(&mut *tx)
+            .await?;
     }
 
     for doc in &plan.docs {
@@ -598,8 +596,8 @@ pub async fn apply_plan(
             .rows_affected()
                 > 0
         } else {
-            let created_at = fm_date(fm, "created_at")
-                .unwrap_or_else(|| fs_birth_ms(&full_path, mtime));
+            let created_at =
+                fm_date(fm, "created_at").unwrap_or_else(|| fs_birth_ms(&full_path, mtime));
             let accessed_at = fm_date(fm, "accessed_at").unwrap_or(mtime);
             sqlx::query(
                 "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
@@ -650,7 +648,7 @@ fn folder_group_id(source_id: &str, path: &str) -> String {
     format!("folder:{source_id}:{path}")
 }
 
-async fn sync_folders(
+pub(crate) async fn sync_folders(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     source_id: &str,
     doc_id: &str,
@@ -757,7 +755,10 @@ pub async fn cleanup_orphan_tag_groups(db: &SqlitePool) -> sqlx::Result<()> {
 }
 
 // repeatedly prune this source's folder leaves with no documents and no children
-pub(crate) async fn cleanup_orphan_folder_groups(db: &SqlitePool, source_id: &str) -> sqlx::Result<()> {
+pub(crate) async fn cleanup_orphan_folder_groups(
+    db: &SqlitePool,
+    source_id: &str,
+) -> sqlx::Result<()> {
     loop {
         let result = sqlx::query(
             "DELETE FROM groups WHERE group_type = 'folder'

@@ -143,14 +143,16 @@ async fn load_groups_prefix(db: &SqlitePool, query: &str, limit: usize) -> Vec<C
     .unwrap_or_default();
 
     rows.into_iter()
-        .map(|(id, title, group_type, source_id, accessed_at)| Container {
-            id,
-            title,
-            source_id,
-            accessed_at,
-            kind: SearchResultKind::Group,
-            group_type: Some(group_type),
-        })
+        .map(
+            |(id, title, group_type, source_id, accessed_at)| Container {
+                id,
+                title,
+                source_id,
+                accessed_at,
+                kind: SearchResultKind::Group,
+                group_type: Some(group_type),
+            },
+        )
         .collect()
 }
 
@@ -164,14 +166,16 @@ async fn load_groups_recent(db: &SqlitePool, limit: usize) -> Vec<Container> {
     .unwrap_or_default();
 
     rows.into_iter()
-        .map(|(id, title, group_type, source_id, accessed_at)| Container {
-            id,
-            title,
-            source_id,
-            accessed_at,
-            kind: SearchResultKind::Group,
-            group_type: Some(group_type),
-        })
+        .map(
+            |(id, title, group_type, source_id, accessed_at)| Container {
+                id,
+                title,
+                source_id,
+                accessed_at,
+                kind: SearchResultKind::Group,
+                group_type: Some(group_type),
+            },
+        )
         .collect()
 }
 
@@ -231,8 +235,7 @@ async fn search_recents(db: &SqlitePool, limit: usize) -> Vec<SearchResult> {
     let mut containers = load_groups_recent(db, limit).await;
     containers.extend(load_sources_recent(db, limit).await);
 
-    let mut merged: Vec<(i64, SearchResult)> =
-        Vec::with_capacity(docs.len() + containers.len());
+    let mut merged: Vec<(i64, SearchResult)> = Vec::with_capacity(docs.len() + containers.len());
     for doc in &docs {
         merged.push((doc.accessed_at.unwrap_or(0), doc.to_result()));
     }

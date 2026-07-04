@@ -27,10 +27,6 @@ pub fn fast_write(path: &Path, content: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-pub fn rename(src: &Path, dest: &Path) -> io::Result<()> {
-    fs::rename(src, dest)
-}
-
 pub fn move_file(src: &Path, dest: &Path) -> io::Result<()> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)?;

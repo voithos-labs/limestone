@@ -1,7 +1,8 @@
 use crate::commands::source_commands::source_uses_frontmatter;
 use crate::services::fs::{atomic_write, move_file};
 use crate::services::{
-    cleanup_orphan_folder_groups, fm_properties, frontmatter, index_document, sync_tags,
+    cleanup_orphan_folder_groups, fm_properties, frontmatter, index_document, sync_folders,
+    sync_tags,
 };
 use crate::AppData;
 use tauri::{AppHandle, State};
@@ -33,8 +34,8 @@ pub async fn write_document(
 
     let mut tx = app_data.db.begin().await.map_err(|e| e.to_string())?;
 
-    if let Some(fm) = fm {
-        let properties = fm_properties(&fm);
+    if let Some(fm) = &fm {
+        let properties = fm_properties(fm);
         let created_ms = fm
             .get("created_at")
             .and_then(|v| v.as_str())
@@ -55,29 +56,6 @@ pub async fn write_document(
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
-
-        let tags: Vec<String> = fm
-            .get("tags")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let doc_id: Option<String> =
-            sqlx::query_scalar("SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2")
-                .bind(&source_id)
-                .bind(&rel_path)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(|e| e.to_string())?;
-        if let Some(doc_id) = doc_id {
-            sync_tags(&mut tx, &doc_id, &tags)
-                .await
-                .map_err(|e| e.to_string())?;
-        }
     } else {
         sqlx::query(
             "UPDATE documents SET mtime = ?1, updated_at = ?2 WHERE source_id = ?3 AND rel_path = ?4",
@@ -91,6 +69,84 @@ pub async fn write_document(
         .map_err(|e| e.to_string())?;
     }
 
+    let doc_id: Option<String> =
+        sqlx::query_scalar("SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2")
+            .bind(&source_id)
+            .bind(&rel_path)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+    if let Some(doc_id) = doc_id {
+        if let Some(fm) = &fm {
+            let tags: Vec<String> = fm
+                .get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            sync_tags(&mut tx, &doc_id, &tags)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        sync_folders(&mut tx, &source_id, &doc_id, &rel_path)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_document_tags(
+    app_data: State<'_, AppData>,
+    app: AppHandle,
+    id: String,
+    source_id: String,
+    source_path: String,
+    rel_path: String,
+    tags: Vec<String>,
+) -> Result<(), String> {
+    if !source_uses_frontmatter(&app, &source_id) {
+        return Err(
+            "This source stores documents without frontmatter, so tags can't be saved here.".into(),
+        );
+    }
+
+    let full_path = std::path::Path::new(&source_path).join(&rel_path);
+    let fm_tags = tags.clone();
+    frontmatter::rewrite_frontmatter(&full_path, move |fm| {
+        if let Some(obj) = fm.as_object_mut() {
+            if fm_tags.is_empty() {
+                obj.remove("tags");
+            } else {
+                obj.insert(
+                    "tags".to_string(),
+                    serde_json::Value::Array(
+                        fm_tags
+                            .iter()
+                            .map(|t| serde_json::Value::String(t.clone()))
+                            .collect(),
+                    ),
+                );
+            }
+        }
+    })
+    .map_err(|e| e.to_string())?;
+
+    let mut tx = app_data.db.begin().await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE documents SET mtime = ?1 WHERE id = ?2")
+        .bind(mtime(&full_path))
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sync_tags(&mut tx, &id, &tags)
+        .await
+        .map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }

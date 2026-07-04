@@ -109,7 +109,9 @@ class DocHandle {
 
 		const doc = new DocHandle(row, source);
 		if (groupIds.length > 0) {
-			await doc.addGroups(groupIds);
+			let groups = await Group.fromIDs(groupIds);
+			if (!source.use_frontmatter) groups = groups.filter((g) => g.groupType !== 'tag');
+			doc.groups = groups;
 		}
 		return doc;
 	}
@@ -211,30 +213,15 @@ class DocHandle {
 		this.groups = rows.map((r) => new Group(r));
 	}
 
-	async addGroups(groupIds: string[]): Promise<void> {
-		if (groupIds.length === 0) return;
-		const placeholders = groupIds.map((_, i) => `?${i + 2}`).join(', ');
-		const typeFilter = this.source.use_frontmatter ? '' : " AND group_type != 'tag'";
-		await execute(
-			`INSERT OR IGNORE INTO document_groups (document_id, group_id)
-             SELECT ?1, id FROM groups WHERE id IN (${placeholders})${typeFilter}`,
-			[this.id, ...groupIds]
-		);
+	async setTags(slugs: string[]): Promise<void> {
+		await invoke('set_document_tags', {
+			id: this.id,
+			sourceId: this.source.id,
+			sourcePath: this.source.path,
+			relPath: this._relPath,
+			tags: slugs
+		});
 		await this.fetchGroups();
-	}
-
-	async removeGroups(groupIds: string[]): Promise<void> {
-		if (groupIds.length === 0) return;
-		const placeholders = groupIds.map((_, i) => `?${i + 2}`).join(', ');
-		await execute(
-			`DELETE
-             FROM document_groups
-             WHERE document_id = ?1
-               AND group_id IN (${placeholders})`,
-			[this.id, ...groupIds]
-		);
-		const removed = new Set(groupIds);
-		this.groups = this.groups.filter((g) => !removed.has(g.id));
 	}
 
 	// UTIL GETTERS

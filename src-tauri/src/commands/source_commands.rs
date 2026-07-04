@@ -221,15 +221,6 @@ pub async fn delete_source(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn clear_cache(app_data: State<'_, AppData>) -> Result<(), String> {
-    sqlx::raw_sql("DELETE FROM document_groups; DELETE FROM documents; DELETE FROM groups;")
-        .execute(&app_data.db)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 fn search_config_from_settings(settings: &serde_json::Value) -> services::search::SearchConfig {
     let defaults = services::search::SearchConfig::default();
     services::search::SearchConfig {

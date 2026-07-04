@@ -84,12 +84,16 @@ pub fn run() {
 
             let assets_path = global_data_path.join("assets");
             std::fs::create_dir_all(&assets_path)?;
-            let _ = app.asset_protocol_scope().allow_directory(&assets_path, true);
+            let _ = app
+                .asset_protocol_scope()
+                .allow_directory(&assets_path, true);
 
             // Allow fs and asset access to all source dirs
             for source in &sources {
                 let _ = app.fs_scope().allow_directory(&source.path, true);
-                let _ = app.asset_protocol_scope().allow_directory(&source.path, true);
+                let _ = app
+                    .asset_protocol_scope()
+                    .allow_directory(&source.path, true);
             }
 
             let initial_settings = services::JsonSettingsStore::for_app(app.handle()).load_merged();
@@ -181,7 +185,6 @@ pub fn run() {
             commands::source_commands::create_source,
             commands::source_commands::delete_source,
             commands::source_commands::touch_source,
-            commands::source_commands::clear_cache,
             commands::source_commands::search_documents,
             commands::settings_commands::get_setting,
             commands::settings_commands::get_all_settings,
@@ -190,6 +193,7 @@ pub fn run() {
             commands::document_commands::rename_document,
             commands::document_commands::move_document,
             commands::document_commands::save_document_meta,
+            commands::document_commands::set_document_tags,
             commands::document_commands::delete_document,
             commands::bulk_ops_commands::bulk_set_view_field,
             commands::bulk_ops_commands::bulk_rename_view_field,
