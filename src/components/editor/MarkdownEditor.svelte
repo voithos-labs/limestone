@@ -18,6 +18,7 @@
     import type {TabState} from "$lib/state/EditorState.svelte";
     import type EditorStateModel from "$lib/state/EditorState.svelte";
     import {getSetting} from "$lib/models/Settings";
+    import {registerFlush} from "$lib/flush";
     import {confirm} from "@tauri-apps/plugin-dialog";
     import DocumentHero from "../DocumentHero.svelte";
 
@@ -233,8 +234,12 @@
             clearTimeout(saveTimer);
             saveTimer = null;
         }
-        handle?.saveContent(content).catch(e => console.error('saveContent failed', e));
+        return handle?.saveContent(content).catch(e => console.error('saveContent failed', e));
     }
+
+    const unregisterFlush = registerFlush(() => {
+        if (saveTimer) return flushSave();
+    });
 
     function scheduleSave() {
         if (saveTimer) clearTimeout(saveTimer);
@@ -326,6 +331,7 @@
     });
 
     onDestroy(() => {
+        unregisterFlush();
         if (saveTimer) flushSave();
         if (scrollHideTimer) clearTimeout(scrollHideTimer);
         resizeObserver?.disconnect();

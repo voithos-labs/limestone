@@ -1,5 +1,8 @@
 <script lang="ts">
+    import {onMount} from "svelte";
+    import {getCurrentWindow} from "@tauri-apps/api/window";
     import TopBar from "../components/nav/TopBar.svelte";
+    import {flushAll} from "$lib/flush";
     import Session from "$lib/models/Session";
     import LibraryPage from "../components/pages/LibraryPage.svelte";
     import SettingsPage from "../components/pages/SettingsPage.svelte";
@@ -24,6 +27,23 @@
         $state.snapshot(session.toJSON());
         if (persistTimer) clearTimeout(persistTimer);
         persistTimer = setTimeout(() => session!.persist(), 200);
+    });
+
+    onMount(() => {
+        const win = getCurrentWindow();
+        const unlisten = win.onCloseRequested(async (e) => {
+            e.preventDefault();
+            if (persistTimer) clearTimeout(persistTimer);
+            try {
+                await Promise.all([flushAll(), session?.persist()]);
+            } catch (err) {
+                console.error('flush on close failed', err);
+            }
+            await win.destroy();
+        });
+        return () => {
+            unlisten.then((f) => f());
+        };
     });
 
     // When nothing valid is focused (no tabs, or a stale focus), fall back to the library tab.
