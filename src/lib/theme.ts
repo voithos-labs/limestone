@@ -21,6 +21,7 @@ export const DEFAULT_DARK: Theme = {
 		'color-ui-muted': '#A4A4A4',
 		'color-accent': '#567B67',
 		'color-accent-primary': '#567B67',
+		'color-error': '#ff5f57',
 		'radius-ui': '4px',
 		'radius-surface': '8px'
 	}
@@ -42,6 +43,7 @@ export const DEFAULT_DARK_TRANSPARENT: Theme = {
 		'color-ui-muted': '#A4A4A4',
 		'color-accent': '#567B67',
 		'color-accent-primary': '#567B67',
+		'color-error': '#ff5f57',
 		'radius-ui': '4px',
 		'radius-surface': '8px'
 	}
@@ -60,6 +62,7 @@ export const DEFAULT_LIGHT: Theme = {
 		'color-ui-muted': '#787a7c',
 		'color-accent': '#567B67',
 		'color-accent-primary': '#567B67',
+		'color-error': '#d03025',
 		'radius-ui': '4px',
 		'radius-surface': '8px'
 	}
@@ -81,6 +84,7 @@ export const DEFAULT_LIGHT_TRANSPARENT: Theme = {
 		'color-ui-muted': '#2b2b2c',
 		'color-accent': '#567B67',
 		'color-accent-primary': '#567B67',
+		'color-error': '#d03025',
 		'radius-ui': '4px',
 		'radius-surface': '8px'
 	}
@@ -102,6 +106,7 @@ export const DARK_EARTH: Theme = {
 		'color-ui-muted': '#A4A4A4',
 		'color-accent': '#567B67',
 		'color-accent-primary': '#567B67',
+		'color-error': '#ff5f57',
 		'radius-ui': '4px',
 		'radius-surface': '8px'
 	}
@@ -123,6 +128,7 @@ export const LIGHT_EARTH: Theme = {
 		'color-ui-muted': '#787a7c',
 		'color-accent': '#567B67',
 		'color-accent-primary': '#567B67',
+		'color-error': '#d03025',
 		'radius-ui': '4px',
 		'radius-surface': '8px'
 	}

@@ -675,6 +675,7 @@ class View {
 
 	static createFromGroup(group: Group): View {
 		const view = View.create(group.slug);
+		view.state.origin_id = group.id;
 
 		if (group.groupType === GroupType.Folder) {
 			const folderFieldId = view.fields.find((f) => f.type == 'folder')!.id;
@@ -698,6 +699,7 @@ class View {
 
 	static createFromSource(source: Source): View {
 		const view = View.create(sourceName(source));
+		view.state.origin_id = source.id;
 		const sourceFieldId = view.fields.find((f) => f.type == 'source')!.id;
 
 		view.addBasicFilter({
