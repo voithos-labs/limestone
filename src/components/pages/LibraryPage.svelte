@@ -11,7 +11,7 @@
     import {formatDateFriendly} from "$lib/views/dateFormat";
     import type {MenuEntry} from "$lib/views/menuTypes";
     import ClockHero from "../ClockHero.svelte";
-    import QuickActionBar from "../QuickActionBar.svelte";
+    import QuickSearch from "../QuickSearch.svelte";
     import Menu from "../views/Menu.svelte";
     import {Layers, Plus, LayersPlus, FolderPlus} from "@lucide/svelte";
     import IconAddNotes from "~icons/material-symbols/add-notes";
@@ -150,7 +150,7 @@
         </div>
         <div class="search-row">
             <div class="search-cell">
-                <QuickActionBar {editor}/>
+                <QuickSearch {editor}/>
             </div>
             <button class="new-btn" bind:this={newBtnEl} title="New" onclick={() => newOpen = !newOpen}>
                 <Plus size={19}/>

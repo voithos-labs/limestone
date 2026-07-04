@@ -36,8 +36,8 @@
     --menu-scrollbar-thumb: rgba(0, 0, 0, 0.2);
     --menu-scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
     --menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
-    --error-bg: rgba(220, 60, 60, 0.08);
-    --error-fg: #c0392b;
+    --error-fg: var(--color-error, #d03025);
+    --error-bg: color-mix(in srgb, var(--color-error, #d03025) 9%, transparent);
 
     /* tag palette (.tag-cN) */
     --tag-bg-l: 90%;
@@ -52,7 +52,7 @@
     --tag-bg-l: 26%;
     --tag-fg-l: 82%;
     --focus-ring: rgba(255, 255, 255, 0.34);
-    --error-fg: #ff8a80;
+    --error-fg: var(--color-error, #ff5f57);
     --chip-bg: rgba(255, 255, 255, 0.055);
     --chip-bg-hover: rgba(255, 255, 255, 0.085);
     --chip-seg-hover: rgba(255, 255, 255, 0.07);
@@ -63,7 +63,7 @@
     --menu-scrollbar-thumb: rgba(255, 255, 255, 0.18);
     --menu-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
     --menu-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35);
-    --error-bg: rgba(255, 110, 110, 0.12);
+    --error-bg: color-mix(in srgb, var(--color-error, #ff5f57) 13%, transparent);
 
     /* ── Markdown syntax highlighting (dark defaults) ── */
     --syntax-heading: #A6E22E;

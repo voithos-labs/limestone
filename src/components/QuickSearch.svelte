@@ -13,7 +13,7 @@
     let {
         editor,
         tab,
-        placeholder = 'quick-action...',
+        placeholder = 'quick-search...',
         autofocus = true
     }: {
         editor: EditorState;
@@ -38,6 +38,12 @@
         if (tab) tab.state.query = query;
     });
 
+    function findViewTabByOrigin(originId: string): TabState | undefined {
+        return editor.tabs.find(
+            t => t.content.type === 'view' && t.content.view.state?.origin_id === originId
+        );
+    }
+
     // Hosted in a real tab -> replace it in place; otherwise open a fresh tab.
     function openInTab(next: TabState) {
         if (tab) {
@@ -54,7 +60,7 @@
             results = [];
             return;
         }
-        const docResults: SearchResult[] = await invoke('search_documents', {query});
+        const docResults: SearchResult[] = await invoke('search_documents', {query: q});
         // Saved views live in views.json (frontend)
         const ql = q.toLowerCase();
         const viewResults: SearchResult[] = (await View.listSaved())
@@ -82,9 +88,7 @@
         if (result.kind === 'group') {
             const group = await Group.fromID(result.id);
             group.touch();
-            const existing = editor.tabs.find(
-                t => t.content.type === 'view' && t.content.view.slug === group.slug
-            );
+            const existing = findViewTabByOrigin(group.id);
             if (existing) {
                 editor.focusTab({kind: 'tab', id: existing.id});
                 return;
@@ -95,9 +99,7 @@
         if (result.kind === 'source') {
             const source = await getSource(result.id);
             touchSource(source.id);
-            const existing = editor.tabs.find(
-                t => t.content.type === 'view' && t.content.view.slug === sourceName(source)
-            );
+            const existing = findViewTabByOrigin(source.id);
             if (existing) {
                 editor.focusTab({kind: 'tab', id: existing.id});
                 return;
@@ -147,11 +149,11 @@
 </script>
 
 <div class="search" class:open={query.trim()}>
-    <div class="quick-action">
+    <div class="quick-search">
         <Search size={18}/>
         <input
                 bind:this={inputEl}
-                class="quick-action-input"
+                class="quick-search-input"
                 type="text"
                 {placeholder}
                 bind:value={query}
@@ -217,7 +219,7 @@
         filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.16));
     }
 
-    .quick-action {
+    .quick-search {
         position: relative;
         display: flex;
         align-items: center;
@@ -234,12 +236,12 @@
         z-index: 2;
     }
 
-    .search.open .quick-action {
+    .search.open .quick-search {
         border-radius: 14px 14px 0 0;
         border-color: var(--color-border);
     }
 
-    .quick-action-input {
+    .quick-search-input {
         flex: 1;
         min-width: 0;
         background: transparent;
@@ -250,7 +252,7 @@
         font-size: 16px;
     }
 
-    .quick-action-input::placeholder {
+    .quick-search-input::placeholder {
         color: var(--color-ui-muted);
     }
 

@@ -8,7 +8,7 @@
     import {LayersPlus} from "@lucide/svelte";
     import IconAddNotes from "~icons/material-symbols/add-notes";
     import ClockHero from "../ClockHero.svelte";
-    import QuickActionBar from "../QuickActionBar.svelte";
+    import QuickSearch from "../QuickSearch.svelte";
 
     let {tab, editor}: { tab: TabState; editor: EditorState } = $props();
 
@@ -38,7 +38,7 @@
             <ClockHero/>
         </div>
 
-        <QuickActionBar {editor} {tab}/>
+        <QuickSearch {editor} {tab}/>
 
         <div class="actions">
             <button class="action" onclick={createNewDocument}>
