@@ -293,8 +293,7 @@ class DocHandle {
 		const { frontmatter, body } = DocHandle.deserialize(raw);
 
 		if (frontmatter) {
-			const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
-			if (id) (this as { id: string }).id = id;
+			const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
 			if (created_at) this.createdAt = new Date(created_at);
 			if (updated_at) this.updatedAt = new Date(updated_at);
 			this.properties = remaining;
