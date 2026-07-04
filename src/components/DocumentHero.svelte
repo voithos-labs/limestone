@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type DocHandle from "$lib/models/DocHandle";
+    import DocHandle from "$lib/models/DocHandle";
     import {sourceName, listSources, type Source} from "$lib/models/Source";
     import Group, {GroupType} from "$lib/models/Group";
     import {formatDateFriendly} from "$lib/views/dateFormat";
@@ -30,6 +30,26 @@
     });
 
     // ── Title rename ───────────────────────────────────────────────────────────
+    let titleTaken = $state(false);
+    let titleCheckToken = 0;
+
+    function titleCandidate(next: string): string {
+        const dir = folderDir(relPath);
+        return dir ? `${dir}/${next}${ext}` : `${next}${ext}`;
+    }
+
+    $effect(() => {
+        const next = title.trim();
+        const token = ++titleCheckToken;
+        if (!next || next === handle.title) {
+            titleTaken = !next;
+            return;
+        }
+        DocHandle.pathExists(source.id, titleCandidate(next)).then((taken) => {
+            if (token === titleCheckToken) titleTaken = taken;
+        });
+    });
+
     async function commitTitle() {
         const next = title.trim();
         if (!next || next === handle.title) {
@@ -37,6 +57,10 @@
             return;
         }
         try {
+            if (await DocHandle.pathExists(source.id, titleCandidate(next))) {
+                title = handle.title;
+                return;
+            }
             await handle.rename(next + ext);
             relPath = handle.relPath;
         } catch (e) {
@@ -138,6 +162,7 @@
                     <span class="title-ghost">{title || ' '}</span>
                     <input
                             class="title-input"
+                            class:invalid={titleTaken}
                             bind:value={title}
                             onblur={commitTitle}
                             onkeydown={onTitleKeydown}
@@ -250,6 +275,12 @@
         outline: none;
         background: transparent;
         color: var(--color-text-primary);
+    }
+
+    .title-input.invalid {
+        text-decoration: underline;
+        text-decoration-color: var(--error-fg);
+        text-underline-offset: 3px;
     }
 
     .ext {

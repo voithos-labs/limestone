@@ -49,7 +49,12 @@ import type DocHandle from '$lib/models/DocHandle';
 import Group, { GroupType } from '$lib/models/Group';
 import { getSource, listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/db';
-import { saveViewJSON, deleteSavedView, listSavedViewJSON } from '$lib/models/savedViews';
+import {
+	saveViewJSON,
+	deleteSavedView,
+	listSavedViewJSON,
+	isViewSlugTaken
+} from '$lib/models/savedViews';
 import { toasts } from '$lib/toasts.svelte';
 import { wallClockToMs } from '$lib/views/dateFormat';
 
@@ -777,6 +782,11 @@ class View {
 
 	/** Persist this view to views.json and mark it as a saved (non-temporary) view. */
 	async save() {
+		if (await isViewSlugTaken(this.slug, this.id)) {
+			let n = 2;
+			while (await isViewSlugTaken(`${this.slug} ${n}`, this.id)) n++;
+			this.slug = `${this.slug} ${n}`;
+		}
 		this.temporary = false;
 		await saveViewJSON(this.toJSON());
 	}
@@ -869,6 +879,7 @@ class View {
 	async renameSlug(newSlug: string): Promise<void> {
 		const oldSlug = this.slug;
 		if (!newSlug || newSlug === oldSlug) return;
+		if (await isViewSlugTaken(newSlug, this.id)) return;
 		const sources = await listSources();
 		const results: BulkResult[] = [];
 		for (const s of sources) {

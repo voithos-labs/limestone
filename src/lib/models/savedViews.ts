@@ -38,3 +38,7 @@ export async function deleteSavedView(id: string): Promise<void> {
 export async function isViewSaved(id: string): Promise<boolean> {
 	return (await listSavedViewJSON()).some((v) => v.id === id);
 }
+
+export async function isViewSlugTaken(slug: string, excludeId: string): Promise<boolean> {
+	return (await listSavedViewJSON()).some((v) => v.id !== excludeId && v.slug === slug);
+}

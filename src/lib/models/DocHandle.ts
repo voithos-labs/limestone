@@ -414,6 +414,7 @@ class DocHandle {
 	 */
 	async rename(newName: string): Promise<void> {
 		const newRel: string = await invoke('rename_document', {
+			sourceId: this.source.id,
 			sourcePath: this.source.path,
 			relPath: this._relPath,
 			newName

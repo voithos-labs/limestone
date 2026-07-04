@@ -154,6 +154,7 @@ pub async fn set_document_tags(
 #[tauri::command]
 pub async fn rename_document(
     app_data: State<'_, AppData>,
+    source_id: String,
     source_path: String,
     rel_path: String,
     new_name: String,
@@ -168,6 +169,9 @@ pub async fn rename_document(
         .replace('\\', "/");
     let new_full = source.join(&new_rel);
 
+    if new_full.exists() {
+        return Err(format!("\"{new_rel}\" already exists"));
+    }
     std::fs::rename(&old_full, &new_full).map_err(|e| e.to_string())?;
 
     let title = std::path::Path::new(&new_name)
@@ -175,14 +179,17 @@ pub async fn rename_document(
         .and_then(|s| s.to_str())
         .unwrap_or(&new_name);
 
-    sqlx::query("UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3 WHERE rel_path = ?4")
-        .bind(&new_rel)
-        .bind(title)
-        .bind(mtime(&new_full))
-        .bind(&rel_path)
-        .execute(&app_data.db)
-        .await
-        .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3 WHERE source_id = ?4 AND rel_path = ?5",
+    )
+    .bind(&new_rel)
+    .bind(title)
+    .bind(mtime(&new_full))
+    .bind(&source_id)
+    .bind(&rel_path)
+    .execute(&app_data.db)
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(new_rel)
 }

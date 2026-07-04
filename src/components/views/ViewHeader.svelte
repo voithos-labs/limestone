@@ -2,6 +2,7 @@
     import type View from "$lib/models/View.svelte";
     import type {FilterNode, FilterLeaf, ViewField, ViewFieldType} from "$lib/models/View.svelte";
     import {VIEW_FIELD_OPS, sanitizeName} from "$lib/models/View.svelte";
+    import {isViewSlugTaken} from "$lib/models/savedViews";
     import Group from "$lib/models/Group";
     import {getSource, sourceName} from "$lib/models/Source";
     import FilterChipIsland from "./FilterChipIsland.svelte";
@@ -194,6 +195,20 @@
 
     // ── Inline view-title (slug) editing — type-in-place, saved views only ────
     let slugDraft = $state(view.slug);
+    let slugTaken = $state(false);
+    let slugCheckToken = 0;
+
+    $effect(() => {
+        const next = sanitizeName(slugDraft);
+        const token = ++slugCheckToken;
+        if (!next || next === view.slug) {
+            slugTaken = !next;
+            return;
+        }
+        isViewSlugTaken(next, view.id).then((taken) => {
+            if (token === slugCheckToken) slugTaken = taken;
+        });
+    });
 
     async function commitSlug() {
         const next = sanitizeName(slugDraft);
@@ -250,6 +265,7 @@
                 <span class="title-ghost">{slugDraft || ' '}</span>
                 <input
                         class="title-input"
+                        class:invalid={slugTaken}
                         bind:value={slugDraft}
                         onblur={commitSlug}
                         onkeydown={slugKey}
@@ -471,6 +487,12 @@
         outline: none;
         background: transparent;
         color: var(--color-text-primary);
+    }
+
+    .title-input.invalid {
+        text-decoration: underline;
+        text-decoration-color: var(--error-fg);
+        text-underline-offset: 3px;
     }
 
     .filter-bar {
