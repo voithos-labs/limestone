@@ -8,7 +8,6 @@ For launch:
 - [ ] Document history
 - [ ] Global shortcuts
 - [ ] Executable code blocks (with env config)
-- [ ] Asset handling (e.g. when you paste an image in a doc)
 - [ ] Upgraded quick action bar with actions and quick-filtering
 
 **Minor**
