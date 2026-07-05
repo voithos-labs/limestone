@@ -1069,10 +1069,16 @@
     async function writeCell(field: ViewField, row: Row, value: unknown, folderDir?: string) {
         if (field.type === 'created_at' || field.type === 'updated_at') {
             await writeMetaCell(field.type, row, value);
+            if (row.id !== DRAFT_ID && fieldAffectsView(field.id)) load(true);
             return;
         }
         if (field.type === 'folder') {
             await moveRowToFolder(row, typeof value === 'string' ? value : null, folderDir);
+            const pathField = view.fields.find(f => f.type === 'path');
+            if (row.id !== DRAFT_ID
+                && (fieldAffectsView(field.id) || (pathField && fieldAffectsView(pathField.id)))) {
+                load(true);
+            }
             return;
         }
         if (row.id === DRAFT_ID) {
