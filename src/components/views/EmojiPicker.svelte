@@ -216,6 +216,8 @@
 		display: grid;
 		grid-template-columns: repeat(8, minmax(0, 1fr));
 		gap: 2px;
+		content-visibility: auto;
+		contain-intrinsic-size: auto 800px;
 	}
 
 	.ep-cell {
