@@ -303,6 +303,12 @@ class EditorState {
 	 * Swap the tab `oldId` for `tab` in place
 	 */
 	replaceTab(oldId: string, tab: TabState) {
+		const existing = this.tabs.find((t) => t.id === tab.id && t.id !== oldId);
+		if (existing) {
+			this.closeTab(oldId);
+			this.focusTab({ kind: 'tab', id: existing.id });
+			return;
+		}
 		const idx = this.tabs.findIndex((t) => t.id === oldId);
 		if (idx === -1) {
 			this.openTab(tab);

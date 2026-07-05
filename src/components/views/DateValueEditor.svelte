@@ -8,6 +8,7 @@
         value,
         mode = 'date',
         allowTime = true,
+        clearable = true,
         onChange
     }: {
         open: boolean;
@@ -15,6 +16,7 @@
         value: unknown;
         mode?: 'date' | 'datetime';
         allowTime?: boolean;
+        clearable?: boolean;
         onChange: (value: string | null) => void;
     } = $props();
 
@@ -511,7 +513,7 @@
                         Add time
                     </button>
                 {/if}
-                {#if hasSelection}
+                {#if hasSelection && clearable}
                     <button type="button" class="foot-btn muted" onclick={clear}>
                         <X size={12} strokeWidth={2}/>
                         Clear

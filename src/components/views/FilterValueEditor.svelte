@@ -84,6 +84,10 @@
 
     function commitInput(s: string) {
         if (field.type === 'number') {
+            if (s.trim() === '') {
+                onChange(null);
+                return;
+            }
             const n = Number(s);
             onChange(Number.isFinite(n) ? n : null);
         } else {
@@ -106,6 +110,7 @@
             {anchor}
             {value}
             mode={field.type === 'created_at' || field.type === 'updated_at' ? 'datetime' : 'date'}
+            clearable={field.type === 'date' || opValue !== ''}
             onChange={(v) => onChange(v)}
     />
 {:else if field.type === 'text' || field.type === 'title' || field.type === 'path' || field.type === 'number'}
