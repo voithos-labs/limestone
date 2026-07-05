@@ -12,6 +12,7 @@ For launch:
 - [ ] Upgraded quick action bar with actions and quick-filtering
 
 **Minor**
+
 - [ ] Bookmarking (see figma)
 - [ ] File watcher for external file changes
 - [ ] FTS (via tantivy)
@@ -24,4 +25,5 @@ On shortcuts, maybe:
 `CTRL` + `P` => command, basically just the search but with `/` already entered
 
 Think about:
+
 - Hmm maybe document templates

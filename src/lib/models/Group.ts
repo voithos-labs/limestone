@@ -127,10 +127,7 @@ class Group {
 	static async fromIDs(ids: string[]): Promise<Group[]> {
 		if (ids.length === 0) return [];
 		const placeholders = ids.map((_, i) => `?${i + 1}`).join(', ');
-		const rows = await select<GroupRow>(
-			`SELECT * FROM groups WHERE id IN (${placeholders})`,
-			ids
-		);
+		const rows = await select<GroupRow>(`SELECT * FROM groups WHERE id IN (${placeholders})`, ids);
 		return rows.map((r) => new Group(r));
 	}
 

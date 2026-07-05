@@ -1,189 +1,196 @@
 <script lang="ts">
-    import type {Component} from "svelte";
-    import type {ViewField} from "$lib/models/View.svelte";
-    import Group, {GroupType} from "$lib/models/Group";
-    import {listSources, sourceName} from "$lib/models/Source";
-    import {SquareCheck, Square} from "@lucide/svelte";
-    import Menu from "./Menu.svelte";
-    import InputPopover from "./InputPopover.svelte";
-    import FolderValueEditor from "./FolderValueEditor.svelte";
-    import DateValueEditor from "./DateValueEditor.svelte";
+	import type { Component } from 'svelte';
+	import type { ViewField } from '$lib/models/View.svelte';
+	import Group, { GroupType } from '$lib/models/Group';
+	import { listSources, sourceName } from '$lib/models/Source';
+	import { SquareCheck, Square } from '@lucide/svelte';
+	import Menu from './Menu.svelte';
+	import InputPopover from './InputPopover.svelte';
+	import FolderValueEditor from './FolderValueEditor.svelte';
+	import DateValueEditor from './DateValueEditor.svelte';
 
-    interface MenuItem { value: string; label: string; icon?: Component; }
+	interface MenuItem {
+		value: string;
+		label: string;
+		icon?: Component;
+	}
 
-    let {
-        open = $bindable(false),
-        anchor,
-        field,
-        value,
-        op = '',
-        sourceId,
-        onChange
-    }: {
-        open: boolean;
-        anchor: HTMLElement | null;
-        field: ViewField;
-        value: unknown;
-        op?: string;
-        sourceId?: string;
-        onChange: (newValue: unknown) => void;
-    } = $props();
+	let {
+		open = $bindable(false),
+		anchor,
+		field,
+		value,
+		op = '',
+		sourceId,
+		onChange
+	}: {
+		open: boolean;
+		anchor: HTMLElement | null;
+		field: ViewField;
+		value: unknown;
+		op?: string;
+		sourceId?: string;
+		onChange: (newValue: unknown) => void;
+	} = $props();
 
-    const opValue = $derived(op);
+	const opValue = $derived(op);
 
-    function toggleValue(v: string) {
-        const arr = Array.isArray(value) ? [...value as string[]] : [];
-        const i = arr.indexOf(v);
-        if (i >= 0) arr.splice(i, 1);
-        else arr.push(v);
-        onChange(arr);
-    }
+	function toggleValue(v: string) {
+		const arr = Array.isArray(value) ? [...(value as string[])] : [];
+		const i = arr.indexOf(v);
+		if (i >= 0) arr.splice(i, 1);
+		else arr.push(v);
+		onChange(arr);
+	}
 
-    let tagItems: MenuItem[] = $state([]);
-    let sourceItems: MenuItem[] = $state([]);
-    let tagsLoaded = false;
-    let sourcesLoaded = false;
+	let tagItems: MenuItem[] = $state([]);
+	let sourceItems: MenuItem[] = $state([]);
+	let tagsLoaded = false;
+	let sourcesLoaded = false;
 
-    $effect(() => {
-        if (!open) return;
-        if (field.type === 'tags' && !tagsLoaded) {
-            tagsLoaded = true;
-            Group.list()
-                .then(gs => tagItems = gs
-                    .filter(g => g.groupType === GroupType.Tag)
-                    .map(g => ({value: g.id, label: g.slug})))
-                .catch(() => {});
-        }
-        if (field.type === 'source' && !sourcesLoaded) {
-            sourcesLoaded = true;
-            listSources()
-                .then(ss => sourceItems = ss.map(s => ({value: s.id, label: sourceName(s)})))
-                .catch(() => {});
-        }
-    });
+	$effect(() => {
+		if (!open) return;
+		if (field.type === 'tags' && !tagsLoaded) {
+			tagsLoaded = true;
+			Group.list()
+				.then(
+					(gs) =>
+						(tagItems = gs
+							.filter((g) => g.groupType === GroupType.Tag)
+							.map((g) => ({ value: g.id, label: g.slug })))
+				)
+				.catch(() => {});
+		}
+		if (field.type === 'source' && !sourcesLoaded) {
+			sourcesLoaded = true;
+			listSources()
+				.then((ss) => (sourceItems = ss.map((s) => ({ value: s.id, label: sourceName(s) }))))
+				.catch(() => {});
+		}
+	});
 
-    const optionItems: MenuItem[] = $derived.by(() => {
-        const opts = (field.config?.options ?? []) as Array<{value: string; label?: string}>;
-        return opts.map(o => ({value: o.value, label: o.label ?? o.value}));
-    });
+	const optionItems: MenuItem[] = $derived.by(() => {
+		const opts = (field.config?.options ?? []) as Array<{ value: string; label?: string }>;
+		return opts.map((o) => ({ value: o.value, label: o.label ?? o.value }));
+	});
 
-    const booleanItems: MenuItem[] = [
-        {value: 'true', label: 'Checked', icon: SquareCheck},
-        {value: 'false', label: 'Unchecked', icon: Square}
-    ];
+	const booleanItems: MenuItem[] = [
+		{ value: 'true', label: 'Checked', icon: SquareCheck },
+		{ value: 'false', label: 'Unchecked', icon: Square }
+	];
 
-    function asString(v: unknown): string {
-        if (v === null || v === undefined) return '';
-        return String(v);
-    }
+	function asString(v: unknown): string {
+		if (v === null || v === undefined) return '';
+		return String(v);
+	}
 
-    function inputType(): 'text' | 'number' {
-        if (field.type === 'number') return 'number';
-        return 'text';
-    }
+	function inputType(): 'text' | 'number' {
+		if (field.type === 'number') return 'number';
+		return 'text';
+	}
 
-    function commitInput(s: string) {
-        if (field.type === 'number') {
-            if (s.trim() === '') {
-                onChange(null);
-                return;
-            }
-            const n = Number(s);
-            onChange(Number.isFinite(n) ? n : null);
-        } else {
-            onChange(s);
-        }
-    }
+	function commitInput(s: string) {
+		if (field.type === 'number') {
+			if (s.trim() === '') {
+				onChange(null);
+				return;
+			}
+			const n = Number(s);
+			onChange(Number.isFinite(n) ? n : null);
+		} else {
+			onChange(s);
+		}
+	}
 
-    function toggleTag(id: string) {
-        const arr = Array.isArray(value) ? [...value as string[]] : [];
-        const i = arr.indexOf(id);
-        if (i >= 0) arr.splice(i, 1);
-        else arr.push(id);
-        onChange(arr);
-    }
+	function toggleTag(id: string) {
+		const arr = Array.isArray(value) ? [...(value as string[])] : [];
+		const i = arr.indexOf(id);
+		if (i >= 0) arr.splice(i, 1);
+		else arr.push(id);
+		onChange(arr);
+	}
 </script>
 
 {#if field.type === 'date' || field.type === 'created_at' || field.type === 'updated_at'}
-    <DateValueEditor
-            bind:open
-            {anchor}
-            {value}
-            mode={field.type === 'created_at' || field.type === 'updated_at' ? 'datetime' : 'date'}
-            clearable={field.type === 'date' || opValue !== ''}
-            onChange={(v) => onChange(v)}
-    />
+	<DateValueEditor
+		bind:open
+		{anchor}
+		{value}
+		mode={field.type === 'created_at' || field.type === 'updated_at' ? 'datetime' : 'date'}
+		clearable={field.type === 'date' || opValue !== ''}
+		onChange={(v) => onChange(v)}
+	/>
 {:else if field.type === 'text' || field.type === 'title' || field.type === 'path' || field.type === 'number'}
-    <InputPopover
-            bind:open
-            {anchor}
-            value={asString(value)}
-            inputType={inputType()}
-            onChange={commitInput}
-    />
+	<InputPopover
+		bind:open
+		{anchor}
+		value={asString(value)}
+		inputType={inputType()}
+		onChange={commitInput}
+	/>
 {:else if field.type === 'boolean'}
-    <Menu
-            bind:open
-            {anchor}
-            items={booleanItems}
-            selected={value === true ? 'true' : value === false ? 'false' : undefined}
-            onSelect={(v) => onChange(v === 'true')}
-            minWidth={120}
-    />
+	<Menu
+		bind:open
+		{anchor}
+		items={booleanItems}
+		selected={value === true ? 'true' : value === false ? 'false' : undefined}
+		onSelect={(v) => onChange(v === 'true')}
+		minWidth={120}
+	/>
 {:else if opValue === 'any_of' || opValue === 'has_all'}
-    <Menu
-            bind:open
-            {anchor}
-            items={optionItems}
-            multiple
-            selectedValues={Array.isArray(value) ? value as string[] : []}
-            onSelect={toggleValue}
-            searchable={optionItems.length > 7}
-    />
+	<Menu
+		bind:open
+		{anchor}
+		items={optionItems}
+		multiple
+		selectedValues={Array.isArray(value) ? (value as string[]) : []}
+		onSelect={toggleValue}
+		searchable={optionItems.length > 7}
+	/>
 {:else if field.type === 'select' || field.type === 'multiselect'}
-    <Menu
-            bind:open
-            {anchor}
-            items={optionItems}
-            selected={typeof value === 'string' ? value : undefined}
-            onSelect={(v) => onChange(v)}
-            searchable={optionItems.length > 7}
-    />
+	<Menu
+		bind:open
+		{anchor}
+		items={optionItems}
+		selected={typeof value === 'string' ? value : undefined}
+		onSelect={(v) => onChange(v)}
+		searchable={optionItems.length > 7}
+	/>
 {:else if field.type === 'tags'}
-    <Menu
-            bind:open
-            {anchor}
-            items={tagItems}
-            multiple
-            selectedValues={Array.isArray(value) ? value as string[] : []}
-            onSelect={toggleTag}
-            searchable
-            placeholder="Search tags…"
-    />
+	<Menu
+		bind:open
+		{anchor}
+		items={tagItems}
+		multiple
+		selectedValues={Array.isArray(value) ? (value as string[]) : []}
+		onSelect={toggleTag}
+		searchable
+		placeholder="Search tags…"
+	/>
 {:else if field.type === 'folder'}
-    <FolderValueEditor
-            bind:open
-            {anchor}
-            value={typeof value === 'string' ? value : null}
-            {sourceId}
-            onChange={(v) => onChange(v)}
-    />
+	<FolderValueEditor
+		bind:open
+		{anchor}
+		value={typeof value === 'string' ? value : null}
+		{sourceId}
+		onChange={(v) => onChange(v)}
+	/>
 {:else if field.type === 'source'}
-    <Menu
-            bind:open
-            {anchor}
-            items={sourceItems}
-            selected={typeof value === 'string' ? value : undefined}
-            onSelect={(v) => onChange(v)}
-            searchable={sourceItems.length > 7}
-            placeholder="Search sources…"
-    />
+	<Menu
+		bind:open
+		{anchor}
+		items={sourceItems}
+		selected={typeof value === 'string' ? value : undefined}
+		onSelect={(v) => onChange(v)}
+		searchable={sourceItems.length > 7}
+		placeholder="Search sources…"
+	/>
 {:else}
-    <InputPopover
-            bind:open
-            {anchor}
-            value={asString(value)}
-            inputType="text"
-            onChange={commitInput}
-    />
+	<InputPopover
+		bind:open
+		{anchor}
+		value={asString(value)}
+		inputType="text"
+		onChange={commitInput}
+	/>
 {/if}
