@@ -1066,13 +1066,13 @@
         }
     }
 
-    async function writeCell(field: ViewField, row: Row, value: unknown) {
+    async function writeCell(field: ViewField, row: Row, value: unknown, folderDir?: string) {
         if (field.type === 'created_at' || field.type === 'updated_at') {
             await writeMetaCell(field.type, row, value);
             return;
         }
         if (field.type === 'folder') {
-            await moveRowToFolder(row, typeof value === 'string' ? value : null);
+            await moveRowToFolder(row, typeof value === 'string' ? value : null, folderDir);
             return;
         }
         if (row.id === DRAFT_ID) {
@@ -1097,12 +1097,13 @@
 
     // Folder is a derived field whose edit is a filesystem move: relocate the doc
     // into the chosen folder group's path (or the source root when cleared).
-    async function moveRowToFolder(row: Row, groupId: string | null) {
+    async function moveRowToFolder(row: Row, groupId: string | null, knownDir?: string) {
         if (row.id === DRAFT_ID) {
             folderOverride = groupId;
+            folderOverrideDir = knownDir ?? null;
             return;
         }
-        const dir = groupId ? folderPath(groupId, folders) : '';
+        const dir = groupId ? (knownDir ?? folderPath(groupId, folders)) : '';
         const file = fileName(row.rel_path);
         const newRel = dir ? `${dir}/${file}` : file;
         if (newRel === row.rel_path) return;
@@ -1159,6 +1160,7 @@
     let newTitleInput: HTMLInputElement | null = $state(null);
     let newRowEl: HTMLTableRowElement | null = $state(null);
     let folderOverride: string | null | undefined = $state(undefined);
+    let folderOverrideDir: string | null = $state(null);
     let folderPickerOpen = $state(false);
     let folderAnchor: HTMLElement | null = $state(null);
     let saving = false;
@@ -1168,9 +1170,11 @@
     );
     const needsFolderChoice = $derived(createCtx.ambiguous && effectiveFolderId === null);
     const hasFolderColumn = $derived(columns.some(c => c.field.type === 'folder'));
-    const folderDirLabel = $derived(
-        effectiveFolderId ? folderPath(effectiveFolderId, folders) : ''
-    );
+    const folderDirLabel = $derived.by(() => {
+        if (!effectiveFolderId) return '';
+        if (folderOverride === effectiveFolderId && folderOverrideDir !== null) return folderOverrideDir;
+        return folderPath(effectiveFolderId, folders);
+    });
 
     // Warn (red border) when the draft title would collide with an existing note
     // and get silently renamed to "<name> 2" on save.
@@ -1223,6 +1227,7 @@
         }
         draft = {title: '', values, createdAt: Date.now()};
         folderOverride = undefined;
+        folderOverrideDir = null;
         queueMicrotask(() => newTitleInput?.focus());
     }
 
@@ -1370,7 +1375,7 @@
         saving = true;
         try {
             const source = await resolveCreateSource();
-            const dir = effectiveFolderId ? folderPath(effectiveFolderId, folders) : '';
+            const dir = folderDirLabel;
             const groupIds = [
                 ...(effectiveFolderId ? folderLinkChain(effectiveFolderId, folders) : []),
                 ...createCtx.tagGroupIds
@@ -1700,8 +1705,9 @@
         anchor={folderAnchor}
         value={effectiveFolderId}
         sourceId={createCtx.sourceId ?? undefined}
-        onChange={(id) => {
+        onChange={(id, dir) => {
             folderOverride = id;
+            folderOverrideDir = dir ?? null;
             queueMicrotask(() => newTitleInput?.focus());
         }}
 />
@@ -1761,7 +1767,7 @@
                 field={editingField}
                 value={editingValue}
                 sourceId={editingRow.source_id}
-                onChange={(v) => { if (editingField && editingRow) writeCell(editingField, editingRow, v); }}
+                onChange={(v, dir) => { if (editingField && editingRow) writeCell(editingField, editingRow, v, dir); }}
                 onRenameOption={(oldV, newV) => { if (editingField) renameOption(editingField, oldV, newV); }}
         />
     {/if}

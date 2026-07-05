@@ -113,9 +113,9 @@
         folderOpen = true;
     }
 
-    async function onPickFolder(groupId: string) {
+    async function onPickFolder(groupId: string, path?: string) {
         const target = pendingSource ?? source;
-        const dir = groupId ? folderPath(groupId, folders) : '';
+        const dir = groupId ? (path ?? folderPath(groupId, folders)) : '';
         const file = fileName(relPath);
         const newRel = dir ? `${dir}/${file}` : file;
         if (target.id === source.id && newRel === relPath) return;

@@ -18,7 +18,7 @@
         field: ViewField;
         value: unknown;
         sourceId?: string;
-        onChange: (value: unknown) => void;
+        onChange: (value: unknown, folderDir?: string) => void;
         onRenameOption?: (oldValue: string, newValue: string) => void;
     } = $props();
 </script>
@@ -39,7 +39,7 @@
             {anchor}
             value={typeof value === 'string' ? value : null}
             {sourceId}
-            onChange={(id) => { onChange(id); open = false; }}
+            onChange={(id, dir) => { onChange(id, dir); open = false; }}
     />
 {:else}
     <FilterValueEditor

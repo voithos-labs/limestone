@@ -17,7 +17,7 @@
         value: string | null;
         sourceId?: string;
         rootOption?: boolean;
-        onChange: (id: string) => void;
+        onChange: (id: string, path?: string) => void;
     } = $props();
 
     let popEl: HTMLDivElement | null = $state(null);
@@ -132,8 +132,20 @@
         return parts.join(' / ');
     }
 
+    // todo: move this out of component
+    function pathOf(id: string): string {
+        const parts: string[] = [];
+        let f = byId.get(id);
+        let guard = 0;
+        while (f && guard++ < 32) {
+            parts.unshift(f.slug);
+            f = f.parentGroupId ? byId.get(f.parentGroupId) : undefined;
+        }
+        return parts.join('/');
+    }
+
     function pick(id: string) {
-        onChange(id);
+        onChange(id, pathOf(id));
         open = false;
     }
 
@@ -231,7 +243,8 @@
                     });
                 listSources()
                     .then(ss => sourceNames = new Map(ss.map(s => [s.id, sourceName(s)])))
-                    .catch(() => {});
+                    .catch(() => {
+                    });
             }
             queueMicrotask(() => {
                 position();
@@ -389,8 +402,7 @@
     .pop {
         position: fixed;
         z-index: 1000;
-        min-width: 220px;
-        max-width: 320px;
+        width: 320px;
         background: var(--color-bg);
         border: 1px solid var(--color-border);
         border-radius: 8px;
