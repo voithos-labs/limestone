@@ -64,6 +64,13 @@ struct BulkProgress {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum JournaledOp {
+    SetViewField {
+        source_id: String,
+        view_slug: String,
+        field_name: String,
+        value: Value,
+        doc_ids: Vec<String>,
+    },
     RenameViewField {
         source_id: String,
         view_slug: String,
@@ -92,7 +99,8 @@ enum JournaledOp {
 impl JournaledOp {
     fn source_id(&self) -> &str {
         match self {
-            JournaledOp::RenameViewField { source_id, .. }
+            JournaledOp::SetViewField { source_id, .. }
+            | JournaledOp::RenameViewField { source_id, .. }
             | JournaledOp::RemoveViewField { source_id, .. }
             | JournaledOp::RenameViewOption { source_id, .. }
             | JournaledOp::RenameView { source_id, .. } => source_id,
@@ -133,7 +141,6 @@ impl BulkRunner {
     ) -> Result<BulkResult, String> {
         validate_ident(view_slug, "view slug")?;
         validate_ident(field_name, "field name")?;
-        let _guard = self.inner.lock.lock().await;
         if doc_ids.is_empty() {
             return Ok(BulkResult {
                 touched: 0,
@@ -142,28 +149,14 @@ impl BulkRunner {
                 source_unreachable: false,
             });
         }
-
-        let path = json_path(view_slug, field_name);
-        let placeholders = doc_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let sql = format!(
-            "UPDATE documents SET properties = json_set(properties, ?, json(?))
-             WHERE source_id = ? AND id IN ({placeholders})"
-        );
-        let mut q = sqlx::query(&sql)
-            .bind(&path)
-            .bind(serde_json::to_string(&value).map_err(|e| e.to_string())?)
-            .bind(source_id);
-        for id in &doc_ids {
-            q = q.bind(id);
-        }
-        q.execute(db).await.map_err(|e| e.to_string())?;
-
-        let rel_paths = fetch_paths_by_id(db, source_id, &doc_ids).await?;
-        let (slug, field) = (view_slug.to_string(), field_name.to_string());
-        write_files(app, source_path, rel_paths, move |fm| {
-            frontmatter::set_view_field(fm, &slug, &field, value.clone());
-        })
-        .await
+        let op = JournaledOp::SetViewField {
+            source_id: source_id.to_string(),
+            view_slug: view_slug.to_string(),
+            field_name: field_name.to_string(),
+            value,
+            doc_ids,
+        };
+        self.run_journaled(db, app, source_path, op).await
     }
 
     pub async fn rename_view_field(
@@ -263,7 +256,7 @@ impl BulkRunner {
         result
     }
 
-    /// Re-run any ops left in the journal after interrupt
+    /// Re-run journaled ops after interrupt
     pub async fn resume(
         &self,
         db: &SqlitePool,
@@ -276,11 +269,12 @@ impl BulkRunner {
                 continue;
             };
             let _guard = self.inner.lock.lock().await;
-            if let Err(e) = execute(db, app, path, op).await {
-                eprintln!("bulk resume failed: {e}");
+            match execute(db, app, path, op).await {
+                Ok(result) if result.source_unreachable => {}
+                Ok(_) => self.journal_remove(op),
+                Err(e) => eprintln!("bulk resume failed: {e}"),
             }
         }
-        self.journal_write(&[]);
     }
 
     fn journal_read(&self) -> Vec<JournaledOp> {
@@ -316,6 +310,35 @@ async fn execute(
     op: &JournaledOp,
 ) -> Result<BulkResult, String> {
     match op {
+        JournaledOp::SetViewField {
+            source_id,
+            view_slug,
+            field_name,
+            value,
+            doc_ids,
+        } => {
+            let path = json_path(view_slug, field_name);
+            let placeholders = doc_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "UPDATE documents SET properties = json_set(properties, ?, json(?))
+                 WHERE source_id = ? AND id IN ({placeholders})"
+            );
+            let mut q = sqlx::query(&sql)
+                .bind(&path)
+                .bind(serde_json::to_string(value).map_err(|e| e.to_string())?)
+                .bind(source_id);
+            for id in doc_ids {
+                q = q.bind(id);
+            }
+            q.execute(db).await.map_err(|e| e.to_string())?;
+
+            let rel_paths = fetch_paths_by_id(db, source_id, doc_ids).await?;
+            let (slug, field, value) = (view_slug.clone(), field_name.clone(), value.clone());
+            write_files(app, source_path, rel_paths, move |fm| {
+                frontmatter::set_view_field(fm, &slug, &field, value.clone());
+            })
+            .await
+        }
         JournaledOp::RenameViewField {
             source_id,
             view_slug,
