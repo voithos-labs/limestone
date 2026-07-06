@@ -360,7 +360,7 @@ class DocHandle {
 	}
 
 	async saveContent(body: string): Promise<void> {
-		await this.refreshMetaFromDisk();
+		await this.refreshMetaFromDisk(); // this is hmm possibly not needed
 		this.updatedAt = new Date();
 		const contents = await this.serialize(body);
 		await invoke('write_document', {

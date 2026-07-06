@@ -54,6 +54,14 @@
 		}
 	}
 
+	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+	const SEARCH_DEBOUNCE_MS = 50;
+
+	function scheduleSearch() {
+		if (searchTimer) clearTimeout(searchTimer);
+		searchTimer = setTimeout(doSearch, SEARCH_DEBOUNCE_MS);
+	}
+
 	async function doSearch() {
 		const q = query.trim();
 		if (!q) {
@@ -76,6 +84,7 @@
 				group_type: null,
 				emoji: v.emoji
 			}));
+		if (q !== query.trim()) return;
 		results = [...viewResults, ...docResults];
 	}
 
@@ -134,6 +143,7 @@
 	}
 
 	function clearQuery() {
+		if (searchTimer) clearTimeout(searchTimer);
 		query = '';
 		results = [];
 		inputEl?.focus();
@@ -164,7 +174,7 @@
 			type="text"
 			{placeholder}
 			bind:value={query}
-			oninput={doSearch}
+			oninput={scheduleSearch}
 			onkeydown={onKeydown}
 		/>
 		{#if query}
