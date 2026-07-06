@@ -24,9 +24,13 @@ pub async fn write_document(
     rel_path: String,
     contents: String,
     updated_at: i64,
+    create: Option<bool>,
 ) -> Result<(), String> {
     let full_path = std::path::Path::new(&source_path).join(&rel_path);
 
+    if create.unwrap_or(false) && full_path.exists() {
+        return Err(format!("\"{rel_path}\" already exists"));
+    }
     atomic_write(&full_path, contents.as_bytes()).map_err(|e| e.to_string())?;
 
     let mtime = mtime(&full_path);

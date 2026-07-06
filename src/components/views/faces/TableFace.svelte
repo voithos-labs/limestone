@@ -1252,8 +1252,10 @@
 		let cancelled = false;
 		const t = setTimeout(async () => {
 			try {
-				const exists = await DocHandle.pathExists(sid, candidate);
-				if (!cancelled) titleCollision = exists;
+				const src = sources.find((s) => s.id === sid);
+				if (!src) return;
+				const taken = await DocHandle.pathTaken(src, candidate);
+				if (!cancelled) titleCollision = taken;
 			} catch {
 				/* ignore */
 			}

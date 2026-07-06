@@ -902,8 +902,11 @@ pub async fn reconcile_source(
     let t_total = Instant::now();
 
     // Ensure source row exists
-    sqlx::query("INSERT OR IGNORE INTO sources (id, title, path) VALUES (?1, ?2, ?3)")
-        .bind(source_id)
+    sqlx::query(
+        "INSERT INTO sources (id, title, path) VALUES (?1, ?2, ?3)
+         ON CONFLICT(id) DO UPDATE SET title = excluded.title, path = excluded.path",
+    )
+    .bind(source_id)
         .bind(
             source_path
                 .file_name()

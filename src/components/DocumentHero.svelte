@@ -51,7 +51,7 @@
 			titleTaken = !next;
 			return;
 		}
-		DocHandle.pathExists(source.id, titleCandidate(next)).then((taken) => {
+		DocHandle.pathTaken(source, titleCandidate(next)).then((taken) => {
 			if (token === titleCheckToken) titleTaken = taken;
 		});
 	});
@@ -63,7 +63,7 @@
 			return;
 		}
 		try {
-			if (await DocHandle.pathExists(source.id, titleCandidate(next))) {
+			if (await DocHandle.pathTaken(source, titleCandidate(next))) {
 				title = handle.title;
 				return;
 			}

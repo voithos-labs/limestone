@@ -10,7 +10,7 @@
 
 // External
 import { v4 as uuidv4 } from 'uuid';
-import { readTextFile } from '@tauri-apps/plugin-fs';
+import { exists, readTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import yaml from 'js-yaml';
 
@@ -109,6 +109,7 @@ class DocHandle {
 		);
 
 		const doc = new DocHandle(row, source);
+		doc.hasFile = false;
 		if (groupIds.length > 0) {
 			let groups = await Group.fromIDs(groupIds);
 			if (!source.use_frontmatter) groups = groups.filter((g) => g.groupType !== 'tag');
@@ -164,11 +165,19 @@ class DocHandle {
 		return (row?.c ?? 0) > 0;
 	}
 
-	/** A non-colliding rel_path for `base` in `dir`, appending " 2", " 3", … as needed */
-	static async uniqueRelPath(sourceId: string, dir: string, base: string): Promise<string> {
+	static async pathTaken(source: Source, relPath: string): Promise<boolean> {
+		if (await DocHandle.pathExists(source.id, relPath)) return true;
+		try {
+			return await exists(`${source.path}/${relPath}`);
+		} catch {
+			return false;
+		}
+	}
+
+	static async uniqueRelPath(source: Source, dir: string, base: string): Promise<string> {
 		let candidate = dir ? `${dir}/${base}.md` : `${base}.md`;
 		let n = 2;
-		while (await DocHandle.pathExists(sourceId, candidate)) {
+		while (await DocHandle.pathTaken(source, candidate)) {
 			candidate = dir ? `${dir}/${base} ${n}.md` : `${base} ${n}.md`;
 			n++;
 		}
@@ -187,7 +196,7 @@ class DocHandle {
 		}
 	): Promise<DocHandle> {
 		const base = opts.title.replace(/[\\/]/g, '-');
-		const relPath = await DocHandle.uniqueRelPath(source.id, opts.dir ?? '', base);
+		const relPath = await DocHandle.uniqueRelPath(source, opts.dir ?? '', base);
 		// Title must match the de-duplicated filename (e.g. "Untitled 2"), not the
 		// requested title, or two files end up sharing one title in the UI
 		const title = relPath.split('/').pop()!.replace(/\.md$/i, '');
@@ -359,7 +368,8 @@ class DocHandle {
 			sourcePath: this.source.path,
 			relPath: this._relPath,
 			contents,
-			updatedAt: this.updatedAt.getTime()
+			updatedAt: this.updatedAt.getTime(),
+			create: !this.hasFile
 		});
 		this.hasFile = true;
 	}
