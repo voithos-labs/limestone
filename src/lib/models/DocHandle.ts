@@ -145,7 +145,10 @@ class DocHandle {
 			path: row.source_path,
 			created_at: '',
 			accessed_at: '',
-			use_frontmatter: true
+			use_frontmatter: true,
+			note_location: '',
+			asset_location: 'assets',
+			ignore: []
 		});
 		const groups: GroupRow[] = row.groups_json ? JSON.parse(row.groups_json) : [];
 		doc.groups = groups.filter((r) => r.id !== null).map((r) => new Group(r));

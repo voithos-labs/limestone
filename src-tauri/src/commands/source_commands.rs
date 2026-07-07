@@ -31,10 +31,16 @@ pub(crate) fn source_uses_frontmatter(app: &AppHandle, source_id: &str) -> bool 
         .unwrap_or(true)
 }
 
+pub(crate) fn find_source(app: &AppHandle, id: Uuid) -> Result<Source, String> {
+    load_sources(app)
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "source not found".to_string())
+}
+
 fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
     let pool = app_data.db.clone();
-    let source_path = source.path.clone();
-    let source_id = source.id.to_string();
+    let source = source.clone();
     let app_handle = app.clone();
     let settings = app_data.settings.read().unwrap();
     let fm_buf_size = dot_get(&settings, "indexing.frontmatter_read_buffer_size")
@@ -42,9 +48,8 @@ fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
         .unwrap_or(512) as usize;
     drop(settings);
     tauri::async_runtime::spawn(async move {
-        if let Err(e) =
-            services::reconcile_source(&source_path, &source_id, &pool, &["md"], fm_buf_size).await
-        {
+        let source_id = source.id.to_string();
+        if let Err(e) = services::reconcile_source(&source, &pool, &["md"], fm_buf_size).await {
             eprintln!("reconcile failed: {e}");
         }
         let _ = app_handle.emit("source-reconciled", &source_id);
@@ -114,6 +119,7 @@ pub fn create_source(
 
     // add fs access to new source dir
     let _ = app.fs_scope().allow_directory(&source.path, true);
+    let _ = app.asset_protocol_scope().allow_directory(&source.path, true);
 
     sources.push(source.clone());
     save_sources(&app, &sources)?;
@@ -146,33 +152,20 @@ pub fn get_source_by_id(app: AppHandle, id: Uuid) -> Option<Source> {
 }
 
 #[tauri::command]
-pub fn get_source_config(app: AppHandle, id: Uuid) -> Result<services::SourceConfig, String> {
-    let source = load_sources(&app)
-        .into_iter()
-        .find(|s| s.id == id)
-        .ok_or_else(|| "source not found".to_string())?;
-    Ok(services::read_source_config(&source.path))
-}
-
-#[tauri::command]
-pub fn set_source_config(
+pub fn update_source(
     app: AppHandle,
     id: Uuid,
     note_location: String,
     asset_location: String,
 ) -> Result<(), String> {
-    let source = load_sources(&app)
-        .into_iter()
+    let mut sources = load_sources(&app);
+    let source = sources
+        .iter_mut()
         .find(|s| s.id == id)
         .ok_or_else(|| "source not found".to_string())?;
-    services::write_source_config(
-        &source.path,
-        &services::SourceConfig {
-            note_location,
-            asset_location,
-        },
-    )
-    .map_err(|e| e.to_string())
+    source.note_location = note_location;
+    source.asset_location = asset_location;
+    save_sources(&app, &sources)
 }
 
 #[tauri::command]
