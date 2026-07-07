@@ -108,6 +108,17 @@ impl JournaledOp {
     }
 }
 
+// IMPORTANT: you get it, tick this up when the format changes and would break between updates
+const JOURNAL_VERSION: u32 = 1;
+
+#[derive(Serialize, Deserialize, Default)]
+struct Journal {
+    #[serde(default)]
+    version: u32,
+    #[serde(default)]
+    ops: Vec<JournaledOp>,
+}
+
 #[derive(Clone)]
 pub struct BulkRunner {
     inner: Arc<Inner>,
@@ -278,14 +289,22 @@ impl BulkRunner {
     }
 
     fn journal_read(&self) -> Vec<JournaledOp> {
-        std::fs::read_to_string(&self.inner.journal_path)
+        let journal: Journal = std::fs::read_to_string(&self.inner.journal_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if journal.version != JOURNAL_VERSION {
+            return Vec::new();
+        }
+        journal.ops
     }
 
     fn journal_write(&self, ops: &[JournaledOp]) {
-        if let Ok(json) = serde_json::to_vec_pretty(ops) {
+        let journal = Journal {
+            version: JOURNAL_VERSION,
+            ops: ops.to_vec(),
+        };
+        if let Ok(json) = serde_json::to_vec_pretty(&journal) {
             let _ = atomic_write(&self.inner.journal_path, &json);
         }
     }

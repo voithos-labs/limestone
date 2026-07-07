@@ -4,9 +4,17 @@ import type View from '$lib/models/View.svelte';
 // Saved views live in views.json
 type ViewJSON = ReturnType<View['toJSON']>;
 
+const VIEWS_VERSION = 1;
+
 let store: Store | null = null;
 async function getStore(): Promise<Store> {
-	if (!store) store = await load('views.json');
+	if (!store) {
+		store = await load('views.json');
+		if ((await store.get<number>('version')) !== VIEWS_VERSION) {
+			await store.set('version', VIEWS_VERSION);
+			await store.save();
+		}
+	}
 	return store;
 }
 

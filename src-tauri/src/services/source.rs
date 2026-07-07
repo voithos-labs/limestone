@@ -61,6 +61,12 @@ pub struct Source {
     pub accessed_at: DateTime<Utc>,
     #[serde(default = "default_true")]
     pub use_frontmatter: bool,
+    #[serde(default)]
+    pub note_location: String,
+    #[serde(default = "default_asset_location")]
+    pub asset_location: String,
+    #[serde(default = "default_ignore")]
+    pub ignore: Vec<String>,
 }
 
 impl Source {
@@ -73,61 +79,43 @@ impl Source {
             created_at: now,
             accessed_at: now,
             use_frontmatter: true,
+            note_location: String::new(),
+            asset_location: default_asset_location(),
+            ignore: default_ignore(),
         }
     }
 }
 
-#[derive(Deserialize, Serialize, Default)]
+// yup
+pub const SOURCES_VERSION: u32 = 1;
+
+fn sources_version() -> u32 {
+    SOURCES_VERSION
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Sources {
+    #[serde(default = "sources_version")]
+    pub version: u32,
     #[serde(default)]
     pub sources: Vec<Source>,
+}
+
+impl Default for Sources {
+    fn default() -> Self {
+        Self {
+            version: SOURCES_VERSION,
+            sources: Vec::new(),
+        }
+    }
 }
 
 fn default_asset_location() -> String {
     "assets".to_string()
 }
 
-#[derive(Deserialize, Serialize, Clone)]
-pub struct SourceConfig {
-    #[serde(default)]
-    pub note_location: String,
-    #[serde(default = "default_asset_location")]
-    pub asset_location: String,
-}
-
-impl Default for SourceConfig {
-    fn default() -> Self {
-        Self {
-            note_location: String::new(),
-            asset_location: default_asset_location(),
-        }
-    }
-}
-
-pub fn read_source_config(source_path: &Path) -> SourceConfig {
-    fs::read_to_string(source_path.join(".limestone.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str::<SourceConfig>(&s).ok())
-        .unwrap_or_default()
-}
-
-pub fn write_source_config(source_path: &Path, config: &SourceConfig) -> std::io::Result<()> {
-    let config_path = source_path.join(".limestone.json");
-    let mut root = fs::read_to_string(&config_path)
-        .ok()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        .unwrap_or_else(|| serde_json::json!({ "ignore": [".limestone/", "assets/", ".*"] }));
-    if let Some(obj) = root.as_object_mut() {
-        obj.insert(
-            "note_location".into(),
-            serde_json::Value::String(config.note_location.clone()),
-        );
-        obj.insert(
-            "asset_location".into(),
-            serde_json::Value::String(config.asset_location.clone()),
-        );
-    }
-    fs::write(&config_path, serde_json::to_string_pretty(&root).unwrap())
+fn default_ignore() -> Vec<String> {
+    vec![".*".to_string()]
 }
 
 pub fn create_source(
@@ -145,14 +133,10 @@ pub fn create_source(
             .to_string()
     });
 
-    let config = SourceConfig {
-        note_location: note_location.unwrap_or_default(),
-        asset_location: asset_location.unwrap_or_else(default_asset_location),
-    };
-    let _ = write_source_config(&path, &config);
-
     let mut source = Source::new(title, path);
     source.use_frontmatter = use_frontmatter;
+    source.note_location = note_location.unwrap_or_default();
+    source.asset_location = asset_location.unwrap_or_else(default_asset_location);
     Ok(source)
 }
 
@@ -200,27 +184,34 @@ pub struct ReconcilePlan {
     pub delete_ids: Vec<String>,
 }
 
-fn load_ignore_patterns(source_path: &Path) -> Option<globset::GlobSet> {
-    let config_path = source_path.join(".limestone.json");
-    let content = fs::read_to_string(&config_path).ok()?;
-    let config: serde_json::Value = serde_json::from_str(&content).ok()?;
-    let patterns = config.get("ignore")?.as_array()?;
-
+fn build_ignore(source: &Source) -> Option<globset::GlobSet> {
+    let asset_dir = source.asset_location.trim_matches('/').to_string();
     let mut builder = globset::GlobSetBuilder::new();
-    for pattern in patterns {
-        if let Some(s) = pattern.as_str() {
-            if let Ok(glob) = globset::GlobBuilder::new(s).literal_separator(true).build() {
-                builder.add(glob);
+    for pattern in source
+        .ignore
+        .iter()
+        .map(|p| p.trim_end_matches('/'))
+        .chain(std::iter::once(asset_dir.as_str()))
+    {
+        if pattern.is_empty() {
+            continue;
+        }
+        for glob in [pattern.to_string(), format!("{pattern}/**")] {
+            if let Ok(g) = globset::GlobBuilder::new(&glob)
+                .literal_separator(true)
+                .build()
+            {
+                builder.add(g);
             }
         }
     }
-
     builder.build().ok()
 }
 
 /// Walk the source directory and collect (rel_path, mtime) for files w/ ignore
-pub fn walk_source(source_path: &Path, extensions: &[&str]) -> Vec<(String, i64)> {
-    let ignore = load_ignore_patterns(source_path);
+pub fn walk_source(source: &Source, extensions: &[&str]) -> Vec<(String, i64)> {
+    let source_path = &source.path;
+    let ignore = build_ignore(source);
     let mut entries = Vec::new();
 
     for entry in jwalk::WalkDir::new(source_path).sort(true) {
@@ -892,14 +883,16 @@ pub async fn index_document(
 }
 
 pub async fn reconcile_source(
-    source_path: &Path,
-    source_id: &str,
+    source: &Source,
     db: &SqlitePool,
     extensions: &[&str],
     frontmatter_buffer_size: usize,
 ) -> sqlx::Result<()> {
     use std::time::Instant;
     let t_total = Instant::now();
+    let source_path = &source.path;
+    let source_id = source.id.to_string();
+    let source_id = source_id.as_str();
 
     // Ensure source row exists
     sqlx::query(
@@ -907,17 +900,12 @@ pub async fn reconcile_source(
          ON CONFLICT(id) DO UPDATE SET title = excluded.title, path = excluded.path",
     )
     .bind(source_id)
-        .bind(
-            source_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("Untitled"),
-        )
-        .bind(source_path.to_string_lossy().as_ref())
-        .execute(db)
-        .await?;
+    .bind(&source.title)
+    .bind(source_path.to_string_lossy().as_ref())
+    .execute(db)
+    .await?;
 
-    let fs_entries = walk_source(source_path, extensions);
+    let fs_entries = walk_source(source, extensions);
 
     let db_rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT id, rel_path, coalesce(mtime, 0) FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
@@ -959,13 +947,9 @@ pub async fn reconcile_source(
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
     cleanup_orphan_folder_groups(db, source_id).await?;
 
-    let source_title = source_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("?");
     eprintln!(
         "[reconcile:{}] {}ms | {} files, {} cached, {} ops",
-        source_title,
+        source.title,
         t_total.elapsed().as_millis(),
         fs_entries.len(),
         db_entries.len(),

@@ -1,10 +1,9 @@
 <script lang="ts">
 	import {
 		createSource,
-		getSourceConfig,
 		isGitRepo,
-		setSourceConfig,
 		sourceName,
+		updateSource,
 		type Source
 	} from '$lib/models/Source';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
@@ -39,14 +38,8 @@
 			busy = false;
 			if (mode === 'edit' && source) {
 				folderPath = source.path;
-				noteLocation = '';
-				assetLocation = 'assets';
-				getSourceConfig(source.id)
-					.then((c) => {
-						noteLocation = c.note_location;
-						assetLocation = c.asset_location;
-					})
-					.catch((e) => (error = String(e)));
+				noteLocation = source.note_location;
+				assetLocation = source.asset_location;
 			} else {
 				folderPath = '';
 				noteLocation = '';
@@ -84,7 +77,7 @@
 				const title = folderPath.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
 				await createSource(folderPath, title, config, useFrontmatter);
 			} else if (source) {
-				await setSourceConfig(source.id, config);
+				await updateSource(source.id, config);
 			}
 			onSaved();
 			open = false;

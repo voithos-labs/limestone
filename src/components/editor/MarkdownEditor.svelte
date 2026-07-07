@@ -6,9 +6,11 @@
 		placeholder as cmPlaceholder,
 		ViewPlugin,
 		Decoration,
+		WidgetType,
 		type DecorationSet,
 		type ViewUpdate
 	} from '@codemirror/view';
+	import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 	import { EditorState, RangeSetBuilder } from '@codemirror/state';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { languages } from '@codemirror/language-data';
@@ -234,6 +236,198 @@
 		}
 	);
 
+	const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
+	const IMAGE_EMBED_RE = /!\[\[([^\]\n]+?)\]\]|!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+
+	function resolveImageSrc(target: string): string | null {
+		if (!handle) return null;
+		if (/^(https?|data|asset):/i.test(target)) return target;
+		const clean = target.replace(/\\/g, '/').replace(/^\.?\//, '');
+		const ext = clean.split('.').pop()?.toLowerCase() ?? '';
+		if (!IMAGE_EXTS.has(ext)) return null;
+		const loc = handle.source.asset_location.replace(/^\/+|\/+$/g, '');
+		const rel = clean.includes('/') || !loc ? clean : `${loc}/${clean}`;
+		return convertFileSrc(`${handle.source.path}/${rel}`);
+	}
+
+	function embedTarget(m: RegExpExecArray): string {
+		const target = m[1] ? m[1].split('|')[0] : m[3];
+		return target.trim();
+	}
+
+	function embedRangeAt(
+		v: EditorView,
+		pos: number,
+		side: 'start' | 'end'
+	): { from: number; to: number } | null {
+		const line = v.state.doc.lineAt(pos);
+		IMAGE_EMBED_RE.lastIndex = 0;
+		let m: RegExpExecArray | null;
+		while ((m = IMAGE_EMBED_RE.exec(line.text))) {
+			const from = line.from + m.index;
+			const to = from + m[0].length;
+			if ((side === 'end' ? to : from) !== pos) continue;
+			if (!resolveImageSrc(embedTarget(m))) continue;
+			return { from, to };
+		}
+		return null;
+	}
+
+	class ImageWidget extends WidgetType {
+		src: string;
+		alt: string;
+		width: number | null;
+		focused: boolean;
+
+		constructor(src: string, alt: string, width: number | null, focused: boolean) {
+			super();
+			this.src = src;
+			this.alt = alt;
+			this.width = width;
+			this.focused = focused;
+		}
+
+		eq(other: ImageWidget) {
+			return other.src === this.src && other.width === this.width && other.focused === this.focused;
+		}
+
+		toDOM() {
+			const img = document.createElement('img');
+			img.className = this.focused ? 'cm-embed-image focused' : 'cm-embed-image';
+			img.src = this.src;
+			img.alt = this.alt;
+			if (this.width) img.width = this.width;
+			return img;
+		}
+
+		ignoreEvent() {
+			return false;
+		}
+	}
+
+	const imageEmbedPlugin = ViewPlugin.fromClass(
+		class {
+			decorations: DecorationSet;
+
+			constructor(view: EditorView) {
+				this.decorations = this.build(view);
+			}
+
+			update(update: ViewUpdate) {
+				if (update.docChanged || update.viewportChanged || update.selectionSet) {
+					this.decorations = this.build(update.view);
+				}
+			}
+
+			build(view: EditorView): DecorationSet {
+				const builder = new RangeSetBuilder<Decoration>();
+				const sel = view.state.selection.main;
+				for (const { from, to } of view.visibleRanges) {
+					const text = view.state.doc.sliceString(from, to);
+					IMAGE_EMBED_RE.lastIndex = 0;
+					let m: RegExpExecArray | null;
+					while ((m = IMAGE_EMBED_RE.exec(text))) {
+						const start = from + m.index;
+						const end = start + m[0].length;
+						const focused = !sel.empty && sel.from === start && sel.to === end;
+						const reveal = focused
+							? false
+							: sel.empty
+								? sel.from > start && sel.from < end
+								: sel.from < end && sel.to > start;
+						if (reveal) continue;
+						const target = embedTarget(m);
+						const mod = m[1]?.split('|')[1];
+						const width = mod && /^\d+$/.test(mod) ? Number(mod) : null;
+						const src = resolveImageSrc(target);
+						if (!src) continue;
+						builder.add(
+							start,
+							end,
+							Decoration.replace({ widget: new ImageWidget(src, m[2] || target, width, focused) })
+						);
+					}
+				}
+				return builder.finish();
+			}
+		},
+		{
+			decorations: (v) => v.decorations
+		}
+	);
+
+	const MIME_EXTS: Record<string, string> = {
+		'image/png': 'png',
+		'image/jpeg': 'jpg',
+		'image/gif': 'gif',
+		'image/webp': 'webp',
+		'image/svg+xml': 'svg',
+		'image/bmp': 'bmp',
+		'image/avif': 'avif'
+	};
+
+	async function importPastedImage(file: File) {
+		if (!handle) return;
+		const buf = new Uint8Array(await file.arrayBuffer());
+		let binary = '';
+		const chunk = 0x8000;
+		for (let i = 0; i < buf.length; i += chunk) {
+			binary += String.fromCharCode(...buf.subarray(i, i + chunk));
+		}
+		const relPath = await invoke<string>('import_source_asset_bytes', {
+			sourceId: handle.source.id,
+			data: btoa(binary),
+			ext: MIME_EXTS[file.type] ?? 'png'
+		});
+		const { from, to } = view.state.selection.main;
+		const embed = `![[${relPath}]]`;
+		view.dispatch({
+			changes: { from, to, insert: embed },
+			selection: { anchor: from + embed.length }
+		});
+		view.focus();
+	}
+
+	const imageEvents = EditorView.domEventHandlers({
+		paste: (event) => {
+			const files = Array.from(event.clipboardData?.files ?? []).filter((f) =>
+				f.type.startsWith('image/')
+			);
+			if (!files.length || !handle) return false;
+			event.preventDefault();
+			for (const file of files) {
+				importPastedImage(file).catch((e) => console.error('image paste failed', e));
+			}
+			return true;
+		},
+		mousedown: (event, v) => {
+			const t = event.target;
+			if (!(t instanceof HTMLImageElement) || !t.classList.contains('cm-embed-image')) {
+				return false;
+			}
+			const r = embedRangeAt(v, v.posAtDOM(t), 'start');
+			if (!r) return false;
+			event.preventDefault();
+			v.dispatch({ selection: { anchor: r.from, head: r.to } });
+			v.focus();
+			return true;
+		}
+	});
+
+	function selectEmbed(v: EditorView, side: 'start' | 'end'): boolean {
+		const sel = v.state.selection.main;
+		if (!sel.empty) return false;
+		const r = embedRangeAt(v, sel.from, side);
+		if (!r) return false;
+		v.dispatch({ selection: { anchor: r.from, head: r.to } });
+		return true;
+	}
+
+	const embedKeymap = [
+		{ key: 'Backspace', run: (v: EditorView) => selectEmbed(v, 'end') },
+		{ key: 'Delete', run: (v: EditorView) => selectEmbed(v, 'start') }
+	];
+
 	function setZoom(next: number) {
 		zoom = Math.max(10, Math.min(40, next));
 		tab.state.zoom = zoom;
@@ -305,11 +499,13 @@
 			state: EditorState.create({
 				doc: content,
 				extensions: [
-					keymap.of([...zoomKeymap, ...defaultKeymap, ...historyKeymap]),
+					keymap.of([...zoomKeymap, ...embedKeymap, ...defaultKeymap, ...historyKeymap]),
 					history(),
 					markdown({ codeLanguages: languages }),
 					syntaxHighlighting(microMonokai),
 					taskDonePlugin,
+					imageEmbedPlugin,
+					imageEvents,
 					theme,
 					cmPlaceholder('Start writing...'),
 					updateListener,
@@ -461,6 +657,24 @@
 
 	.cm-wrapper :global(.cm-focused) {
 		outline: none;
+	}
+
+	.cm-wrapper :global(.cm-embed-image) {
+		display: inline-block;
+		max-width: 100%;
+		max-height: 480px;
+		border-radius: 8px;
+		vertical-align: text-bottom;
+		cursor: default;
+	}
+
+	.cm-wrapper :global(.cm-embed-image.focused) {
+		outline: 2px solid var(--focus-ring);
+		outline-offset: 2px;
+	}
+
+	.cm-wrapper :global(.cm-embed-image::selection) {
+		background: transparent;
 	}
 
 	.scroll-thumb {

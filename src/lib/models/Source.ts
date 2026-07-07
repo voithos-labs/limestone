@@ -7,6 +7,9 @@ export interface Source {
 	created_at: string;
 	accessed_at: string;
 	use_frontmatter: boolean;
+	note_location: string;
+	asset_location: string;
+	ignore: string[];
 }
 
 export interface SourceConfig {
@@ -56,12 +59,8 @@ export async function isGitRepo(path: string): Promise<boolean> {
 	return await invoke<boolean>('is_git_repo', { path });
 }
 
-export async function getSourceConfig(id: string): Promise<SourceConfig> {
-	return await invoke<SourceConfig>('get_source_config', { id });
-}
-
-export async function setSourceConfig(id: string, config: SourceConfig): Promise<void> {
-	await invoke('set_source_config', {
+export async function updateSource(id: string, config: SourceConfig): Promise<void> {
+	await invoke('update_source', {
 		id,
 		noteLocation: config.note_location,
 		assetLocation: config.asset_location

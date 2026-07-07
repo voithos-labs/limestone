@@ -151,14 +151,9 @@ pub fn run() {
                         let pool = pool.clone();
                         tasks.push(tauri::async_runtime::spawn(async move {
                             let source_id = source.id.to_string();
-                            if let Err(e) = services::reconcile_source(
-                                &source.path,
-                                &source_id,
-                                &pool,
-                                &["md"],
-                                fm_buf_size,
-                            )
-                            .await
+                            if let Err(e) =
+                                services::reconcile_source(&source, &pool, &["md"], fm_buf_size)
+                                    .await
                             {
                                 eprintln!("Reconciliation failed: {e}");
                             }
@@ -180,8 +175,7 @@ pub fn run() {
             commands::source_commands::get_sources,
             commands::source_commands::is_git_repo,
             commands::source_commands::get_source_by_id,
-            commands::source_commands::get_source_config,
-            commands::source_commands::set_source_config,
+            commands::source_commands::update_source,
             commands::source_commands::create_source,
             commands::source_commands::delete_source,
             commands::source_commands::touch_source,
@@ -204,6 +198,8 @@ pub fn run() {
             commands::db_commands::sql_execute,
             commands::asset_commands::import_global_asset,
             commands::asset_commands::import_global_asset_bytes,
+            commands::asset_commands::import_source_asset,
+            commands::asset_commands::import_source_asset_bytes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
