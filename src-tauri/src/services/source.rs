@@ -86,10 +86,28 @@ impl Source {
     }
 }
 
-#[derive(Deserialize, Serialize, Default)]
+// yup
+pub const SOURCES_VERSION: u32 = 1;
+
+fn sources_version() -> u32 {
+    SOURCES_VERSION
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Sources {
+    #[serde(default = "sources_version")]
+    pub version: u32,
     #[serde(default)]
     pub sources: Vec<Source>,
+}
+
+impl Default for Sources {
+    fn default() -> Self {
+        Self {
+            version: SOURCES_VERSION,
+            sources: Vec::new(),
+        }
+    }
 }
 
 fn default_asset_location() -> String {
@@ -882,10 +900,10 @@ pub async fn reconcile_source(
          ON CONFLICT(id) DO UPDATE SET title = excluded.title, path = excluded.path",
     )
     .bind(source_id)
-        .bind(&source.title)
-        .bind(source_path.to_string_lossy().as_ref())
-        .execute(db)
-        .await?;
+    .bind(&source.title)
+    .bind(source_path.to_string_lossy().as_ref())
+    .execute(db)
+    .await?;
 
     let fs_entries = walk_source(source, extensions);
 

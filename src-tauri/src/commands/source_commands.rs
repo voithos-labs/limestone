@@ -59,6 +59,7 @@ fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
 fn save_sources(app: &AppHandle, sources: &[Source]) -> Result<(), String> {
     sources_store(app)
         .save(&Sources {
+            version: services::SOURCES_VERSION,
             sources: sources.to_vec(),
         })
         .map_err(|e| e.to_string())

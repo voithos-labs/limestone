@@ -13,13 +13,21 @@ const DEFAULTS: State = {
 	editors: []
 };
 
-// ── Json Store ───────────────────────────────────────────────────────────────────────
+// ── JSON Store ───────────────────────────────────────────────────────────────────────
+
+const STATE_VERSION = 1;
 
 let store: Store | null = null;
 
 async function getStore() {
 	if (!store) {
 		store = await load('state.json');
+		const v = await store.get<number>('version');
+		if (v !== STATE_VERSION) {
+			if (v !== undefined) await store.clear();
+			await store.set('version', STATE_VERSION);
+			await store.save();
+		}
 	}
 	return store;
 }
