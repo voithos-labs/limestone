@@ -10,7 +10,7 @@
     import NewTabPage from '../components/pages/NewTabPage.svelte';
     import MarkdownEditor from '../components/editor/MarkdownEditor.svelte';
     import ContextMenu from '../components/ContextMenu.svelte';
-    import type {TabState} from '$lib/state/EditorState.svelte';
+    import type {TabState} from '$lib/models/EditorState.svelte.js';
 
     let session = $state<Session>();
     let tab: TabState | undefined = $state();

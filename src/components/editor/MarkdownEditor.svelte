@@ -17,8 +17,8 @@
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle, syntaxTree } from '@codemirror/language';
 	import { tags } from '@lezer/highlight';
-	import type { TabState } from '$lib/state/EditorState.svelte';
-	import type EditorStateModel from '$lib/state/EditorState.svelte';
+	import type { TabState } from '$lib/models/EditorState.svelte.js';
+	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import { getSetting } from '$lib/models/Settings';
 	import { registerFlush } from '$lib/services/flush';
 	import { confirm } from '@tauri-apps/plugin-dialog';

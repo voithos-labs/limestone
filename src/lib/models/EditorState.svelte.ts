@@ -37,8 +37,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import DocHandle from '$lib/models/DocHandle';
-import View from '$lib/models/View.svelte';
-import { listSavedViewJSON } from '$lib/models/savedViews';
+import View, { listSavedViewJSON } from '$lib/models/View.svelte.js';
 
 // ── Focus (used elsewhere) ───────────────────────────────────────────────────────────
 

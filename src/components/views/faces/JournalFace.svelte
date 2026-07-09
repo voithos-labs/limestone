@@ -3,7 +3,7 @@
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace } from '$lib/models/View.svelte';
 	import { rawStatefulValue, fieldLabel } from '$lib/views/fieldValue';
-	import { TabState } from '$lib/state/EditorState.svelte';
+	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import DocHandle from '$lib/models/DocHandle';
 	import { listSources } from '$lib/models/Source';
 	import { deriveCreateContext, folderPath, folderLinkChain } from '$lib/views/createDefaults';
