@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+
 	let {
 		open = $bindable(false),
 		anchor,
@@ -18,7 +20,7 @@
 	let popEl: HTMLDivElement | null = $state(null);
 	let inputEl: HTMLInputElement | null = $state(null);
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
-	let draft = $state(value);
+	let draft = $state(untrack(() => value));
 
 	function position() {
 		if (!anchor || !popEl) return;

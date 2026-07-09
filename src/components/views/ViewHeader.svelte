@@ -28,7 +28,7 @@
 		EllipsisVertical,
 		X
 	} from '@lucide/svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 
 	let {
 		view,
@@ -210,7 +210,7 @@
 	}
 
 	// ── Inline view-title (slug) editing — type-in-place, saved views only ────
-	let slugDraft = $state(view.slug);
+	let slugDraft = $state(untrack(() => view.slug));
 	let slugTaken = $state(false);
 	let slugCheckToken = 0;
 

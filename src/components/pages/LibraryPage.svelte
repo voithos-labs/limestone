@@ -465,6 +465,7 @@
 		white-space: pre-wrap;
 		display: -webkit-box;
 		-webkit-line-clamp: 9;
+		line-clamp: 9;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
 	}

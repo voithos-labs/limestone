@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import {
 		EditorView,
 		keymap,
@@ -56,7 +56,7 @@
 	}
 
 	let handle = $derived(tab.handle);
-	let zoom = $state(tab.state.zoom ?? 16);
+	let zoom = $state(untrack(() => tab.state.zoom ?? 16));
 	let scrolling = $state(false);
 	let scrollHideTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -107,7 +107,7 @@
 		thumbTop = THUMB_INSET_PX + (scroll.scrollTop / maxScroll) * (trackH - thumbHeight);
 		showThumb = true;
 	}
-	if (tab.state.zoom === undefined) {
+	if (untrack(() => tab.state.zoom) === undefined) {
 		getSetting<number>('appearance.editor_font_size').then((v) => {
 			if (tab.state.zoom === undefined && typeof v === 'number') zoom = v;
 		});
@@ -129,16 +129,18 @@
 		});
 	});
 
+	const initFlow = untrack(() => flow);
+
 	const theme = EditorView.theme({
 		'&': {
-			height: flow ? 'auto' : '100%',
+			height: initFlow ? 'auto' : '100%',
 			fontSize: 'var(--editor-font-size, 16px)',
 			backgroundColor: 'transparent'
 		},
 		'.cm-content': {
 			fontFamily: 'var(--font-editor)',
 			lineHeight: '1.6',
-			padding: flow ? '16px 0 48px' : '48px 24px',
+			padding: initFlow ? '16px 0 48px' : '48px 24px',
 			maxWidth: 'var(--page-max-width, 1200px)',
 			margin: '0 auto',
 			caretColor: 'var(--color-text-primary)'
@@ -147,7 +149,7 @@
 			borderLeftColor: 'var(--color-text-primary)'
 		},
 		'.cm-scroller': {
-			overflow: flow ? 'visible' : 'auto',
+			overflow: initFlow ? 'visible' : 'auto',
 			scrollbarWidth: 'none'
 		},
 		'.cm-scroller::-webkit-scrollbar': {

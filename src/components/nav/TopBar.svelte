@@ -324,25 +324,6 @@
 		cursor: grab;
 	}
 
-	/* ── Dropdown button ── */
-	.dropdown-btn {
-		display: flex;
-		align-items: center;
-		height: 32px;
-		margin-bottom: 4px;
-		padding: 0 10px;
-		border: none;
-		border-radius: 6px;
-		background: var(--color-surface);
-		color: var(--color-ui-muted);
-		cursor: pointer;
-		gap: 2px;
-	}
-
-	.dropdown-btn:hover {
-		color: var(--color-ui-dulled);
-	}
-
 	/* ── Divider ── */
 	.divider {
 		width: 1px;

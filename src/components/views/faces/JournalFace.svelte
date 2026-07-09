@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace } from '$lib/models/View.svelte';
 	import { rawStatefulValue, fieldLabel } from '$lib/views/fieldValue';
@@ -65,7 +66,7 @@
 		return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 	}
 
-	const initSelected = parseDay(face.config.selected_day) ?? today;
+	const initSelected = parseDay(untrack(() => face.config.selected_day)) ?? today;
 	let selected = $state(initSelected);
 	let windowEndDays = $state(0);
 	let cardW = $state(0);

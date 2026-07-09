@@ -8,7 +8,7 @@
 	import View from '$lib/models/View.svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import { Search, Folder, Folders, Hash, X, TextAlignStart, Layers } from '@lucide/svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 
 	let {
 		editor,
@@ -22,7 +22,7 @@
 		autofocus?: boolean;
 	} = $props();
 
-	let query = $state(tab?.state.query ?? '');
+	let query = $state(untrack(() => tab?.state.query ?? ''));
 	let results: SearchResult[] = $state([]);
 	let inputEl: HTMLInputElement | undefined = $state();
 	let sources: Source[] = $state([]);
