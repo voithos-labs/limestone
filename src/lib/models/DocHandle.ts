@@ -15,7 +15,7 @@ import { invoke } from '@tauri-apps/api/core';
 import yaml from 'js-yaml';
 
 // Internal
-import { select, execute } from '$lib/db';
+import { select, execute } from '$lib/services/db';
 import { getSource, type Source } from './Source';
 import Group, { type GroupRow } from './Group';
 

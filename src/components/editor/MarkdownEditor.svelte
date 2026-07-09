@@ -20,7 +20,7 @@
 	import type { TabState } from '$lib/state/EditorState.svelte';
 	import type EditorStateModel from '$lib/state/EditorState.svelte';
 	import { getSetting } from '$lib/models/Settings';
-	import { registerFlush } from '$lib/flush';
+	import { registerFlush } from '$lib/services/flush';
 	import { confirm } from '@tauri-apps/plugin-dialog';
 	import DocumentHero from '../DocumentHero.svelte';
 

@@ -48,7 +48,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type DocHandle from '$lib/models/DocHandle';
 import Group, { GroupType } from '$lib/models/Group';
 import { getSource, listSources, sourceName, type Source } from '$lib/models/Source';
-import { select } from '$lib/db';
+import { select } from '$lib/services/db';
 import {
 	saveViewJSON,
 	deleteSavedView,

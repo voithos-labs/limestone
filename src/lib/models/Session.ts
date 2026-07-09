@@ -12,7 +12,7 @@ import { load, type Store } from '@tauri-apps/plugin-store';
 import EditorState from '$lib/state/EditorState.svelte';
 import type { Source } from '$lib/models/Source';
 import { loadState, type State, updateState } from '$lib/state/State';
-import { applyTheme, BUILTIN_THEMES, DEFAULT_THEME, type Theme } from '$lib/theme';
+import { applyTheme, BUILTIN_THEMES, DEFAULT_THEME, type Theme } from '$lib/services/theme';
 
 export interface ViewTab {
 	kind: string;
