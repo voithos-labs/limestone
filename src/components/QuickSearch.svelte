@@ -6,7 +6,7 @@
     import DocHandle from '$lib/models/DocHandle';
     import Group from '$lib/models/Group';
     import View from '$lib/models/View.svelte';
-    import {invoke} from '@tauri-apps/api/core';
+    import {searchDocuments} from '$lib/services/search';
     import {Search, Folder, Folders, Hash, X, TextAlignStart, Layers} from '@lucide/svelte';
     import {onMount, untrack} from 'svelte';
 
@@ -68,7 +68,7 @@
             results = [];
             return;
         }
-        const docResults: SearchResult[] = await invoke('search_documents', {query: q});
+        const docResults = await searchDocuments(q);
         // Saved views live in views.json (frontend)
         const ql = q.toLowerCase();
         const viewResults: SearchResult[] = (await View.listSaved())

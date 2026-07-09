@@ -4,14 +4,14 @@
     import {listSources} from '$lib/models/Source';
     import DocHandle from '$lib/models/DocHandle';
     import View from '$lib/models/View.svelte';
-    import {invoke} from '@tauri-apps/api/core';
+    import {searchDocuments} from '$lib/services/search';
     import {readTextFile} from '@tauri-apps/plugin-fs';
     import {listen} from '@tauri-apps/api/event';
-    import {open} from '@tauri-apps/plugin-dialog';
     import {formatDateFriendly} from '$lib/views/dateFormat';
     import type {MenuEntry} from '$lib/views/menuTypes';
     import ClockHero from '../ClockHero.svelte';
     import QuickSearch from '../QuickSearch.svelte';
+    import SourceDialog from '../SourceDialog.svelte';
     import Menu from '../views/Menu.svelte';
     import {Layers, Plus, LayersPlus, FolderPlus} from '@lucide/svelte';
     import IconAddNotes from '~icons/material-symbols/add-notes';
@@ -88,7 +88,7 @@
 
     async function loadRecents() {
         const [recents, saved] = await Promise.all([
-            invoke<SearchResult[]>('search_documents', {query: ''}),
+            searchDocuments(''),
             View.listSaved()
         ]);
         savedViews = saved.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
@@ -120,30 +120,20 @@
         newOpen = false;
         if (value === 'doc') newDocument();
         else if (value === 'view') editor.openView(View.create('New view'));
-        else if (value === 'source') addSource();
+        else if (value === 'source') sourceDialogOpen = true;
     }
+
+    let sourceDialogOpen = $state(false);
 
     async function newDocument() {
         const srcs = await listSources();
         const source = srcs[0];
         if (!source) {
-            addSource();
+            sourceDialogOpen = true;
             return;
         }
         const doc = await DocHandle.createFromTitle(source, {title: 'Untitled', draft: true});
         editor.openDoc(doc);
-    }
-
-    async function addSource() {
-        const selected = await open({directory: true, multiple: false});
-        if (!selected || typeof selected !== 'string') return;
-        const title = selected.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
-        try {
-            await invoke('create_source', {path: selected, title});
-            await loadRecents();
-        } catch (e) {
-            console.error('add source failed', e);
-        }
     }
 
     async function openDoc(d: DocCard) {
@@ -185,6 +175,7 @@
                 onSelect={handleNew}
                 minWidth={180}
         />
+        <SourceDialog bind:open={sourceDialogOpen} mode="create" onSaved={loadRecents}/>
 
         <section class="lib-section">
             <h2 class="sec-title">Recent Views</h2>

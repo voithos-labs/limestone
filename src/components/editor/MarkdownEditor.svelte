@@ -10,7 +10,8 @@
 		type DecorationSet,
 		type ViewUpdate
 	} from '@codemirror/view';
-	import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+	import { convertFileSrc } from '@tauri-apps/api/core';
+	import { importSourceAssetBytes } from '$lib/services/assets';
 	import { EditorState, RangeSetBuilder } from '@codemirror/state';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { languages } from '@codemirror/language-data';
@@ -370,17 +371,11 @@
 
 	async function importPastedImage(file: File) {
 		if (!handle) return;
-		const buf = new Uint8Array(await file.arrayBuffer());
-		let binary = '';
-		const chunk = 0x8000;
-		for (let i = 0; i < buf.length; i += chunk) {
-			binary += String.fromCharCode(...buf.subarray(i, i + chunk));
-		}
-		const relPath = await invoke<string>('import_source_asset_bytes', {
-			sourceId: handle.source.id,
-			data: btoa(binary),
-			ext: MIME_EXTS[file.type] ?? 'png'
-		});
+		const relPath = await importSourceAssetBytes(
+			handle.source.id,
+			await file.arrayBuffer(),
+			MIME_EXTS[file.type] ?? 'png'
+		);
 		const { from, to } = view.state.selection.main;
 		const embed = `![[${relPath}]]`;
 		view.dispatch({

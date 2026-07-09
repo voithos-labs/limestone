@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
-	import { invoke } from '@tauri-apps/api/core';
+	import { importGlobalAsset, importGlobalAssetBytes } from '$lib/services/assets';
 	import { getCurrentWebview } from '@tauri-apps/api/webview';
 	import { ImageUp, FolderOpen } from '@lucide/svelte';
 
@@ -24,16 +24,6 @@
 		return m.split('/')[1] || 'png';
 	}
 
-	function toBase64(buf: ArrayBuffer): string {
-		const bytes = new Uint8Array(buf);
-		let bin = '';
-		const chunk = 0x8000;
-		for (let i = 0; i < bytes.length; i += chunk) {
-			bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-		}
-		return btoa(bin);
-	}
-
 	function finish(ref: string) {
 		busy = false;
 		onPicked(ref);
@@ -46,7 +36,7 @@
 		try {
 			const buf = await blob.arrayBuffer();
 			const ext = name?.split('.').pop()?.toLowerCase() || extOfMime(blob.type);
-			finish(await invoke<string>('import_global_asset_bytes', { data: toBase64(buf), ext }));
+			finish(await importGlobalAssetBytes(buf, ext));
 		} catch (e) {
 			error = String(e);
 			busy = false;
@@ -57,7 +47,7 @@
 		busy = true;
 		error = '';
 		try {
-			finish(await invoke<string>('import_global_asset', { srcPath: path }));
+			finish(await importGlobalAsset(path));
 		} catch (e) {
 			error = String(e);
 			busy = false;

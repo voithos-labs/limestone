@@ -1,10 +1,9 @@
 <script lang="ts">
     import type EditorState from '$lib/models/EditorState.svelte.js';
     import {TabState} from '$lib/models/EditorState.svelte.js';
-    import {type Source} from '$lib/models/Source';
+    import {listSources} from '$lib/models/Source';
     import DocHandle from '$lib/models/DocHandle';
     import View from '$lib/models/View.svelte';
-    import {invoke} from '@tauri-apps/api/core';
     import {LayersPlus} from '@lucide/svelte';
     import IconAddNotes from '~icons/material-symbols/add-notes';
     import ClockHero from '../ClockHero.svelte';
@@ -16,7 +15,7 @@
 
     async function createNewDocument() {
         actionError = '';
-        const sources: Source[] = await invoke('get_sources');
+        const sources = await listSources();
         const source = sources[0];
         if (!source) {
             actionError = 'Add a source before creating a document';
