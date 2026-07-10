@@ -2,7 +2,7 @@
     import {onMount} from 'svelte';
     import {getCurrentWindow} from '@tauri-apps/api/window';
     import TopBar from '../components/nav/TopBar.svelte';
-    import {flushAll} from '$lib/services/flush';
+    import {flushAll} from '$lib/util/flush';
     import Session from '$lib/models/Session';
     import LibraryPage from '../components/pages/LibraryPage.svelte';
     import SettingsPage from '../components/pages/SettingsPage.svelte';
