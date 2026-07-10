@@ -53,7 +53,7 @@ class TauriStorageAdapter implements StorageAdapterInterface {
 const repos = new Map<string, Repo>();
 
 // dry init catch
-export function historyRepo(docId: string): Repo {
+function historyRepo(docId: string): Repo {
 	let repo = repos.get(docId);
 	if (!repo) {
 		repo = new Repo({ storage: new TauriStorageAdapter([docId]) });
@@ -62,7 +62,7 @@ export function historyRepo(docId: string): Repo {
 	return repo;
 }
 
-export function listHistoryRoots(docId: string): Promise<string[]> {
+function listHistoryRoots(docId: string): Promise<string[]> {
 	return invoke<string[]>('storage_list_roots', { prefix: [docId] });
 }
 // endregion
@@ -75,14 +75,15 @@ interface DocHistoryShape {
 }
 
 export interface Checkpoint {
-	heads: string[];
+	heads: string[]; // like git heads, literally hash[], of the changes sorted under this checkpoint
 	time: number;
 }
 
-const CHECKPOINT_GAP_MS = 60_000;
-const CHECKPOINT_MAX_SPAN_MS = 300_000;
+// todo: reasonable groupings, but worth more testing
+const CHECKPOINT_GAP_MS = 20_000;
+const CHECKPOINT_MAX_SPAN_MS = 60_000;
 
-export function buildCheckpoints(doc: Automerge.Doc<DocHistoryShape>): Checkpoint[] {
+function buildCheckpoints(doc: Automerge.Doc<DocHistoryShape>): Checkpoint[] {
 	const meta = Automerge.getChangesMetaSince(doc, []);
 	const checkpoints: Checkpoint[] = [];
 	let last: { hash: string; time: number } | null = null;
@@ -121,12 +122,68 @@ async function getDocHistoryHandle(docId: string): Promise<DocHandle<DocHistoryS
 /**
  * Add change to history via Automerge `updateText`
  */
-async function addChangeHistory(docId: string, newBody: string) {
+export async function addChangeHistory(docId: string, newBody: string) {
 	// load or create history
 	const dh = await getDocHistoryHandle(docId);
 	// apply change
 	dh.change((d) => updateText(d, ['text'], newBody));
 }
+// endregion
+// region api
+// ── READ API FOR UI-LIKE TYPES N STUFF ───────────────────────────────────────────────
 
+/**
+ * this is not data rich, basically just for highlighting changes in the UI
+ */
+export interface StateDelta {
+	inserts: { from: number; to: number }[];
+	removals: { at: number; text: string }[];
+}
 
+async function historyDoc(docId: string): Promise<Automerge.Doc<DocHistoryShape>> {
+	const dh = await getDocHistoryHandle(docId);
+	return dh.doc();
+}
+
+export async function historyCheckpoints(docId: string): Promise<Checkpoint[]> {
+	return buildCheckpoints(await historyDoc(docId));
+}
+
+export async function historyTextAt(docId: string, cp: Checkpoint): Promise<string> {
+	const doc = await historyDoc(docId);
+	return Automerge.view(doc, cp.heads).text;
+}
+
+export async function historyDelta(
+	docId: string,
+	from: Checkpoint | 'present', // the present is a present
+	to: Checkpoint
+): Promise<StateDelta> {
+	const doc = await historyDoc(docId);
+	const fromHeads = from === 'present' ? Automerge.getHeads(doc) : from.heads;
+	const patches = Automerge.diff(doc, fromHeads, to.heads).filter((p) => p.path[0] === 'text');
+
+	const inserts: StateDelta['inserts'] = [];
+	const removals: StateDelta['removals'] = [];
+	let working = Automerge.view(doc, fromHeads).text;
+	for (const patch of patches) {
+		// sort operation types, {'splice', 'del', 'put'},
+		// into `inserts` and `removals` for highlighting in editor UI
+		if (patch.action === 'splice') {
+			const at = patch.path[1] as number;
+			working = working.slice(0, at) + patch.value + working.slice(at);
+			inserts.push({ from: at, to: at + patch.value.length });
+		} else if (patch.action === 'del') {
+			const at = patch.path[1] as number;
+			const len = patch.length ?? 1;
+			removals.push({ at, text: working.slice(at, at + len) });
+			working = working.slice(0, at) + working.slice(at + len);
+		} else if (patch.action === 'put' && typeof patch.value === 'string') {
+			removals.push({ at: 0, text: working });
+			working = patch.value;
+			inserts.push({ from: 0, to: working.length });
+		}
+	}
+	return { inserts, removals };
+}
 // endregion
