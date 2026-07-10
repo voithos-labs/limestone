@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import {
 		EditorView,
 		keymap,
@@ -10,17 +10,18 @@
 		type DecorationSet,
 		type ViewUpdate
 	} from '@codemirror/view';
-	import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+	import { convertFileSrc } from '@tauri-apps/api/core';
+	import { importSourceAssetBytes } from '$lib/services/assets';
 	import { EditorState, RangeSetBuilder } from '@codemirror/state';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { languages } from '@codemirror/language-data';
 	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle, syntaxTree } from '@codemirror/language';
 	import { tags } from '@lezer/highlight';
-	import type { TabState } from '$lib/state/EditorState.svelte';
-	import type EditorStateModel from '$lib/state/EditorState.svelte';
+	import type { TabState } from '$lib/models/EditorState.svelte.js';
+	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import { getSetting } from '$lib/models/Settings';
-	import { registerFlush } from '$lib/flush';
+	import { registerFlush } from '$lib/util/flush';
 	import { confirm } from '@tauri-apps/plugin-dialog';
 	import DocumentHero from '../DocumentHero.svelte';
 
@@ -56,7 +57,7 @@
 	}
 
 	let handle = $derived(tab.handle);
-	let zoom = $state(tab.state.zoom ?? 16);
+	let zoom = $state(untrack(() => tab.state.zoom ?? 16));
 	let scrolling = $state(false);
 	let scrollHideTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -107,7 +108,7 @@
 		thumbTop = THUMB_INSET_PX + (scroll.scrollTop / maxScroll) * (trackH - thumbHeight);
 		showThumb = true;
 	}
-	if (tab.state.zoom === undefined) {
+	if (untrack(() => tab.state.zoom) === undefined) {
 		getSetting<number>('appearance.editor_font_size').then((v) => {
 			if (tab.state.zoom === undefined && typeof v === 'number') zoom = v;
 		});
@@ -129,16 +130,18 @@
 		});
 	});
 
+	const initFlow = untrack(() => flow);
+
 	const theme = EditorView.theme({
 		'&': {
-			height: flow ? 'auto' : '100%',
+			height: initFlow ? 'auto' : '100%',
 			fontSize: 'var(--editor-font-size, 16px)',
 			backgroundColor: 'transparent'
 		},
 		'.cm-content': {
 			fontFamily: 'var(--font-editor)',
 			lineHeight: '1.6',
-			padding: flow ? '16px 0 48px' : '48px 24px',
+			padding: initFlow ? '16px 0 48px' : '48px 24px',
 			maxWidth: 'var(--page-max-width, 1200px)',
 			margin: '0 auto',
 			caretColor: 'var(--color-text-primary)'
@@ -147,7 +150,7 @@
 			borderLeftColor: 'var(--color-text-primary)'
 		},
 		'.cm-scroller': {
-			overflow: flow ? 'visible' : 'auto',
+			overflow: initFlow ? 'visible' : 'auto',
 			scrollbarWidth: 'none'
 		},
 		'.cm-scroller::-webkit-scrollbar': {
@@ -368,17 +371,11 @@
 
 	async function importPastedImage(file: File) {
 		if (!handle) return;
-		const buf = new Uint8Array(await file.arrayBuffer());
-		let binary = '';
-		const chunk = 0x8000;
-		for (let i = 0; i < buf.length; i += chunk) {
-			binary += String.fromCharCode(...buf.subarray(i, i + chunk));
-		}
-		const relPath = await invoke<string>('import_source_asset_bytes', {
-			sourceId: handle.source.id,
-			data: btoa(binary),
-			ext: MIME_EXTS[file.type] ?? 'png'
-		});
+		const relPath = await importSourceAssetBytes(
+			handle.source.id,
+			await file.arrayBuffer(),
+			MIME_EXTS[file.type] ?? 'png'
+		);
 		const { from, to } = view.state.selection.main;
 		const embed = `![[${relPath}]]`;
 		view.dispatch({

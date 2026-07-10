@@ -9,7 +9,7 @@
 	import Menu from './views/Menu.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
 	import { Hash, EllipsisVertical, Trash2, Folders } from '@lucide/svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 
 	let {
 		handle,
@@ -17,9 +17,9 @@
 		compact = false
 	}: { handle: DocHandle; onDelete?: () => void; compact?: boolean } = $props();
 
-	let title = $state(handle.title);
-	let relPath = $state(handle.relPath);
-	let source = $state<Source>(handle.source);
+	let title = $state(untrack(() => handle.title));
+	let relPath = $state(untrack(() => handle.relPath));
+	let source = $state<Source>(untrack(() => handle.source));
 	let folders: Group[] = $state([]);
 	let sources: Source[] = $state([]);
 

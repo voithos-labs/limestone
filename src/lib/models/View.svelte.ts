@@ -48,13 +48,8 @@ import { invoke } from '@tauri-apps/api/core';
 import type DocHandle from '$lib/models/DocHandle';
 import Group, { GroupType } from '$lib/models/Group';
 import { getSource, listSources, sourceName, type Source } from '$lib/models/Source';
-import { select } from '$lib/db';
-import {
-	saveViewJSON,
-	deleteSavedView,
-	listSavedViewJSON,
-	isViewSlugTaken
-} from '$lib/models/savedViews';
+import { select } from '$lib/services/db';
+import { load, type Store } from '@tauri-apps/plugin-store';
 import { toasts } from '$lib/toasts.svelte';
 import { wallClockToMs } from '$lib/views/dateFormat';
 
@@ -632,6 +627,55 @@ interface ViewJSON {
 	temporary?: boolean;
 	emoji?: string;
 	cover?: string;
+}
+
+// ── Saved views store (views.json) ───────────────────────────────────────────────────
+
+const VIEWS_VERSION = 1;
+
+let viewStore: Store | null = null;
+async function getViewStore(): Promise<Store> {
+	if (!viewStore) {
+		viewStore = await load('views.json');
+		if ((await viewStore.get<number>('version')) !== VIEWS_VERSION) {
+			await viewStore.set('version', VIEWS_VERSION);
+			await viewStore.save();
+		}
+	}
+	return viewStore;
+}
+
+export async function listSavedViewJSON(): Promise<ViewJSON[]> {
+	const s = await getViewStore();
+	return (await s.get<ViewJSON[]>('views')) ?? [];
+}
+
+export async function saveViewJSON(json: ViewJSON): Promise<void> {
+	const s = await getViewStore();
+	const all = (await s.get<ViewJSON[]>('views')) ?? [];
+	const idx = all.findIndex((v) => v.id === json.id);
+	if (idx >= 0) all[idx] = json;
+	else all.push(json);
+	await s.set('views', all);
+	await s.save();
+}
+
+export async function deleteSavedView(id: string): Promise<void> {
+	const s = await getViewStore();
+	const all = (await s.get<ViewJSON[]>('views')) ?? [];
+	await s.set(
+		'views',
+		all.filter((v) => v.id !== id)
+	);
+	await s.save();
+}
+
+export async function isViewSaved(id: string): Promise<boolean> {
+	return (await listSavedViewJSON()).some((v) => v.id === id);
+}
+
+export async function isViewSlugTaken(slug: string, excludeId: string): Promise<boolean> {
+	return (await listSavedViewJSON()).some((v) => v.id !== excludeId && v.slug === slug);
 }
 
 class View {

@@ -20,7 +20,7 @@
  * 		I mean we kind of have this on full reload but ya know, prob want it to work while in the app
  */
 
-import { select, execute } from '$lib/db';
+import { select, execute } from '$lib/services/db';
 
 function folderGroupId(sourceId: string, path: string): string {
 	return `folder:${sourceId}:${path}`;

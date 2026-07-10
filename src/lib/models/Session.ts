@@ -9,15 +9,62 @@ cute and nice and simple and work well with the other models in this system that
 import { load, type Store } from '@tauri-apps/plugin-store';
 
 // internal
-import EditorState from '$lib/state/EditorState.svelte';
+import EditorState, { type EditorJSON } from '$lib/models/EditorState.svelte.js';
 import type { Source } from '$lib/models/Source';
-import { loadState, type State, updateState } from '$lib/state/State';
-import { applyTheme, BUILTIN_THEMES, DEFAULT_THEME, type Theme } from '$lib/theme';
+import { applyTheme, BUILTIN_THEMES, DEFAULT_THEME, type Theme } from '$lib/services/theme';
 
 export interface ViewTab {
 	kind: string;
 	state?: Record<string, any>;
 }
+
+// ── App state store (state.json) ─────────────────────────────────────────────────────
+
+export interface AppState {
+	activeTheme: string;
+	editors: EditorJSON[];
+	viewTabs?: ViewTab[];
+}
+
+const DEFAULTS: AppState = {
+	activeTheme: 'default-dark',
+	editors: []
+};
+
+const APP_STATE_VERSION = 1;
+
+let appStore: Store | null = null;
+
+async function getAppStore(): Promise<Store> {
+	if (!appStore) {
+		appStore = await load('state.json');
+		const v = await appStore.get<number>('version');
+		if (v !== APP_STATE_VERSION) {
+			if (v !== undefined) await appStore.clear();
+			await appStore.set('version', APP_STATE_VERSION);
+			await appStore.save();
+		}
+	}
+	return appStore;
+}
+
+async function loadAppState(): Promise<AppState> {
+	const s = await getAppStore();
+	return {
+		activeTheme: (await s.get<string>('activeTheme')) ?? DEFAULTS.activeTheme,
+		editors: (await s.get<EditorJSON[]>('editors')) ?? DEFAULTS.editors,
+		viewTabs: (await s.get<ViewTab[]>('viewTabs')) ?? []
+	};
+}
+
+async function updateAppState(partial: Partial<AppState>): Promise<void> {
+	const s = await getAppStore();
+	for (const [key, value] of Object.entries(partial)) {
+		await s.set(key, value);
+	}
+}
+
+// ── Session ──────────────────────────────────────────────────────────────────────────
 
 class Session {
 	editors: EditorState[];
@@ -47,7 +94,7 @@ class Session {
 	}
 
 	static async init(): Promise<Session> {
-		let state = await loadState();
+		let state = await loadAppState();
 		let themeStore = await load('themes.json');
 
 		// ensure built-in themes are always up to date in the store
@@ -93,7 +140,7 @@ class Session {
 	}
 
 	// ── Serialization ───────────────────────────────────────────────────────────────────
-	toJSON(): State {
+	toJSON(): AppState {
 		return {
 			editors: this.editors.map((e) => e.toJSON()),
 			activeTheme: this.activeTheme,
@@ -103,7 +150,7 @@ class Session {
 
 	async persist() {
 		let json = this.toJSON();
-		await updateState(json);
+		await updateAppState(json);
 	}
 }
 

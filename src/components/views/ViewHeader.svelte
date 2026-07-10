@@ -1,8 +1,7 @@
 <script lang="ts">
 	import type View from '$lib/models/View.svelte';
 	import type { FilterNode, FilterLeaf, ViewField, ViewFieldType } from '$lib/models/View.svelte';
-	import { VIEW_FIELD_OPS, sanitizeName } from '$lib/models/View.svelte';
-	import { isViewSlugTaken } from '$lib/models/savedViews';
+	import { VIEW_FIELD_OPS, sanitizeName, isViewSlugTaken } from '$lib/models/View.svelte';
 	import Group from '$lib/models/Group';
 	import { getSource, sourceName } from '$lib/models/Source';
 	import FilterChipIsland from './FilterChipIsland.svelte';
@@ -28,7 +27,7 @@
 		EllipsisVertical,
 		X
 	} from '@lucide/svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 
 	let {
 		view,
@@ -210,7 +209,7 @@
 	}
 
 	// ── Inline view-title (slug) editing — type-in-place, saved views only ────
-	let slugDraft = $state(view.slug);
+	let slugDraft = $state(untrack(() => view.slug));
 	let slugTaken = $state(false);
 	let slugCheckToken = 0;
 

@@ -305,6 +305,7 @@
 		<div class="list">
 			{#if searching}
 				{#each searchMatches as folder, i (folder.id)}
+					{@const sourceLabel = folder.sourceId ? sourceNames.get(folder.sourceId) : undefined}
 					<div
 						class="folder-row"
 						class:selected={folder.id === value}
@@ -323,8 +324,8 @@
 							{#if ancestorPath(folder)}
 								<span class="name-path">{ancestorPath(folder)}</span>
 							{/if}
-							{#if sourceNames.get(folder.sourceId)}
-								<span class="source-label">{sourceNames.get(folder.sourceId)}</span>
+							{#if sourceLabel}
+								<span class="source-label">{sourceLabel}</span>
 							{/if}
 							{#if folder.id === value}
 								<Check size={13} strokeWidth={2} />
@@ -370,6 +371,7 @@
 					{@const folder = item.folder}
 					{@const expanded = expandedIds.has(folder.id)}
 					{@const children = hasChildren(folder.id)}
+					{@const sourceLabel = folder.sourceId ? sourceNames.get(folder.sourceId) : undefined}
 					<div
 						class="folder-row"
 						class:selected={folder.id === value}
@@ -402,8 +404,8 @@
 						>
 							<Folder size={13} strokeWidth={1.75} />
 							<span class="name-label">{folder.slug}</span>
-							{#if sourceNames.get(folder.sourceId)}
-								<span class="source-label">{sourceNames.get(folder.sourceId)}</span>
+							{#if sourceLabel}
+								<span class="source-label">{sourceLabel}</span>
 							{/if}
 							{#if folder.id === value}
 								<Check size={13} strokeWidth={2} />

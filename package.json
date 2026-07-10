@@ -15,6 +15,8 @@
 	},
 	"license": "MIT",
 	"dependencies": {
+		"@automerge/automerge": "^3.2.6",
+		"@automerge/automerge-repo": "^2.5.6",
 		"@codemirror/lang-markdown": "^6.5.0",
 		"@codemirror/language-data": "^6.5.2",
 		"@codemirror/state": "^6.6.0",
