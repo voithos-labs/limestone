@@ -12,17 +12,16 @@
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import DateValueEditor from '../DateValueEditor.svelte';
 	import MarkdownEditor from '../../editor/MarkdownEditor.svelte';
-	import {
-		ChevronLeft,
-		ChevronRight,
-		SlidersHorizontal,
-		ScanBarcode,
-		ScanLine
-	} from '@lucide/svelte';
+	import { SlidersHorizontal, ScanBarcode, ScanLine } from '@lucide/svelte';
 
 	let { view, face, flow = false }: { view: View; face: ViewFace; flow?: boolean } = $props();
 
-	const DAY_W = 84;
+	const DAY_SIZE = 46;
+	const DAY_GAP = 12;
+	const DAY_STEP = DAY_SIZE + DAY_GAP;
+	const TODAY_W = 140;
+	const FUTURE_DAYS = 365;
+	const SNAP_PX = 24;
 	const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 	function startOfDay(d: Date): Date {
@@ -48,58 +47,26 @@
 		return a.getTime() === b.getTime();
 	}
 
-	const today = startOfDay(new Date());
-	const yesterday = addDays(today, -1);
-	const tomorrow = addDays(today, 1);
+	let today = $state(startOfDay(new Date()));
+	const yesterday = $derived(addDays(today, -1));
+	const tomorrow = $derived(addDays(today, 1));
 
-	function dayLabel(d: Date): string {
-		if (sameDay(d, today)) return 'Today';
+	function dayDow(d: Date): string {
+		if (sameDay(d, today)) return fullDate(d);
 		if (sameDay(d, yesterday)) return 'Yesterday';
+		if (sameDay(d, tomorrow)) return 'Tomorrow';
 		return WEEKDAY[d.getDay()];
-	}
-
-	function isSpecial(d: Date): boolean {
-		return sameDay(d, today) || sameDay(d, yesterday);
 	}
 
 	function fullDate(d: Date): string {
 		return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 	}
 
-	const initSelected = parseDay(untrack(() => face.config.selected_day)) ?? today;
+	const initSelected = parseDay(untrack(() => face.config.selected_day)) ?? untrack(() => today);
 	let selected = $state(initSelected);
-	let windowEndDays = $state(0);
-	let cardW = $state(0);
 	let rows = $state<any[]>([]);
 
 	const dateFieldKey = $derived((face.config.date_field as string) ?? 'created_at');
-
-	const GAP = 16;
-
-	// Fill the strip with DAY_W-wide days (no special reservation, so the row never
-	// leaves a trailing gap); the cells then flex to fit, specials a touch wider.
-	const visibleCount = $derived(Math.max(3, Math.floor((cardW + GAP) / (DAY_W + GAP))));
-
-	// Right edge as a day offset from tomorrow (0 = today second-to-last). Arrows
-	// snap to a page grid so they never drift; drag moves it day-by-day.
-	const windowEnd = $derived(addDays(tomorrow, windowEndDays));
-
-	// Once the strip is measured, grid-snap the window to the restored day so it
-	// lands in a consistent page (not forced second-to-last).
-	let didInitWindow = false;
-	$effect(() => {
-		if (didInitWindow || cardW === 0) return;
-		didInitWindow = true;
-		const dt = Math.round((initSelected.getTime() - tomorrow.getTime()) / 86400000);
-		windowEndDays = Math.ceil(dt / visibleCount) * visibleCount;
-	});
-
-	const visibleDays = $derived.by(() => {
-		const n = visibleCount;
-		const out: Date[] = [];
-		for (let i = n - 1; i >= 0; i--) out.push(addDays(windowEnd, -i));
-		return out;
-	});
 
 	function rowDate(r: any, key: string): Date | null {
 		let raw: unknown;
@@ -154,7 +121,11 @@
 		let cancelled = false;
 		DocHandle.fromID(row.id)
 			.then((h) => {
-				if (!cancelled) docTab = TabState.forDoc(h);
+				if (cancelled) return;
+				const t = TabState.forDoc(h);
+				const prevScroll = docTab?.state.scrollTop;
+				if (prevScroll !== undefined) t.state.scrollTop = prevScroll;
+				docTab = t;
 			})
 			.catch((e) => console.error('open journal doc failed', e));
 		return () => {
@@ -205,17 +176,26 @@
 	const SPARK_CELL = 8;
 	const SPARK_GAP = 3;
 	const SPARK_STEP = SPARK_CELL + SPARK_GAP;
-	// Timeline covers the current year up to tomorrow; years are traversed via the
-	// year field and date picker, not by scrolling the bar (keeps it short/snappy).
-	const sparkStart = new Date(today.getFullYear(), 0, 1);
-	const SPARK_DAYS = Math.round((tomorrow.getTime() - sparkStart.getTime()) / 86400000) + 1;
-	const sparkContentW = SPARK_DAYS * SPARK_CELL + (SPARK_DAYS - 1) * SPARK_GAP;
+	const stripDefaultStart = untrack(
+		() => new Date(today.getFullYear() - 1, today.getMonth(), today.getDate())
+	);
+	let stripStart = $state(
+		initSelected.getTime() < stripDefaultStart.getTime()
+			? addDays(initSelected, -7)
+			: stripDefaultStart
+	);
+	const sparkDayCount = $derived(
+		Math.round((tomorrow.getTime() - stripStart.getTime()) / 86400000) + 1
+	);
+	const sparkContentW = $derived(
+		sparkDayCount * SPARK_CELL + (sparkDayCount - 1) * SPARK_GAP
+	);
 
 	const sparkDays = $derived.by(() => {
 		const set = entries;
 		const out: { date: Date; on: boolean; first: boolean; label: string }[] = [];
-		for (let i = 0; i < SPARK_DAYS; i++) {
-			const cur = addDays(sparkStart, i);
+		for (let i = 0; i < sparkDayCount; i++) {
+			const cur = addDays(stripStart, i);
 			const first = cur.getDate() === 1;
 			out.push({
 				date: cur,
@@ -229,8 +209,8 @@
 
 	const sparkMonths = $derived.by(() => {
 		const LABEL_W = 38;
-		const TODAY_W = 36;
-		const todayLeft = sparkContentW - SPARK_STEP - TODAY_W;
+		const TODAY_LABEL_W = 36;
+		const todayLeft = sparkContentW - SPARK_STEP - TODAY_LABEL_W;
 		const out: { leftPx: number; label: string }[] = [];
 		let lastRight = -Infinity;
 		sparkDays.forEach((d, i) => {
@@ -248,10 +228,9 @@
 	let sparkEl: HTMLElement | null = $state(null);
 	let sparkAtEnd = $state(true);
 	let dragMoved = false;
-	function sparkPointerDown(e: PointerEvent) {
-		if (e.button !== 0 || !sparkEl) return;
+	function dragScroll(el: HTMLElement, e: PointerEvent, onUp?: () => void) {
+		if (e.button !== 0) return;
 		dragMoved = false;
-		const el = sparkEl;
 		const baseX = e.clientX;
 		const baseScroll = el.scrollLeft;
 		function move(ev: PointerEvent) {
@@ -262,6 +241,7 @@
 		function up() {
 			window.removeEventListener('pointermove', move);
 			window.removeEventListener('pointerup', up);
+			onUp?.();
 		}
 		window.addEventListener('pointermove', move);
 		window.addEventListener('pointerup', up);
@@ -276,20 +256,173 @@
 		});
 	});
 
+	let stripEl: HTMLElement | null = $state(null);
+	let stripAtPresent = $state(true);
+	const initBeyond =
+		Math.round((initSelected.getTime() - untrack(() => tomorrow).getTime()) / 86400000) -
+		FUTURE_DAYS;
+	let stripEndExtra = $state(initBeyond > 0 ? initBeyond + 7 : 0);
+
+	const stripDays = $derived.by(() => {
+		const end = addDays(tomorrow, FUTURE_DAYS + stripEndExtra);
+		const n = Math.round((end.getTime() - stripStart.getTime()) / 86400000) + 1;
+		const out: Date[] = [];
+		for (let i = 0; i < n; i++) out.push(addDays(stripStart, i));
+		return out;
+	});
+
+	$effect(() => {
+		if (stripEndExtra && selected.getTime() <= tomorrow.getTime()) stripEndExtra = 0;
+	});
+
+	function presentDelta(): number | null {
+		if (!stripEl) return null;
+		const cell = stripEl.children[dayOffset(tomorrow)] as HTMLElement | undefined;
+		if (!cell) return null;
+		return cell.getBoundingClientRect().right - stripEl.getBoundingClientRect().right;
+	}
+
+	function snapStrip(force = false) {
+		if (!stripEl) return;
+		const cell = stripEl.children[dayOffset(tomorrow)] as HTMLElement | undefined;
+		if (!cell) return;
+		const rect = cell.getBoundingClientRect();
+		const delta = rect.right - stripEl.getBoundingClientRect().right;
+		if (delta === 0) return;
+		if (!force && (delta < -SNAP_PX || delta > rect.width / 2)) return;
+		stripEl.scrollTo({ left: stripEl.scrollLeft + delta, behavior: 'smooth' });
+	}
+
+	let snapTimer: ReturnType<typeof setTimeout>;
+	function stripWheel(e: WheelEvent) {
+		if (!stripEl) return;
+		e.preventDefault();
+		stripEl.scrollLeft += e.deltaY + e.deltaX;
+		clearTimeout(snapTimer);
+		snapTimer = setTimeout(snapStrip, 150);
+	}
+
+	function stripScroll() {
+		if (!stripEl) return;
+		const delta = presentDelta();
+		stripAtPresent = delta != null && Math.abs(delta) < 2;
+		stripScrollLeft = stripEl.scrollLeft;
+	}
+
+	let stripScrollLeft = $state(0);
+	let stripW = $state(0);
+
+	function dayOffset(d: Date): number {
+		return Math.round((d.getTime() - stripStart.getTime()) / 86400000);
+	}
+
+	function cellLeft(i: number): number {
+		const ti = dayOffset(today);
+		if (i <= ti) return i * DAY_STEP;
+		return ti * DAY_STEP + TODAY_W + DAY_GAP + (i - ti - 1) * DAY_STEP;
+	}
+
+	function cellWidth(i: number): number {
+		return i === dayOffset(today) ? TODAY_W : DAY_SIZE;
+	}
+
+	const headerDate = $derived.by(() => {
+		if (!stripW) return selected;
+		const i = dayOffset(selected);
+		const left = cellLeft(i);
+		const right = left + cellWidth(i);
+		if (right > stripScrollLeft && left < stripScrollLeft + stripW) return selected;
+		let j = Math.floor(stripScrollLeft / DAY_STEP);
+		if (j * DAY_STEP + DAY_SIZE <= stripScrollLeft) j++;
+		j = Math.max(0, Math.min(j, stripDays.length - 1));
+		return stripDays[j] ?? selected;
+	});
+
+	let utilW = $state(0);
+
+	const monthMarker = $derived.by(() => {
+		if (!stripW) return null;
+		const first = Math.max(0, Math.floor(stripScrollLeft / DAY_STEP));
+		const last = Math.min(stripDays.length - 1, Math.ceil((stripScrollLeft + stripW) / DAY_STEP));
+		for (let i = first; i <= last; i++) {
+			const d = stripDays[i];
+			if (d.getDate() !== 1) continue;
+			const x = cellLeft(i) - DAY_GAP / 2 - stripScrollLeft;
+			const fade = Math.min(1, (x - (utilW + 16)) / 12, (stripW - 72 - x) / 12);
+			if (fade <= 0) continue;
+			return { x, fade, label: `${d.toLocaleDateString(undefined, { month: 'short' })} 1st` };
+		}
+		return null;
+	});
+
+	function scrollStripTo(d: Date) {
+		if (!stripEl) return;
+		const el = stripEl;
+		const i = dayOffset(d);
+		if (i < 0) return;
+		const pin = d.getTime() >= today.getTime() && d.getTime() <= tomorrow.getTime();
+		requestAnimationFrame(() => {
+			if (pin) {
+				const delta = presentDelta();
+				el.scrollLeft = delta == null ? el.scrollWidth : el.scrollLeft + delta;
+			} else {
+				el.scrollLeft = cellLeft(i) + cellWidth(i) / 2 - el.clientWidth / 2;
+			}
+		});
+	}
+
+	let didInitStrip = false;
+	$effect(() => {
+		if (!stripEl || didInitStrip) return;
+		didInitStrip = true;
+		scrollStripTo(selected);
+	});
+
 	function selectDay(d: Date) {
 		selected = d;
-		// Snap to the same page grid as the arrows so the window stays consistent
-		// (the date lands wherever it falls in that page, not always second-to-last).
-		const dt = Math.round((d.getTime() - tomorrow.getTime()) / 86400000);
-		windowEndDays = Math.ceil(dt / visibleCount) * visibleCount;
+		if (d.getTime() < stripStart.getTime()) stripStart = addDays(d, -7);
+		const beyond = Math.round((d.getTime() - tomorrow.getTime()) / 86400000) - FUTURE_DAYS;
+		if (beyond > 0 && beyond + 7 > stripEndExtra) stripEndExtra = beyond + 7;
+		scrollStripTo(d);
 	}
 
-	const atPresent = $derived(sameDay(selected, today) && windowEndDays === 0 && sparkAtEnd);
+	const atPresent = $derived(sameDay(selected, today) && stripAtPresent && sparkAtEnd);
 
 	function returnToPresent() {
-		selectDay(today);
+		selected = today;
+		scrollStripTo(today);
 		if (sparkEl) sparkEl.scrollLeft = sparkEl.scrollWidth;
 	}
+
+	function refreshToday() {
+		const t = startOfDay(new Date());
+		if (sameDay(t, today)) return;
+		const wasAtPresent = stripAtPresent;
+		today = t;
+		if (!wasAtPresent) return;
+		const spark = sparkEl;
+		scrollStripTo(t);
+		requestAnimationFrame(() => {
+			if (spark) spark.scrollLeft = spark.scrollWidth;
+		});
+	}
+
+	$effect(() => {
+		void today;
+		const now = new Date();
+		const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+		const id = setTimeout(refreshToday, midnight.getTime() - now.getTime() + 1000);
+		return () => clearTimeout(id);
+	});
+
+	$effect(() => {
+		document.addEventListener('visibilitychange', refreshToday);
+		window.addEventListener('focus', refreshToday);
+		return () => {
+			document.removeEventListener('visibilitychange', refreshToday);
+			window.removeEventListener('focus', refreshToday);
+		};
+	});
 
 	let pickerAnchor: HTMLElement | null = $state(null);
 	function openPicker(el: HTMLElement) {
@@ -310,22 +443,18 @@
 
 	function scrollBarTo(d: Date) {
 		if (!sparkEl) return;
-		const diff = Math.round((d.getTime() - sparkStart.getTime()) / 86400000);
-		if (diff < 0 || diff >= SPARK_DAYS) return;
+		const diff = Math.round((d.getTime() - stripStart.getTime()) / 86400000);
+		if (diff < 0) return;
+		const clamped = Math.min(diff, sparkDayCount - 1);
 		const el = sparkEl;
 		requestAnimationFrame(() => {
-			el.scrollLeft = 3 + diff * SPARK_STEP + SPARK_CELL - el.clientWidth;
+			el.scrollLeft = 3 + clamped * SPARK_STEP + SPARK_CELL - el.clientWidth;
 		});
 	}
 
 	$effect(() => {
 		face.config.selected_day = isoDay(selected);
 	});
-
-	function page(dir: number) {
-		const cur = Math.round(windowEndDays / visibleCount);
-		windowEndDays = (cur + dir) * visibleCount;
-	}
 
 	function isoDay(d: Date): string {
 		const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -392,48 +521,40 @@
 
 <div class="journal" class:flow>
 	<div class="day-nav">
-		<div class="strip">
-			<div class="days" bind:clientWidth={cardW}>
-				{#each visibleDays as d (dayKey(d))}
-					<button
-						class="day"
-						class:selected={sameDay(d, selected)}
-						class:today={sameDay(d, today)}
-						class:wide={isSpecial(d)}
-						class:has-entry={entries.has(dayKey(d))}
-						type="button"
-						onclick={() => (selected = d)}
-					>
-						<span class="dow"
-							>{isSpecial(d)
-								? fullDate(d)
-								: sameDay(d, tomorrow)
-									? 'Tomorrow'
-									: WEEKDAY[d.getDay()]}</span
-						>
-						<span class="num">{isSpecial(d) ? dayLabel(d) : d.getDate()}</span>
-					</button>
-				{/each}
-			</div>
-
-			<button
-				class="ctl nav-left"
-				type="button"
-				aria-label="Previous days"
-				onclick={() => page(-1)}
-			>
-				<ChevronLeft size={18} strokeWidth={2} />
-			</button>
-			<button class="ctl nav-right" type="button" aria-label="Next days" onclick={() => page(1)}>
-				<ChevronRight size={18} strokeWidth={2} />
-			</button>
+		<div
+			class="days"
+			bind:this={stripEl}
+			bind:clientWidth={stripW}
+			onpointerdown={(e) => stripEl && dragScroll(stripEl, e, snapStrip)}
+			onwheel={stripWheel}
+			onscroll={stripScroll}
+			role="presentation"
+		>
+			{#each stripDays as d (dayKey(d))}
+				<button
+					class="day"
+					class:selected={sameDay(d, selected)}
+					class:today={sameDay(d, today)}
+					class:wide={sameDay(d, today)}
+					class:near={sameDay(d, yesterday) || sameDay(d, tomorrow)}
+					type="button"
+					onclick={() => {
+						if (dragMoved) return;
+						selected = d;
+						if (sameDay(d, today)) snapStrip(true);
+					}}
+				>
+					<span class="dow">{dayDow(d)}</span>
+					<span class="num">{sameDay(d, today) ? 'Today' : d.getDate()}</span>
+				</button>
+			{/each}
 		</div>
 
 		{#if showActivity}
 			<div
 				class="spark"
 				bind:this={sparkEl}
-				onpointerdown={sparkPointerDown}
+				onpointerdown={(e) => sparkEl && dragScroll(sparkEl, e)}
 				onwheel={sparkWheel}
 				onscroll={sparkScroll}
 				role="presentation"
@@ -465,17 +586,27 @@
 		{/if}
 
 		<div class="controls">
-			<button
-				class="nav-year"
-				class:pinned={!atPresent}
-				type="button"
-				aria-label="Jump to date"
-				onclick={(e) => openPicker(e.currentTarget)}
-				>{selected.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</button
-			>
-			{#if !atPresent}
-				<span class="nav-sep">·</span>
-				<button class="return-present" type="button" onclick={returnToPresent}>Today</button>
+			<span class="util" bind:clientWidth={utilW}>
+				<button
+					class="nav-year"
+					class:pinned={!atPresent}
+					type="button"
+					aria-label="Jump to date"
+					onclick={(e) => openPicker(e.currentTarget)}
+					>{headerDate.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</button
+				>
+				{#if !atPresent}
+					<span class="nav-sep">·</span>
+					<button class="return-present" type="button" onclick={returnToPresent}>Today</button>
+				{/if}
+			</span>
+			{#if monthMarker}
+				<span
+					class="month-marker"
+					class:pinned={!atPresent}
+					style="left: {monthMarker.x}px; --fade: {monthMarker.fade}"
+					>{monthMarker.label}</span
+				>
 			{/if}
 			<button
 				class="ctl opt"
@@ -617,6 +748,10 @@
 		min-height: 0;
 	}
 
+	.journal.flow .entry {
+		min-height: calc(100vh - 180px);
+	}
+
 	.entry-empty {
 		display: flex;
 		flex-direction: column;
@@ -652,31 +787,39 @@
 		cursor: default;
 	}
 
-	.strip {
+	.controls {
 		position: relative;
+		display: flex;
+		align-items: center;
+		padding-top: 4px;
 	}
 
-	.nav-left,
-	.nav-right {
+	.util {
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.month-marker {
 		position: absolute;
-		top: 0;
-		bottom: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		display: inline-flex;
+		align-items: center;
+		height: 15px;
+		margin-top: 2px;
+		padding-left: 7px;
+		border-left: 1px solid var(--color-ui-muted);
+		font-size: 11px;
+		color: var(--color-ui-muted);
+		white-space: nowrap;
+		pointer-events: none;
 		opacity: 0;
 		transition: opacity 120ms ease;
 	}
 
-	.nav-left {
-		left: -20px;
-	}
-
-	.nav-right {
-		right: -20px;
-	}
-
-	.controls {
-		display: flex;
-		align-items: center;
-		padding-top: 4px;
+	.month-marker.pinned,
+	.day-nav:hover .month-marker {
+		opacity: var(--fade, 1);
 	}
 
 	.controls .ctl {
@@ -730,8 +873,6 @@
 		color: var(--color-text-secondary);
 	}
 
-	.day-nav:hover .nav-left,
-	.day-nav:hover .nav-right,
 	.day-nav:hover .nav-year,
 	.day-nav:hover .controls .ctl {
 		opacity: 1;
@@ -753,18 +894,40 @@
 	}
 
 	.days {
-		flex: 1;
-		min-width: 0;
 		display: flex;
-		gap: 16px;
-		border-radius: 4px;
+		gap: 12px;
+		overflow-x: auto;
+		scrollbar-width: none;
+		touch-action: none;
+		user-select: none;
+		-webkit-mask-image: linear-gradient(
+			to right,
+			transparent,
+			#000 6px,
+			#000 calc(100% - 6px),
+			transparent
+		);
+		mask-image: linear-gradient(
+			to right,
+			transparent,
+			#000 6px,
+			#000 calc(100% - 6px),
+			transparent
+		);
+	}
+
+	.day:first-child {
+		margin-left: auto;
+	}
+
+	.days::-webkit-scrollbar {
+		display: none;
 	}
 
 	.day {
 		position: relative;
-		flex: 1 1 84px;
-		min-width: 64px;
-		max-width: 120px;
+		flex: none;
+		width: 46px;
 		height: 42px;
 		display: flex;
 		flex-direction: column;
@@ -776,22 +939,13 @@
 		cursor: pointer;
 	}
 
-	.day.wide {
-		flex: 0 1 140px;
-		min-width: 110px;
-		max-width: none;
+	.day.near {
+		width: auto;
+		padding: 0 10px;
 	}
 
-	.day:not(:first-child)::before {
-		content: '';
-		position: absolute;
-		left: -8px;
-		top: 50%;
-		transform: translateY(-50%);
-		width: 1px;
-		height: 18px;
-		border-radius: 999px;
-		background: var(--color-border);
+	.day.wide {
+		width: 140px;
 	}
 
 	.dow {
@@ -807,25 +961,21 @@
 		color: var(--color-text-primary);
 	}
 
-	.day.has-entry::after {
-		content: '';
-		position: absolute;
-		bottom: 1px;
-		left: 50%;
-		transform: translateX(-50%);
-		width: 18px;
-		height: 2px;
-		border-radius: 999px;
+	.day.selected {
 		background: var(--color-accent);
+		border-radius: 6px;
 	}
 
-	.day.selected {
-		background: var(--chip-bg);
-		border-radius: 6px;
+	.day.selected .dow {
+		color: rgba(255, 255, 255, 0.72);
+	}
+
+	.day.selected .num {
+		color: #fff;
 	}
 
 	.day:not(.selected):hover {
 		border-radius: 6px;
-		box-shadow: inset 0 0 0 1px var(--color-border);
+		background: var(--chip-bg);
 	}
 </style>

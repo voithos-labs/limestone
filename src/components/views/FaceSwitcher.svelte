@@ -181,6 +181,7 @@
 				confirmFor = null;
 				renamingId = null;
 				groupOpen = false;
+				addFaceOpen = false;
 			});
 			queueMicrotask(position);
 			window.addEventListener('resize', position);

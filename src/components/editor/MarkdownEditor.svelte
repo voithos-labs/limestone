@@ -70,18 +70,19 @@
 	const THUMB_INSET_PX = 8;
 
 	function startThumbDrag(e: PointerEvent) {
-		if (!view) return;
+		if (!scrollEl) return;
 		e.preventDefault();
+		const el = scrollEl;
 		const startY = e.clientY;
-		const startScroll = view.scrollDOM.scrollTop;
-		const viewH = view.scrollDOM.clientHeight;
-		const maxScroll = view.scrollDOM.scrollHeight - viewH;
+		const startScroll = el.scrollTop;
+		const viewH = el.clientHeight;
+		const maxScroll = el.scrollHeight - viewH;
 		const trackRange = viewH - 2 * THUMB_INSET_PX - thumbHeight;
 		if (trackRange <= 0 || maxScroll <= 0) return;
 		const ratio = maxScroll / trackRange;
 
 		function onMove(ev: PointerEvent) {
-			view.scrollDOM.scrollTop = startScroll + (ev.clientY - startY) * ratio;
+			el.scrollTop = startScroll + (ev.clientY - startY) * ratio;
 		}
 		function onUp() {
 			window.removeEventListener('pointermove', onMove);
@@ -92,8 +93,8 @@
 	}
 
 	function updateThumb() {
-		if (!view) return;
-		const scroll = view.scrollDOM;
+		if (!scrollEl) return;
+		const scroll = scrollEl;
 		const viewH = scroll.clientHeight;
 		const contentH = scroll.scrollHeight;
 		const maxScroll = contentH - viewH;
@@ -115,6 +116,7 @@
 	}
 
 	let container: HTMLDivElement;
+	let scrollEl: HTMLDivElement;
 	let view: EditorView;
 	let internalUpdate = false;
 	let initApplied = false;
@@ -134,7 +136,7 @@
 
 	const theme = EditorView.theme({
 		'&': {
-			height: initFlow ? 'auto' : '100%',
+			height: 'auto',
 			fontSize: 'var(--editor-font-size, 16px)',
 			backgroundColor: 'transparent'
 		},
@@ -150,7 +152,7 @@
 			borderLeftColor: 'var(--color-text-primary)'
 		},
 		'.cm-scroller': {
-			overflow: initFlow ? 'visible' : 'auto',
+			overflow: 'visible',
 			scrollbarWidth: 'none'
 		},
 		'.cm-scroller::-webkit-scrollbar': {
@@ -512,10 +514,11 @@
 			parent: container
 		});
 
-		view.scrollDOM.addEventListener('scroll', handleScroll);
+		scrollEl.addEventListener('scroll', handleScroll);
 
 		resizeObserver = new ResizeObserver(() => updateThumb());
-		resizeObserver.observe(view.scrollDOM);
+		resizeObserver.observe(scrollEl);
+		resizeObserver.observe(container);
 		updateThumb();
 	});
 
@@ -528,7 +531,15 @@
 		updateThumb();
 
 		if (!initApplied) return;
-		tab.state.scrollTop = view.scrollDOM.scrollTop;
+		tab.state.scrollTop = scrollEl.scrollTop;
+	}
+
+	function bgMouseDown(e: MouseEvent) {
+		if (flow || !view) return;
+		if (e.target !== scrollEl && e.target !== container) return;
+		e.preventDefault();
+		view.dispatch({ selection: { anchor: view.state.doc.length } });
+		view.focus();
 	}
 
 	$effect(() => {
@@ -548,8 +559,8 @@
 					const pos = Math.min(initialCursorPos, view.state.doc.length);
 					view.dispatch({ selection: { anchor: pos } });
 				}
-				if (initialScrollTop !== undefined) {
-					view.scrollDOM.scrollTop = initialScrollTop;
+				if (initialScrollTop !== undefined && scrollEl) {
+					scrollEl.scrollTop = initialScrollTop;
 				}
 				if (!flow) view.focus();
 				initApplied = true;
@@ -562,34 +573,31 @@
 		if (saveTimer) flushSave();
 		if (scrollHideTimer) clearTimeout(scrollHideTimer);
 		resizeObserver?.disconnect();
-		view?.scrollDOM.removeEventListener('scroll', handleScroll);
+		scrollEl?.removeEventListener('scroll', handleScroll);
 		view?.destroy();
 	});
 </script>
 
 <div class="doc-view" class:flow>
-	{#if handle}
-		<DocumentHero {handle} onDelete={deleteDoc} compact={flow} />
-	{/if}
-	<div
-		class="cm-wrapper"
-		class:scrolling
-		class:flow
-		bind:this={container}
-		style="--editor-font-size: {zoom}px"
-	>
-		{#if showThumb}
-			<div
-				class="scroll-thumb"
-				style="height: {thumbHeight}px; transform: translateY({thumbTop}px);"
-				onpointerdown={startThumbDrag}
-			></div>
+	<div class="doc-scroll" class:flow bind:this={scrollEl} onmousedown={bgMouseDown} role="presentation">
+		{#if handle}
+			<DocumentHero {handle} onDelete={deleteDoc} compact={flow} />
 		{/if}
+		<div class="cm-wrapper" class:flow bind:this={container} style="--editor-font-size: {zoom}px"></div>
 	</div>
+	{#if showThumb && !flow}
+		<div
+			class="scroll-thumb"
+			class:scrolling
+			style="height: {thumbHeight}px; transform: translateY({thumbTop}px);"
+			onpointerdown={startThumbDrag}
+		></div>
+	{/if}
 </div>
 
 <style>
 	.doc-view {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		width: 100%;
@@ -599,56 +607,46 @@
 		margin-right: auto;
 	}
 
-	.cm-wrapper {
-		position: relative;
-		width: 100%;
-		flex: 1;
-		min-height: 0;
-	}
-
 	.doc-view.flow {
 		height: auto;
 	}
 
-	.cm-wrapper.flow {
-		flex: none;
+	.doc-scroll {
+		flex: 1;
 		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow-y: auto;
+		scrollbar-width: none;
 	}
 
-	.cm-wrapper.flow :global(.cm-editor) {
-		height: auto;
-	}
-
-	.cm-wrapper.flow::before,
-	.cm-wrapper.flow::after {
+	.doc-scroll::-webkit-scrollbar {
 		display: none;
 	}
 
-	.cm-wrapper::before,
-	.cm-wrapper::after {
-		content: '';
-		position: absolute;
-		left: 0;
-		right: 0;
-		height: 24px;
-		pointer-events: none;
-		z-index: 1;
+	.doc-scroll.flow {
+		flex: none;
+		display: block;
+		overflow: visible;
 	}
 
-	.cm-wrapper::before {
-		top: 0;
-		background: linear-gradient(to bottom, var(--color-surface), transparent);
-		border-radius: 8px 8px 0 0;
+	.cm-wrapper {
+		position: relative;
+		width: 100%;
+		flex: 1 0 auto;
 	}
 
-	.cm-wrapper::after {
-		bottom: 0;
-		background: linear-gradient(to top, var(--color-surface), transparent);
-		border-radius: 0 0 8px 8px;
+	.cm-wrapper.flow {
+		flex: none;
+	}
+
+	.doc-view:not(.flow) .doc-scroll {
+		margin: 2px;
+		border-radius: 6px;
 	}
 
 	.cm-wrapper :global(.cm-editor) {
-		height: 100%;
+		height: auto;
 		outline: none;
 	}
 
@@ -698,7 +696,7 @@
 			width 350ms ease;
 	}
 
-	.cm-wrapper.scrolling .scroll-thumb::before,
+	.scroll-thumb.scrolling::before,
 	.scroll-thumb:hover::before {
 		width: 4px;
 		background: var(--color-ui-muted);

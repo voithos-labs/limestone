@@ -8,7 +8,7 @@
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import Menu from './views/Menu.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
-	import { Hash, EllipsisVertical, Trash2, Folders } from '@lucide/svelte';
+	import { Hash, EllipsisVertical, Trash2, Folders, Plus } from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';
 
 	let {
@@ -20,8 +20,47 @@
 	let title = $state(untrack(() => handle.title));
 	let relPath = $state(untrack(() => handle.relPath));
 	let source = $state<Source>(untrack(() => handle.source));
-	let folders: Group[] = $state([]);
+	let allGroups: Group[] = $state([]);
 	let sources: Source[] = $state([]);
+	let tagList: Group[] = $state(untrack(() => handle.tags));
+
+	const folders = $derived(allGroups.filter((g) => g.groupType === GroupType.Folder));
+
+	let tagMenuOpen = $state(false);
+	let tagAnchor: HTMLElement | null = $state(null);
+
+	const tagItems = $derived(
+		allGroups
+			.filter((g) => g.groupType === GroupType.Tag)
+			.map((g) => ({ value: g.id, label: g.slug, icon: Hash }))
+	);
+
+	async function createTag(q: string) {
+		const slug = q.trim();
+		if (!slug || tagList.some((t) => t.slug === slug)) return;
+		try {
+			await handle.setTags([...tagList.map((t) => t.slug), slug]);
+			tagList = handle.tags;
+			allGroups = await Group.list();
+		} catch (e) {
+			console.error('create tag failed', e);
+		}
+	}
+
+	async function toggleTag(id: string) {
+		const has = tagList.some((t) => t.id === id);
+		const next = has
+			? tagList.filter((t) => t.id !== id)
+			: [...tagList, allGroups.find((g) => g.id === id)!].filter(Boolean);
+		tagList = next;
+		try {
+			await handle.setTags(next.map((t) => t.slug));
+			tagList = handle.tags;
+		} catch (e) {
+			console.error('set tags failed', e);
+			tagList = handle.tags;
+		}
+	}
 
 	const ext = $derived(relPath.match(/\.[^.]+$/)?.[0] ?? '.md');
 	const srcName = $derived(sourceName(source));
@@ -133,7 +172,7 @@
 				source = target;
 			}
 			relPath = newRel;
-			folders = (await Group.list()).filter((g) => g.groupType === GroupType.Folder);
+			allGroups = await Group.list();
 		} catch (e) {
 			console.error('move failed', e);
 		}
@@ -152,7 +191,7 @@
 
 	onMount(() => {
 		Group.list()
-			.then((gs) => (folders = gs.filter((g) => g.groupType === GroupType.Folder)))
+			.then((gs) => (allGroups = gs))
 			.catch(() => {});
 		listSources()
 			.then((ss) => (sources = ss))
@@ -214,17 +253,25 @@
 					{/if}
 				</button>
 			</span>
+			{#if source.use_frontmatter}
+				<button
+					class="tags-chip"
+					bind:this={tagAnchor}
+					title="Edit tags"
+					onclick={() => (tagMenuOpen = !tagMenuOpen)}
+				>
+					{#if tagList.length}
+						{#each tagList as t (t.id)}
+							<span class="tag"><Hash size={11} />{t.slug}</span>
+						{/each}
+					{:else}
+						<span class="add-tags"><Plus size={11} />tags</span>
+					{/if}
+				</button>
+			{/if}
 			<span class="meta-dot">·</span>
 			<span class="meta-date">Updated {formatDateFriendly(handle.updatedAt)}</span>
 		</div>
-
-		{#if handle.tags.length}
-			<div class="tags">
-				{#each handle.tags as t (t.id)}
-					<span class="tag"><Hash size={11} />{t.slug}</span>
-				{/each}
-			</div>
-		{/if}
 	</div>
 </div>
 
@@ -251,6 +298,18 @@
 	sourceId={pendingSource?.id}
 	rootOption
 	onChange={onPickFolder}
+/>
+<Menu
+	bind:open={tagMenuOpen}
+	anchor={tagAnchor}
+	items={tagItems}
+	multiple
+	selectedValues={tagList.map((t) => t.id)}
+	onSelect={toggleTag}
+	onCreate={createTag}
+	searchable
+	placeholder="Search or create…"
+	minWidth={180}
 />
 
 <style>
@@ -429,11 +488,33 @@
 	}
 
 	/* ── Tags ── */
-	.tags {
-		display: flex;
+	.tags-chip {
+		display: inline-flex;
+		align-items: center;
 		flex-wrap: wrap;
 		gap: 6px;
-		margin-top: 12px;
+		min-width: 0;
+		padding: 0;
+		border: none;
+		background: transparent;
+		cursor: pointer;
+	}
+
+	.add-tags {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		padding: 2px 9px 2px 6px;
+		border-radius: 999px;
+		border: 1px dashed var(--color-border);
+		color: var(--color-ui-muted);
+		font-family: var(--font-ui);
+		font-size: 11px;
+	}
+
+	.tags-chip:hover .add-tags {
+		color: var(--color-text-secondary);
+		border-color: var(--color-ui-muted);
 	}
 
 	.tag {
