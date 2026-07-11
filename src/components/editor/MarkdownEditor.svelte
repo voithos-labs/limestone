@@ -640,27 +640,9 @@
 		flex: none;
 	}
 
-	.doc-view:not(.flow)::before,
-	.doc-view:not(.flow)::after {
-		content: '';
-		position: absolute;
-		left: 0;
-		right: 0;
-		height: 24px;
-		pointer-events: none;
-		z-index: 1;
-	}
-
-	.doc-view:not(.flow)::before {
-		top: 0;
-		background: linear-gradient(to bottom, var(--color-surface), transparent);
-		border-radius: 8px 8px 0 0;
-	}
-
-	.doc-view:not(.flow)::after {
-		bottom: 0;
-		background: linear-gradient(to top, var(--color-surface), transparent);
-		border-radius: 0 0 8px 8px;
+	.doc-view:not(.flow) .doc-scroll {
+		margin: 2px;
+		border-radius: 6px;
 	}
 
 	.cm-wrapper :global(.cm-editor) {

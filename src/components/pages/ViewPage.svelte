@@ -3,6 +3,7 @@
     import type View from '$lib/models/View.svelte';
     import type {ViewFace, FilterLeaf} from '$lib/models/View.svelte';
     import type EditorState from '$lib/models/EditorState.svelte.js';
+    import type {TabState} from '$lib/models/EditorState.svelte.js';
     import {listSources} from '$lib/models/Source';
     import DocHandle from '$lib/models/DocHandle';
     import ViewHeader from '../views/ViewHeader.svelte';
@@ -16,7 +17,7 @@
     import {getSetting} from '$lib/models/Settings';
     import {Crop, X, Check, EllipsisVertical, Trash2, ImageUp, Plus} from '@lucide/svelte';
 
-    let {view, editor}: { view: View; editor: EditorState } = $props();
+    let {view, tab, editor}: { view: View; tab?: TabState; editor: EditorState } = $props();
 
     let scrollAll = $state(true);
     getSetting<boolean>('views.scroll_entire_view').then((v) => {
@@ -30,9 +31,34 @@
     // The table keeps its own scroll (horizontal bar + sticky header)
     const bodyFlow = $derived(scrollAll && activeFace?.type !== 'table');
     let bodyEl: HTMLDivElement | null = $state(null);
+
+    let faceInit = false;
     $effect(() => {
         const id = activeFace?.id;
-        if (id && bodyEl) bodyEl.scrollTop = 0;
+        if (!id || !bodyEl) return;
+        if (!faceInit) {
+            faceInit = true;
+            return;
+        }
+        bodyEl.scrollTop = 0;
+        if (tab) tab.state.scrollTop = 0;
+    });
+
+    function bodyScroll() {
+        if (tab && bodyEl) tab.state.scrollTop = bodyEl.scrollTop;
+    }
+
+    let didRestoreScroll = false;
+    $effect(() => {
+        if (!bodyEl || didRestoreScroll) return;
+        didRestoreScroll = true;
+        const el = bodyEl;
+        const st = tab?.state.scrollTop;
+        if (typeof st === 'number' && st > 0) {
+            requestAnimationFrame(() => {
+                el.scrollTop = st;
+            });
+        }
     });
 
     const FB_SNAP_TOP = 20;
@@ -244,7 +270,13 @@
             </button>
         </div>
     {:else}
-        <div class="view-body" class:flow={bodyFlow} bind:this={bodyEl} onwheel={queueFilterBarSnap}>
+        <div
+                class="view-body"
+                class:flow={bodyFlow}
+                bind:this={bodyEl}
+                onwheel={queueFilterBarSnap}
+                onscroll={bodyScroll}
+        >
             {#if coverUrl}
                 <div
                         class="view-cover"
@@ -346,6 +378,7 @@
         overflow: hidden;
     }
 
+
     .source-removed {
         display: flex;
         flex-direction: column;
@@ -387,6 +420,12 @@
         min-height: 0;
         display: flex;
         flex-direction: column;
+        margin: 2px;
+        border-radius: 6px;
+    }
+
+    .view-body:not(.flow) {
+        overflow: hidden;
     }
 
     .view-body.flow {
