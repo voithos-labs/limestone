@@ -1,10 +1,11 @@
 # LIMESTONE (V4 (fml))
 
-<img width="989" height="881" alt="image" src="https://github.com/user-attachments/assets/9eb07a0a-72c6-4cbe-95b8-44bffa89a59b" />
+<img width="930" height="730" alt="image" src="https://github.com/user-attachments/assets/fb850cdb-06c6-482d-b692-fc619e7b0ae8" />
+
 
 ## Dev Commands
 
-Run dev app
+Run dev app ( you may need to install deps first, e.g. `npm i` )
 
 ```bash
 npm run tauri dev
