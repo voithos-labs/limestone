@@ -35,6 +35,24 @@
         if (id && bodyEl) bodyEl.scrollTop = 0;
     });
 
+    const FB_SNAP_TOP = 20;
+    const FB_SNAP_ZONE = 40;
+    let fbSnapTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function snapFilterBar() {
+        if (!bodyFlow || !view.cover || !bodyEl) return;
+        const fb = bodyEl.querySelector('.filter-bar') as HTMLElement | null;
+        if (!fb) return;
+        const delta = fb.getBoundingClientRect().top - bodyEl.getBoundingClientRect().top - FB_SNAP_TOP;
+        if (delta === 0 || Math.abs(delta) > FB_SNAP_ZONE) return;
+        bodyEl.scrollTo({top: bodyEl.scrollTop + delta, behavior: 'smooth'});
+    }
+
+    function queueFilterBarSnap() {
+        if (fbSnapTimer) clearTimeout(fbSnapTimer);
+        fbSnapTimer = setTimeout(snapFilterBar, 150);
+    }
+
     // Bumped by the header's "+ New" button; the active face watches it and begins
     // a create in whatever way fits its layout (table = floating draft row at top).
     let createSignal = $state(0);
@@ -118,6 +136,7 @@
     });
 
     onDestroy(() => {
+        if (fbSnapTimer) clearTimeout(fbSnapTimer);
         if (saveTimer && !view.temporary) view.save().catch(() => {
         });
     });
@@ -225,7 +244,7 @@
             </button>
         </div>
     {:else}
-        <div class="view-body" class:flow={bodyFlow} bind:this={bodyEl}>
+        <div class="view-body" class:flow={bodyFlow} bind:this={bodyEl} onwheel={queueFilterBarSnap}>
             {#if coverUrl}
                 <div
                         class="view-cover"
@@ -410,6 +429,7 @@
     .view-chrome.has-cover {
         padding-top: 0;
     }
+
 
     .view-cover {
         position: relative;
