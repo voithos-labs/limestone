@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Check, Search, ChevronRight } from '@lucide/svelte';
+	import { Check, Search, ChevronRight, Plus } from '@lucide/svelte';
 	import type { MenuItem, MenuEntry } from '$lib/views/menuTypes';
 	import { isMenuItem as isItem } from '$lib/views/menuTypes';
 	import Menu from './Menu.svelte';
@@ -13,6 +13,7 @@
 		selectedValues = [],
 		multiple = false,
 		onSelect,
+		onCreate,
 		minWidth = 160,
 		searchable = false,
 		placeholder = 'Search…',
@@ -26,6 +27,7 @@
 		selectedValues?: string[];
 		multiple?: boolean;
 		onSelect: (value: string) => void;
+		onCreate?: (query: string) => void;
 		minWidth?: number;
 		searchable?: boolean;
 		placeholder?: string;
@@ -58,6 +60,24 @@
 	);
 
 	const actionable = $derived(filtered.filter(isItem));
+
+	const showCreate = $derived(
+		searchable &&
+			!!onCreate &&
+			query.trim() !== '' &&
+			!items.some(
+				(i) => isItem(i) && i.label.toLowerCase() === query.trim().toLowerCase()
+			)
+	);
+	const navCount = $derived(actionable.length + (showCreate ? 1 : 0));
+
+	function doCreate() {
+		const q = query.trim();
+		if (!q) return;
+		onCreate?.(q);
+		query = '';
+		if (!multiple) open = false;
+	}
 
 	function position() {
 		if (!anchor || !menuEl) return;
@@ -105,14 +125,17 @@
 			return;
 		}
 		if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
-			activeIndex = actionable.length === 0 ? -1 : (activeIndex + 1) % actionable.length;
+			activeIndex = navCount === 0 ? -1 : (activeIndex + 1) % navCount;
 			e.preventDefault();
 		} else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
-			activeIndex =
-				actionable.length === 0 ? -1 : (activeIndex - 1 + actionable.length) % actionable.length;
+			activeIndex = navCount === 0 ? -1 : (activeIndex - 1 + navCount) % navCount;
 			e.preventDefault();
-		} else if (e.key === 'Enter' && activeIndex >= 0 && actionable[activeIndex]) {
-			activate(actionable[activeIndex], activeRowEl());
+		} else if (e.key === 'Enter') {
+			if (activeIndex >= 0 && actionable[activeIndex]) {
+				activate(actionable[activeIndex], activeRowEl());
+			} else if (showCreate && activeIndex === actionable.length) {
+				doCreate();
+			}
 			e.preventDefault();
 		}
 	}
@@ -159,7 +182,7 @@
 		if (open) {
 			queueMicrotask(position);
 			untrack(() => {
-				if (actionable.length > 0 && (activeIndex < 0 || activeIndex >= actionable.length)) {
+				if (navCount > 0 && (activeIndex < 0 || activeIndex >= navCount)) {
 					activeIndex = 0;
 				}
 			});
@@ -252,8 +275,27 @@
 					<div class="menu-divider" role="separator"></div>
 				{/if}
 			{:else}
-				<div class="empty">No results</div>
+				{#if !showCreate}
+					<div class="empty">No results</div>
+				{/if}
 			{/each}
+			{#if showCreate}
+				<button
+					class="menu-item"
+					class:active={activeIndex === actionable.length}
+					type="button"
+					role="menuitem"
+					tabindex="-1"
+					onclick={doCreate}
+					onmouseenter={() => {
+						activeIndex = actionable.length;
+						subOpen = false;
+					}}
+				>
+					<span class="item-icon"><Plus size={13} strokeWidth={1.75} /></span>
+					<span class="item-label">Create "{query.trim()}"</span>
+				</button>
+			{/if}
 		</div>
 
 		<Menu

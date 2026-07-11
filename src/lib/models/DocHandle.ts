@@ -139,19 +139,11 @@ class DocHandle {
 			[id]
 		);
 		if (!row) throw new Error(`Document not found: ${id}`);
-		const doc = new DocHandle(row, {
-			id: row.source_id,
-			title: row.source_title,
-			path: row.source_path,
-			created_at: '',
-			accessed_at: '',
-			use_frontmatter: true,
-			note_location: '',
-			asset_location: 'assets',
-			ignore: []
-		});
+		const source = await getSource(row.source_id);
+		const doc = new DocHandle(row, source);
 		const groups: GroupRow[] = row.groups_json ? JSON.parse(row.groups_json) : [];
 		doc.groups = groups.filter((r) => r.id !== null).map((r) => new Group(r));
+		if (!source.use_frontmatter) doc.groups = doc.groups.filter((g) => g.groupType !== 'tag');
 		return doc;
 	}
 
