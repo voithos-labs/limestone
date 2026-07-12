@@ -793,8 +793,7 @@ pub(crate) async fn sync_tags(
     for tag in tags {
         // Upsert tag group (global)
         sqlx::query(
-            "INSERT INTO groups (id, slug, group_type) VALUES (?1, ?2, 'tag')
-             ON CONFLICT(slug, group_type) DO NOTHING",
+            "INSERT OR IGNORE INTO groups (id, slug, group_type) VALUES (?1, ?2, 'tag')",
         )
         .bind(tag_group_id(tag))
         .bind(tag)

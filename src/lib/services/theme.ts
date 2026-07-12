@@ -90,6 +90,25 @@ export const DEFAULT_LIGHT_TRANSPARENT: Theme = {
 	}
 };
 
+export const SOFT_DARK: Theme = {
+	name: 'Soft Dark',
+	type: 'dark',
+	variables: {
+		'color-bg': '#1a1a19',
+		'color-surface': '#2c2c2a',
+		'color-border': '#3e3e3b',
+		'color-text-primary': '#e8e8e5',
+		'color-text-secondary': '#cfcfca',
+		'color-ui-dulled': '#a3a39d',
+		'color-ui-muted': '#8f8f89',
+		'color-accent': '#567B67',
+		'color-accent-primary': '#567B67',
+		'color-error': '#ff5f57',
+		'radius-ui': '4px',
+		'radius-surface': '8px'
+	}
+};
+
 export const DARK_EARTH: Theme = {
 	name: 'Dark Earth',
 	type: 'dark',
@@ -139,6 +158,7 @@ export const DEFAULT_THEME = DEFAULT_DARK;
 export const BUILTIN_THEMES: Record<string, Theme> = {
 	'default-dark': DEFAULT_DARK,
 	'default-dark-transparent': DEFAULT_DARK_TRANSPARENT,
+	'soft-dark': SOFT_DARK,
 	'dark-earth': DARK_EARTH,
 	'default-light': DEFAULT_LIGHT,
 	'default-light-transparent': DEFAULT_LIGHT_TRANSPARENT,

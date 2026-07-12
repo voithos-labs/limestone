@@ -272,14 +272,16 @@
 
 <header class="view-header" class:has-cover={hasCover}>
 	<div class="title-block" class:on-cover={hasCover}>
-		<button
-			class="view-emoji"
-			bind:this={emojiAnchor}
-			title="Set an emoji"
-			onclick={() => (emojiOpen = !emojiOpen)}
-		>
-			{#if view.emoji}{view.emoji}{:else}<span class="view-emoji-empty">☆</span>{/if}
-		</button>
+		{#if !view.temporary}
+			<button
+				class="view-emoji"
+				bind:this={emojiAnchor}
+				title="Set an emoji"
+				onclick={() => (emojiOpen = !emojiOpen)}
+			>
+				{#if view.emoji}{view.emoji}{:else}<span class="view-emoji-empty">☆</span>{/if}
+			</button>
+		{/if}
 		{#if view.temporary}
 			<h2 class="view-title">{view.slug}</h2>
 		{:else}

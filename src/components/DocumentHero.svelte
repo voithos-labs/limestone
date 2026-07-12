@@ -254,8 +254,10 @@
 				</button>
 			</span>
 			{#if source.use_frontmatter}
+				<span class="meta-div"></span>
 				<button
 					class="tags-chip"
+					class:has-tags={tagList.length > 0}
 					bind:this={tagAnchor}
 					title="Edit tags"
 					onclick={() => (tagMenuOpen = !tagMenuOpen)}
@@ -265,11 +267,11 @@
 							<span class="tag"><Hash size={11} />{t.slug}</span>
 						{/each}
 					{:else}
-						<span class="add-tags"><Plus size={11} />tags</span>
+						<span class="add-tags"><Plus size={11} />tag</span>
 					{/if}
 				</button>
 			{/if}
-			<span class="meta-dot">·</span>
+			<span class="meta-div"></span>
 			<span class="meta-date">Updated {formatDateFriendly(handle.updatedAt)}</span>
 		</div>
 	</div>
@@ -479,8 +481,12 @@
 		opacity: 0.7;
 	}
 
-	.meta-dot {
-		opacity: 0.6;
+	.meta-div {
+		width: 1px;
+		height: 12px;
+		flex-shrink: 0;
+		border-radius: 999px;
+		background: var(--color-border);
 	}
 
 	.meta-date {
@@ -489,6 +495,7 @@
 
 	/* ── Tags ── */
 	.tags-chip {
+		position: relative;
 		display: inline-flex;
 		align-items: center;
 		flex-wrap: wrap;
@@ -500,11 +507,23 @@
 		cursor: pointer;
 	}
 
+	.tags-chip.has-tags:hover::after {
+		content: '';
+		position: absolute;
+		left: 2px;
+		right: 2px;
+		bottom: -3px;
+		height: 1px;
+		border-radius: 999px;
+		background: var(--color-border);
+	}
+
 	.add-tags {
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		padding: 2px 9px 2px 6px;
+		height: 18px;
+		padding: 0 9px 0 6px;
 		border-radius: 999px;
 		border: 1px dashed var(--color-border);
 		color: var(--color-ui-muted);
@@ -521,7 +540,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		padding: 2px 9px 2px 6px;
+		height: 18px;
+		padding: 0 9px 0 6px;
 		border-radius: 999px;
 		background: var(--chip-bg);
 		color: var(--color-ui-dulled);

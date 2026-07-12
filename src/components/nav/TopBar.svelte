@@ -10,7 +10,10 @@
         Library,
         Bookmark,
         ChevronDown,
-        Layers,
+        Cuboid,
+        Hash,
+        Folder,
+        Folders,
         X,
         GripVertical,
         Plus,
@@ -22,6 +25,20 @@
     } from '@lucide/svelte';
     import {getSetting, setSetting} from '$lib/models/Settings';
     import {ctxMenu, type CtxEntry} from '$lib/contextMenu.svelte';
+    import type View from '$lib/models/View.svelte';
+
+    function viewTabIcon(view: View) {
+        const typesById = new Map(view.fields.map((f) => [f.id, f.type]));
+        const scoped = new Set(
+            view.filter.children
+                .filter((n) => 'field_id' in n)
+                .map((n) => typesById.get((n as { field_id: string }).field_id))
+        );
+        if (scoped.has('tags')) return Hash;
+        if (scoped.has('folder')) return Folder;
+        if (scoped.has('source')) return Folders;
+        return Cuboid;
+    }
 
     let {editor}: { editor: EditorState } = $props();
 
@@ -253,7 +270,8 @@
                     {#if d.content.view.emoji}
                         <span class="tab-emoji">{d.content.view.emoji}</span>
                     {:else}
-                        <Layers size={13}/>
+                        {@const TabIcon = viewTabIcon(d.content.view)}
+                        <TabIcon size={13}/>
                     {/if}
                 {:else if d.content.type === 'new'}
                     <TextSearch size={13}/>

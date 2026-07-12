@@ -314,7 +314,10 @@ class DocHandle {
 			if (created_at) this.createdAt = new Date(created_at);
 			if (updated_at) this.updatedAt = new Date(updated_at);
 			this.properties = remaining;
-			this.groups = await Group.fromSlugs(tags, this.source.id);
+			this.groups = [
+				...this.groups.filter((g) => g.groupType !== 'tag'),
+				...(await Group.fromSlugs(tags))
+			];
 		}
 
 		// update accessed_at
@@ -351,7 +354,10 @@ class DocHandle {
 		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
 		this.properties = remaining;
 		if (created_at) this.createdAt = new Date(created_at);
-		this.groups = await Group.fromSlugs(tags, this.source.id);
+		this.groups = [
+			...this.groups.filter((g) => g.groupType !== 'tag'),
+			...(await Group.fromSlugs(tags))
+		];
 	}
 
 	async saveContent(body: string): Promise<void> {

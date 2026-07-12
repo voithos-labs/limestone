@@ -154,12 +154,12 @@ class Group {
 		this.updatedAt = new Date(now);
 	}
 
-	static async fromSlugs(slugs: string[], sourceId: string): Promise<Group[]> {
+	static async fromSlugs(slugs: string[]): Promise<Group[]> {
 		if (slugs.length === 0) return [];
-		const placeholders = slugs.map((_, i) => `?${i + 2}`).join(', ');
+		const placeholders = slugs.map((_, i) => `?${i + 1}`).join(', ');
 		const rows = await select<GroupRow>(
-			`SELECT * FROM groups WHERE source_id = ?1 AND slug IN (${placeholders})`,
-			[sourceId, ...slugs]
+			`SELECT * FROM groups WHERE source_id IS NULL AND group_type = 'tag' AND slug IN (${placeholders})`,
+			slugs
 		);
 		return rows.map((r) => new Group(r));
 	}
