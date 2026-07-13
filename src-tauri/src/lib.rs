@@ -19,6 +19,7 @@ pub async fn create_pool(
         .fetch_one(&pool)
         .await?;
     if version != SCHEMA_VERSION {
+        // rebuild db on schema version change
         sqlx::raw_sql(
             "DROP TABLE IF EXISTS document_groups;
              DROP TABLE IF EXISTS documents;
@@ -49,6 +50,45 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .register_uri_scheme_protocol("appasset", |ctx, request| {
+            let not_found = || {
+                tauri::http::Response::builder()
+                    .status(404)
+                    .body(Vec::new())
+                    .unwrap()
+            };
+            let name = request.uri().path().trim_start_matches('/');
+            if name.is_empty() || name.contains(['/', '\\', '%']) || name.contains("..") {
+                return not_found();
+            }
+            let Ok(dir) = ctx.app_handle().path().app_data_dir() else {
+                return not_found();
+            };
+            let file = dir.join("assets").join(name);
+            let Ok(bytes) = std::fs::read(&file) else {
+                return not_found();
+            };
+            let mime = match file
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_ascii_lowercase())
+                .as_deref()
+            {
+                Some("png") => "image/png",
+                Some("jpg") | Some("jpeg") => "image/jpeg",
+                Some("webp") => "image/webp",
+                Some("gif") => "image/gif",
+                Some("avif") => "image/avif",
+                Some("svg") => "image/svg+xml",
+                _ => "application/octet-stream",
+            };
+            tauri::http::Response::builder()
+                .status(200)
+                .header("Content-Type", mime)
+                .header("Cache-Control", "public, max-age=31536000, immutable")
+                .body(bytes)
+                .unwrap()
+        })
         .setup(move |app| {
             // ── Blocking Shi ─────────────────────────────────────────────────────────
 

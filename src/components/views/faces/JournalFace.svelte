@@ -83,8 +83,17 @@
 	}
 
 	async function loadRows() {
+		const perfT0 = performance.now();
 		try {
 			rows = await view.getMembers({ face, limit: 5000 });
+			const perfQuery = performance.now();
+			requestAnimationFrame(() =>
+				requestAnimationFrame(() => {
+					console.log(
+						`[perf] JournalFace load: query ${(perfQuery - perfT0).toFixed(1)}ms, render ${(performance.now() - perfQuery).toFixed(1)}ms, rows ${rows.length}`
+					);
+				})
+			);
 		} catch (e) {
 			console.error('journal load failed', e);
 		}
@@ -824,7 +833,7 @@
 	.doc-pick {
 		position: absolute;
 		top: 15px;
-		left: -26px;
+		left: -23px;
 		z-index: 2;
 		display: inline-flex;
 		align-items: center;
@@ -843,7 +852,7 @@
 
 	.journal:not(.flow) .doc-pick {
 		top: 39px;
-		left: 0;
+		left: 3px;
 	}
 
 	.entry:hover .doc-pick,
