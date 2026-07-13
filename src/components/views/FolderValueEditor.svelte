@@ -6,12 +6,25 @@
 	import { listSources, sourceName } from '$lib/models/Source';
 	import { folderPath } from '$lib/views/createDefaults';
 
+	type FolderNode = {
+		id: string;
+		slug: string;
+		parentGroupId?: string;
+		sourceId?: string;
+		accessedAt: Date;
+		touch?: () => Promise<void>;
+	};
+
 	let {
 		open = $bindable(false),
 		anchor,
 		value,
 		sourceId,
 		rootOption = false,
+		rootLabel,
+		placement = 'auto',
+		loadFolders,
+		onCreateFolder,
 		onChange
 	}: {
 		open: boolean;
@@ -19,6 +32,13 @@
 		value: string | null;
 		sourceId?: string;
 		rootOption?: boolean;
+		rootLabel?: string;
+		placement?: 'auto' | 'below';
+		loadFolders?: () => Promise<FolderNode[]>;
+		onCreateFolder?: (
+			name: string,
+			parent: { id: string; path: string } | null
+		) => Promise<FolderNode>;
 		onChange: (id: string, path?: string) => void;
 	} = $props();
 
@@ -27,7 +47,7 @@
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
 	let maxH = $state(window.innerHeight - 16);
 
-	let folders: Group[] = $state([]);
+	let folders: FolderNode[] = $state([]);
 	let sourceNames: Map<string, string> = $state(new Map());
 	let loadError = $state('');
 	let query = $state('');
@@ -38,7 +58,7 @@
 	const byId = $derived(new Map(scoped.map((f) => [f.id, f])));
 
 	const childrenByParent = $derived.by(() => {
-		const map = new Map<string | null, Group[]>();
+		const map = new Map<string | null, FolderNode[]>();
 		for (const f of scoped) {
 			const key = f.parentGroupId ?? null;
 			const list = map.get(key) ?? [];
@@ -56,7 +76,7 @@
 	const focusFolder = $derived(focusId ? byId.get(focusId) : undefined);
 
 	const focusChain = $derived.by(() => {
-		const chain: Group[] = [];
+		const chain: FolderNode[] = [];
 		let f = focusFolder;
 		let guard = 0;
 		while (f && guard++ < 32) {
@@ -77,22 +97,22 @@
 	});
 
 	const searchMatches = $derived.by(() => {
-		if (!searching) return [] as Group[];
+		if (!searching) return [] as FolderNode[];
 		const q = query.trim().toLowerCase();
-		const prefix: Group[] = [];
-		const rest: Group[] = [];
+		const prefix: FolderNode[] = [];
+		const rest: FolderNode[] = [];
 		for (const f of scoped) {
 			const s = f.slug.toLowerCase();
 			if (s.startsWith(q)) prefix.push(f);
 			else if (s.includes(q)) rest.push(f);
 		}
-		const bySlug = (a: Group, b: Group) => a.slug.localeCompare(b.slug);
+		const bySlug = (a: FolderNode, b: FolderNode) => a.slug.localeCompare(b.slug);
 		return [...prefix.sort(bySlug), ...rest.sort(bySlug)];
 	});
 
 	const RECENTS_MIN = 9;
 	const recentFolders = $derived.by(() => {
-		if (searching || scoped.length < RECENTS_MIN) return [] as Group[];
+		if (searching || loadFolders || scoped.length < RECENTS_MIN) return [] as FolderNode[];
 		const current = value ? scoped.find((f) => f.id === value) : undefined;
 		const recents = scoped
 			.filter((f) => f.id !== value)
@@ -105,7 +125,7 @@
 		sourceId ??
 			(new Set(folders.map((f) => f.sourceId)).size === 1 ? folders[0]?.sourceId : undefined)
 	);
-	const canCreate = $derived(!!createSourceId);
+	const canCreate = $derived(!!onCreateFolder || !!createSourceId);
 
 	function siblingExists(slug: string): boolean {
 		const s = slug.trim().toLowerCase();
@@ -117,7 +137,7 @@
 
 	const showCreate = $derived(searching && canCreate && !siblingExists(query));
 
-	type NavEntry = { kind: 'folder'; folder: Group } | { kind: 'root' } | { kind: 'create' };
+	type NavEntry = { kind: 'folder'; folder: FolderNode } | { kind: 'root' } | { kind: 'create' };
 
 	const navEntries = $derived.by((): NavEntry[] => {
 		if (searching) {
@@ -147,13 +167,15 @@
 
 	async function createFolderNamed(slug: string) {
 		const name = slug.trim();
-		if (!name || !createSourceId || creating || siblingExists(name)) return;
+		if (!name || !canCreate || creating || siblingExists(name)) return;
 		creating = true;
 		try {
 			const parent = focusId
 				? { id: focusId, path: folderPath(focusId, folders) }
-				: undefined;
-			const g = await Group.createFolder(name, createSourceId, parent);
+				: null;
+			const g = onCreateFolder
+				? await onCreateFolder(name, parent)
+				: await Group.createFolder(name, createSourceId!, parent ?? undefined);
 			folders = [...folders, g];
 			pick(g.id);
 		} catch (e) {
@@ -173,7 +195,7 @@
 		return (childrenByParent.get(id)?.length ?? 0) > 0;
 	}
 
-	function ancestorPath(folder: Group): string {
+	function ancestorPath(folder: FolderNode): string {
 		const parts: string[] = [];
 		let p = folder.parentGroupId ? byId.get(folder.parentGroupId) : undefined;
 		let guard = 0;
@@ -185,7 +207,7 @@
 	}
 
 	function pick(id: string) {
-		if (id) byId.get(id)?.touch().catch(() => {});
+		if (id) byId.get(id)?.touch?.().catch(() => {});
 		onChange(id, id ? folderPath(id, folders) : '');
 		open = false;
 	}
@@ -235,7 +257,7 @@
 		const spaceBelow = window.innerHeight - 8 - (a.bottom + margin);
 		const spaceAbove = a.top - margin - 8;
 		let top: number;
-		if (naturalH <= spaceBelow || spaceBelow >= spaceAbove) {
+		if (placement === 'below' || naturalH <= spaceBelow || spaceBelow >= spaceAbove) {
 			top = a.bottom + margin;
 			maxH = spaceBelow;
 		} else {
@@ -308,9 +330,12 @@
 				focusId = null;
 				activeIndex = 0;
 			});
-			Group.list()
-				.then((gs) => {
-					folders = gs.filter((g) => g.groupType === GroupType.Folder);
+			const load = loadFolders
+				? loadFolders()
+				: Group.list().then((gs) => gs.filter((g) => g.groupType === GroupType.Folder));
+			load
+				.then((fs) => {
+					folders = fs;
 					loadError = '';
 					revealValue();
 					queueMicrotask(position);
@@ -526,7 +551,7 @@
 						>
 							<Folders size={13} strokeWidth={1.75} />
 							<span class="name-label"
-								>{(sourceId && sourceNames.get(sourceId)) || 'No folder'}</span
+								>{rootLabel ?? ((sourceId && sourceNames.get(sourceId)) || 'No folder')}</span
 							>
 						</button>
 					</div>

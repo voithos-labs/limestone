@@ -119,7 +119,10 @@ export function folderLinkChain(groupId: string, folders: Group[]): string[] {
 	return [groupId, ...ancestorChain(groupId, byId)];
 }
 
-export function folderPath(groupId: string, folders: Group[]): string {
+export function folderPath(
+	groupId: string,
+	folders: Pick<Group, 'id' | 'slug' | 'parentGroupId'>[]
+): string {
 	const byId = new Map(folders.map((g) => [g.id, g]));
 	const parts: string[] = [];
 	let g = byId.get(groupId);

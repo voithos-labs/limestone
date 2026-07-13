@@ -8,7 +8,14 @@
         type SettingDef
     } from '$lib/models/Settings.svelte';
     import {ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent} from '$lib/services/theme';
-    import {listSources, removeSource, sourceName, type Source} from '$lib/models/Source';
+    import {
+        getDefaultSourceId,
+        listSources,
+        removeSource,
+        setDefaultSource,
+        sourceName,
+        type Source
+    } from '$lib/models/Source';
     import {select} from '$lib/services/db';
     import {openPath} from '@tauri-apps/plugin-opener';
     import SourceDialog from '../SourceDialog.svelte';
@@ -27,7 +34,8 @@
         EllipsisVertical,
         Trash2,
         X,
-        Pencil
+        Pencil,
+        Star
     } from '@lucide/svelte';
 
     let {viewTab, session}: { viewTab: ViewTab; session: Session } = $props();
@@ -86,8 +94,20 @@
 
     async function loadSources() {
         sources = await listSources();
+        defaultSourceId = await getDefaultSourceId();
         confirmingRemoveId = null;
         for (const s of sources) countSource(s.id);
+    }
+
+    let defaultSourceId: string | null = $state(null);
+
+    async function toggleDefaultSource(s: Source) {
+        try {
+            await setDefaultSource(s.id === defaultSourceId ? null : s.id);
+            defaultSourceId = await getDefaultSourceId();
+        } catch (e) {
+            sourceError = String(e);
+        }
     }
 
     async function countSource(id: string) {
@@ -140,12 +160,17 @@
     let srcMenuOpen = $state(false);
     let srcMenuAnchor: HTMLElement | null = $state(null);
     let menuSource: Source | null = $state(null);
-    const srcMenuItems: MenuEntry[] = [
+    const srcMenuItems: MenuEntry[] = $derived.by(() => [
         {value: 'edit', label: 'Edit', icon: Pencil},
         {value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink},
+        {
+            value: 'default',
+            label: menuSource?.id === defaultSourceId ? 'Remove default' : 'Set as default',
+            icon: Star
+        },
         {kind: 'divider'},
         {value: 'remove', label: 'Remove', icon: Trash2}
-    ];
+    ]);
 
     function openSourceMenu(s: Source, e: MouseEvent) {
         menuSource = s;
@@ -159,6 +184,7 @@
         if (!s) return;
         if (value === 'edit') editSource(s);
         else if (value === 'reveal') revealSource(s);
+        else if (value === 'default') toggleDefaultSource(s);
         else if (value === 'remove') confirmingRemoveId = s.id;
     }
 
@@ -477,6 +503,9 @@
                                 <div class="src-title-row">
                                     <Folders size={13}/>
                                     <span class="src-title">{sourceName(s)}</span>
+                                    {#if s.id === defaultSourceId}
+                                        <span class="src-default">Default</span>
+                                    {/if}
                                 </div>
                                 <span class="src-path" title={s.path}>{s.path}</span>
                             </div>
@@ -1058,6 +1087,15 @@
     .src-title {
         font-size: 14px;
         color: var(--color-text-primary);
+    }
+
+    .src-default {
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+        color: var(--color-accent);
+        font-size: 11px;
+        white-space: nowrap;
     }
 
     .src-path {

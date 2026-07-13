@@ -97,6 +97,8 @@ fn sources_version() -> u32 {
 pub struct Sources {
     #[serde(default = "sources_version")]
     pub version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_source_id: Option<Uuid>,
     #[serde(default)]
     pub sources: Vec<Source>,
 }
@@ -105,6 +107,7 @@ impl Default for Sources {
     fn default() -> Self {
         Self {
             version: SOURCES_VERSION,
+            default_source_id: None,
             sources: Vec::new(),
         }
     }

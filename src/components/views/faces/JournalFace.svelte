@@ -5,7 +5,7 @@
 	import { rawStatefulValue, fieldLabel } from '$lib/views/fieldValue';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import DocHandle from '$lib/models/DocHandle';
-	import { listSources } from '$lib/models/Source';
+	import { getDefaultSourceId, listSources, pickCreationSource } from '$lib/models/Source';
 	import { deriveCreateContext, folderPath, folderLinkChain } from '$lib/views/createDefaults';
 	import Group, { GroupType } from '$lib/models/Group';
 	import Menu from '../Menu.svelte';
@@ -528,7 +528,7 @@
 				const g = folders.find((f) => f.id === folderId);
 				source = g?.sourceId ? sources.find((s) => s.id === g.sourceId) : undefined;
 			}
-			source = source ?? sources[0];
+			source = source ?? pickCreationSource(sources, await getDefaultSourceId());
 			if (!source) return;
 
 			const dir = folderId ? folderPath(folderId, folders) : '';

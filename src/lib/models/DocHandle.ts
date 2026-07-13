@@ -16,7 +16,7 @@ import yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '$lib/services/db';
-import { getSource, type Source } from './Source';
+import { defaultNoteDir, getSource, type Source } from './Source';
 import Group, { type GroupRow } from './Group';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
@@ -191,7 +191,8 @@ class DocHandle {
 		}
 	): Promise<DocHandle> {
 		const base = opts.title.replace(/[\\/]/g, '-');
-		const relPath = await DocHandle.uniqueRelPath(source, opts.dir ?? '', base);
+		const dir = opts.dir || defaultNoteDir(source);
+		const relPath = await DocHandle.uniqueRelPath(source, dir, base);
 		// Title must match the de-duplicated filename (e.g. "Untitled 2"), not the
 		// requested title, or two files end up sharing one title in the UI
 		const title = relPath.split('/').pop()!.replace(/\.md$/i, '');

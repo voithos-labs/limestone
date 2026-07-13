@@ -22,6 +22,10 @@ export function sourceName(source: Pick<Source, 'path' | 'title'>): string {
 	return source.path.split(/[\\/]/).filter(Boolean).pop() || source.title;
 }
 
+export function defaultNoteDir(source: Pick<Source, 'note_location'>): string {
+	return source.note_location.replace(/^[\\/]+|[\\/]+$/g, '');
+}
+
 export async function getSource(id: string): Promise<Source> {
 	const result = await invoke<Source | null>('get_source_by_id', { id });
 	if (!result) throw new Error(`Source not found: ${id}`);
@@ -30,6 +34,26 @@ export async function getSource(id: string): Promise<Source> {
 
 export async function listSources(): Promise<Source[]> {
 	return await invoke<Source[]>('get_sources');
+}
+
+export async function getDefaultSourceId(): Promise<string | null> {
+	return await invoke<string | null>('get_default_source_id');
+}
+
+export async function setDefaultSource(id: string | null): Promise<void> {
+	await invoke('set_default_source', { id });
+}
+
+export function pickCreationSource(
+	sources: Source[],
+	defaultId: string | null
+): Source | undefined {
+	return sources.find((s) => s.id === defaultId) ?? sources[0];
+}
+
+export async function creationSource(): Promise<Source | undefined> {
+	const [sources, defaultId] = await Promise.all([listSources(), getDefaultSourceId()]);
+	return pickCreationSource(sources, defaultId);
 }
 
 export async function touchSource(id: string): Promise<void> {
@@ -57,6 +81,14 @@ export async function createSource(
 
 export async function isGitRepo(path: string): Promise<boolean> {
 	return await invoke<boolean>('is_git_repo', { path });
+}
+
+export async function listDirs(path: string): Promise<string[]> {
+	return await invoke<string[]>('list_dirs', { path });
+}
+
+export async function makeDir(path: string, rel: string): Promise<void> {
+	await invoke('make_dir', { path, rel });
 }
 
 export async function updateSource(id: string, config: SourceConfig): Promise<void> {

@@ -1,332 +1,416 @@
 <script lang="ts">
-	import {
-		createSource,
-		isGitRepo,
-		sourceName,
-		updateSource,
-		type Source
-	} from '$lib/models/Source';
-	import { open as openDialog } from '@tauri-apps/plugin-dialog';
-	import { Folder, GitBranch } from '@lucide/svelte';
-	import Toggle from './Toggle.svelte';
+    import {
+        createSource,
+        isGitRepo,
+        listDirs,
+        listSources,
+        makeDir,
+        setDefaultSource,
+        sourceName,
+        updateSource,
+        type Source
+    } from '$lib/models/Source';
+    import {open as openDialog} from '@tauri-apps/plugin-dialog';
+    import {ChevronDown, Folder, GitBranch} from '@lucide/svelte';
+    import Toggle from './Toggle.svelte';
+    import FolderValueEditor from './views/FolderValueEditor.svelte';
 
-	let {
-		open = $bindable(false),
-		mode,
-		source = null,
-		onSaved
-	}: {
-		open: boolean;
-		mode: 'create' | 'edit';
-		source?: Source | null;
-		onSaved: () => void;
-	} = $props();
+    let {
+        open = $bindable(false),
+        mode,
+        source = null,
+        onSaved
+    }: {
+        open: boolean;
+        mode: 'create' | 'edit';
+        source?: Source | null;
+        onSaved: () => void;
+    } = $props();
 
-	let folderPath = $state('');
-	let noteLocation = $state('');
-	let assetLocation = $state('assets');
-	let useFrontmatter = $state(true);
-	let isGit = $state(false);
-	let error = $state('');
-	let busy = $state(false);
+    let folderPath = $state('');
+    let noteLocation = $state('');
+    let assetLocation = $state('assets');
+    let useFrontmatter = $state(true);
+    let setAsDefault = $state(false);
+    let isGit = $state(false);
+    let error = $state('');
+    let busy = $state(false);
 
-	let wasOpen = false;
-	$effect(() => {
-		if (open && !wasOpen) {
-			wasOpen = true;
-			error = '';
-			busy = false;
-			if (mode === 'edit' && source) {
-				folderPath = source.path;
-				noteLocation = source.note_location;
-				assetLocation = source.asset_location;
-			} else {
-				folderPath = '';
-				noteLocation = '';
-				assetLocation = 'assets';
-				useFrontmatter = true;
-				isGit = false;
-			}
-		}
-		if (!open) wasOpen = false;
-	});
+    let wasOpen = false;
+    $effect(() => {
+        if (open && !wasOpen) {
+            wasOpen = true;
+            error = '';
+            busy = false;
+            if (mode === 'edit' && source) {
+                folderPath = source.path;
+                noteLocation = source.note_location;
+                assetLocation = source.asset_location;
+            } else {
+                folderPath = '';
+                noteLocation = '';
+                assetLocation = 'assets';
+                useFrontmatter = true;
+                setAsDefault = false;
+                isGit = false;
+                listSources()
+                    .then((ss) => (setAsDefault = ss.length === 0))
+                    .catch(() => {
+                    });
+            }
+        }
+        if (!open) wasOpen = false;
+    });
 
-	async function chooseFolder() {
-		const sel = await openDialog({ directory: true, multiple: false });
-		if (typeof sel === 'string') {
-			folderPath = sel;
-			isGit = await isGitRepo(sel);
-			useFrontmatter = !isGit;
-		}
-	}
+    async function chooseFolder() {
+        const sel = await openDialog({directory: true, multiple: false});
+        if (typeof sel === 'string') {
+            folderPath = sel;
+            noteLocation = '';
+            assetLocation = 'assets';
+            isGit = await isGitRepo(sel);
+            useFrontmatter = !isGit;
+        }
+    }
 
-	async function submit() {
-		error = '';
-		const config = {
-			note_location: noteLocation.trim(),
-			asset_location: assetLocation.trim() || 'assets'
-		};
-		busy = true;
-		try {
-			if (mode === 'create') {
-				if (!folderPath) {
-					error = 'Choose a folder';
-					busy = false;
-					return;
-				}
-				const title = folderPath.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
-				await createSource(folderPath, title, config, useFrontmatter);
-			} else if (source) {
-				await updateSource(source.id, config);
-			}
-			onSaved();
-			open = false;
-		} catch (e) {
-			error = String(e);
-		}
-		busy = false;
-	}
+    let noteMenuOpen = $state(false);
+    let noteMenuAnchor: HTMLElement | null = $state(null);
+    let assetMenuOpen = $state(false);
+    let assetMenuAnchor: HTMLElement | null = $state(null);
 
-	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Escape') open = false;
-		else if (e.key === 'Enter' && !busy) submit();
-	}
+    function dirNode(rel: string) {
+        const parts = rel.split('/');
+        return {
+            id: rel,
+            slug: parts[parts.length - 1],
+            parentGroupId: parts.length > 1 ? parts.slice(0, -1).join('/') : undefined,
+            accessedAt: new Date(0)
+        };
+    }
+
+    async function loadFsFolders() {
+        if (!folderPath) return [];
+        return (await listDirs(folderPath)).map(dirNode);
+    }
+
+    async function createFsFolder(name: string, parent: { id: string; path: string } | null) {
+        const slug = name.replace(/[\\/]/g, '-');
+        const rel = parent ? `${parent.id}/${slug}` : slug;
+        await makeDir(folderPath, rel);
+        return dirNode(rel);
+    }
+
+    async function submit() {
+        error = '';
+        const config = {
+            note_location: noteLocation.trim(),
+            asset_location: assetLocation.trim() || 'assets'
+        };
+        busy = true;
+        try {
+            if (mode === 'create') {
+                if (!folderPath) {
+                    error = 'Choose a folder';
+                    busy = false;
+                    return;
+                }
+                const title = folderPath.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
+                const created = await createSource(folderPath, title, config, useFrontmatter);
+                if (setAsDefault) await setDefaultSource(created.id);
+            } else if (source) {
+                await updateSource(source.id, config);
+            }
+            onSaved();
+            open = false;
+        } catch (e) {
+            error = String(e);
+        }
+        busy = false;
+    }
+
+    function onKey(e: KeyboardEvent) {
+        if (noteMenuOpen || assetMenuOpen) return;
+        if (e.key === 'Escape') open = false;
+        else if (e.key === 'Enter' && !busy) submit();
+    }
 </script>
 
 {#if open}
-	<div class="overlay" onclick={() => (open = false)} onkeydown={onKey} role="presentation">
-		<div
-			class="dialog"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={onKey}
-			role="dialog"
-			tabindex="-1"
-		>
-			<h3 class="title">
-				{mode === 'create' ? 'Add source' : sourceName(source ?? { path: '', title: '' })}
-			</h3>
+    <div class="overlay" onclick={() => (open = false)} onkeydown={onKey} role="presentation">
+        <div
+                class="dialog"
+                onclick={(e) => e.stopPropagation()}
+                onkeydown={onKey}
+                role="dialog"
+                tabindex="-1"
+        >
+            <h3 class="title">
+                {mode === 'create' ? 'Add source' : sourceName(source ?? {path: '', title: ''})}
+            </h3>
 
-			<label class="field">
-				<span class="label">Folder</span>
-				{#if mode === 'create'}
-					<button class="folder-pick" type="button" onclick={chooseFolder}>
-						<Folder size={14} />
-						<span class="folder-text" class:placeholder={!folderPath}
-							>{folderPath || 'Choose folder…'}</span
-						>
-					</button>
-				{:else}
-					<div class="folder-static" title={folderPath}>{folderPath}</div>
-				{/if}
-			</label>
+            <label class="field">
+                <span class="label">Folder</span>
+                {#if mode === 'create'}
+                    <button class="folder-pick" type="button" onclick={chooseFolder}>
+                        <Folder size={14}/>
+                        <span class="folder-text" class:placeholder={!folderPath}
+                        >{folderPath || 'Choose folder…'}</span
+                        >
+                    </button>
+                {:else}
+                    <div class="folder-static" title={folderPath}>{folderPath}</div>
+                {/if}
+            </label>
 
-			<label class="field">
-				<span class="label">Default note location</span>
-				<input
-					class="input"
-					type="text"
-					bind:value={noteLocation}
-					placeholder="(source root)"
-					spellcheck="false"
-				/>
-			</label>
+            <label class="field">
+                <span class="label">Default note location</span>
+                <button
+                        class="folder-pick"
+                        type="button"
+                        bind:this={noteMenuAnchor}
+                        disabled={!folderPath}
+                        onclick={() => (noteMenuOpen = true)}
+                >
+                    <span class="folder-text grow" class:placeholder={!noteLocation}
+                    >{noteLocation || '(source root)'}</span
+                    >
+                    <ChevronDown size={14}/>
+                </button>
+            </label>
 
-			<label class="field">
-				<span class="label">Asset location</span>
-				<input
-					class="input"
-					type="text"
-					bind:value={assetLocation}
-					placeholder="assets"
-					spellcheck="false"
-				/>
-			</label>
+            <label class="field">
+                <span class="label">Asset location</span>
+                <button
+                        class="folder-pick"
+                        type="button"
+                        bind:this={assetMenuAnchor}
+                        disabled={!folderPath}
+                        onclick={() => (assetMenuOpen = true)}
+                >
+                    <span class="folder-text grow">{assetLocation}</span>
+                    <ChevronDown size={14}/>
+                </button>
+            </label>
 
-			{#if mode === 'create'}
-				<div class="fm-field">
-					{#if isGit}
-						<span class="git-note"><GitBranch size={12} /> Off by default for Git repos</span>
-					{/if}
-					<div class="toggle-row">
-						<Toggle bind:checked={useFrontmatter} />
-						<span class="toggle-text">Store metadata in YAML frontmatter</span>
-					</div>
-					{#if !useFrontmatter}
-						<p class="hint">
-							Documents can't have custom properties including a static id, which means: no edit
-							history and lower functionality within views.
-						</p>
-					{/if}
-				</div>
-			{/if}
+            {#if mode === 'create'}
+                <div class="fm-field">
+                    {#if isGit}
+                        <span class="git-note"><GitBranch size={12}/> Off by default for Git repos</span>
+                    {/if}
+                    <div class="toggle-row">
+                        <Toggle bind:checked={useFrontmatter}/>
+                        <span class="toggle-text">Store metadata in YAML frontmatter</span>
+                    </div>
+                    {#if !useFrontmatter}
+                        <p class="hint">
+                            Documents can't have custom properties including a static id, which means: no edit
+                            history and lower functionality within views.
+                        </p>
+                    {/if}
+                </div>
 
-			{#if error}<p class="err">{error}</p>{/if}
+                <div class="fm-field">
+                    <div class="toggle-row">
+                        <Toggle bind:checked={setAsDefault}/>
+                        <span class="toggle-text">Set as default source for new documents</span>
+                    </div>
+                </div>
+            {/if}
 
-			<div class="actions">
-				<button class="btn" type="button" onclick={() => (open = false)}>Cancel</button>
-				<button class="btn primary" type="button" disabled={busy} onclick={submit}>
-					{mode === 'create' ? 'Create' : 'Save'}
-				</button>
-			</div>
-		</div>
-	</div>
+            {#if error}<p class="err">{error}</p>{/if}
+
+            <div class="actions">
+                <button class="btn" type="button" onclick={() => (open = false)}>Cancel</button>
+                <button class="btn primary" type="button" disabled={busy} onclick={submit}>
+                    {mode === 'create' ? 'Create' : 'Save'}
+                </button>
+            </div>
+
+            <FolderValueEditor
+                    bind:open={noteMenuOpen}
+                    anchor={noteMenuAnchor}
+                    value={noteLocation || null}
+                    rootOption={true}
+                    rootLabel="(source root)"
+                    placement="below"
+                    loadFolders={loadFsFolders}
+                    onCreateFolder={createFsFolder}
+                    onChange={(id, path) => (noteLocation = id ? (path ?? id) : '')}
+            />
+
+            <FolderValueEditor
+                    bind:open={assetMenuOpen}
+                    anchor={assetMenuAnchor}
+                    value={assetLocation === 'assets' ? null : assetLocation}
+                    rootOption={true}
+                    rootLabel="assets (default)"
+                    placement="below"
+                    loadFolders={loadFsFolders}
+                    onCreateFolder={createFsFolder}
+                    onChange={(id, path) => (assetLocation = id ? (path ?? id) : 'assets')}
+            />
+        </div>
+    </div>
 {/if}
 
 <style>
-	.overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 1500;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: rgba(0, 0, 0, 0.4);
-	}
+    .overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1500;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.4);
+    }
 
-	.dialog {
-		width: 420px;
-		max-width: calc(100vw - 32px);
-		padding: 20px;
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: 12px;
-		box-shadow: var(--menu-shadow);
-		font-family: var(--font-ui);
-	}
+    .dialog {
+        width: 420px;
+        max-width: calc(100vw - 32px);
+        padding: 20px;
+        background: var(--color-bg);
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+        box-shadow: var(--menu-shadow);
+        font-family: var(--font-ui);
+    }
 
-	.title {
-		margin: 0 0 16px;
-		font-size: 16px;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
+    .title {
+        margin: 0 0 16px;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
 
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 5px;
-		margin-bottom: 14px;
-	}
+    .field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin-bottom: 14px;
+    }
 
-	.label {
-		font-size: 12px;
-		color: var(--color-ui-muted);
-	}
+    .label {
+        font-size: 12px;
+        color: var(--color-ui-muted);
+    }
 
-	.input,
-	.folder-pick,
-	.folder-static {
-		width: 100%;
-		box-sizing: border-box;
-		padding: 8px 10px;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		background: var(--color-bg);
-		color: var(--color-text-primary);
-		font-family: var(--font-ui);
-		font-size: 13px;
-	}
+    .folder-pick,
+    .folder-static {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        background: var(--color-bg);
+        color: var(--color-text-primary);
+        font-family: var(--font-ui);
+        font-size: 13px;
+    }
 
-	.input:focus {
-		outline: none;
-		border-color: var(--color-ui-muted);
-	}
+    .folder-pick {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-align: left;
+        cursor: pointer;
+        color: var(--color-ui-muted);
+    }
 
-	.folder-pick {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		text-align: left;
-		cursor: pointer;
-		color: var(--color-ui-muted);
-	}
+    .folder-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-text-primary);
+    }
 
-	.folder-text {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		color: var(--color-text-primary);
-	}
+    .folder-text.placeholder {
+        color: var(--color-ui-muted);
+    }
 
-	.folder-text.placeholder {
-		color: var(--color-ui-muted);
-	}
+    .folder-text.grow {
+        flex: 1;
+    }
 
-	.folder-static {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		color: var(--color-ui-muted);
-		cursor: default;
-	}
+    .folder-pick:disabled {
+        opacity: 0.55;
+        cursor: default;
+    }
 
-	.fm-field {
-		margin-bottom: 14px;
-	}
+    .folder-static {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-ui-muted);
+        cursor: default;
+    }
 
-	.git-note {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		margin-bottom: 6px;
-		font-size: 12px;
-		color: var(--color-ui-muted);
-	}
+    .fm-field {
+        margin-bottom: 14px;
+    }
 
-	.toggle-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
+    .git-note {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-bottom: 6px;
+        font-size: 12px;
+        color: var(--color-ui-muted);
+    }
 
-	.toggle-text {
-		font-size: 13px;
-		color: var(--color-text-primary);
-	}
+    .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
 
-	.hint {
-		margin: 6px 0 0;
-		font-size: 12px;
-		line-height: 1.4;
-		color: var(--color-ui-muted);
-	}
+    .toggle-text {
+        font-size: 13px;
+        color: var(--color-text-primary);
+    }
 
-	.err {
-		margin: 0 0 12px;
-		font-size: 12px;
-		color: var(--color-accent);
-	}
+    .hint {
+        margin: 6px 0 0;
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--color-ui-muted);
+    }
 
-	.actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 8px;
-		margin-top: 4px;
-	}
+    .err {
+        margin: 0 0 12px;
+        font-size: 12px;
+        color: var(--color-accent);
+    }
 
-	.btn {
-		padding: 7px 14px;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		background: transparent;
-		color: var(--color-text-secondary);
-		font-family: var(--font-ui);
-		font-size: 13px;
-		cursor: pointer;
-	}
+    .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 4px;
+    }
 
-	.btn:hover {
-		color: var(--color-text-primary);
-	}
+    .btn {
+        padding: 7px 14px;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--color-text-secondary);
+        font-family: var(--font-ui);
+        font-size: 13px;
+        cursor: pointer;
+    }
 
-	.btn.primary {
-		border-color: transparent;
-		background: var(--color-accent);
-		color: var(--color-accent-contrast);
-	}
+    .btn:hover {
+        color: var(--color-text-primary);
+    }
 
-	.btn.primary:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
+    .btn.primary {
+        border-color: transparent;
+        background: var(--color-accent);
+        color: var(--color-accent-contrast);
+    }
+
+    .btn.primary:disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
 </style>

@@ -57,7 +57,7 @@
         Ellipsis,
         X
     } from '@lucide/svelte';
-    import {listSources, type Source} from '$lib/models/Source';
+    import {defaultNoteDir, getDefaultSourceId, listSources, pickCreationSource, type Source} from '$lib/models/Source';
     import Group, {GroupType} from '$lib/models/Group';
     import DocHandle from '$lib/models/DocHandle';
     import {deriveCreateContext, folderLinkChain, folderPath} from '$lib/views/createDefaults';
@@ -304,6 +304,7 @@
     let didInitFocus = false;
 
     let sources: Source[] = $state([]);
+    let defaultSourceId: string | null = $state(null);
 
     onMount(() => {
         load();
@@ -313,6 +314,10 @@
             });
         listSources()
             .then((ss) => (sources = ss))
+            .catch(() => {
+            });
+        getDefaultSourceId()
+            .then((id) => (defaultSourceId = id))
             .catch(() => {
             });
         document.addEventListener('keydown', onTableKeydown);
@@ -1268,18 +1273,20 @@
         let sid = createCtx.sourceId;
         if (!sid && effectiveFolderId)
             sid = folders.find((f) => f.id === effectiveFolderId)?.sourceId ?? null;
+        if (!sid) sid = defaultSourceId;
         if (!sid && sources.length === 1) sid = sources[0].id;
         if (!creating || !title || !sid) {
             titleCollision = false;
             return;
         }
         const base = title.replace(/[\\/]/g, '-');
-        const candidate = dir ? `${dir}/${base}.md` : `${base}.md`;
         let cancelled = false;
         const t = setTimeout(async () => {
             try {
                 const src = sources.find((s) => s.id === sid);
                 if (!src) return;
+                const effDir = dir || defaultNoteDir(src);
+                const candidate = effDir ? `${effDir}/${base}.md` : `${base}.md`;
                 const taken = await DocHandle.pathTaken(src, candidate);
                 if (!cancelled) titleCollision = taken;
             } catch {
@@ -1297,6 +1304,7 @@
         let sid = createCtx.sourceId;
         if (!sid && effectiveFolderId)
             sid = folders.find((f) => f.id === effectiveFolderId)?.sourceId ?? null;
+        if (!sid) sid = defaultSourceId;
         const s = sid
             ? sources.find((x) => x.id === sid)
             : sources.length === 1
@@ -1449,8 +1457,9 @@
             const s = g?.sourceId ? sources.find((s) => s.id === g.sourceId) : undefined;
             if (s) return s;
         }
-        if (sources.length === 0) throw new Error('No source available to create in');
-        return sources[0];
+        const s = pickCreationSource(sources, defaultSourceId);
+        if (!s) throw new Error('No source available to create in');
+        return s;
     }
 
     async function commitNew() {

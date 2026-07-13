@@ -1,7 +1,7 @@
 <script lang="ts">
     import type EditorState from '$lib/models/EditorState.svelte.js';
     import type {SearchResult} from '$lib/types/SearchResult';
-    import {listSources} from '$lib/models/Source';
+    import {creationSource} from '$lib/models/Source';
     import DocHandle from '$lib/models/DocHandle';
     import View from '$lib/models/View.svelte';
     import {searchDocuments} from '$lib/services/search';
@@ -127,8 +127,7 @@
     let sourceDialogOpen = $state(false);
 
     async function newDocument() {
-        const srcs = await listSources();
-        const source = srcs[0];
+        const source = await creationSource();
         if (!source) {
             sourceDialogOpen = true;
             return;

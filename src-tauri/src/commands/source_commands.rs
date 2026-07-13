@@ -14,13 +14,14 @@ fn sources_store(app: &AppHandle) -> JsonSettingsStore {
     }
 }
 
+fn load_sources_file(app: &AppHandle) -> Sources {
+    let mut data = sources_store(app).load::<Sources>().unwrap_or_default();
+    data.sources.sort_by_key(|v| std::cmp::Reverse(v.accessed_at));
+    data
+}
+
 fn load_sources(app: &AppHandle) -> Vec<Source> {
-    let mut sources = sources_store(app)
-        .load::<Sources>()
-        .unwrap_or_default()
-        .sources;
-    sources.sort_by_key(|v| std::cmp::Reverse(v.accessed_at));
-    sources
+    load_sources_file(app).sources
 }
 
 pub(crate) fn source_uses_frontmatter(app: &AppHandle, source_id: &str) -> bool {
@@ -56,13 +57,8 @@ fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
     });
 }
 
-fn save_sources(app: &AppHandle, sources: &[Source]) -> Result<(), String> {
-    sources_store(app)
-        .save(&Sources {
-            version: services::SOURCES_VERSION,
-            sources: sources.to_vec(),
-        })
-        .map_err(|e| e.to_string())
+fn save_sources_file(app: &AppHandle, data: &Sources) -> Result<(), String> {
+    sources_store(app).save(data).map_err(|e| e.to_string())
 }
 
 /// Canonicalize if possible, otherwise fall back to the cleaned path.
@@ -106,8 +102,8 @@ pub fn create_source(
     use_frontmatter: bool,
 ) -> Result<Source, String> {
     let candidate = PathBuf::from(&path);
-    let mut sources = load_sources(&app);
-    check_source_conflict(&candidate, &sources)?;
+    let mut data = load_sources_file(&app);
+    check_source_conflict(&candidate, &data.sources)?;
 
     let source = services::create_source(
         Some(title),
@@ -122,8 +118,8 @@ pub fn create_source(
     let _ = app.fs_scope().allow_directory(&source.path, true);
     let _ = app.asset_protocol_scope().allow_directory(&source.path, true);
 
-    sources.push(source.clone());
-    save_sources(&app, &sources)?;
+    data.sources.push(source.clone());
+    save_sources_file(&app, &data)?;
 
     spawn_reconcile(&app, &source, &app_data);
 
@@ -159,14 +155,15 @@ pub fn update_source(
     note_location: String,
     asset_location: String,
 ) -> Result<(), String> {
-    let mut sources = load_sources(&app);
-    let source = sources
+    let mut data = load_sources_file(&app);
+    let source = data
+        .sources
         .iter_mut()
         .find(|s| s.id == id)
         .ok_or_else(|| "source not found".to_string())?;
     source.note_location = note_location;
     source.asset_location = asset_location;
-    save_sources(&app, &sources)
+    save_sources_file(&app, &data)
 }
 
 #[tauri::command]
@@ -175,12 +172,12 @@ pub async fn touch_source(
     app_data: State<'_, AppData>,
     id: Uuid,
 ) -> Result<(), String> {
-    let mut sources = load_sources(&app);
+    let mut data = load_sources_file(&app);
     let now = chrono::Utc::now();
-    if let Some(s) = sources.iter_mut().find(|s| s.id == id) {
+    if let Some(s) = data.sources.iter_mut().find(|s| s.id == id) {
         s.accessed_at = now;
     }
-    save_sources(&app, &sources)?;
+    save_sources_file(&app, &data)?;
 
     sqlx::query("UPDATE sources SET accessed_at = ?1 WHERE id = ?2")
         .bind(now.timestamp_millis())
@@ -208,11 +205,79 @@ pub async fn delete_source(
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut sources = load_sources(&app);
-    sources.retain(|s| s.id != id);
-    save_sources(&app, &sources)?;
+    let mut data = load_sources_file(&app);
+    data.sources.retain(|s| s.id != id);
+    if data.default_source_id == Some(id) {
+        data.default_source_id = None;
+    }
+    save_sources_file(&app, &data)?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn list_dirs(path: String) -> Vec<String> {
+    let root = PathBuf::from(&path);
+    let mut out = Vec::new();
+    collect_dirs(&root, &root, 0, &mut out);
+    out.sort();
+    out
+}
+
+fn collect_dirs(root: &Path, dir: &Path, depth: usize, out: &mut Vec<String>) {
+    if depth >= 6 || out.len() >= 500 {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if !p.is_dir() {
+            continue;
+        }
+        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name.starts_with('.') {
+            continue;
+        }
+        if let Ok(rel) = p.strip_prefix(root) {
+            out.push(rel.to_string_lossy().replace('\\', "/"));
+        }
+        collect_dirs(root, &p, depth + 1, out);
+    }
+}
+
+#[tauri::command]
+pub fn make_dir(path: String, rel: String) -> Result<(), String> {
+    let rel_path = Path::new(&rel);
+    if rel_path
+        .components()
+        .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err("invalid folder name".to_string());
+    }
+    std::fs::create_dir_all(Path::new(&path).join(rel_path)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_default_source_id(app: AppHandle) -> Option<Uuid> {
+    let data = load_sources_file(&app);
+    data.default_source_id
+        .filter(|id| data.sources.iter().any(|s| s.id == *id))
+}
+
+#[tauri::command]
+pub fn set_default_source(app: AppHandle, id: Option<Uuid>) -> Result<(), String> {
+    let mut data = load_sources_file(&app);
+    if let Some(id) = id {
+        if !data.sources.iter().any(|s| s.id == id) {
+            return Err("source not found".to_string());
+        }
+    }
+    data.default_source_id = id;
+    save_sources_file(&app, &data)
 }
 
 fn search_config_from_settings(settings: &serde_json::Value) -> services::search::SearchConfig {

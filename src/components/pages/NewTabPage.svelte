@@ -1,7 +1,7 @@
 <script lang="ts">
     import type EditorState from '$lib/models/EditorState.svelte.js';
     import {TabState} from '$lib/models/EditorState.svelte.js';
-    import {listSources} from '$lib/models/Source';
+    import {creationSource} from '$lib/models/Source';
     import DocHandle from '$lib/models/DocHandle';
     import View from '$lib/models/View.svelte';
     import BoxPlus from '../BoxPlus.svelte';
@@ -15,8 +15,7 @@
 
     async function createNewDocument() {
         actionError = '';
-        const sources = await listSources();
-        const source = sources[0];
+        const source = await creationSource();
         if (!source) {
             actionError = 'Add a source before creating a document';
             return;
