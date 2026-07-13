@@ -21,7 +21,7 @@
 	import FaceCard from '../FaceCard.svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
 	import { SlidersHorizontal, LayoutGrid, List, ArrowUpAZ, ArrowDownAZ } from '@lucide/svelte';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 
 	let {
 		view,
@@ -144,6 +144,7 @@
 			.catch(() => {});
 		return () => {
 			if (reloadTimer) clearTimeout(reloadTimer);
+			if (settleTimer) clearTimeout(settleTimer);
 		};
 	});
 
@@ -232,9 +233,27 @@
 	const COL_MIN = 220;
 	let gridW = $state(0);
 	let heights: Record<string, number> = $state({});
+	let settledW = $state(0);
+	let heightsSnap: Record<string, number> = $state({});
+	let settleTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		const w = gridW;
+		const h = { ...heights };
+		if (settleTimer) clearTimeout(settleTimer);
+		if (untrack(() => settledW) === 0 && w > 0) {
+			settledW = w;
+			heightsSnap = h;
+			return;
+		}
+		settleTimer = setTimeout(() => {
+			settledW = w;
+			heightsSnap = h;
+		}, 120);
+	});
 
 	const colCount = $derived(
-		layout === 'list' ? 1 : Math.max(1, Math.floor((gridW + GAP) / (COL_MIN + GAP)))
+		layout === 'list' ? 1 : Math.max(1, Math.floor((settledW + GAP) / (COL_MIN + GAP)))
 	);
 
 	function estHeight(row: Row): number {
@@ -251,7 +270,7 @@
 			let ci = 0;
 			for (let i = 1; i < colCount; i++) if (tot[i] < tot[ci]) ci = i;
 			cols[ci].push(r);
-			tot[ci] += (heights[r.id] ?? estHeight(r)) + GAP;
+			tot[ci] += (heightsSnap[r.id] ?? estHeight(r)) + GAP;
 		}
 		return cols;
 	});
