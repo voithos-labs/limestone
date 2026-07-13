@@ -263,16 +263,17 @@
 		return 26 + titleLines * 19 + prevLines * 17 + metaFields.length * 18;
 	}
 
-	const cardColumns = $derived.by(() => {
-		const cols: Row[][] = Array.from({ length: colCount }, () => []);
+	const cardLayout = $derived.by(() => {
+		const colW = (settledW - (colCount - 1) * GAP) / colCount;
 		const tot = new Array(colCount).fill(0);
+		const pos: Record<string, { x: number; y: number }> = {};
 		for (const r of rows) {
 			let ci = 0;
 			for (let i = 1; i < colCount; i++) if (tot[i] < tot[ci]) ci = i;
-			cols[ci].push(r);
+			pos[r.id] = { x: ci * (colW + GAP), y: tot[ci] };
 			tot[ci] += (heightsSnap[r.id] ?? estHeight(r)) + GAP;
 		}
-		return cols;
+		return { colW, pos, height: Math.max(0, ...tot) };
 	});
 
 	let optOpen = $state(false);
@@ -381,24 +382,32 @@
 		</button>
 	</div>
 
-	<div class="lf-grid" class:as-list={layout === 'list'} bind:clientWidth={gridW}>
-		{#each cardColumns as col, ci (ci)}
-			<div class="lf-col">
-				{#each col as row (row.id)}
-					<div class="card-slot" bind:clientHeight={heights[row.id]}>
-						<FaceCard
-							{row}
-							fields={metaFields}
-							viewSlug={view.slug}
-							{sources}
-							tags={tagSlugsFor(row.id)}
-							preview={previews[row.id] ?? ''}
-							onOpen={() => onOpenRow?.(row.id)}
-						/>
-					</div>
-				{/each}
-			</div>
-		{/each}
+	<div
+		class="lf-grid"
+		bind:clientWidth={gridW}
+		style:height="{cardLayout.height}px"
+	>
+		{#if settledW > 0}
+			{#each rows as row (row.id)}
+				{@const p = cardLayout.pos[row.id]}
+				<div
+					class="card-slot"
+					style:width="{cardLayout.colW}px"
+					style:transform="translate({p.x}px, {p.y}px)"
+					bind:clientHeight={heights[row.id]}
+				>
+					<FaceCard
+						{row}
+						fields={metaFields}
+						viewSlug={view.slug}
+						{sources}
+						tags={tagSlugsFor(row.id)}
+						preview={previews[row.id] ?? ''}
+						onOpen={() => onOpenRow?.(row.id)}
+					/>
+				</div>
+			{/each}
+		{/if}
 	</div>
 
 	{#if !loading && rows.length === 0}
@@ -464,21 +473,14 @@
 	}
 
 	.lf-grid {
-		display: flex;
-		gap: 12px;
-		align-items: flex-start;
-	}
-
-	.lf-col {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
+		position: relative;
 	}
 
 	.card-slot {
-		width: 100%;
+		position: absolute;
+		top: 0;
+		left: 0;
+		transition: transform 160ms ease;
 	}
 
 	.lf-empty {
