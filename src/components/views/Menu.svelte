@@ -253,6 +253,7 @@
 						class="menu-item"
 						class:active={activeIndex === itemIdx}
 						class:selected={isChecked(entry.value)}
+						class:danger={entry.danger}
 						type="button"
 						role="menuitem"
 						tabindex="-1"
@@ -414,6 +415,11 @@
 
 	.menu-item.selected :global(svg) {
 		color: var(--color-accent);
+	}
+
+	.menu-item.danger,
+	.menu-item.danger .item-icon {
+		color: var(--error-fg);
 	}
 
 	.item-icon {

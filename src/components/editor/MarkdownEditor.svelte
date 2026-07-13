@@ -22,7 +22,6 @@
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import { getSetting } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
-	import { confirm } from '@tauri-apps/plugin-dialog';
 	import DocumentHero from '../DocumentHero.svelte';
 
 	let {
@@ -39,11 +38,6 @@
 
 	async function deleteDoc() {
 		if (!handle) return;
-		const ok = await confirm(`Delete "${handle.title}"? This removes the file from disk.`, {
-			title: 'Delete document',
-			kind: 'warning'
-		});
-		if (!ok) return;
 		try {
 			if (saveTimer) {
 				clearTimeout(saveTimer);
@@ -581,7 +575,12 @@
 <div class="doc-view" class:flow>
 	<div class="doc-scroll" class:flow bind:this={scrollEl} onmousedown={bgMouseDown} role="presentation">
 		{#if handle}
-			<DocumentHero {handle} onDelete={deleteDoc} compact={flow} />
+			<DocumentHero
+				{handle}
+				onDelete={deleteDoc}
+				onDuplicated={(d) => editor?.openDoc(d)}
+				compact={flow}
+			/>
 		{/if}
 		<div class="cm-wrapper" class:flow bind:this={container} style="--editor-font-size: {zoom}px"></div>
 	</div>

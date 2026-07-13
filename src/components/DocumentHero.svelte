@@ -8,14 +8,22 @@
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import Menu from './views/Menu.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
-	import { Hash, EllipsisVertical, Trash2, Folders, Plus } from '@lucide/svelte';
+	import { Hash, EllipsisVertical, Trash2, Folders, Plus, Copy } from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';
+	import { readTextFile } from '@tauri-apps/plugin-fs';
+	import { flushAll } from '$lib/util/flush';
 
 	let {
 		handle,
 		onDelete,
+		onDuplicated,
 		compact = false
-	}: { handle: DocHandle; onDelete?: () => void; compact?: boolean } = $props();
+	}: {
+		handle: DocHandle;
+		onDelete?: () => void;
+		onDuplicated?: (copy: DocHandle) => void;
+		compact?: boolean;
+	} = $props();
 
 	let title = $state(untrack(() => handle.title));
 	let relPath = $state(untrack(() => handle.relPath));
@@ -182,11 +190,49 @@
 	let menuOpen = $state(false);
 	let menuAnchor: HTMLElement | null = $state(null);
 	let pathAnchorEl: HTMLElement | null = $state(null);
-	const menuItems: MenuEntry[] = [{ value: 'delete', label: 'Delete', icon: Trash2 }];
+	let confirmingDelete = $state(false);
+
+	$effect(() => {
+		if (!menuOpen) confirmingDelete = false;
+	});
+
+	const menuItems: MenuEntry[] = $derived([
+		{ value: 'duplicate', label: 'Duplicate', icon: Copy },
+		confirmingDelete
+			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
+			: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
+	]);
+
+	async function duplicateDoc() {
+		try {
+			await flushAll();
+			const raw = await readTextFile(`${source.path}/${relPath}`).catch(() => '');
+			const { body } = DocHandle.deserialize(raw);
+			const dir = folderDir(relPath);
+			const newRel = await DocHandle.uniqueRelPath(source, dir, `${handle.title} copy`);
+			const newTitle = newRel.split('/').pop()!.replace(/\.md$/i, '');
+			const copy = await DocHandle.create(
+				source,
+				newTitle,
+				newRel,
+				handle.groups.map((g) => g.id),
+				JSON.parse(JSON.stringify(handle.properties))
+			);
+			await copy.saveContent(body);
+			onDuplicated?.(copy);
+		} catch (e) {
+			console.error('duplicate failed', e);
+		}
+	}
 
 	function onMenuSelect(value: string) {
+		if (value === 'delete') {
+			confirmingDelete = true;
+			return;
+		}
 		menuOpen = false;
-		if (value === 'delete') onDelete?.();
+		if (value === 'duplicate') duplicateDoc();
+		if (value === 'confirm-delete') onDelete?.();
 	}
 
 	onMount(() => {

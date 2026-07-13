@@ -1,6 +1,7 @@
 <script lang="ts">
     import {onMount, onDestroy} from 'svelte';
-    import type View from '$lib/models/View.svelte';
+    import {v4 as uuidv4} from 'uuid';
+    import View from '$lib/models/View.svelte';
     import type {ViewFace, FilterLeaf} from '$lib/models/View.svelte';
     import type EditorState from '$lib/models/EditorState.svelte.js';
     import type {TabState} from '$lib/models/EditorState.svelte.js';
@@ -13,7 +14,7 @@
     import Menu from '../views/Menu.svelte';
     import CoverSourceDialog from '../CoverSourceDialog.svelte';
     import type {MenuEntry} from '$lib/views/menuTypes';
-    import {Crop, X, Check, EllipsisVertical, Trash2, ImageUp, Plus} from '@lucide/svelte';
+    import {Crop, X, Check, EllipsisVertical, Trash2, ImageUp, Plus, Copy} from '@lucide/svelte';
 
     let {view, tab, editor}: { view: View; tab?: TabState; editor: EditorState } = $props();
 
@@ -238,11 +239,21 @@
 
     let moreOpen = $state(false);
     let moreAnchor: HTMLElement | null = $state(null);
+    let confirmingDelete = $state(false);
+
+    $effect(() => {
+        if (!moreOpen) confirmingDelete = false;
+    });
 
     const moreItems = $derived.by(() => {
         const items: MenuEntry[] = [];
         if (!view.cover) items.push({value: 'add-cover', label: 'Add cover', icon: ImageUp});
-        items.push({value: 'trash', label: 'Move to trash', icon: Trash2});
+        items.push({value: 'duplicate', label: 'Duplicate', icon: Copy});
+        items.push(
+            confirmingDelete
+                ? {value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true}
+                : {value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true}
+        );
         return items;
     });
 
@@ -251,9 +262,40 @@
         moreOpen = true;
     }
 
+    async function duplicateView() {
+        try {
+            const json = JSON.parse(JSON.stringify(view.toJSON()));
+            json.id = uuidv4();
+            json.slug = `${view.slug} copy`;
+            json.created_at = new Date();
+            json.updated_at = new Date();
+            json.temporary = false;
+            const copy = new View(json);
+            await copy.save();
+            editor.openView(copy);
+        } catch (e) {
+            console.error('duplicate view failed', e);
+        }
+    }
+
+    async function deleteView() {
+        try {
+            await view.unsave();
+            editor.closeTab(view.id);
+        } catch (e) {
+            console.error('delete view failed', e);
+        }
+    }
+
     function onMoreSelect(value: string) {
+        if (value === 'delete') {
+            confirmingDelete = true;
+            return;
+        }
         moreOpen = false;
         if (value === 'add-cover') pickCover();
+        if (value === 'duplicate') duplicateView();
+        if (value === 'confirm-delete') deleteView();
     }
 
     function onOpenRow(rowId: string) {
