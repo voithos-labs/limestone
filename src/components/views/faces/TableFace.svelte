@@ -41,6 +41,7 @@
     } from '$lib/views/fieldValue';
     import {toWallClock} from '$lib/views/dateFormat';
     import {searchDocuments} from '$lib/services/search';
+    import {select} from '$lib/services/db';
     import Menu from '../Menu.svelte';
     import IconAddColumnRight from '~icons/material-symbols/add-column-right';
     import {
@@ -55,6 +56,7 @@
         Folder,
         Database,
         Ellipsis,
+        Hash,
         X
     } from '@lucide/svelte';
     import {defaultNoteDir, getDefaultSourceId, listSources, pickCreationSource, type Source} from '$lib/models/Source';
@@ -260,10 +262,12 @@
                 }
                 perfQuery = performance.now();
                 total = rows.length;
+                loadRowTags(rows);
             } else {
                 rows = (await view.getMembers({face, limit: 100})) as Row[];
                 perfQuery = performance.now();
                 total = rows.length;
+                loadRowTags(rows);
                 if (rows.length === 100) {
                     view.countMembers({face})
                         .then((n) => {
@@ -309,7 +313,10 @@
     onMount(() => {
         load();
         Group.list()
-            .then((gs) => (folders = gs.filter((g) => g.groupType === GroupType.Folder)))
+            .then((gs) => {
+                folders = gs.filter((g) => g.groupType === GroupType.Folder);
+                tagGroups = gs.filter((g) => g.groupType === GroupType.Tag);
+            })
             .catch(() => {
             });
         listSources()
@@ -871,6 +878,90 @@
         }
     }
 
+    // ── Tags (built-in field, edited like the doc header's tag menu) ────────────
+    let tagGroups: Group[] = $state([]);
+    let rowTags: Record<string, { id: string; slug: string }[]> = $state({});
+    let tagMenuOpen = $state(false);
+    let tagMenuAnchor: HTMLElement | null = $state(null);
+    let tagEditRowId: string | null = $state(null);
+
+    const tagItems = $derived(tagGroups.map((g) => ({value: g.id, label: g.slug, icon: Hash})));
+    const tagSelectedIds = $derived(
+        tagEditRowId ? (rowTags[tagEditRowId] ?? []).map((t) => t.id) : []
+    );
+
+    const tagsFor = (rowId: string) => (rowTags[rowId] ?? []).map((t) => t.slug);
+
+    async function loadRowTags(list: Row[]) {
+        if (list.length === 0) {
+            rowTags = {};
+            return;
+        }
+        try {
+            const ph = list.map(() => '?').join(', ');
+            const hits = await select<{ doc_id: string; id: string; slug: string }>(
+                `SELECT dg.document_id AS doc_id, g.id, g.slug
+                 FROM document_groups dg
+                          JOIN groups g ON g.id = dg.group_id
+                 WHERE g.group_type = 'tag'
+                   AND dg.document_id IN (${ph})`,
+                list.map((r) => r.id)
+            );
+            const next: Record<string, { id: string; slug: string }[]> = {};
+            for (const h of hits) (next[h.doc_id] ??= []).push({id: h.id, slug: h.slug});
+            rowTags = next;
+        } catch {
+        }
+    }
+
+    function openTagMenu(anchor: HTMLElement, rowId: string) {
+        if (tagMenuOpen && tagEditRowId === rowId) {
+            tagMenuOpen = false;
+            return;
+        }
+        tagEditRowId = rowId;
+        tagMenuAnchor = anchor;
+        tagMenuOpen = true;
+    }
+
+    async function applyRowTags(rowId: string, slugs: string[]) {
+        try {
+            const doc = await DocHandle.fromID(rowId);
+            await doc.setTags(slugs);
+            rowTags = {...rowTags, [rowId]: doc.tags.map((t) => ({id: t.id, slug: t.slug}))};
+            tagGroups = (await Group.list()).filter((g) => g.groupType === GroupType.Tag);
+            const fid = view.fields.find((f) => f.type === 'tags')?.id;
+            if (fid && fieldAffectsView(fid)) load(true);
+        } catch (e) {
+            error = String(e);
+            loadRowTags(rows);
+        }
+    }
+
+    function toggleRowTag(groupId: string) {
+        const rowId = tagEditRowId;
+        if (!rowId) return;
+        const cur = rowTags[rowId] ?? [];
+        const has = cur.some((t) => t.id === groupId);
+        const g = tagGroups.find((t) => t.id === groupId);
+        const next = has
+            ? cur.filter((t) => t.id !== groupId)
+            : g
+                ? [...cur, {id: g.id, slug: g.slug}]
+                : cur;
+        rowTags = {...rowTags, [rowId]: next};
+        applyRowTags(rowId, next.map((t) => t.slug));
+    }
+
+    function createRowTag(q: string) {
+        const rowId = tagEditRowId;
+        const slug = q.trim();
+        if (!rowId || !slug) return;
+        const cur = rowTags[rowId] ?? [];
+        if (cur.some((t) => t.slug === slug)) return;
+        applyRowTags(rowId, [...cur.map((t) => t.slug), slug]);
+    }
+
     const editingField = $derived(
         editing ? view.fields.find((f) => f.id === editing!.fieldId) : undefined
     );
@@ -909,6 +1000,16 @@
         wasEditOpen = open;
     });
 
+    let wasTagMenuOpen = false;
+    $effect(() => {
+        const open = tagMenuOpen;
+        if (!open && wasTagMenuOpen) {
+            tagEditRowId = null;
+            if (activeCell) focusTable();
+        }
+        wasTagMenuOpen = open;
+    });
+
     const NO_METADATA_REASON =
         'This source stores files without frontmatter, so tags, properties, and dates can’t be saved on its documents.';
 
@@ -923,6 +1024,10 @@
     function onCellClick(e: MouseEvent, field: ViewField, row: Row) {
         if (!isEditable(field)) return;
         if (metaBlocked(field, row)) return;
+        if (field.type === 'tags') {
+            if (row.id !== DRAFT_ID) openTagMenu(e.currentTarget as HTMLElement, row.id);
+            return;
+        }
         if (field.type === 'boolean') {
             const cur = rawStatefulValue(field, row);
             writeCell(field, row, cur === true ? false : true);
@@ -1045,6 +1150,10 @@
             `td[data-cell="${activeCell.row}-${activeCell.col}"]`
         ) as HTMLElement | null;
         if (!td) return;
+        if (col.field.type === 'tags') {
+            openTagMenu(td, row.id);
+            return;
+        }
         editing = {rowId: row.id, fieldId: col.field.id};
         editAnchor = td;
         editOpen = true;
@@ -1357,6 +1466,7 @@
     function draftFieldIndices(): number[] {
         const out: number[] = [];
         columns.forEach((col, idx) => {
+            if (col.field.type === 'tags') return;
             if (col.field.type === 'title' || col.field.type === 'folder' || isEditable(col.field))
                 out.push(idx);
         });
@@ -1508,7 +1618,7 @@
 {/if}
 
 {#snippet cellInner(field: ViewField, row: Row)}
-    <CellValue {field} {row} viewSlug={view.slug} {sources}/>
+    <CellValue {field} {row} viewSlug={view.slug} {sources} tags={tagsFor(row.id)}/>
 {/snippet}
 
 <LeanScroll {flow}>
@@ -1567,7 +1677,7 @@
                                     <FolderCrumb dir={folderDirLabel} rootLabel={createSourceName}/>
                                 {/if}
                             </button>
-                        {:else if editable}
+                        {:else if editable && col.field.type !== 'tags'}
                             <div
                                     class="nr-edit"
                                     role="button"
@@ -1883,6 +1993,19 @@
         items={rowMenuItems}
         onSelect={onRowMenuSelect}
         minWidth={150}
+/>
+
+<Menu
+        bind:open={tagMenuOpen}
+        anchor={tagMenuAnchor}
+        items={tagItems}
+        multiple
+        selectedValues={tagSelectedIds}
+        onSelect={toggleRowTag}
+        onCreate={createRowTag}
+        searchable
+        placeholder="Search or create…"
+        minWidth={180}
 />
 
 <Menu

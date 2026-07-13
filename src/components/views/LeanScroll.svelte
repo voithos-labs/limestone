@@ -149,7 +149,10 @@
 		updateThumb();
 		const ro = new ResizeObserver(() => updateThumb());
 		if (scroller) ro.observe(scroller);
-		if (content) ro.observe(content);
+		if (content) {
+			ro.observe(content);
+			for (const child of content.children) ro.observe(child);
+		}
 		return () => ro.disconnect();
 	});
 </script>
