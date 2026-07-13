@@ -7,21 +7,16 @@
 		ViewField,
 		MemberRow
 	} from '$lib/models/View.svelte';
-	import { isLeafActive, VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
-	import type { MenuEntry } from '$lib/views/menuTypes';
-	import { getFieldIcon } from '$lib/views/filterDisplay';
-	import { fieldLabel } from '$lib/views/fieldValue';
+	import { isLeafActive } from '$lib/models/View.svelte';
 	import { deriveCreateContext, folderLinkChain, folderPath } from '$lib/views/createDefaults';
 	import { searchDocuments } from '$lib/services/search';
 	import { select } from '$lib/services/db';
 	import { listSources, pickCreationSource, getDefaultSourceId, type Source } from '$lib/models/Source';
 	import Group, { GroupType } from '$lib/models/Group';
 	import DocHandle from '$lib/models/DocHandle';
-	import Menu from '../Menu.svelte';
 	import FaceCard from '../FaceCard.svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
 	import { convertFileSrc } from '@tauri-apps/api/core';
-	import { SlidersHorizontal, LayoutGrid, List, ArrowUpAZ, ArrowDownAZ } from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';
 
 	let {
@@ -311,43 +306,6 @@
 		return { colW, pos, height: Math.max(0, ...tot) };
 	});
 
-	let optOpen = $state(false);
-	let optEl: HTMLElement | null = $state(null);
-
-	const sortFieldId = $derived(face.sort[0]?.field_id ?? '');
-	const sortDir = $derived(face.sort[0]?.direction ?? 'desc');
-
-	const sortFieldItems = $derived(
-		view.fields
-			.filter((f) => VIEW_FIELD_SORTABLE.has(f.type))
-			.map((f) => ({ value: `sort:${f.id}`, label: fieldLabel(f), icon: getFieldIcon(f.type) }))
-	);
-
-	const optItems = $derived.by((): MenuEntry[] => [
-		{ kind: 'divider', section: 'Layout' },
-		{ value: 'layout:grid', label: 'Grid', icon: LayoutGrid },
-		{ value: 'layout:list', label: 'List', icon: List },
-		{ kind: 'divider' },
-		{ value: '__sort', label: 'Sort by', children: sortFieldItems },
-		{
-			value: '__dir',
-			label: sortDir === 'asc' ? 'Ascending' : 'Descending',
-			icon: sortDir === 'asc' ? ArrowUpAZ : ArrowDownAZ
-		}
-	]);
-
-	function onOpt(value: string) {
-		if (value.startsWith('layout:')) {
-			face.config.layout = value.slice(7);
-		} else if (value.startsWith('sort:')) {
-			face.sort = [{ field_id: value.slice(5), direction: sortDir }];
-		} else if (value === '__dir') {
-			const fid = sortFieldId || view.fields.find((f) => f.type === 'updated_at')?.id;
-			if (fid) face.sort = [{ field_id: fid, direction: sortDir === 'asc' ? 'desc' : 'asc' }];
-		}
-		optOpen = false;
-	}
-
 	const createCtx = $derived(deriveCreateContext(view, face, folders));
 	let creating = false;
 
@@ -405,18 +363,6 @@
 {/if}
 
 <div class="list-face">
-	<div class="lf-bar">
-		<button
-			class="lf-opt"
-			type="button"
-			aria-label="List options"
-			bind:this={optEl}
-			onclick={() => (optOpen = !optOpen)}
-		>
-			<SlidersHorizontal size={14} strokeWidth={1.75} />
-		</button>
-	</div>
-
 	<div
 		class="lf-grid"
 		class:measured
@@ -460,16 +406,6 @@
 	{/if}
 </div>
 
-<Menu
-	bind:open={optOpen}
-	anchor={optEl}
-	items={optItems}
-	onSelect={onOpt}
-	multiple
-	selectedValues={[`layout:${layout}`, `sort:${sortFieldId}`]}
-	minWidth={170}
-/>
-
 <style>
 	.error {
 		margin: 0 24px 12px;
@@ -483,31 +419,6 @@
 	.list-face {
 		margin: 0 24px;
 		font-family: var(--font-ui);
-	}
-
-	.lf-bar {
-		display: flex;
-		justify-content: flex-end;
-		margin-bottom: 6px;
-	}
-
-	.lf-opt {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		padding: 0;
-		border: none;
-		border-radius: 6px;
-		background: transparent;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-	}
-
-	.lf-opt:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
 	}
 
 	.lf-grid {

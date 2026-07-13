@@ -15,10 +15,16 @@
 		Plus,
 		ArrowLeft,
 		ChevronUp,
-		NotebookText
+		NotebookText,
+		LayoutGrid,
+		ArrowUpAZ,
+		ArrowDownAZ,
+		ArrowDownUp
 	} from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '$lib/models/View.svelte';
+	import { VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
+	import type { MenuEntry } from '$lib/views/menuTypes';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import Menu from './Menu.svelte';
@@ -49,6 +55,55 @@
 
 	let groupEl: HTMLButtonElement | null = $state(null);
 	let groupOpen = $state(false);
+
+	// ── List-face options (layout + sort) ────────────────────────────────────
+	let layoutEl: HTMLButtonElement | null = $state(null);
+	let layoutOpen = $state(false);
+	let sortEl: HTMLButtonElement | null = $state(null);
+	let sortOpen = $state(false);
+
+	const layoutValue = $derived((face.config.layout as string) ?? 'grid');
+	const layoutLabel = $derived(layoutValue === 'list' ? 'List' : 'Grid');
+	const LAYOUT_ITEMS = [
+		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
+		{ value: 'list', label: 'List', icon: List }
+	];
+
+	const sortFieldId = $derived(face.sort[0]?.field_id ?? '');
+	const sortDir = $derived(face.sort[0]?.direction ?? 'desc');
+	const sortLabel = $derived.by(() => {
+		const f = view.fields.find((ff) => ff.id === sortFieldId);
+		return f ? fieldLabel(f) : 'Default';
+	});
+
+	const sortItems = $derived.by((): MenuEntry[] => [
+		...view.fields
+			.filter((f: ViewField) => VIEW_FIELD_SORTABLE.has(f.type))
+			.map((f: ViewField) => ({
+				value: f.id,
+				label: fieldLabel(f),
+				icon: getFieldIcon(f.type),
+				keepOpen: true
+			})),
+		{ kind: 'divider' as const },
+		{ value: 'dir:asc', label: 'Ascending', icon: ArrowUpAZ, keepOpen: true },
+		{ value: 'dir:desc', label: 'Descending', icon: ArrowDownAZ, keepOpen: true }
+	]);
+
+	function setLayout(v: string) {
+		face.config.layout = v;
+		layoutOpen = false;
+	}
+
+	function setSort(v: string) {
+		if (v.startsWith('dir:')) {
+			const dir = v.slice(4) as 'asc' | 'desc';
+			const fid = sortFieldId || view.fields.find((f) => f.type === 'updated_at')?.id;
+			if (fid) face.sort = [{ field_id: fid, direction: dir }];
+			return;
+		}
+		face.sort = [{ field_id: v, direction: sortDir }];
+	}
 
 	const faceFilterCount = $derived(
 		face.additive_filter.children.filter((n: FilterNode) => 'field_id' in n).length
@@ -94,6 +149,7 @@
 	function onPopLeave() {
 		if (!closeOnSwapLeave) return;
 		if (groupOpen || addFaceOpen || renamingId || confirmFor) return;
+		if (layoutOpen || sortOpen) return;
 		open = false;
 	}
 
@@ -367,6 +423,36 @@
 				<span class="trailing">{groupLabel}</span>
 				<ChevronDown size={13} strokeWidth={2} />
 			</button>
+		{:else if face.type === 'list'}
+			<div class="divider"></div>
+
+			<button
+				class="action group-toggle"
+				type="button"
+				bind:this={layoutEl}
+				onclick={() => (layoutOpen = !layoutOpen)}
+			>
+				{#if layoutValue === 'list'}
+					<List size={14} strokeWidth={1.75} />
+				{:else}
+					<LayoutGrid size={14} strokeWidth={1.75} />
+				{/if}
+				<span>Layout</span>
+				<span class="trailing">{layoutLabel}</span>
+				<ChevronDown size={13} strokeWidth={2} />
+			</button>
+
+			<button
+				class="action group-toggle"
+				type="button"
+				bind:this={sortEl}
+				onclick={() => (sortOpen = !sortOpen)}
+			>
+				<ArrowDownUp size={14} strokeWidth={1.75} />
+				<span>Sort by</span>
+				<span class="trailing">{sortLabel}</span>
+				<ChevronDown size={13} strokeWidth={2} />
+			</button>
 		{/if}
 	</div>
 
@@ -377,6 +463,26 @@
 			items={groupItems}
 			selected={groupById ?? ''}
 			onSelect={setGroup}
+			minWidth={170}
+			placement="right"
+		/>
+	{:else if face.type === 'list'}
+		<Menu
+			bind:open={layoutOpen}
+			anchor={layoutEl}
+			items={LAYOUT_ITEMS}
+			selected={layoutValue}
+			onSelect={setLayout}
+			minWidth={150}
+			placement="right"
+		/>
+		<Menu
+			bind:open={sortOpen}
+			anchor={sortEl}
+			items={sortItems}
+			multiple
+			selectedValues={[sortFieldId, `dir:${sortDir}`]}
+			onSelect={setSort}
 			minWidth={170}
 			placement="right"
 		/>
