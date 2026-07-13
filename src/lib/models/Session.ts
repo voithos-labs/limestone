@@ -103,6 +103,11 @@ class Session {
 		for (const [key, theme] of Object.entries(BUILTIN_THEMES)) {
 			await themeStore.set(key, theme);
 		}
+		for (const key of await themeStore.keys()) {
+			if (!(key in BUILTIN_THEMES)) {
+				await themeStore.delete(key);
+			}
+		}
 
 		// hydrate EditorState instances from JSON
 		let editors: EditorState[] = [];
@@ -139,7 +144,7 @@ class Session {
 	}
 
 	async listThemes(): Promise<string[]> {
-		return await this.themeStore.keys();
+		return (await this.themeStore.keys()).sort((a, b) => a.localeCompare(b));
 	}
 
 	// ── Serialization ───────────────────────────────────────────────────────────────────

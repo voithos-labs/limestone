@@ -247,7 +247,7 @@
         width: 100%;
         height: 46px;
         padding: 0 18px;
-        background: var(--color-bg-opaque, var(--color-bg));
+        background: var(--color-bg);
         border: 1px solid var(--color-border);
         border-radius: 14px;
         color: var(--color-ui-muted);
@@ -307,7 +307,7 @@
         padding: 8px;
         max-height: 48vh;
         overflow-y: auto;
-        background: var(--color-bg-opaque, var(--color-bg));
+        background: var(--color-bg);
         border: 1px solid var(--color-border);
         border-top: none;
         border-radius: 0 0 14px 14px;

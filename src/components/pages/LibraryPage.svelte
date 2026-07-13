@@ -283,7 +283,7 @@
         flex-shrink: 0;
         border: 1px solid var(--color-border);
         border-radius: 14px;
-        background: var(--color-bg-opaque, var(--color-bg));
+        background: var(--color-bg);
         color: var(--color-text-secondary);
         cursor: pointer;
     }
@@ -320,7 +320,7 @@
         padding: 0;
         border: 1px solid var(--color-border);
         border-radius: 10px;
-        background: var(--color-bg-opaque, var(--color-bg));
+        background: var(--color-bg);
         overflow: hidden;
         cursor: pointer;
         text-align: left;
@@ -428,7 +428,7 @@
         padding: 14px 16px;
         border: 1px solid var(--color-border);
         border-radius: 10px;
-        background: var(--color-bg-opaque, var(--color-bg));
+        background: var(--color-bg);
         cursor: pointer;
         text-align: left;
         font-family: var(--font-ui);

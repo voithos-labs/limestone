@@ -348,10 +348,6 @@
         flex-shrink: 0;
     }
 
-    :global([data-theme-transparent='true']) .divider {
-        background: var(--color-ui-muted);
-    }
-
     /* ── Pinned/open separator (within the tab strip) ── */
     .pin-divider {
         width: 1px;
@@ -361,10 +357,6 @@
         border-radius: 999px;
         flex-shrink: 0;
         align-self: flex-end;
-    }
-
-    :global([data-theme-transparent='true']) .pin-divider {
-        background: var(--color-ui-muted);
     }
 
     /* ── Tabs scroll container ── */
