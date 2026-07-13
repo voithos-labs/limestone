@@ -563,7 +563,7 @@
         padding: 0;
         border: none;
         border-radius: 6px;
-        background: var(--color-bg-opaque, var(--color-bg));
+        background: var(--color-bg);
         color: var(--color-text-secondary);
         cursor: pointer;
         box-shadow: var(--menu-shadow);

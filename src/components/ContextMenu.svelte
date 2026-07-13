@@ -93,7 +93,7 @@
 		z-index: 2000;
 		min-width: 168px;
 		padding: 4px;
-		background: var(--color-bg-opaque, var(--color-bg));
+		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		box-shadow: var(--menu-shadow);

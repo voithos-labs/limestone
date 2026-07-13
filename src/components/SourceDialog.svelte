@@ -187,7 +187,7 @@
 		width: 420px;
 		max-width: calc(100vw - 32px);
 		padding: 20px;
-		background: var(--color-bg-opaque, var(--color-bg));
+		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-radius: 12px;
 		box-shadow: var(--menu-shadow);

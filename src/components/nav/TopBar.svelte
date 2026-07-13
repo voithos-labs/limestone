@@ -10,7 +10,7 @@
         Library,
         Bookmark,
         ChevronDown,
-        Cuboid,
+        Box,
         Hash,
         Folder,
         Folders,
@@ -37,7 +37,7 @@
         if (scoped.has('tags')) return Hash;
         if (scoped.has('folder')) return Folder;
         if (scoped.has('source')) return Folders;
-        return Cuboid;
+        return Box;
     }
 
     let {editor, settings}: { editor: EditorState; settings: SettingsState } = $props();
@@ -274,7 +274,7 @@
                 {:else if !compactTabs || collapsed}
                     <TextAlignStart class="doc-icon" size={13}/>
                 {/if}
-                <span class="tab-label">{d.title}</span>
+                <span class="tab-label">{d.content.type === 'new' ? 'New' : d.title}</span>
                 <span class="tab-fade"></span>
                 <span class="close-zone">
 					<button
@@ -348,10 +348,6 @@
         flex-shrink: 0;
     }
 
-    :global([data-theme-transparent='true']) .divider {
-        background: var(--color-ui-muted);
-    }
-
     /* ── Pinned/open separator (within the tab strip) ── */
     .pin-divider {
         width: 1px;
@@ -361,10 +357,6 @@
         border-radius: 999px;
         flex-shrink: 0;
         align-self: flex-end;
-    }
-
-    :global([data-theme-transparent='true']) .pin-divider {
-        background: var(--color-ui-muted);
     }
 
     /* ── Tabs scroll container ── */

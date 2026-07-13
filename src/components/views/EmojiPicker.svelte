@@ -149,7 +149,7 @@
 		position: fixed;
 		z-index: 1000;
 		width: 320px;
-		background: var(--color-bg-opaque, var(--color-bg));
+		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
 		box-shadow: var(--menu-shadow);

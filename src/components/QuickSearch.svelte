@@ -7,7 +7,7 @@
     import Group from '$lib/models/Group';
     import View from '$lib/models/View.svelte';
     import {searchDocuments} from '$lib/services/search';
-    import {Search, Folder, Folders, Hash, X, TextAlignStart, Cuboid} from '@lucide/svelte';
+    import {Search, Folder, Folders, Hash, X, TextAlignStart, Box} from '@lucide/svelte';
     import {onMount, untrack} from 'svelte';
 
     let {
@@ -196,7 +196,7 @@
 								{#if result.emoji}
                                     <span class="result-emoji">{result.emoji}</span>
                                 {:else}
-                                    <Cuboid size={14}/>
+                                    <Box size={14}/>
                                 {/if}
 							{:else if result.kind === 'source'}
 								<Folders size={14}/>
@@ -245,9 +245,9 @@
         align-items: center;
         gap: 12px;
         width: 100%;
-        height: 46px;
+        height: 42px;
         padding: 0 18px;
-        background: var(--color-bg-opaque, var(--color-bg));
+        background: var(--color-bg);
         border: 1px solid var(--color-border);
         border-radius: 14px;
         color: var(--color-ui-muted);
@@ -307,7 +307,7 @@
         padding: 8px;
         max-height: 48vh;
         overflow-y: auto;
-        background: var(--color-bg-opaque, var(--color-bg));
+        background: var(--color-bg);
         border: 1px solid var(--color-border);
         border-top: none;
         border-radius: 0 0 14px 14px;
