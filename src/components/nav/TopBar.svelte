@@ -178,6 +178,24 @@
     // Check initial maximized state
     appWindow.isMaximized().then((v) => (isMaximized = v));
 
+    // Track state changes from every path (drag-restore, snap, Win+arrows)
+    let maxCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    $effect(() => {
+        let unlisten: (() => void) | undefined;
+        appWindow
+            .onResized(() => {
+                if (maxCheckTimer) clearTimeout(maxCheckTimer);
+                maxCheckTimer = setTimeout(async () => {
+                    isMaximized = await appWindow.isMaximized();
+                }, 80);
+            })
+            .then((u) => (unlisten = u));
+        return () => {
+            if (maxCheckTimer) clearTimeout(maxCheckTimer);
+            unlisten?.();
+        };
+    });
+
     async function minimize() {
         await appWindow.minimize();
     }
