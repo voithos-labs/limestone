@@ -10,6 +10,7 @@ import { load, type Store } from '@tauri-apps/plugin-store';
 
 // internal
 import EditorState, { type EditorJSON } from '$lib/models/EditorState.svelte.js';
+import { SettingsState } from '$lib/models/Settings.svelte.js';
 import type { Source } from '$lib/models/Source';
 import { applyTheme, BUILTIN_THEMES, DEFAULT_THEME, type Theme } from '$lib/services/theme';
 
@@ -71,6 +72,7 @@ class Session {
 	activeTheme: string; // ;;;;;; replace the current theme config here, managed here
 	// sources: Source[];
 	viewTabs: Map<string, ViewTab> = new Map();
+	settings = new SettingsState();
 
 	private themeStore: Store;
 
@@ -112,6 +114,7 @@ class Session {
 		}
 
 		let session = new Session(editors, state.activeTheme, themeStore, state.viewTabs);
+		await session.settings.load();
 		await session.applyCurrentTheme();
 		return session;
 	}

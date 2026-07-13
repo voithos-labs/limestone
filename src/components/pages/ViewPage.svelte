@@ -14,22 +14,16 @@
     import Menu from '../views/Menu.svelte';
     import CoverSourceDialog from '../CoverSourceDialog.svelte';
     import type {MenuEntry} from '$lib/views/menuTypes';
-    import {getSetting} from '$lib/models/Settings';
     import {Crop, X, Check, EllipsisVertical, Trash2, ImageUp, Plus} from '@lucide/svelte';
 
     let {view, tab, editor}: { view: View; tab?: TabState; editor: EditorState } = $props();
-
-    let scrollAll = $state(true);
-    getSetting<boolean>('views.scroll_entire_view').then((v) => {
-        if (v !== null) scrollAll = v;
-    });
 
     const activeFace: ViewFace = $derived(
         view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
     );
 
     // The table keeps its own scroll (horizontal bar + sticky header)
-    const bodyFlow = $derived(scrollAll && activeFace?.type !== 'table');
+    const bodyFlow = $derived(activeFace?.type !== 'table');
     let bodyEl: HTMLDivElement | null = $state(null);
 
     let faceInit = false;
@@ -337,7 +331,7 @@
             </div>
 
             {#if activeFace?.type === 'journal'}
-                <JournalFace {view} face={activeFace} flow={scrollAll}/>
+                <JournalFace {view} face={activeFace} flow={true}/>
             {:else}
                 <TableFace {view} face={activeFace} {onOpenRow} {createSignal}/>
             {/if}
