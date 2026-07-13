@@ -12,7 +12,7 @@
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import DateValueEditor from '../DateValueEditor.svelte';
 	import MarkdownEditor from '../../editor/MarkdownEditor.svelte';
-	import { SlidersHorizontal, ScanBarcode, ScanLine } from '@lucide/svelte';
+	import { SlidersHorizontal, ScanBarcode, ScanLine, ChevronDown } from '@lucide/svelte';
 
 	let { view, face, flow = false }: { view: View; face: ViewFace; flow?: boolean } = $props();
 
@@ -103,13 +103,38 @@
 		return set;
 	});
 
-	const selectedRow = $derived.by(() => {
-		for (const r of rows) {
+	const sortBy = $derived((face.config.sort_by as string) ?? 'created_at');
+
+	const dayRows = $derived.by(() => {
+		const out = rows.filter((r) => {
 			const d = rowDate(r, dateFieldKey);
-			if (d && sameDay(d, selected)) return r;
+			return d && sameDay(d, selected);
+		});
+		if (sortBy === 'title') {
+			out.sort((a, b) => String(a.title ?? '').localeCompare(String(b.title ?? '')));
+		} else if (sortBy === 'updated_at') {
+			out.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+		} else {
+			out.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 		}
-		return null;
+		return out;
 	});
+
+	let dayDocId = $state<string | null>(null);
+
+	$effect(() => {
+		void selected;
+		dayDocId = null;
+	});
+
+	const selectedRow = $derived(dayRows.find((r) => r.id === dayDocId) ?? dayRows[0] ?? null);
+
+	let pickOpen = $state(false);
+	let pickEl: HTMLElement | null = $state(null);
+
+	const dayDocItems = $derived(
+		dayRows.map((r) => ({ value: r.id, label: String(r.title ?? 'untitled') }))
+	);
 
 	let docTab: TabState | null = $state(null);
 	$effect(() => {
@@ -154,11 +179,21 @@
 		{ kind: 'divider', section: 'Date field' },
 		...dateFieldItems,
 		{ kind: 'divider' },
+		{
+			value: '__sort',
+			label: 'Sort day by',
+			children: [
+				{ value: 'sort:created_at', label: 'Created' },
+				{ value: 'sort:updated_at', label: 'Updated' },
+				{ value: 'sort:title', label: 'Title' }
+			]
+		},
 		{ value: '__activity', label: 'Activity timeline', icon: showActivity ? ScanLine : ScanBarcode }
 	]);
 
 	function onOpt(value: string) {
 		if (value === '__activity') face.config.show_activity = !showActivity;
+		else if (value.startsWith('sort:')) face.config.sort_by = value.slice(5);
 		else face.config.date_field = value;
 		optOpen = false;
 	}
@@ -621,6 +656,21 @@
 	</div>
 
 	<div class="entry">
+		{#if dayRows.length > 0}
+			<button
+				class="doc-pick"
+				class:multi={dayRows.length > 1}
+				type="button"
+				title="Documents on this day"
+				bind:this={pickEl}
+				onclick={() => (pickOpen = !pickOpen)}
+			>
+				<ChevronDown size={15} strokeWidth={2} />
+				{#if dayRows.length > 1}
+					<span class="doc-pick-count">{dayRows.length}</span>
+				{/if}
+			</button>
+		{/if}
 		{#if docTab}
 			{#key docTab.id}
 				<MarkdownEditor tab={docTab} {flow} />
@@ -641,8 +691,22 @@
 	anchor={optEl}
 	items={menuItems}
 	onSelect={onOpt}
-	selected={dateFieldKey}
+	multiple
+	selectedValues={[dateFieldKey, 'sort:' + sortBy]}
 	minWidth={170}
+/>
+<Menu
+	bind:open={pickOpen}
+	anchor={pickEl}
+	items={dayDocItems}
+	onSelect={(id) => {
+		dayDocId = id;
+		pickOpen = false;
+	}}
+	selected={selectedRow?.id}
+	searchable
+	placeholder="Search this day…"
+	minWidth={220}
 />
 <DateValueEditor
 	bind:open={jumpOpen}
@@ -750,6 +814,48 @@
 
 	.journal.flow .entry {
 		min-height: calc(100vh - 180px);
+	}
+
+	.entry {
+		position: relative;
+	}
+
+	.doc-pick {
+		position: absolute;
+		top: 15px;
+		left: -26px;
+		z-index: 2;
+		display: inline-flex;
+		align-items: center;
+		gap: 1px;
+		padding: 3px;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-ui-dulled);
+		font-family: var(--font-ui);
+		font-size: 11px;
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 120ms ease;
+	}
+
+	.journal:not(.flow) .doc-pick {
+		top: 39px;
+		left: 0;
+	}
+
+	.entry:hover .doc-pick,
+	.doc-pick.multi {
+		opacity: 1;
+	}
+
+	.doc-pick:hover {
+		color: var(--color-text-primary);
+	}
+
+	.doc-pick-count {
+		line-height: 1;
 	}
 
 	.entry-empty {
