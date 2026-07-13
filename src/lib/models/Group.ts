@@ -49,6 +49,7 @@ class Group {
 	readonly groupType: GroupType;
 	readonly createdAt: Date;
 	updatedAt: Date;
+	accessedAt: Date;
 	parentGroupId?: string;
 	sourceId?: string;
 
@@ -60,6 +61,7 @@ class Group {
 		this.groupType = row.group_type as GroupType;
 		this.createdAt = new Date(row.created_at);
 		this.updatedAt = new Date(row.updated_at);
+		this.accessedAt = new Date(row.accessed_at);
 		this.parentGroupId = row.parent_group_id ?? undefined;
 		this.sourceId = row.source_id ?? undefined;
 	}

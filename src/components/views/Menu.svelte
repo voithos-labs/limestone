@@ -125,10 +125,11 @@
 			return;
 		}
 		if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
-			activeIndex = navCount === 0 ? -1 : (activeIndex + 1) % navCount;
+			activeIndex = navCount === 0 ? -1 : activeIndex < 0 ? 0 : (activeIndex + 1) % navCount;
 			e.preventDefault();
 		} else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
-			activeIndex = navCount === 0 ? -1 : (activeIndex - 1 + navCount) % navCount;
+			activeIndex =
+				navCount === 0 ? -1 : activeIndex < 0 ? navCount - 1 : (activeIndex - 1 + navCount) % navCount;
 			e.preventDefault();
 		} else if (e.key === 'Enter') {
 			if (activeIndex >= 0 && actionable[activeIndex]) {
@@ -242,7 +243,7 @@
 				/>
 			</div>
 		{/if}
-		<div class="list">
+		<div class="list" onmouseleave={() => (activeIndex = -1)} role="presentation">
 			{#each filtered as entry, i (isItem(entry) ? entry.value : 'd' + i)}
 				{#if isItem(entry)}
 					{@const Icon = entry.icon}

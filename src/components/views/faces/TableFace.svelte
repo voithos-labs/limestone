@@ -1452,6 +1452,9 @@
                 ? {views: {[view.slug]: draft.values}}
                 : {};
             await DocHandle.createFromTitle(source, {title, dir, groupIds, properties: props});
+            if (effectiveFolderId) {
+                folders.find((f) => f.id === effectiveFolderId)?.touch().catch(() => {});
+            }
             await load();
             const wasFloat = floatTop;
             const groupKey = creatingGroupKey;

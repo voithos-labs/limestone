@@ -197,10 +197,11 @@
 			e.preventDefault();
 		} else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
 			e.preventDefault();
-			if (navCount > 0) activeIndex = (activeIndex + 1) % navCount;
+			if (navCount > 0) activeIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % navCount;
 		} else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
 			e.preventDefault();
-			if (navCount > 0) activeIndex = (activeIndex - 1 + navCount) % navCount;
+			if (navCount > 0)
+				activeIndex = activeIndex < 0 ? navCount - 1 : (activeIndex - 1 + navCount) % navCount;
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
 			if (activeIndex >= 0 && activeIndex < navCount) activateIndex(activeIndex);
@@ -265,7 +266,7 @@
 				placeholder="Search or create…"
 			/>
 		</div>
-		<div class="list">
+		<div class="list" onmouseleave={() => (activeIndex = -1)} role="presentation">
 			{#each filtered as opt, i (opt.value)}
 				<div
 					class="opt-row"

@@ -545,6 +545,7 @@
 				if (key === 'created_at') await doc.saveMeta({ createdAt: selected });
 				else if (key === 'updated_at') await doc.saveMeta({ updatedAt: selected });
 			}
+			if (folderId) folders.find((f) => f.id === folderId)?.touch().catch(() => {});
 			await loadRows();
 		} catch (e) {
 			console.error('create entry failed', e);
