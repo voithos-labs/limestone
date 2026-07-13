@@ -372,7 +372,7 @@
 	}
 
 	.hero-inner.compact {
-		padding: 10px 0 6px;
+		padding: 2px 0 6px;
 	}
 
 	/* ── Title row (editable filename + ext, kebab) ── */

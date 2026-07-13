@@ -1,20 +1,31 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import type View from '$lib/models/View.svelte';
-	import type { ViewFace } from '$lib/models/View.svelte';
-	import { rawStatefulValue, fieldLabel } from '$lib/views/fieldValue';
+	import type { ViewFace, FilterNode } from '$lib/models/View.svelte';
+	import { rawStatefulValue } from '$lib/views/fieldValue';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import DocHandle from '$lib/models/DocHandle';
 	import { getDefaultSourceId, listSources, pickCreationSource } from '$lib/models/Source';
 	import { deriveCreateContext, folderPath, folderLinkChain } from '$lib/views/createDefaults';
 	import Group, { GroupType } from '$lib/models/Group';
 	import Menu from '../Menu.svelte';
-	import type { MenuEntry } from '$lib/views/menuTypes';
 	import DateValueEditor from '../DateValueEditor.svelte';
 	import MarkdownEditor from '../../editor/MarkdownEditor.svelte';
-	import { SlidersHorizontal, ScanBarcode, ScanLine, ChevronDown } from '@lucide/svelte';
+	import TableFace from './TableFace.svelte';
+	import ListFace from './ListFace.svelte';
+	import { ChevronDown } from '@lucide/svelte';
 
-	let { view, face, flow = false }: { view: View; face: ViewFace; flow?: boolean } = $props();
+	let {
+		view,
+		face,
+		flow = false,
+		onOpenRow
+	}: {
+		view: View;
+		face: ViewFace;
+		flow?: boolean;
+		onOpenRow?: (rowId: string) => void;
+	} = $props();
 
 	const DAY_SIZE = 46;
 	const DAY_GAP = 12;
@@ -145,8 +156,45 @@
 		dayRows.map((r) => ({ value: r.id, label: String(r.title ?? 'untitled') }))
 	);
 
+	// ── Compound body (table / grid) ──────────────────────────────────────────
+	// The body is a nested face; the journal owns its additive_filter so the rows
+	// it loads are the journal's own filters AND the selected day.
+	const bodyFace = $derived(face.body);
+
+	function dayScopeNode(): FilterNode | null {
+		const key = dateFieldKey;
+		const field =
+			key === 'created_at' || key === 'updated_at'
+				? view.fields.find((f) => f.type === key)
+				: view.fields.find((f) => f.id === key);
+		if (!field) return null;
+		// date-only bounds compare correctly both as ms (created_at/updated_at) and
+		// as wall-clock strings (stateful date fields)
+		return {
+			op: 'and',
+			children: [
+				{ field_id: field.id, op: 'on_or_after', value: isoDay(selected) },
+				{ field_id: field.id, op: 'before', value: isoDay(addDays(selected, 1)) }
+			]
+		};
+	}
+
+	$effect(() => {
+		const body = bodyFace;
+		if (!body) return;
+		const scope = dayScopeNode();
+		body.additive_filter = {
+			op: 'and',
+			children: scope ? [face.additive_filter, scope] : [face.additive_filter]
+		};
+	});
+
 	let docTab: TabState | null = $state(null);
 	$effect(() => {
+		if (bodyFace) {
+			docTab = null;
+			return;
+		}
 		const row = selectedRow;
 		if (!row) {
 			docTab = null;
@@ -167,45 +215,8 @@
 		};
 	});
 
-	let optOpen = $state(false);
-	let optEl: HTMLElement | null = $state(null);
-
-	const dateFieldItems = $derived.by(() => {
-		const items: { value: string; label: string }[] = [
-			{ value: 'created_at', label: 'Created' },
-			{ value: 'updated_at', label: 'Updated' }
-		];
-		for (const f of view.fields) {
-			if (f.type === 'date') items.push({ value: f.id, label: fieldLabel(f) });
-		}
-		return items;
-	});
-
 	const showActivity = $derived(face.config.show_activity !== false);
 	let jumpOpen = $state(false);
-
-	const menuItems = $derived.by((): MenuEntry[] => [
-		{ kind: 'divider', section: 'Date field' },
-		...dateFieldItems,
-		{ kind: 'divider' },
-		{
-			value: '__sort',
-			label: 'Sort day by',
-			children: [
-				{ value: 'sort:created_at', label: 'Created' },
-				{ value: 'sort:updated_at', label: 'Updated' },
-				{ value: 'sort:title', label: 'Title' }
-			]
-		},
-		{ value: '__activity', label: 'Activity timeline', icon: showActivity ? ScanLine : ScanBarcode }
-	]);
-
-	function onOpt(value: string) {
-		if (value === '__activity') face.config.show_activity = !showActivity;
-		else if (value.startsWith('sort:')) face.config.sort_by = value.slice(5);
-		else face.config.date_field = value;
-		optOpen = false;
-	}
 
 	function onJumpDate(v: string | null) {
 		if (!v) return;
@@ -653,58 +664,52 @@
 					>{monthMarker.label}</span
 				>
 			{/if}
-			<button
-				class="ctl opt"
-				type="button"
-				aria-label="Journal options"
-				bind:this={optEl}
-				onclick={() => (optOpen = !optOpen)}
-			>
-				<SlidersHorizontal size={14} strokeWidth={1.75} />
-			</button>
 		</div>
 	</div>
 
-	<div class="entry">
-		{#if dayRows.length > 0}
-			<button
-				class="doc-pick"
-				class:multi={dayRows.length > 1}
-				type="button"
-				title="Documents on this day"
-				bind:this={pickEl}
-				onclick={() => (pickOpen = !pickOpen)}
-			>
-				<ChevronDown size={15} strokeWidth={2} />
-				{#if dayRows.length > 1}
-					<span class="doc-pick-count">{dayRows.length}</span>
-				{/if}
-			</button>
-		{/if}
-		{#if docTab}
-			{#key docTab.id}
-				<MarkdownEditor tab={docTab} {flow} />
-			{/key}
-		{:else}
-			<div class="entry-empty">
-				<p>No entry for this day</p>
-				<button class="create-entry" type="button" disabled={creating} onclick={createEntry}
-					>Create entry</button
-				>
+	<div class="entry" class:doc-body={!bodyFace}>
+		{#if bodyFace}
+			<div class="body-face">
+				{#key bodyFace.id}
+					{#if bodyFace.type === 'list'}
+						<ListFace {view} face={bodyFace} {onOpenRow} />
+					{:else}
+						<TableFace {view} face={bodyFace} {onOpenRow} {flow} />
+					{/if}
+				{/key}
 			</div>
+		{:else}
+			{#if dayRows.length > 0}
+				<button
+					class="doc-pick"
+					class:multi={dayRows.length > 1}
+					type="button"
+					title="Documents on this day"
+					bind:this={pickEl}
+					onclick={() => (pickOpen = !pickOpen)}
+				>
+					<ChevronDown size={15} strokeWidth={2} />
+					{#if dayRows.length > 1}
+						<span class="doc-pick-count">{dayRows.length}</span>
+					{/if}
+				</button>
+			{/if}
+			{#if docTab}
+				{#key docTab.id}
+					<MarkdownEditor tab={docTab} {flow} />
+				{/key}
+			{:else}
+				<div class="entry-empty">
+					<p>No entry for this day</p>
+					<button class="create-entry" type="button" disabled={creating} onclick={createEntry}
+						>Create entry</button
+					>
+				</div>
+			{/if}
 		{/if}
 	</div>
 </div>
 
-<Menu
-	bind:open={optOpen}
-	anchor={optEl}
-	items={menuItems}
-	onSelect={onOpt}
-	multiple
-	selectedValues={[dateFieldKey, 'sort:' + sortBy]}
-	minWidth={170}
-/>
 <Menu
 	bind:open={pickOpen}
 	anchor={pickEl}
@@ -822,12 +827,17 @@
 		min-height: 0;
 	}
 
-	.journal.flow .entry {
+	.journal.flow .entry.doc-body {
 		min-height: calc(100vh - 180px);
 	}
 
 	.entry {
 		position: relative;
+	}
+
+	/* Body faces bring their own 24px gutter; cancel the journal's so it isn't doubled */
+	.body-face {
+		margin: 0 -24px;
 	}
 
 	.doc-pick {
@@ -938,12 +948,6 @@
 		opacity: var(--fade, 1);
 	}
 
-	.controls .ctl {
-		margin-left: auto;
-		opacity: 0;
-		transition: opacity 120ms ease;
-	}
-
 	.nav-year {
 		padding: 0;
 		margin: 0;
@@ -989,24 +993,8 @@
 		color: var(--color-text-secondary);
 	}
 
-	.day-nav:hover .nav-year,
-	.day-nav:hover .controls .ctl {
+	.day-nav:hover .nav-year {
 		opacity: 1;
-	}
-
-	.ctl {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		padding: 2px;
-		border: none;
-		background: transparent;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-	}
-
-	.ctl:hover {
-		color: var(--color-text-primary);
 	}
 
 	.days {

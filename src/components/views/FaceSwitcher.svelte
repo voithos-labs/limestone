@@ -19,7 +19,10 @@
 		LayoutGrid,
 		ArrowUpAZ,
 		ArrowDownAZ,
-		ArrowDownUp
+		ArrowDownUp,
+		CalendarClock,
+		ScanLine,
+		ScanBarcode
 	} from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '$lib/models/View.svelte';
@@ -95,6 +98,68 @@
 		layoutOpen = false;
 	}
 
+	// ── Journal (compound face) ──────────────────────────────────────────────
+	let bodyEl: HTMLButtonElement | null = $state(null);
+	let bodyOpen = $state(false);
+
+	const bodyValue = $derived(face.body?.type ?? 'doc');
+	const BODY_ITEMS = [
+		{ value: 'doc', label: 'Document', icon: NotebookText },
+		{ value: 'list', label: 'Grid', icon: LayoutGrid },
+		{ value: 'table', label: 'Table', icon: Table }
+	];
+	const bodyLabel = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.label ?? 'Document');
+	const BodyIcon = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.icon ?? NotebookText);
+
+	function setBody(v: string) {
+		if (v !== bodyValue) view.setFaceBody(face, v === 'doc' ? null : (v as ViewFaceType));
+		bodyOpen = false;
+	}
+
+	let dateFieldEl: HTMLButtonElement | null = $state(null);
+	let dateFieldOpen = $state(false);
+
+	const dateFieldKey = $derived((face.config.date_field as string) ?? 'created_at');
+	const dateFieldItems = $derived([
+		{ value: 'created_at', label: 'Created', icon: getFieldIcon('created_at') },
+		{ value: 'updated_at', label: 'Updated', icon: getFieldIcon('updated_at') },
+		...view.fields
+			.filter((f: ViewField) => f.type === 'date')
+			.map((f: ViewField) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }))
+	]);
+	const dateFieldLabel = $derived(
+		dateFieldItems.find((i) => i.value === dateFieldKey)?.label ?? 'Created'
+	);
+
+	function setDateField(v: string) {
+		face.config.date_field = v;
+		dateFieldOpen = false;
+	}
+
+	let daySortEl: HTMLButtonElement | null = $state(null);
+	let daySortOpen = $state(false);
+
+	const daySortBy = $derived((face.config.sort_by as string) ?? 'created_at');
+	const DAY_SORT_ITEMS = [
+		{ value: 'created_at', label: 'Created' },
+		{ value: 'updated_at', label: 'Updated' },
+		{ value: 'title', label: 'Title' }
+	];
+	const daySortLabel = $derived(
+		DAY_SORT_ITEMS.find((i) => i.value === daySortBy)?.label ?? 'Created'
+	);
+
+	function setDaySort(v: string) {
+		face.config.sort_by = v;
+		daySortOpen = false;
+	}
+
+	const showActivity = $derived(face.config.show_activity !== false);
+
+	function toggleActivity() {
+		face.config.show_activity = !showActivity;
+	}
+
 	function setSort(v: string) {
 		if (v.startsWith('dir:')) {
 			const dir = v.slice(4) as 'asc' | 'desc';
@@ -149,7 +214,7 @@
 	function onPopLeave() {
 		if (!closeOnSwapLeave) return;
 		if (groupOpen || addFaceOpen || renamingId || confirmFor) return;
-		if (layoutOpen || sortOpen) return;
+		if (layoutOpen || sortOpen || bodyOpen || dateFieldOpen || daySortOpen) return;
 		open = false;
 	}
 
@@ -453,6 +518,56 @@
 				<span class="trailing">{sortLabel}</span>
 				<ChevronDown size={13} strokeWidth={2} />
 			</button>
+		{:else if face.type === 'journal'}
+			<div class="divider"></div>
+
+			<button
+				class="action group-toggle"
+				type="button"
+				bind:this={bodyEl}
+				onclick={() => (bodyOpen = !bodyOpen)}
+			>
+				<BodyIcon size={14} strokeWidth={1.75} />
+				<span>Day shows</span>
+				<span class="trailing">{bodyLabel}</span>
+				<ChevronDown size={13} strokeWidth={2} />
+			</button>
+
+			<button
+				class="action group-toggle"
+				type="button"
+				bind:this={dateFieldEl}
+				onclick={() => (dateFieldOpen = !dateFieldOpen)}
+			>
+				<CalendarClock size={14} strokeWidth={1.75} />
+				<span>Date field</span>
+				<span class="trailing">{dateFieldLabel}</span>
+				<ChevronDown size={13} strokeWidth={2} />
+			</button>
+
+			{#if !face.body}
+				<button
+					class="action group-toggle"
+					type="button"
+					bind:this={daySortEl}
+					onclick={() => (daySortOpen = !daySortOpen)}
+				>
+					<ArrowDownUp size={14} strokeWidth={1.75} />
+					<span>Sort day by</span>
+					<span class="trailing">{daySortLabel}</span>
+					<ChevronDown size={13} strokeWidth={2} />
+				</button>
+			{/if}
+
+			<button class="action group-toggle" type="button" onclick={toggleActivity}>
+				{#if showActivity}
+					<ScanLine size={14} strokeWidth={1.75} />
+				{:else}
+					<ScanBarcode size={14} strokeWidth={1.75} />
+				{/if}
+				<span>Activity timeline</span>
+				<span class="trailing">{showActivity ? 'On' : 'Off'}</span>
+			</button>
 		{/if}
 	</div>
 
@@ -484,6 +599,34 @@
 			selectedValues={[sortFieldId, `dir:${sortDir}`]}
 			onSelect={setSort}
 			minWidth={170}
+			placement="right"
+		/>
+	{:else if face.type === 'journal'}
+		<Menu
+			bind:open={bodyOpen}
+			anchor={bodyEl}
+			items={BODY_ITEMS}
+			selected={bodyValue}
+			onSelect={setBody}
+			minWidth={150}
+			placement="right"
+		/>
+		<Menu
+			bind:open={dateFieldOpen}
+			anchor={dateFieldEl}
+			items={dateFieldItems}
+			selected={dateFieldKey}
+			onSelect={setDateField}
+			minWidth={160}
+			placement="right"
+		/>
+		<Menu
+			bind:open={daySortOpen}
+			anchor={daySortEl}
+			items={DAY_SORT_ITEMS}
+			selected={daySortBy}
+			onSelect={setDaySort}
+			minWidth={150}
 			placement="right"
 		/>
 	{/if}

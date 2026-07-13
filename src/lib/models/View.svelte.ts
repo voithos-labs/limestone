@@ -78,6 +78,7 @@ interface ViewFaceJSON {
 	additive_filter: FilterCompound;
 	sort: SortKey[];
 	config: Record<string, any>;
+	body?: ViewFaceJSON | null;
 }
 
 const FACE_TYPE_LABEL: Record<ViewFaceType, string> = {
@@ -97,6 +98,9 @@ export class ViewFace {
 	additive_filter: FilterCompound = $state({ op: 'and', children: [] }); // View filters AND this node
 	sort: SortKey[] = $state([]);
 	config: Record<string, any> = $state({});
+	// A compound face (journal) renders another face as its body; the parent owns
+	// the body's additive_filter to scope it (e.g. to the selected day).
+	body: ViewFace | null = $state(null);
 
 	constructor(json: ViewFaceJSON) {
 		this.id = json.id;
@@ -106,6 +110,7 @@ export class ViewFace {
 		this.additive_filter = json.additive_filter;
 		this.sort = json.sort;
 		this.config = json.config;
+		this.body = json.body ? new ViewFace(json.body) : null;
 	}
 
 	get label(): string {
@@ -146,7 +151,8 @@ export class ViewFace {
 			display_field_ids: this.display_field_ids,
 			additive_filter: this.additive_filter,
 			sort: this.sort,
-			config: this.config
+			config: this.config,
+			body: this.body ? this.body.toJSON() : null
 		};
 	}
 }
@@ -785,6 +791,11 @@ class View {
 		return face;
 	}
 
+	// swap a compound face's body (null = the face's own native body)
+	setFaceBody(face: ViewFace, type: ViewFaceType | null): void {
+		face.body = type ? ViewFace.create(type, this.defaultFaceFieldIds()) : null;
+	}
+
 	// copy an existing face (columns, filters, sort, config) under a new id
 	duplicateFace(id: string): ViewFace | undefined {
 		const src = this.faces.find((f) => f.id === id);
@@ -816,11 +827,14 @@ class View {
 		this.fields = this.fields.filter((f) => f.id !== fieldId);
 		pruneFieldFromFilter(this.filter, fieldId);
 		for (const face of this.faces) {
-			face.display_field_ids = face.display_field_ids.filter((id) => id !== fieldId);
-			pruneFieldFromFilter(face.additive_filter, fieldId);
-			face.sort = face.sort.filter((k) => k.field_id !== fieldId);
-			if (face.config.group_by === fieldId) delete face.config.group_by;
-			if (face.config.column_widths) delete face.config.column_widths[fieldId];
+			for (const f of [face, face.body]) {
+				if (!f) continue;
+				f.display_field_ids = f.display_field_ids.filter((id) => id !== fieldId);
+				pruneFieldFromFilter(f.additive_filter, fieldId);
+				f.sort = f.sort.filter((k) => k.field_id !== fieldId);
+				if (f.config.group_by === fieldId) delete f.config.group_by;
+				if (f.config.column_widths) delete f.config.column_widths[fieldId];
+			}
 		}
 	}
 

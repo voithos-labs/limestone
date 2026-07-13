@@ -386,7 +386,7 @@
             </div>
 
             {#if activeFace?.type === 'journal'}
-                <JournalFace {view} face={activeFace} flow={true}/>
+                <JournalFace {view} face={activeFace} flow={true} {onOpenRow}/>
             {:else if activeFace?.type === 'list'}
                 <ListFace {view} face={activeFace} {onOpenRow} {createSignal}/>
             {:else}
