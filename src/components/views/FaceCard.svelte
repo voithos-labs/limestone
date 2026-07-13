@@ -18,6 +18,7 @@
 		sources = [],
 		tags = [],
 		preview = '',
+		image = '',
 		onOpen
 	}: {
 		row: MemberRow;
@@ -26,8 +27,18 @@
 		sources?: Source[];
 		tags?: string[];
 		preview?: string;
+		image?: string;
 		onOpen?: () => void;
 	} = $props();
+
+	let imgOk = $state(true);
+	let imgLoaded = $state(false);
+
+	$effect(() => {
+		void image;
+		imgOk = true;
+		imgLoaded = false;
+	});
 
 	const PILL_TYPES = new Set(['tags', 'select', 'multiselect']);
 
@@ -78,6 +89,18 @@
 					</span>
 				{/if}
 			{/each}
+		</span>
+	{/if}
+	{#if image && imgOk}
+		<span class="fc-image">
+			<img
+				src={image}
+				alt=""
+				class:loaded={imgLoaded}
+				loading="lazy"
+				onload={() => (imgLoaded = true)}
+				onerror={() => (imgOk = false)}
+			/>
 		</span>
 	{/if}
 </button>
@@ -165,5 +188,29 @@
 	.fc-bool-label {
 		font-size: 12px;
 		color: var(--color-ui-muted);
+	}
+
+	/* Fixed box: the card's height is known before the image decodes, so a late
+	   load can't shift the masonry layout. */
+	.fc-image {
+		display: block;
+		height: 116px;
+		margin-top: 10px;
+		border-radius: 8px;
+		overflow: hidden;
+		background: var(--chip-bg);
+	}
+
+	.fc-image img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		opacity: 0;
+		transition: opacity 120ms ease;
+	}
+
+	.fc-image img.loaded {
+		opacity: 1;
 	}
 </style>

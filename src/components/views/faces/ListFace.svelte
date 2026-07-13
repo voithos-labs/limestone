@@ -20,6 +20,7 @@
 	import Menu from '../Menu.svelte';
 	import FaceCard from '../FaceCard.svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
+	import { convertFileSrc } from '@tauri-apps/api/core';
 	import { SlidersHorizontal, LayoutGrid, List, ArrowUpAZ, ArrowDownAZ } from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';
 
@@ -172,13 +173,19 @@
 	}
 
 	const PREVIEW_MAX = 280;
-	const previewCache = new Map<string, string>();
+	const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
+	const IMAGE_EMBED_RE = /!\[\[([^\]\n]+?)\]\]|!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/;
+
+	type Preview = { text: string; image: string };
+	const previewCache = new Map<string, Preview>();
 	let previews: Record<string, string> = $state({});
+	let images: Record<string, string> = $state({});
 
 	function stripMd(s: string): string {
 		return s
 			.replace(/```[\s\S]*?```/g, ' ')
 			.replace(/`([^`]*)`/g, '$1')
+			.replace(/!\[\[[^\]\n]*\]\]/g, ' ')
 			.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
 			.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
 			.replace(/^#{1,6}\s+/gm, '')
@@ -187,6 +194,21 @@
 			.replace(/[*_~]{1,3}([^*_~\n]+)[*_~]{1,3}/g, '$1')
 			.replace(/\n{2,}/g, '\n')
 			.trim();
+	}
+
+	// same resolution the editor's inline embeds use: source-relative, falling back
+	// to the source's asset folder for bare filenames
+	function firstImage(body: string, source: Source): string {
+		const m = IMAGE_EMBED_RE.exec(body);
+		if (!m) return '';
+		const target = (m[1] ? m[1].split('|')[0] : m[3]).trim();
+		if (/^(https?|data|asset):/i.test(target)) return target;
+		const clean = target.replace(/\\/g, '/').replace(/^\.?\//, '');
+		const ext = clean.split('.').pop()?.toLowerCase() ?? '';
+		if (!IMAGE_EXTS.has(ext)) return '';
+		const loc = (source.asset_location ?? '').replace(/^\/+|\/+$/g, '');
+		const rel = clean.includes('/') || !loc ? clean : `${loc}/${clean}`;
+		return convertFileSrc(`${source.path}/${rel}`);
 	}
 
 	async function loadPreviews(list: Row[], token: number) {
@@ -199,26 +221,35 @@
 			}
 		}
 		const byId = new Map(srcs.map((s) => [s.id, s]));
-		const next: Record<string, string> = {};
+		const nextText: Record<string, string> = {};
+		const nextImg: Record<string, string> = {};
 		await Promise.all(
 			list.map(async (r) => {
 				const key = `${r.id}:${r.updated_at}`;
-				let text = previewCache.get(key);
-				if (text === undefined) {
+				let hit = previewCache.get(key);
+				if (hit === undefined) {
 					const src = byId.get(r.source_id);
 					if (!src) return;
 					try {
 						const raw = await readTextFile(`${src.path}/${r.rel_path}`);
-						text = stripMd(DocHandle.deserialize(raw).body).slice(0, PREVIEW_MAX);
+						const body = DocHandle.deserialize(raw).body;
+						hit = {
+							text: stripMd(body).slice(0, PREVIEW_MAX),
+							image: firstImage(body, src)
+						};
 					} catch {
-						text = '';
+						hit = { text: '', image: '' };
 					}
-					previewCache.set(key, text);
+					previewCache.set(key, hit);
 				}
-				next[r.id] = text;
+				nextText[r.id] = hit.text;
+				if (hit.image) nextImg[r.id] = hit.image;
 			})
 		);
-		if (token === loadToken) previews = next;
+		if (token === loadToken) {
+			previews = nextText;
+			images = nextImg;
+		}
 	}
 
 	const metaFields = $derived(
@@ -234,34 +265,38 @@
 	let gridW = $state(0);
 	let heights: Record<string, number> = $state({});
 	let settledW = $state(0);
-	let heightsSnap: Record<string, number> = $state({});
 	let settleTimer: ReturnType<typeof setTimeout> | null = null;
+	let animate = $state(false);
 
+	// Only the container width is debounced: card widths are pinned to it, so a
+	// window drag can't change any card's height, and positions never go stale.
 	$effect(() => {
 		const w = gridW;
-		const h = { ...heights };
 		if (settleTimer) clearTimeout(settleTimer);
-		if (untrack(() => settledW) === 0 && w > 0) {
+		if (w <= 0 || untrack(() => settledW) === 0) {
 			settledW = w;
-			heightsSnap = h;
 			return;
 		}
-		settleTimer = setTimeout(() => {
-			settledW = w;
-			heightsSnap = h;
-		}, 120);
+		settleTimer = setTimeout(() => (settledW = w), 120);
 	});
 
 	const colCount = $derived(
 		layout === 'list' ? 1 : Math.max(1, Math.floor((settledW + GAP) / (COL_MIN + GAP)))
 	);
 
-	function estHeight(row: Row): number {
-		const titleLines = Math.max(1, Math.ceil((row.title?.length || 8) / 26));
-		const p = previews[row.id] ?? '';
-		const prevLines = p ? Math.ceil(Math.min(p.length, PREVIEW_MAX) / 38) : 0;
-		return 26 + titleLines * 19 + prevLines * 17 + metaFields.length * 18;
-	}
+	// Cards are hidden until every one has reported a real height: a single card's
+	// position depends on all the others, so a partial set means wrong positions.
+	const measured = $derived(rows.length > 0 && rows.every((r) => heights[r.id] !== undefined));
+
+	$effect(() => {
+		if (!measured || untrack(() => animate)) return;
+		requestAnimationFrame(() => requestAnimationFrame(() => (animate = true)));
+	});
+
+	$effect(() => {
+		void rows;
+		animate = false;
+	});
 
 	const cardLayout = $derived.by(() => {
 		const colW = (settledW - (colCount - 1) * GAP) / colCount;
@@ -271,7 +306,7 @@
 			let ci = 0;
 			for (let i = 1; i < colCount; i++) if (tot[i] < tot[ci]) ci = i;
 			pos[r.id] = { x: ci * (colW + GAP), y: tot[ci] };
-			tot[ci] += (heightsSnap[r.id] ?? estHeight(r)) + GAP;
+			tot[ci] += (heights[r.id] ?? 0) + GAP;
 		}
 		return { colW, pos, height: Math.max(0, ...tot) };
 	});
@@ -384,14 +419,16 @@
 
 	<div
 		class="lf-grid"
+		class:measured
 		bind:clientWidth={gridW}
-		style:height="{cardLayout.height}px"
+		style:height="{measured ? cardLayout.height : 0}px"
 	>
 		{#if settledW > 0}
 			{#each rows as row (row.id)}
 				{@const p = cardLayout.pos[row.id]}
 				<div
 					class="card-slot"
+					class:animated={animate}
 					style:width="{cardLayout.colW}px"
 					style:transform="translate({p.x}px, {p.y}px)"
 					bind:clientHeight={heights[row.id]}
@@ -403,6 +440,7 @@
 						{sources}
 						tags={tagSlugsFor(row.id)}
 						preview={previews[row.id] ?? ''}
+						image={images[row.id] ?? ''}
 						onOpen={() => onOpenRow?.(row.id)}
 					/>
 				</div>
@@ -480,6 +518,13 @@
 		position: absolute;
 		top: 0;
 		left: 0;
+	}
+
+	.lf-grid:not(.measured) .card-slot {
+		visibility: hidden;
+	}
+
+	.card-slot.animated {
 		transition: transform 160ms ease;
 	}
 
