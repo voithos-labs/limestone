@@ -20,7 +20,7 @@
 	import { tags } from '@lezer/highlight';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
-	import { getSetting } from '$lib/models/Settings';
+	import { getSetting } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
 	import { confirm } from '@tauri-apps/plugin-dialog';
 	import DocumentHero from '../DocumentHero.svelte';

@@ -39,14 +39,17 @@ impl JsonSettingsStore {
         Ok(())
     }
 
+    pub fn load_defaults(&self) -> Value {
+        self.default_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str::<Value>(s).ok())
+            .unwrap_or(Value::Object(Default::default()))
+    }
+
     /// Load to memory for cahcing
     pub fn load_merged(&self) -> Value {
         // Default
-        let mut merged = self
-            .default_json
-            .as_ref()
-            .and_then(|s| serde_json::from_str::<Value>(s).ok())
-            .unwrap_or(Value::Object(Default::default()));
+        let mut merged = self.load_defaults();
 
         // Global
         if let Ok(contents) = fs::read_to_string(&self.path) {
@@ -60,7 +63,40 @@ impl JsonSettingsStore {
 
     /// Set global override of settings (basically a diff from default settings)
     pub fn set_global<T: Serialize>(&self, key: &str, value: T) -> io::Result<()> {
+        let value = serde_json::to_value(value)?;
+        if dot_get(&self.load_defaults(), key).is_some_and(|d| json_eq(d, &value)) {
+            return self.remove_global(key);
+        }
         self.write_to(&self.path, key, value)
+    }
+
+    pub fn remove_global(&self, key: &str) -> io::Result<()> {
+        self.remove_from(&self.path, key)
+    }
+
+    pub fn clear_global(&self) -> io::Result<()> {
+        match fs::remove_file(&self.path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn remove_from(&self, path: &Path, key: &str) -> io::Result<()> {
+        let Some(mut json) = fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        else {
+            return Ok(());
+        };
+
+        let segments: Vec<&str> = key.split('.').collect();
+        dot_delete(&mut json, &segments);
+
+        AtomicFile::new(path, AllowOverwrite)
+            .write(|f| f.write_all(serde_json::to_string_pretty(&json)?.as_bytes()))?;
+
+        Ok(())
     }
 
     /// Update value by dot-path key on fs.
@@ -114,6 +150,36 @@ fn dot_set(root: &mut Value, path: &str, value: Value) -> io::Result<()> {
     Ok(())
 }
 
+fn dot_delete(value: &mut Value, segments: &[&str]) {
+    let Some(obj) = value.as_object_mut() else {
+        return;
+    };
+    let [head, rest @ ..] = segments else {
+        return;
+    };
+    if rest.is_empty() {
+        obj.remove(*head);
+    } else if let Some(child) = obj.get_mut(*head) {
+        dot_delete(child, rest);
+        if child.as_object().is_some_and(|o| o.is_empty()) {
+            obj.remove(*head);
+        }
+    }
+}
+
+fn json_eq(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
+        (Value::Array(x), Value::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(av, bv)| json_eq(av, bv))
+        }
+        (Value::Object(x), Value::Object(y)) => {
+            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| json_eq(v, w)))
+        }
+        _ => a == b,
+    }
+}
+
 /// Deep-merge `source` object into `target`.
 fn json_merge(target: &mut Value, source: &Value) {
     if let (Some(t), Some(s)) = (target.as_object_mut(), source.as_object()) {
@@ -126,5 +192,87 @@ fn json_merge(target: &mut Value, source: &Value) {
             }
             t.insert(k.clone(), v.clone());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn store(name: &str) -> JsonSettingsStore {
+        let dir = std::env::temp_dir().join(format!("limestone-settings-test-{name}"));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        JsonSettingsStore {
+            default_json: Some(
+                r#"{"appearance":{"ui_scale_percent":100},"search":{"recency_multiplier":100.0}}"#
+                    .to_string(),
+            ),
+            path: dir.join("settings.json"),
+        }
+    }
+
+    fn file_json(store: &JsonSettingsStore) -> Value {
+        serde_json::from_str(&fs::read_to_string(&store.path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn set_writes_override_and_merged_reflects_it() {
+        let s = store("set");
+        s.set_global("appearance.ui_scale_percent", 125).unwrap();
+        assert_eq!(
+            dot_get(&file_json(&s), "appearance.ui_scale_percent"),
+            Some(&Value::from(125))
+        );
+        assert_eq!(
+            dot_get(&s.load_merged(), "appearance.ui_scale_percent"),
+            Some(&Value::from(125))
+        );
+        assert_eq!(
+            dot_get(&s.load_merged(), "search.recency_multiplier"),
+            Some(&Value::from(100.0))
+        );
+    }
+
+    #[test]
+    fn remove_prunes_empty_parents_and_restores_default() {
+        let s = store("remove");
+        s.set_global("appearance.ui_scale_percent", 125).unwrap();
+        s.remove_global("appearance.ui_scale_percent").unwrap();
+        assert!(file_json(&s).as_object().unwrap().is_empty());
+        assert_eq!(
+            dot_get(&s.load_merged(), "appearance.ui_scale_percent"),
+            Some(&Value::from(100))
+        );
+    }
+
+    #[test]
+    fn set_equal_to_default_removes_override() {
+        let s = store("set-default");
+        s.set_global("appearance.ui_scale_percent", 125).unwrap();
+        s.set_global("appearance.ui_scale_percent", 100).unwrap();
+        assert!(file_json(&s).as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn set_equal_to_default_compares_numbers_across_int_and_float() {
+        let s = store("set-default-float");
+        s.set_global("search.recency_multiplier", 50).unwrap();
+        s.set_global("search.recency_multiplier", 100).unwrap();
+        assert!(file_json(&s).as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn remove_keeps_sibling_overrides() {
+        let s = store("remove-sibling");
+        s.set_global("appearance.ui_scale_percent", 125).unwrap();
+        s.set_global("search.recency_multiplier", 50).unwrap();
+        s.remove_global("appearance.ui_scale_percent").unwrap();
+        let json = file_json(&s);
+        assert!(dot_get(&json, "appearance").is_none());
+        assert_eq!(
+            dot_get(&json, "search.recency_multiplier"),
+            Some(&Value::from(50))
+        );
     }
 }

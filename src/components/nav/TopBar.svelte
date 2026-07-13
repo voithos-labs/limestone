@@ -23,7 +23,7 @@
         PinOff,
         CircleX
     } from '@lucide/svelte';
-    import {getSetting, setSetting} from '$lib/models/Settings';
+    import type {SettingsState} from '$lib/models/Settings.svelte';
     import {ctxMenu, type CtxEntry} from '$lib/contextMenu.svelte';
     import type View from '$lib/models/View.svelte';
 
@@ -40,18 +40,14 @@
         return Cuboid;
     }
 
-    let {editor}: { editor: EditorState } = $props();
+    let {editor, settings}: { editor: EditorState; settings: SettingsState } = $props();
 
-    let compactTabs = $state(true);
-    getSetting<boolean>('appearance.compact_tabs').then((v) => {
-        if (v !== null) compactTabs = v;
-    });
+    let compactTabs = $derived(settings.get<boolean>('appearance.compact_tabs') ?? false);
 
     // Collapse pinned tabs to just their icon
-    let collapsePinned = $state(true);
-    getSetting<boolean>('appearance.collapse_pinned_tabs').then((v) => {
-        if (v !== null) collapsePinned = v;
-    });
+    let collapsePinned = $derived(
+        settings.get<boolean>('appearance.collapse_pinned_tabs') ?? true
+    );
 
     const settingsTab: FocusTarget = {kind: 'settings'};
     const searchTab: FocusTarget = {kind: 'search'};

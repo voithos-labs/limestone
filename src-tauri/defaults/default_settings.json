@@ -1,14 +1,11 @@
 {
 	"version": 1,
 	"appearance": {
-		"compact_tabs": true,
+		"compact_tabs": false,
 		"collapse_pinned_tabs": true,
 		"editor_font_size": 14,
 		"ui_scale_percent": 100,
-		"max_page_width": 1200
-	},
-	"views": {
-		"scroll_entire_view": true
+		"max_page_width": 1000
 	},
 	"indexing": {
 		"frontmatter_read_buffer_size": 1024

@@ -1,6 +1,7 @@
 <script lang="ts">
     import {onMount} from 'svelte';
     import {getCurrentWindow} from '@tauri-apps/api/window';
+    import {getCurrentWebview} from '@tauri-apps/api/webview';
     import TopBar from '../components/nav/TopBar.svelte';
     import {flushAll} from '$lib/util/flush';
     import Session from '$lib/models/Session';
@@ -19,6 +20,18 @@
 
     $effect(() => {
         tab = session?.editors[0]?.focusedTab;
+    });
+
+    $effect(() => {
+        const percent = session?.settings.get<number>('appearance.ui_scale_percent');
+        if (percent && percent > 0) getCurrentWebview().setZoom(percent / 100);
+    });
+
+    $effect(() => {
+        const maxWidth = session?.settings.get<number>('appearance.max_page_width');
+        if (maxWidth && maxWidth > 0) {
+            document.documentElement.style.setProperty('--page-max-width', maxWidth + 'px');
+        }
     });
 
     let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,7 +75,7 @@
 {#if session}
     {@const editor = session.editors[0]}
     <div class="app-layout">
-        <TopBar {editor}></TopBar>
+        <TopBar {editor} settings={session.settings}></TopBar>
         <main class="content-area">
             {#if tab}
                 {#key tab.id}
