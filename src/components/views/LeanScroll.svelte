@@ -27,26 +27,29 @@
 	// Tick field
 	const TICK_GAP = 7; // px between ticks
 	const TICK_BASE = 1; // resting tick thickness
-	const TICK_PEAK = 3; // thickness at the lens center
-	const LENS_SIGMA_FRAC = 0.16; // lens width as a fraction of the rail
+	const TICK_PEAK = 3; // tick thickness inside the thumb
+	const THUMB_MIN_W = 24; // px, floor for the thumb span
+	const THUMB_MAX_W = 64; // px, cap for the thumb span
 	const RAIL_PAD = 24; // left/right inset; matches the table's 24px side margin
+
+	let viewFrac = $state(0);
 
 	const ticks = $derived.by(() => {
 		if (!showHBar || railWidth <= 0) return [];
 		const span = Math.max(1, railWidth - 2 * RAIL_PAD);
 		const n = Math.max(2, Math.floor(span / TICK_GAP));
 		const step = span / n;
-		const center = RAIL_PAD + lensFrac.current * span;
-		const sigma = Math.max(12, span * LENS_SIGMA_FRAC);
+		const thumbW = Math.min(THUMB_MAX_W, Math.max(THUMB_MIN_W, span * viewFrac));
+		const start = RAIL_PAD + lensFrac.current * (span - thumbW);
+		const end = start + thumbW;
 		const out: { x: number; w: number; o: number }[] = [];
 		for (let i = 0; i <= n; i++) {
 			const x = RAIL_PAD + i * step;
-			const d = x - center;
-			const g = Math.exp(-(d * d) / (2 * sigma * sigma));
+			const inside = x >= start && x <= end;
 			out.push({
 				x,
-				w: TICK_BASE + (TICK_PEAK - TICK_BASE) * g,
-				o: 0.28 + 0.62 * g
+				w: inside ? TICK_PEAK : TICK_BASE,
+				o: inside ? 0.85 : 0.3
 			});
 		}
 		return out;
@@ -77,6 +80,7 @@
 			showHBar = false;
 		} else {
 			railWidth = viewW;
+			viewFrac = viewW / contentW;
 			const frac = scroller.scrollLeft / maxScrollX;
 			if (draggingRail) lensFrac.set(frac, { duration: 0 });
 			else lensFrac.target = frac;
@@ -198,7 +202,13 @@
 	.cs-wrapper.flow .cs-scroller {
 		flex: none;
 		min-height: 0;
-		overflow: visible;
+		overflow-x: auto;
+		overflow-y: hidden;
+	}
+
+	.cs-wrapper.flow .hbar-rail {
+		position: sticky;
+		margin-top: calc(-1 * var(--hbar-h, 16px));
 	}
 
 	.cs-scroller::-webkit-scrollbar {
