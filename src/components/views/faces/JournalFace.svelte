@@ -1073,11 +1073,11 @@
 	}
 
 	.day.selected .dow {
-		color: rgba(255, 255, 255, 0.72);
+		color: color-mix(in srgb, var(--color-accent-contrast) 72%, transparent);
 	}
 
 	.day.selected .num {
-		color: #fff;
+		color: var(--color-accent-contrast);
 	}
 
 	.day:not(.selected):hover {

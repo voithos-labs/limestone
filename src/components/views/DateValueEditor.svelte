@@ -709,7 +709,7 @@
 	.day.selected,
 	.day.selected:hover {
 		background: var(--color-accent);
-		color: #fff;
+		color: var(--color-accent-contrast);
 	}
 
 	.time-row {
@@ -773,7 +773,7 @@
 		background: var(--color-accent);
 		font: inherit;
 		font-size: 12px;
-		color: #fff;
+		color: var(--color-accent-contrast);
 		cursor: pointer;
 	}
 

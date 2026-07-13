@@ -1,10 +1,13 @@
 <script lang="ts">
     import {
         resetAllSettings,
+        getSetting,
+        setSetting,
         SETTINGS_REGISTRY,
         type SettingCategory,
         type SettingDef
     } from '$lib/models/Settings.svelte';
+    import {ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent} from '$lib/services/theme';
     import {listSources, removeSource, sourceName, type Source} from '$lib/models/Source';
     import {select} from '$lib/services/db';
     import {openPath} from '@tauri-apps/plugin-opener';
@@ -65,7 +68,7 @@
 
     const appearanceCategory = SETTINGS_REGISTRY.find((c) => c.id === 'appearance') ?? null;
     let themeMatches = $derived(
-        searchQuery.trim().length > 0 && matchesQuery('Appearance Theme Active color theme')
+        searchQuery.trim().length > 0 && matchesQuery('Appearance Theme Active color theme accent')
     );
     let resultCount = $derived(searchResults.length + (themeMatches ? 1 : 0));
     let matchedCategoryIds = $derived(new Set(searchResults.map((r) => r.category.id)));
@@ -161,10 +164,35 @@
 
     onMount(async () => {
         themes = await session.listThemes();
+        accentSetting = (await getSetting<string>('appearance.accent')) ?? 'default';
         const saved = viewTab.state?.activeSection;
         activeSection = saved && sectionIds.includes(saved) ? saved : sectionIds[0];
         loadSources();
     });
+
+    // ── Accent ───────────────────────────────────────────────────────────────
+    let accentSetting = $state('default');
+
+    const themeType = $derived(BUILTIN_THEMES[session.activeTheme]?.type ?? 'dark');
+    const accentIsCustom = $derived(accentSetting.startsWith('#'));
+
+    function swatchColor(key: string): string {
+        return resolveAccent(key, themeType)?.accent ?? 'transparent';
+    }
+
+    async function setAccent(value: string) {
+        accentSetting = value;
+        await setSetting('appearance.accent', value);
+        await session.applyCurrentTheme();
+    }
+
+    let customDebounce: ReturnType<typeof setTimeout> | null = null;
+
+    function onCustomAccent(e: Event) {
+        const hex = (e.target as HTMLInputElement).value;
+        if (customDebounce) clearTimeout(customDebounce);
+        customDebounce = setTimeout(() => setAccent(hex), 120);
+    }
 
     function saveTabState() {
         if (!viewTab.state) viewTab.state = {};
@@ -247,6 +275,51 @@
                     <option value={name}>{name}</option>
                 {/each}
             </select>
+        </div>
+    </div>
+{/snippet}
+
+{#snippet accentItem(category: SettingCategory | null)}
+    <div class="setting-item">
+        <div class="item-info">
+            <div class="item-head">
+                <span class="item-label">
+                    {#if category}<span class="item-cat">{category.label}:</span> {/if}Accent
+                </span>
+            </div>
+            <p class="item-desc">Accent color, applied over the active theme.</p>
+        </div>
+        <div class="item-control">
+            <div class="accent-row">
+                <button
+                        class="accent-swatch"
+                        class:active={accentSetting === 'default'}
+                        title="Theme default"
+                        onclick={() => setAccent('default')}
+                ></button>
+                {#each Object.entries(ACCENT_PRESETS) as [key, preset] (key)}
+                    <button
+                            class="accent-swatch"
+                            class:active={accentSetting === key}
+                            title={preset.name}
+                            style:background={swatchColor(key)}
+                            onclick={() => setAccent(key)}
+                    ></button>
+                {/each}
+                <label
+                        class="accent-swatch custom"
+                        class:active={accentIsCustom}
+                        title="Custom"
+                        style:background={accentIsCustom ? accentSetting : 'transparent'}
+                >
+                    <input
+                            type="color"
+                            value={accentIsCustom ? accentSetting : '#567b67'}
+                            oninput={onCustomAccent}
+                    />
+                    {#if !accentIsCustom}<span class="custom-mark">+</span>{/if}
+                </label>
+            </div>
         </div>
     </div>
 {/snippet}
@@ -377,6 +450,7 @@
                 <div class="settings-list">
                     {#if themeMatches}
                         {@render themeItem(appearanceCategory)}
+                        {@render accentItem(appearanceCategory)}
                     {/if}
                     {#each searchResults as {category, def} (def.key)}
                         {@render settingItem(def, category)}
@@ -436,6 +510,7 @@
                 <div class="settings-list">
                     {#if activeCategory.id === 'appearance'}
                         {@render themeItem(null)}
+                        {@render accentItem(null)}
                     {/if}
                     {#each activeCategory.settings as def (def.key)}
                         {@render settingItem(def, null)}
@@ -857,15 +932,58 @@
         color: var(--color-text-primary);
     }
 
+    .accent-row {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+
+    .accent-swatch {
+        position: relative;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 1px solid var(--color-border);
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--color-accent) 50%, var(--color-surface) 50%);
+        cursor: pointer;
+    }
+
+    .accent-swatch.active {
+        outline: 2px solid var(--color-text-primary);
+        outline-offset: 2px;
+    }
+
+    .accent-swatch.custom {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-style: dashed;
+        color: var(--color-ui-muted);
+    }
+
+    .accent-swatch.custom input {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .custom-mark {
+        font-size: 13px;
+        line-height: 1;
+        pointer-events: none;
+    }
+
     .btn.danger {
         border-color: transparent;
         background: var(--color-accent);
-        color: white;
+        color: var(--color-accent-contrast);
     }
 
     .btn.danger:hover {
         opacity: 0.9;
-        color: white;
+        color: var(--color-accent-contrast);
     }
 
     .btn:disabled {
@@ -991,12 +1109,12 @@
 
     .src-btn.confirm {
         background: var(--color-accent);
-        color: white;
+        color: var(--color-accent-contrast);
     }
 
     .src-btn.confirm:hover {
         opacity: 0.9;
-        color: white;
+        color: var(--color-accent-contrast);
     }
 
     .sources-empty {

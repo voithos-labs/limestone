@@ -445,7 +445,7 @@
         border: none;
         border-radius: 10px;
         background: var(--color-accent);
-        color: #fff;
+        color: var(--color-accent-contrast);
         cursor: pointer;
         box-shadow: var(--menu-shadow);
     }
