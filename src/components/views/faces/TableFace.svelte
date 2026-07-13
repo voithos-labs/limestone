@@ -95,6 +95,7 @@
 
     let rows: Row[] = $state([]);
     let total = $state(0);
+    let countToken = 0;
     let error = $state('');
     let loading = $state(true);
 
@@ -233,6 +234,9 @@
     );
 
     async function load(silent = false) {
+        const perfT0 = performance.now();
+        let perfQuery = perfT0;
+        const token = ++countToken;
         if (!silent) loading = true;
         error = '';
         try {
@@ -254,15 +258,35 @@
                     const byId = new Map(members.map((r) => [r.id, r]));
                     rows = idsInOrder.map((id) => byId.get(id)).filter((r): r is Row => !!r);
                 }
+                perfQuery = performance.now();
                 total = rows.length;
             } else {
                 rows = (await view.getMembers({face, limit: 100})) as Row[];
-                total = await view.countMembers({face});
+                perfQuery = performance.now();
+                total = rows.length;
+                if (rows.length === 100) {
+                    view.countMembers({face})
+                        .then((n) => {
+                            if (token === countToken) total = n;
+                            console.log(
+                                `[perf] TableFace count (background): ${(performance.now() - perfQuery).toFixed(1)}ms`
+                            );
+                        })
+                        .catch(() => {});
+                }
             }
         } catch (e) {
             error = String(e);
         } finally {
             loading = false;
+            const perfDone = performance.now();
+            requestAnimationFrame(() =>
+                requestAnimationFrame(() => {
+                    console.log(
+                        `[perf] TableFace load: query ${(perfQuery - perfT0).toFixed(1)}ms, render ${(performance.now() - perfDone).toFixed(1)}ms, rows ${rows.length}, cols ${columns.length}`
+                    );
+                })
+            );
         }
     }
 
@@ -928,7 +952,7 @@
     }
 
     function focusTable() {
-        queueMicrotask(() => tableEl?.focus());
+        queueMicrotask(() => tableEl?.focus({preventScroll: true}));
     }
 
     // A committed face switch hands focus back to the grid so keyboard nav keeps working
@@ -1452,6 +1476,9 @@
                 ? {views: {[view.slug]: draft.values}}
                 : {};
             await DocHandle.createFromTitle(source, {title, dir, groupIds, properties: props});
+            if (effectiveFolderId) {
+                folders.find((f) => f.id === effectiveFolderId)?.touch().catch(() => {});
+            }
             await load();
             const wasFloat = floatTop;
             const groupKey = creatingGroupKey;

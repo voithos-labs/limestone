@@ -10,7 +10,6 @@
     import TableFace from '../views/faces/TableFace.svelte';
     import JournalFace from '../views/faces/JournalFace.svelte';
     import {convertFileSrc} from '@tauri-apps/api/core';
-    import {appDataDir, join} from '@tauri-apps/api/path';
     import Menu from '../views/Menu.svelte';
     import CoverSourceDialog from '../CoverSourceDialog.svelte';
     import type {MenuEntry} from '$lib/views/menuTypes';
@@ -22,8 +21,7 @@
         view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
     );
 
-    // The table keeps its own scroll (horizontal bar + sticky header)
-    const bodyFlow = $derived(activeFace?.type !== 'table');
+    const bodyFlow = true;
     let bodyEl: HTMLDivElement | null = $state(null);
 
     let faceInit = false;
@@ -118,17 +116,27 @@
     });
 
     let coverUrl = $state('');
+    let coverReady = $state(false);
     $effect(() => {
         const cover = view.cover;
         if (!cover) {
             coverUrl = '';
+            coverReady = false;
             return;
         }
         const {ref} = parseCover(cover);
         let cancelled = false;
         (async () => {
-            const abs = await join(await appDataDir(), 'assets', ref);
-            if (!cancelled) coverUrl = convertFileSrc(abs);
+            const url = convertFileSrc(ref, 'appasset');
+            const img = new Image();
+            img.src = url;
+            try {
+                await img.decode();
+            } catch {
+            }
+            if (cancelled) return;
+            coverUrl = url;
+            coverReady = true;
         })();
         return () => {
             cancelled = true;
@@ -271,20 +279,24 @@
                 onwheel={queueFilterBarSnap}
                 onscroll={bodyScroll}
         >
-            {#if coverUrl}
+            {#if view.cover}
                 <div
                         class="view-cover"
                         class:cropping
                         role="presentation"
-                        style:background-image="url('{coverUrl}')"
-                        style:background-position="{geo.x}% {geo.y}%"
-                        style:background-size="{geo.z * 100}%"
                         onpointerdown={cropPointerDown}
                         onpointermove={cropPointerMove}
                         onpointerup={cropPointerUp}
                         onpointerleave={cropPointerUp}
                         onwheel={cropWheel}
                 >
+                    <div
+                            class="cover-img"
+                            class:ready={coverReady}
+                            style:background-image={coverReady ? `url('${coverUrl}')` : undefined}
+                            style:background-position="{geo.x}% {geo.y}%"
+                            style:background-size="{geo.z * 100}%"
+                    ></div>
                     {#if cropping}
                         <div class="crop-frame">
                             <span class="cc tl"></span>
@@ -333,7 +345,7 @@
             {#if activeFace?.type === 'journal'}
                 <JournalFace {view} face={activeFace} flow={true}/>
             {:else}
-                <TableFace {view} face={activeFace} {onOpenRow} {createSignal}/>
+                <TableFace {view} face={activeFace} {onOpenRow} {createSignal} flow={bodyFlow}/>
             {/if}
         </div>
 
@@ -445,7 +457,7 @@
         border: none;
         border-radius: 10px;
         background: var(--color-accent);
-        color: #fff;
+        color: var(--color-accent-contrast);
         cursor: pointer;
         box-shadow: var(--menu-shadow);
     }
@@ -472,7 +484,20 @@
         margin: 16px 16px 0;
         border-radius: 10px 10px 0 0;
         overflow: hidden;
+        background: var(--chip-bg);
+    }
+
+    .cover-img {
+        position: absolute;
+        inset: 0;
         background-repeat: no-repeat;
+        opacity: 0;
+        transition: opacity 50ms ease;
+        pointer-events: none;
+    }
+
+    .cover-img.ready {
+        opacity: 1;
     }
 
     .view-cover.cropping {

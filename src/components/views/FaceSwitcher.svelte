@@ -84,8 +84,16 @@
 		}))
 	]);
 
+	let closeOnSwapLeave = false;
+
 	function selectFace(id: string) {
 		view.state.active_face_id = id;
+		closeOnSwapLeave = true;
+	}
+
+	function onPopLeave() {
+		if (!closeOnSwapLeave) return;
+		if (groupOpen || addFaceOpen || renamingId || confirmFor) return;
 		open = false;
 	}
 
@@ -182,6 +190,7 @@
 				renamingId = null;
 				groupOpen = false;
 				addFaceOpen = false;
+				closeOnSwapLeave = false;
 			});
 			queueMicrotask(position);
 			window.addEventListener('resize', position);
@@ -211,6 +220,7 @@
 		bind:this={popEl}
 		style:top="{pos.top}px"
 		style:left="{pos.left}px"
+		onmouseleave={onPopLeave}
 		role="menu"
 		tabindex="-1"
 	>
@@ -342,30 +352,34 @@
 		</div>
 		<FaceFilters {view} {face} sourceId={sourceScopeId} />
 
-		<div class="divider"></div>
+		{#if face.type === 'table'}
+			<div class="divider"></div>
 
-		<button
-			class="action group-toggle"
-			type="button"
-			bind:this={groupEl}
-			onclick={() => (groupOpen = !groupOpen)}
-		>
-			<Layers size={14} strokeWidth={1.75} />
-			<span>Group by</span>
-			<span class="trailing">{groupLabel}</span>
-			<ChevronDown size={13} strokeWidth={2} />
-		</button>
+			<button
+				class="action group-toggle"
+				type="button"
+				bind:this={groupEl}
+				onclick={() => (groupOpen = !groupOpen)}
+			>
+				<Layers size={14} strokeWidth={1.75} />
+				<span>Group by</span>
+				<span class="trailing">{groupLabel}</span>
+				<ChevronDown size={13} strokeWidth={2} />
+			</button>
+		{/if}
 	</div>
 
-	<Menu
-		bind:open={groupOpen}
-		anchor={groupEl}
-		items={groupItems}
-		selected={groupById ?? ''}
-		onSelect={setGroup}
-		minWidth={170}
-		placement="right"
-	/>
+	{#if face.type === 'table'}
+		<Menu
+			bind:open={groupOpen}
+			anchor={groupEl}
+			items={groupItems}
+			selected={groupById ?? ''}
+			onSelect={setGroup}
+			minWidth={170}
+			placement="right"
+		/>
+	{/if}
 {/if}
 
 <style>

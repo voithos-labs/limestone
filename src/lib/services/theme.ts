@@ -92,11 +92,83 @@ export const BUILTIN_THEMES: Record<string, Theme> = {
 	'soft-light': SOFT_LIGHT
 };
 
+export interface AccentPreset {
+	name: string;
+	light: string;
+	dark: string;
+}
+
+export const ACCENT_PRESETS: Record<string, AccentPreset> = {
+	fern: { name: 'Fern', light: '#567b67', dark: '#567b67' },
+	slate: { name: 'Slate', light: '#5b7286', dark: '#6d8ba3' },
+	violet: { name: 'Violet', light: '#75689a', dark: '#8d7fb5' },
+	clay: { name: 'Clay', light: '#9a6b52', dark: '#b08267' },
+	amber: { name: 'Amber', light: '#a3812f', dark: '#c2a04a' },
+	rose: { name: 'Rose', light: '#a05e72', dark: '#b87990' },
+	teal: { name: 'Teal', light: '#3f7f7a', dark: '#569a94' },
+	mono: { name: 'Mono', light: '#5c5c5c', dark: '#9a9a9a' }
+};
+
+const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+function hexLuminance(hex: string): number {
+	let h = hex.replace('#', '');
+	if (h.length === 3)
+		h = h
+			.split('')
+			.map((c) => c + c)
+			.join('');
+	const n = parseInt(h, 16);
+	const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+		const c = v / 255;
+		return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+	});
+	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function accentContrast(hex: string): string {
+	if (!HEX_RE.test(hex)) return '#ffffff';
+	return hexLuminance(hex) > 0.45 ? '#1a1c1d' : '#ffffff';
+}
+
+export function resolveAccent(
+	setting: string,
+	type: 'dark' | 'light'
+): { accent: string; contrast: string } | null {
+	const preset = ACCENT_PRESETS[setting];
+	if (preset) {
+		const hex = type === 'dark' ? preset.dark : preset.light;
+		return { accent: hex, contrast: accentContrast(hex) };
+	}
+	if (HEX_RE.test(setting)) {
+		const lum = hexLuminance(setting);
+		let accent = setting;
+		if (type === 'dark' && lum < 0.08) accent = `color-mix(in oklab, ${setting} 72%, white)`;
+		else if (type === 'light' && lum > 0.6) accent = `color-mix(in oklab, ${setting} 72%, black)`;
+		return { accent, contrast: accentContrast(setting) };
+	}
+	return null;
+}
+
+export function applyAccent(setting: string | null, type: 'dark' | 'light') {
+	if (!setting || setting === 'default') return;
+	const resolved = resolveAccent(setting, type);
+	if (!resolved) return;
+	const root = document.documentElement;
+	root.style.setProperty('--color-accent', resolved.accent);
+	root.style.setProperty('--color-accent-primary', resolved.accent);
+	root.style.setProperty('--color-accent-contrast', resolved.contrast);
+}
+
 export function applyTheme(theme: Theme) {
 	const root = document.documentElement;
 	for (const [key, value] of Object.entries(theme.variables)) {
 		root.style.setProperty(`--${key}`, value);
 	}
+	root.style.setProperty(
+		'--color-accent-contrast',
+		accentContrast(theme.variables['color-accent'] ?? '#567b67')
+	);
 	root.style.setProperty('--font-ui', theme.fontFamily ?? DEFAULT_FONT);
 	root.dataset.themeType = theme.type;
 	root.style.background = theme.variables['color-backdrop'] ?? '';

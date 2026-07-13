@@ -83,8 +83,17 @@
 	}
 
 	async function loadRows() {
+		const perfT0 = performance.now();
 		try {
 			rows = await view.getMembers({ face, limit: 5000 });
+			const perfQuery = performance.now();
+			requestAnimationFrame(() =>
+				requestAnimationFrame(() => {
+					console.log(
+						`[perf] JournalFace load: query ${(perfQuery - perfT0).toFixed(1)}ms, render ${(performance.now() - perfQuery).toFixed(1)}ms, rows ${rows.length}`
+					);
+				})
+			);
 		} catch (e) {
 			console.error('journal load failed', e);
 		}
@@ -545,6 +554,7 @@
 				if (key === 'created_at') await doc.saveMeta({ createdAt: selected });
 				else if (key === 'updated_at') await doc.saveMeta({ updatedAt: selected });
 			}
+			if (folderId) folders.find((f) => f.id === folderId)?.touch().catch(() => {});
 			await loadRows();
 		} catch (e) {
 			console.error('create entry failed', e);
@@ -823,7 +833,7 @@
 	.doc-pick {
 		position: absolute;
 		top: 15px;
-		left: -26px;
+		left: -23px;
 		z-index: 2;
 		display: inline-flex;
 		align-items: center;
@@ -842,7 +852,7 @@
 
 	.journal:not(.flow) .doc-pick {
 		top: 39px;
-		left: 0;
+		left: 3px;
 	}
 
 	.entry:hover .doc-pick,
@@ -1073,11 +1083,11 @@
 	}
 
 	.day.selected .dow {
-		color: rgba(255, 255, 255, 0.72);
+		color: color-mix(in srgb, var(--color-accent-contrast) 72%, transparent);
 	}
 
 	.day.selected .num {
-		color: #fff;
+		color: var(--color-accent-contrast);
 	}
 
 	.day:not(.selected):hover {

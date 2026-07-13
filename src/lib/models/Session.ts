@@ -10,9 +10,9 @@ import { load, type Store } from '@tauri-apps/plugin-store';
 
 // internal
 import EditorState, { type EditorJSON } from '$lib/models/EditorState.svelte.js';
-import { SettingsState } from '$lib/models/Settings.svelte.js';
+import { SettingsState, getSetting } from '$lib/models/Settings.svelte.js';
 import type { Source } from '$lib/models/Source';
-import { applyTheme, BUILTIN_THEMES, DEFAULT_THEME, type Theme } from '$lib/services/theme';
+import { applyAccent, applyTheme, BUILTIN_THEMES, DEFAULT_THEME, type Theme } from '$lib/services/theme';
 
 export interface ViewTab {
 	kind: string;
@@ -127,15 +127,17 @@ class Session {
 	// ── Theme ───────────────────────────────────────────────────────────────────────────
 
 	async applyCurrentTheme() {
-		const theme = await this.themeStore.get<Theme>(this.activeTheme);
-		applyTheme(theme ?? DEFAULT_THEME);
+		const theme = (await this.themeStore.get<Theme>(this.activeTheme)) ?? DEFAULT_THEME;
+		applyTheme(theme);
+		const accent = await getSetting<string>('appearance.accent');
+		applyAccent(accent, theme.type);
 	}
 
 	async setTheme(name: string) {
 		const theme = await this.themeStore.get<Theme>(name);
 		if (!theme) return;
 		this.activeTheme = name;
-		applyTheme(theme);
+		await this.applyCurrentTheme();
 		await this.persist();
 	}
 

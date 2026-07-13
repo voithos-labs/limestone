@@ -322,7 +322,7 @@
 	.btn.primary {
 		border-color: transparent;
 		background: var(--color-accent);
-		color: #fff;
+		color: var(--color-accent-contrast);
 	}
 
 	.btn.primary:disabled {

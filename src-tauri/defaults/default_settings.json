@@ -1,6 +1,7 @@
 {
 	"version": 1,
 	"appearance": {
+		"accent": "default",
 		"compact_tabs": false,
 		"collapse_pinned_tabs": true,
 		"editor_font_size": 14,
