@@ -245,7 +245,7 @@
         align-items: center;
         gap: 12px;
         width: 100%;
-        height: 46px;
+        height: 42px;
         padding: 0 18px;
         background: var(--color-bg);
         border: 1px solid var(--color-border);

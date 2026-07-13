@@ -34,8 +34,8 @@
 
     // Recent views show a single row: render only as many cards as columns fit at
     // the current width. Same 240px/14px basis as the docs grid so both reflow together.
-    const GRID_MIN = 240;
-    const GRID_GAP = 14;
+    const GRID_MIN = 220;
+    const GRID_GAP = 12;
     let viewsWidth = $state(0);
     const viewCols = $derived(
         Math.max(1, Math.floor((viewsWidth + GRID_GAP) / (GRID_MIN + GRID_GAP)))
@@ -254,13 +254,13 @@
     }
 
     .lib-inner {
-        max-width: 940px;
+        max-width: 900px;
         margin: 0 auto;
-        padding: 48px 24px 80px;
+        padding: 36px 24px 64px;
     }
 
     .lib-hero {
-        margin-bottom: 30px;
+        margin-bottom: 22px;
     }
 
     .search-row {
@@ -278,8 +278,8 @@
         display: flex;
         align-items: center;
         gap: 2px;
-        height: 46px;
-        padding: 0 14px;
+        height: 42px;
+        padding: 0 12px;
         flex-shrink: 0;
         border: 1px solid var(--color-border);
         border-radius: 14px;
@@ -294,13 +294,13 @@
     }
 
     .lib-section {
-        margin-top: 40px;
+        margin-top: 30px;
     }
 
     .sec-title {
-        margin: 0 0 14px;
+        margin: 0 0 10px;
         font-family: var(--font-ui);
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
         letter-spacing: 0.06em;
         text-transform: uppercase;
@@ -310,8 +310,8 @@
     /* ── Views (basic database cards) ── */
     .views-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-        gap: 14px;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 12px;
     }
 
     .view-card {
@@ -336,7 +336,7 @@
         display: flex;
         align-items: center;
         gap: 7px;
-        padding: 12px 14px;
+        padding: 10px 12px;
         color: var(--color-text-primary);
     }
 
@@ -417,15 +417,15 @@
 
     /* ── Documents (Google Keep masonry) ── */
     .docs-grid {
-        columns: 240px;
-        column-gap: 14px;
+        columns: 220px;
+        column-gap: 12px;
     }
 
     .doc-card {
         display: inline-block;
         width: 100%;
-        margin: 0 0 14px;
-        padding: 14px 16px;
+        margin: 0 0 12px;
+        padding: 12px 14px;
         border: 1px solid var(--color-border);
         border-radius: 10px;
         background: var(--color-bg);
