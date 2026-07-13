@@ -101,6 +101,7 @@
 	let addFaceEl: HTMLElement | null = $state(null);
 	const ADD_FACE_ITEMS = [
 		{ value: 'table', label: 'Table', icon: Table },
+		{ value: 'list', label: 'List', icon: List },
 		{ value: 'journal', label: 'Journal', icon: NotebookText }
 	];
 

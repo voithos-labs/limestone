@@ -1,0 +1,169 @@
+<script lang="ts">
+	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
+	import type { Source } from '$lib/models/Source';
+	import {
+		rawStatefulValue,
+		rawArrayValue,
+		statefulValue,
+		valueFor,
+		fieldLabel
+	} from '$lib/views/fieldValue';
+	import { getFieldIcon } from '$lib/views/filterDisplay';
+	import CellValue from './CellValue.svelte';
+
+	let {
+		row,
+		fields = [],
+		viewSlug,
+		sources = [],
+		tags = [],
+		preview = '',
+		onOpen
+	}: {
+		row: MemberRow;
+		fields?: ViewField[];
+		viewSlug: string;
+		sources?: Source[];
+		tags?: string[];
+		preview?: string;
+		onOpen?: () => void;
+	} = $props();
+
+	const PILL_TYPES = new Set(['tags', 'select', 'multiselect']);
+
+	function hasValue(f: ViewField): boolean {
+		switch (f.type) {
+			case 'tags':
+				return tags.length > 0;
+			case 'select':
+				return statefulValue(row, viewSlug, f.name) !== '';
+			case 'multiselect':
+				return rawArrayValue(row, viewSlug, f.name).length > 0;
+			case 'boolean':
+				return rawStatefulValue(row, viewSlug, f.name) === true;
+			case 'source':
+				return false;
+			default: {
+				const v = valueFor(f, row, viewSlug);
+				return v !== '' && v !== '—';
+			}
+		}
+	}
+
+	const shown = $derived(fields.filter((f) => f.type !== 'title' && hasValue(f)));
+</script>
+
+<button class="face-card" type="button" onclick={() => onOpen?.()}>
+	<span class="fc-title">{row.title || 'untitled'}</span>
+	{#if preview}
+		<span class="fc-preview">{preview}</span>
+	{/if}
+	{#if shown.length}
+		<span class="fc-fields">
+			{#each shown as f (f.id)}
+				{#if PILL_TYPES.has(f.type)}
+					<span class="fc-pills"><CellValue field={f} {row} {viewSlug} {sources} {tags} /></span>
+				{:else if f.type === 'boolean'}
+					<span class="fc-line">
+						<CellValue field={f} {row} {viewSlug} {sources} />
+						<span class="fc-bool-label">{fieldLabel(f)}</span>
+					</span>
+				{:else if f.type === 'folder'}
+					<span class="fc-line"><CellValue field={f} {row} {viewSlug} {sources} /></span>
+				{:else}
+					{@const Icon = getFieldIcon(f.type)}
+					<span class="fc-line">
+						<span class="fc-icon"><Icon size={12} strokeWidth={1.75} /></span>
+						<span class="fc-val"><CellValue field={f} {row} {viewSlug} {sources} /></span>
+					</span>
+				{/if}
+			{/each}
+		</span>
+	{/if}
+</button>
+
+<style>
+	.face-card {
+		--row-h: 18px;
+		display: block;
+		width: 100%;
+		padding: 11px 14px 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		background: transparent;
+		font: inherit;
+		font-family: var(--font-ui);
+		text-align: left;
+		cursor: pointer;
+		transition: background-color 120ms ease;
+	}
+
+	.face-card:hover {
+		background: var(--row-hover-bg, rgba(127, 127, 127, 0.06));
+	}
+
+	.fc-title {
+		display: block;
+		font-size: 13px;
+		font-weight: 600;
+		line-height: 1.45;
+		color: var(--color-text-primary);
+		overflow-wrap: anywhere;
+	}
+
+	.fc-preview {
+		display: block;
+		margin-top: 5px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--color-ui-muted);
+		white-space: pre-line;
+		overflow-wrap: anywhere;
+	}
+
+	.fc-fields {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 6px;
+		margin-top: 10px;
+	}
+
+	.fc-pills {
+		display: block;
+		max-width: 100%;
+	}
+
+	.fc-pills :global(.pills) {
+		flex-wrap: wrap;
+		overflow: visible;
+	}
+
+	.fc-line {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		max-width: 100%;
+		min-width: 0;
+		font-size: 12px;
+		color: var(--color-ui-muted);
+	}
+
+	.fc-icon {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		color: var(--color-ui-dulled);
+	}
+
+	.fc-val {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.fc-bool-label {
+		font-size: 12px;
+		color: var(--color-ui-muted);
+	}
+</style>

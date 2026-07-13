@@ -10,6 +10,7 @@
     import ViewHeader from '../views/ViewHeader.svelte';
     import TableFace from '../views/faces/TableFace.svelte';
     import JournalFace from '../views/faces/JournalFace.svelte';
+    import ListFace from '../views/faces/ListFace.svelte';
     import {convertFileSrc} from '@tauri-apps/api/core';
     import Menu from '../views/Menu.svelte';
     import CoverSourceDialog from '../CoverSourceDialog.svelte';
@@ -386,6 +387,8 @@
 
             {#if activeFace?.type === 'journal'}
                 <JournalFace {view} face={activeFace} flow={true}/>
+            {:else if activeFace?.type === 'list'}
+                <ListFace {view} face={activeFace} {onOpenRow} {createSignal}/>
             {:else}
                 <TableFace {view} face={activeFace} {onOpenRow} {createSignal} flow={bodyFlow}/>
             {/if}
