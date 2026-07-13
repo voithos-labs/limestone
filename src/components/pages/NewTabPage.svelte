@@ -4,7 +4,7 @@
     import {listSources} from '$lib/models/Source';
     import DocHandle from '$lib/models/DocHandle';
     import View from '$lib/models/View.svelte';
-    import CuboidPlus from '../CuboidPlus.svelte';
+    import BoxPlus from '../BoxPlus.svelte';
     import IconAddNotes from '~icons/material-symbols/add-notes';
     import ClockHero from '../ClockHero.svelte';
     import QuickSearch from '../QuickSearch.svelte';
@@ -45,7 +45,7 @@
                 <span>New document</span>
             </button>
             <button class="action" onclick={createNewView}>
-                <CuboidPlus size={13}/>
+                <BoxPlus size={13}/>
                 <span>New view</span>
             </button>
             {#if actionError}

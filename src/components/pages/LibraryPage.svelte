@@ -13,8 +13,8 @@
     import QuickSearch from '../QuickSearch.svelte';
     import SourceDialog from '../SourceDialog.svelte';
     import Menu from '../views/Menu.svelte';
-    import {Cuboid, Plus, FolderPlus} from '@lucide/svelte';
-    import CuboidPlus from '../CuboidPlus.svelte';
+    import {Box, Plus, FolderPlus} from '@lucide/svelte';
+    import BoxPlus from '../BoxPlus.svelte';
     import IconAddNotes from '~icons/material-symbols/add-notes';
     import {onMount} from 'svelte';
 
@@ -113,7 +113,7 @@
 
     const newItems: MenuEntry[] = [
         {value: 'doc', label: 'New document', icon: IconAddNotes},
-        {value: 'view', label: 'New view', icon: CuboidPlus},
+        {value: 'view', label: 'New view', icon: BoxPlus},
         {value: 'source', label: 'New source', icon: FolderPlus}
     ];
 
@@ -187,7 +187,7 @@
                             {#if v.emoji}
                                 <span class="vc-emoji">{v.emoji}</span>
                             {:else}
-                                <Cuboid size={13}/>
+                                <Box size={13}/>
                             {/if}
                             <span class="vc-title">{v.slug}</span>
                             <span class="vc-pill"></span>

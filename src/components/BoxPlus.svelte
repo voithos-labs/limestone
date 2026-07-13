@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { Cuboid, Plus } from '@lucide/svelte';
+	import { Box, Plus } from '@lucide/svelte';
 
 	let { size = 14, strokeWidth = 1.75 }: { size?: number; strokeWidth?: number } = $props();
 </script>
 
-<span class="cuboid-plus" style="width: {size}px; height: {size}px">
-	<Cuboid {size} {strokeWidth} />
+<span class="box-plus" style="width: {size}px; height: {size}px">
+	<Box {size} {strokeWidth} />
 	<span class="plus"><Plus size={Math.round(size * 0.6)} strokeWidth={3.5} /></span>
 </span>
 
 <style>
-	.cuboid-plus {
+	.box-plus {
 		position: relative;
 		display: inline-flex;
 		align-items: center;
