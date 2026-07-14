@@ -11,7 +11,7 @@
     import CellTextEditor from './CellTextEditor.svelte';
     import {registerFlush} from '$lib/util/flush';
     import {Box} from '@lucide/svelte';
-    import {onMount, onDestroy} from 'svelte';
+    import {onMount, onDestroy, untrack} from 'svelte';
 
     // The toggle lives in the document header's meta bar, so open state and the
     // field count are owned by the parent; this renders the panel only.
@@ -54,56 +54,6 @@
 
     onMount(load);
 
-    // These View instances are our own copies, so nothing else persists them. The
-    // option editors mutate field.config directly (creating, renaming and deleting
-    // select values), so mirror ViewPage's autosave or those edits are lost.
-    const sigs = new Map<string, string>();
-    const pending = new Map<string, View>();
-    let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-    // Awaited (registerFlush is awaited before the window closes) and serialised:
-    // saveViewJSON is a read-modify-write of the whole views array, so concurrent
-    // saves of two views would drop one of them.
-    async function flushSaves(): Promise<void> {
-        if (saveTimer) {
-            clearTimeout(saveTimer);
-            saveTimer = null;
-        }
-        const views = [...pending.values()];
-        pending.clear();
-        for (const v of views) {
-            try {
-                await v.save();
-            } catch (e) {
-                console.error('save view failed', e);
-            }
-        }
-    }
-
-    $effect(() => {
-        for (const entry of entries) {
-            const view = entry.view;
-            const sig = JSON.stringify(view.toJSON());
-            const prev = sigs.get(view.id);
-            sigs.set(view.id, sig);
-            if (prev === undefined || prev === sig) continue;
-            pending.set(view.id, view);
-        }
-        if (pending.size === 0) return;
-        if (saveTimer) clearTimeout(saveTimer);
-        saveTimer = setTimeout(flushSaves, 250);
-    });
-
-    // A pending save must never be dropped: the value is already in the document's
-    // frontmatter, so losing the view's option list leaves the pill with a hashed
-    // colour instead of the option's, and no option to pick on other rows.
-    const unregisterFlush = registerFlush(flushSaves);
-
-    onDestroy(() => {
-        flushSaves();
-        unregisterFlush();
-    });
-
     // ── Editing ────────────────────────────────────────────────────────────────
     let editing: { viewId: string; fieldId: string } | null = $state(null);
     let editAnchor: HTMLElement | null = $state(null);
@@ -117,6 +67,26 @@
         if (!editingEntry || !editingField || !row) return null;
         return rawStatefulValue(row, editingEntry.view.slug, editingField.name);
     });
+
+    // save on editor destruct (close)
+    let wasEditOpen = false;
+
+    function saveEditedView(): Promise<void> | void {
+        const entry = untrack(() => editingEntry);
+        if (!entry) return;
+        return entry.view.save().catch((e) => console.error('save view failed', e));
+    }
+
+    $effect(() => {
+        const open = editOpen;
+        if (!open && wasEditOpen) saveEditedView();
+        wasEditOpen = open;
+    });
+
+    // flush edited
+    const unregisterFlush = registerFlush(() => (editOpen ? saveEditedView() : undefined));
+
+    onDestroy(unregisterFlush);
 
     async function writeCell(view: View, field: ViewField, value: unknown) {
         if (!row) return;

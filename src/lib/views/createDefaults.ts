@@ -48,10 +48,17 @@ function resolveFolder(
 	return { id: null, ambiguous: true };
 }
 
-export function deriveCreateContext(view: View, face: ViewFace, folders: Group[]): CreateContext {
+export function deriveCreateContext(
+	view: View,
+	face: ViewFace,
+	folders: Group[],
+	scope?: FilterNode | null
+): CreateContext {
 	const leaves: FilterLeaf[] = [];
 	conjunctiveLeaves(view.filter, leaves);
 	conjunctiveLeaves(face.additive_filter, leaves);
+	// the caller's scope (a journal's selected day) seeds new docs (so they stay on screen)
+	if (scope) conjunctiveLeaves(scope, leaves);
 
 	const fieldsById = new Map(view.fields.map((f) => [f.id, f]));
 	const byId = new Map(folders.map((g) => [g.id, g]));

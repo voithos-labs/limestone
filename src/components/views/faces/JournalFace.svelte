@@ -82,15 +82,23 @@
 
 	const dateFieldKey = $derived((face.config.date_field as string) ?? 'created_at');
 
-	function rowDate(r: any, key: string): Date | null {
+	// The one place the journal's date field is resolved. The day strip and the SQL day
+	// scope MUST agree on it, so they both read this: a config pointing at a deleted
+	// field falls back to created_at here, once, rather than in each of them.
+	const dateField = $derived(
+		(dateFieldKey === 'created_at' || dateFieldKey === 'updated_at'
+			? view.fields.find((f) => f.type === dateFieldKey)
+			: view.fields.find((f) => f.id === dateFieldKey)) ??
+			view.fields.find((f) => f.type === 'created_at')
+	);
+
+	function rowDate(r: any): Date | null {
+		const field = dateField;
+		if (!field) return null;
 		let raw: unknown;
-		if (key === 'created_at') raw = r.created_at;
-		else if (key === 'updated_at') raw = r.updated_at;
-		else {
-			const field = view.fields.find((f) => f.id === key);
-			// Deleted date field: fall back to created_at, matching dayScopeNode
-			raw = field ? rawStatefulValue(r, view.slug, field.name) : r.created_at;
-		}
+		if (field.type === 'created_at') raw = r.created_at;
+		else if (field.type === 'updated_at') raw = r.updated_at;
+		else raw = rawStatefulValue(r, view.slug, field.name);
 		if (raw == null || raw === '') return null;
 		// A date-only string ("2026-07-13") parses as UTC via `new Date`, which lands on
 		// the previous day west of UTC and disagrees with the SQL day scope. wallClockToMs
@@ -125,7 +133,7 @@
 	const entries = $derived.by(() => {
 		const set = new Set<string>();
 		for (const r of rows) {
-			const d = rowDate(r, dateFieldKey);
+			const d = rowDate(r);
 			if (d) set.add(dayKey(d));
 		}
 		return set;
@@ -135,7 +143,7 @@
 
 	const dayRows = $derived.by(() => {
 		const out = rows.filter((r) => {
-			const d = rowDate(r, dateFieldKey);
+			const d = rowDate(r);
 			return d && sameDay(d, selected);
 		});
 		if (sortBy === 'title') {
@@ -165,39 +173,24 @@
 	);
 
 	// ── Compound body (table / grid) ──────────────────────────────────────────
-	// The body is a nested face; the journal owns its additive_filter so the rows
-	// it loads are the journal's own filters AND the selected day.
+	// The body is a nested face. Its scope (the journal's own filters AND the selected
+	// day) is passed down as a value
 	const bodyFace = $derived(face.body);
 
-	function dayScopeNode(): FilterNode | null {
-		const key = dateFieldKey;
-		// Fall back to created_at rather than returning null: a null scope would leave the
-		// body unfiltered, showing every document in the view on every day.
-		const field =
-			(key === 'created_at' || key === 'updated_at'
-				? view.fields.find((f) => f.type === key)
-				: view.fields.find((f) => f.id === key)) ??
-			view.fields.find((f) => f.type === 'created_at');
-		if (!field) return null;
+	const bodyScope = $derived.by((): FilterNode => {
+		const children: FilterNode[] = [face.additive_filter];
 		// date-only bounds compare correctly both as ms (created_at/updated_at) and
 		// as wall-clock strings (stateful date fields)
-		return {
-			op: 'and',
-			children: [
-				{ field_id: field.id, op: 'on_or_after', value: isoDay(selected) },
-				{ field_id: field.id, op: 'before', value: isoDay(addDays(selected, 1)) }
-			]
-		};
-	}
-
-	$effect(() => {
-		const body = bodyFace;
-		if (!body) return;
-		const scope = dayScopeNode();
-		body.additive_filter = {
-			op: 'and',
-			children: scope ? [face.additive_filter, scope] : [face.additive_filter]
-		};
+		if (dateField) {
+			children.push({
+				op: 'and',
+				children: [
+					{ field_id: dateField.id, op: 'on_or_after', value: isoDay(selected) },
+					{ field_id: dateField.id, op: 'before', value: isoDay(addDays(selected, 1)) }
+				]
+			});
+		}
+		return { op: 'and', children };
 	});
 
 	let docTab: TabState | null = $state(null);
@@ -683,9 +676,15 @@
 			<div class="body-face">
 				{#key bodyFace.id}
 					{#if bodyFace.type === 'list'}
-						<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} />
+						<ListFace
+							{view}
+							face={bodyFace}
+							{onOpenRow}
+							{createSignal}
+							scope={bodyScope}
+						/>
 					{:else}
-						<TableFace {view} face={bodyFace} {onOpenRow} {flow} />
+						<TableFace {view} face={bodyFace} {onOpenRow} {flow} scope={bodyScope} />
 					{/if}
 				{/key}
 			</div>

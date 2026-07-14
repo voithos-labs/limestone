@@ -110,7 +110,9 @@ export class ViewFace {
 		this.additive_filter = json.additive_filter;
 		this.sort = json.sort;
 		this.config = json.config;
-		this.body = json.body ? new ViewFace(json.body) : null;
+		this.body = json.body
+			? new ViewFace({ ...json.body, additive_filter: { op: 'and', children: [] } })
+			: null;
 	}
 
 	get label(): string {
@@ -611,6 +613,17 @@ function compileSort(sort: SortKey[], fields: ViewField[], viewSlug: string): st
 
 // ── View Model ───────────────────────────────────────────────────────────────────────
 
+function memberFilter(
+	base: FilterCompound,
+	face?: ViewFace,
+	scope?: FilterNode | null
+): FilterNode {
+	const children: FilterNode[] = [base];
+	if (face) children.push(face.additive_filter);
+	if (scope) children.push(scope);
+	return children.length === 1 ? base : { op: 'and', children };
+}
+
 export interface MemberRow {
 	id: string;
 	title: string;
@@ -900,15 +913,16 @@ class View {
 		};
 	}
 
+	// `scope` is an extra, non-persisted predicate from whoever is rendering the face
+	// (a journal scoping its body to the selected day)
 	async getMembers(opts?: {
 		face?: ViewFace;
+		scope?: FilterNode | null;
 		limit?: number;
 		offset?: number;
 		ids_in?: string[];
 	}): Promise<MemberRow[]> {
-		const filterNode: FilterNode = opts?.face
-			? { op: 'and', children: [this.filter, opts.face.additive_filter] }
-			: this.filter;
+		const filterNode = memberFilter(this.filter, opts?.face, opts?.scope);
 		const compiled = compileFilter(filterNode, this.fields, this.slug);
 		const params = [...compiled.params];
 
@@ -944,10 +958,8 @@ class View {
 	}
 
 	// total matching members
-	async countMembers(opts?: { face?: ViewFace }): Promise<number> {
-		const filterNode: FilterNode = opts?.face
-			? { op: 'and', children: [this.filter, opts.face.additive_filter] }
-			: this.filter;
+	async countMembers(opts?: { face?: ViewFace; scope?: FilterNode | null }): Promise<number> {
+		const filterNode = memberFilter(this.filter, opts?.face, opts?.scope);
 		const compiled = compileFilter(filterNode, this.fields, this.slug);
 		const sql = `SELECT COUNT(*) AS n
 			FROM documents d

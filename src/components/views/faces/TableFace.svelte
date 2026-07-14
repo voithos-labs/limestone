@@ -76,13 +76,16 @@
         face,
         onOpenRow,
         createSignal = 0,
-        flow = false
+        flow = false,
+        scope = null
     }: {
         view: View;
         face: ViewFace;
         onOpenRow?: (rowId: string) => void;
         createSignal?: number;
         flow?: boolean;
+        // extra predicate from the renderer (a journal scoping its body to a day)
+        scope?: FilterNode | null;
     } = $props();
 
     const query = $derived((view.state.search as string | undefined) ?? '');
@@ -254,6 +257,7 @@
                 } else {
                     const members = (await view.getMembers({
                         face,
+                        scope,
                         ids_in: idsInOrder,
                         limit: idsInOrder.length
                     })) as Row[];
@@ -264,12 +268,12 @@
                 total = rows.length;
                 loadRowTags(rows);
             } else {
-                rows = (await view.getMembers({face, limit: 100})) as Row[];
+                rows = (await view.getMembers({face, scope, limit: 100})) as Row[];
                 perfQuery = performance.now();
                 total = rows.length;
                 loadRowTags(rows);
                 if (rows.length === 100) {
-                    view.countMembers({face})
+                    view.countMembers({face, scope})
                         .then((n) => {
                             if (token === countToken) total = n;
                             console.log(
@@ -358,6 +362,7 @@
             view.slug,
             nodeSig(view.filter),
             nodeSig(face.additive_filter),
+            scope ? nodeSig(scope) : '',
             sortSig(face.sort),
             query.trim()
         ].join('#');
@@ -785,7 +790,7 @@
         createdAt: 0
     });
 
-    const createCtx = $derived(deriveCreateContext(view, face, folders));
+    const createCtx = $derived(deriveCreateContext(view, face, folders, scope));
 
     // Synthetic row so the draft renders through the same cell machinery as real rows
     const draftRow: Row = $derived.by(() => ({
