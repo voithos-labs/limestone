@@ -319,7 +319,12 @@
 
 	// Cards are hidden until every one has reported a real height: a single card's
 	// position depends on all the others, so a partial set means wrong positions.
-	const measured = $derived(slots.length > 0 && slots.every((r) => heights[r.id] !== undefined));
+	// The load gate matters for the create card, which is measurable before any row
+	// arrives: without it the grid reads as settled and arms `animate` too early, and
+	// the rows then visibly shuffle into place as they land.
+	const measured = $derived(
+		!loading && slots.length > 0 && slots.every((r) => heights[r.id] !== undefined)
+	);
 
 	// Don't break dom, just move shi around
 	$effect(() => {

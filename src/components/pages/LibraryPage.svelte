@@ -195,7 +195,7 @@
 	<div class="library">
 		<div class="lib-inner">
 			<div class="lib-hero">
-				<ClockHero />
+				<ClockHero animateIn={false} />
 			</div>
 			<div class="search-row">
 				<QuickSearch {editor} />
