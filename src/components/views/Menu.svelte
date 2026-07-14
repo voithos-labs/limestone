@@ -65,9 +65,7 @@
 		searchable &&
 			!!onCreate &&
 			query.trim() !== '' &&
-			!items.some(
-				(i) => isItem(i) && i.label.toLowerCase() === query.trim().toLowerCase()
-			)
+			!items.some((i) => isItem(i) && i.label.toLowerCase() === query.trim().toLowerCase())
 	);
 	const navCount = $derived(actionable.length + (showCreate ? 1 : 0));
 
@@ -129,7 +127,11 @@
 			e.preventDefault();
 		} else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
 			activeIndex =
-				navCount === 0 ? -1 : activeIndex < 0 ? navCount - 1 : (activeIndex - 1 + navCount) % navCount;
+				navCount === 0
+					? -1
+					: activeIndex < 0
+						? navCount - 1
+						: (activeIndex - 1 + navCount) % navCount;
 			e.preventDefault();
 		} else if (e.key === 'Enter') {
 			if (activeIndex >= 0 && actionable[activeIndex]) {

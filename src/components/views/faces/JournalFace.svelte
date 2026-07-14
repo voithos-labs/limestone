@@ -246,9 +246,7 @@
 	const sparkDayCount = $derived(
 		Math.round((tomorrow.getTime() - stripStart.getTime()) / 86400000) + 1
 	);
-	const sparkContentW = $derived(
-		sparkDayCount * SPARK_CELL + (sparkDayCount - 1) * SPARK_GAP
-	);
+	const sparkContentW = $derived(sparkDayCount * SPARK_CELL + (sparkDayCount - 1) * SPARK_GAP);
 
 	const sparkDays = $derived.by(() => {
 		const set = entries;
@@ -569,7 +567,11 @@
 				if (key === 'created_at') await doc.saveMeta({ createdAt: selected });
 				else if (key === 'updated_at') await doc.saveMeta({ updatedAt: selected });
 			}
-			if (folderId) folders.find((f) => f.id === folderId)?.touch().catch(() => {});
+			if (folderId)
+				folders
+					.find((f) => f.id === folderId)
+					?.touch()
+					.catch(() => {});
 			await loadRows();
 		} catch (e) {
 			console.error('create entry failed', e);
@@ -664,8 +666,7 @@
 				<span
 					class="month-marker"
 					class:pinned={!atPresent}
-					style="left: {monthMarker.x}px; --fade: {monthMarker.fade}"
-					>{monthMarker.label}</span
+					style="left: {monthMarker.x}px; --fade: {monthMarker.fade}">{monthMarker.label}</span
 				>
 			{/if}
 		</div>
@@ -676,13 +677,7 @@
 			<div class="body-face">
 				{#key bodyFace.id}
 					{#if bodyFace.type === 'list'}
-						<ListFace
-							{view}
-							face={bodyFace}
-							{onOpenRow}
-							{createSignal}
-							scope={bodyScope}
-						/>
+						<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
 					{:else}
 						<TableFace {view} face={bodyFace} {onOpenRow} {flow} scope={bodyScope} />
 					{/if}

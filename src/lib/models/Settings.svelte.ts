@@ -152,12 +152,18 @@ export function settingEquals(a: SettingValue | null, b: SettingValue | null): b
 		return a.length === b.length && a.every((v, i) => settingEquals(v, b[i]));
 	}
 	if (
-		a !== null && typeof a === 'object' && !Array.isArray(a) &&
-		b !== null && typeof b === 'object' && !Array.isArray(b)
+		a !== null &&
+		typeof a === 'object' &&
+		!Array.isArray(a) &&
+		b !== null &&
+		typeof b === 'object' &&
+		!Array.isArray(b)
 	) {
 		const keys = Object.keys(a);
-		return keys.length === Object.keys(b).length &&
-			keys.every((k) => settingEquals(a[k] ?? null, b[k] ?? null));
+		return (
+			keys.length === Object.keys(b).length &&
+			keys.every((k) => settingEquals(a[k] ?? null, b[k] ?? null))
+		);
 	}
 	return false;
 }
