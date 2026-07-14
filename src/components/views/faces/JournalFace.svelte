@@ -852,7 +852,7 @@
 
 	.doc-pick {
 		position: absolute;
-		top: 15px;
+		top: 5px;
 		left: -23px;
 		z-index: 2;
 		display: inline-flex;

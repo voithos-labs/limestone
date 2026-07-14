@@ -23,6 +23,7 @@
 	import { getSetting } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
 	import DocumentHero from '../DocumentHero.svelte';
+	import ScrollThumb from '../ScrollThumb.svelte';
 
 	let {
 		tab,
@@ -58,60 +59,11 @@
 		tab.state.props_open = propsOpen;
 	});
 	let zoom = $state(untrack(() => tab.state.zoom ?? 16));
-	let scrolling = $state(false);
-	let scrollHideTimer: ReturnType<typeof setTimeout> | null = null;
 
-	// Custom scrollbar thumb metrics
-	let thumbTop = $state(0);
-	let thumbHeight = $state(0);
-	let showThumb = $state(false);
-	const THUMB_MAX_FRACTION = 1 / 5;
-	const THUMB_MIN_PX = 24;
-	const THUMB_INSET_PX = 8;
-	// The track starts level with the document title (the hero's top padding) rather
-	// than at the very top of the scroller.
+	// The thumb track starts level with the document title (the hero's top padding)
+	// rather than at the very top of the scroller.
 	const THUMB_TOP_PX = 34;
 
-	function startThumbDrag(e: PointerEvent) {
-		if (!scrollEl) return;
-		e.preventDefault();
-		const el = scrollEl;
-		const startY = e.clientY;
-		const startScroll = el.scrollTop;
-		const viewH = el.clientHeight;
-		const maxScroll = el.scrollHeight - viewH;
-		const trackRange = viewH - THUMB_TOP_PX - THUMB_INSET_PX - thumbHeight;
-		if (trackRange <= 0 || maxScroll <= 0) return;
-		const ratio = maxScroll / trackRange;
-
-		function onMove(ev: PointerEvent) {
-			el.scrollTop = startScroll + (ev.clientY - startY) * ratio;
-		}
-		function onUp() {
-			window.removeEventListener('pointermove', onMove);
-			window.removeEventListener('pointerup', onUp);
-		}
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp);
-	}
-
-	function updateThumb() {
-		if (!scrollEl) return;
-		const scroll = scrollEl;
-		const viewH = scroll.clientHeight;
-		const contentH = scroll.scrollHeight;
-		const maxScroll = contentH - viewH;
-		const trackH = viewH - THUMB_TOP_PX - THUMB_INSET_PX;
-		if (maxScroll <= 0 || trackH <= 0) {
-			showThumb = false;
-			return;
-		}
-		const natural = (viewH / contentH) * trackH;
-		const capped = Math.min(natural, trackH * THUMB_MAX_FRACTION);
-		thumbHeight = Math.max(capped, THUMB_MIN_PX);
-		thumbTop = THUMB_TOP_PX + (scroll.scrollTop / maxScroll) * (trackH - thumbHeight);
-		showThumb = true;
-	}
 	if (untrack(() => tab.state.zoom) === undefined) {
 		getSetting<number>('appearance.editor_font_size').then((v) => {
 			if (tab.state.zoom === undefined && typeof v === 'number') zoom = v;
@@ -119,7 +71,7 @@
 	}
 
 	let container: HTMLDivElement;
-	let scrollEl: HTMLDivElement;
+	let scrollEl: HTMLDivElement | null = $state(null);
 	let view: EditorView;
 	let internalUpdate = false;
 	let initApplied = false;
@@ -458,8 +410,6 @@
 		saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
 	}
 
-	let resizeObserver: ResizeObserver | null = null;
-
 	onMount(() => {
 		const updateListener = EditorView.updateListener.of((update) => {
 			if (update.docChanged) {
@@ -468,7 +418,6 @@
 				onchange?.(content);
 				internalUpdate = false;
 				if (initApplied) scheduleSave();
-				updateThumb();
 			}
 			if (update.selectionSet && initApplied) {
 				tab.state.cursorPos = update.state.selection.main.head;
@@ -519,23 +468,11 @@
 			parent: container
 		});
 
-		scrollEl.addEventListener('scroll', handleScroll);
-
-		resizeObserver = new ResizeObserver(() => updateThumb());
-		resizeObserver.observe(scrollEl);
-		resizeObserver.observe(container);
-		updateThumb();
+		scrollEl?.addEventListener('scroll', handleScroll);
 	});
 
 	function handleScroll() {
-		scrolling = true;
-		if (scrollHideTimer) clearTimeout(scrollHideTimer);
-		scrollHideTimer = setTimeout(() => {
-			scrolling = false;
-		}, 500);
-		updateThumb();
-
-		if (!initApplied) return;
+		if (!initApplied || !scrollEl) return;
 		tab.state.scrollTop = scrollEl.scrollTop;
 	}
 
@@ -576,15 +513,19 @@
 	onDestroy(() => {
 		unregisterFlush();
 		if (saveTimer) flushSave();
-		if (scrollHideTimer) clearTimeout(scrollHideTimer);
-		resizeObserver?.disconnect();
 		scrollEl?.removeEventListener('scroll', handleScroll);
 		view?.destroy();
 	});
 </script>
 
 <div class="doc-view" class:flow>
-	<div class="doc-scroll" class:flow bind:this={scrollEl} onmousedown={bgMouseDown} role="presentation">
+	<div
+		class="doc-scroll"
+		class:flow
+		bind:this={scrollEl}
+		onmousedown={bgMouseDown}
+		role="presentation"
+	>
 		{#if handle}
 			<DocumentHero
 				{handle}
@@ -594,28 +535,27 @@
 				bind:propsOpen
 			/>
 		{/if}
-		<div class="cm-wrapper" class:flow bind:this={container} style="--editor-font-size: {zoom}px"></div>
-	</div>
-	{#if showThumb && !flow}
 		<div
-			class="scroll-thumb"
-			class:scrolling
-			style="height: {thumbHeight}px; transform: translateY({thumbTop}px);"
-			onpointerdown={startThumbDrag}
+			class="cm-wrapper"
+			class:flow
+			bind:this={container}
+			style="--editor-font-size: {zoom}px"
 		></div>
+	</div>
+	{#if !flow}
+		<ScrollThumb scroller={scrollEl} top={THUMB_TOP_PX} />
 	{/if}
 </div>
 
 <style>
+	/* Full width so the wheel works anywhere on the page and the thumb rides the
+	   page's right edge; the hero and the editor content center themselves. */
 	.doc-view {
 		position: relative;
 		display: flex;
 		flex-direction: column;
 		width: 100%;
 		height: 100%;
-		max-width: var(--page-max-width, none);
-		margin-left: auto;
-		margin-right: auto;
 	}
 
 	.doc-view.flow {
@@ -681,35 +621,5 @@
 
 	.cm-wrapper :global(.cm-embed-image::selection) {
 		background: transparent;
-	}
-
-	.scroll-thumb {
-		position: absolute;
-		right: 0;
-		top: 0;
-		width: 14px;
-		background: transparent;
-		cursor: pointer;
-		z-index: 2;
-	}
-
-	.scroll-thumb::before {
-		content: '';
-		position: absolute;
-		right: 4px;
-		top: 0;
-		bottom: 0;
-		width: 1px;
-		border-radius: 4px;
-		background: var(--color-border);
-		transition:
-			background-color 350ms ease,
-			width 350ms ease;
-	}
-
-	.scroll-thumb.scrolling::before,
-	.scroll-thumb:hover::before {
-		width: 4px;
-		background: var(--color-ui-muted);
 	}
 </style>
