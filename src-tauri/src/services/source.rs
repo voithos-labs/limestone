@@ -795,13 +795,11 @@ pub(crate) async fn sync_tags(
 
     for tag in tags {
         // Upsert tag group (global)
-        sqlx::query(
-            "INSERT OR IGNORE INTO groups (id, slug, group_type) VALUES (?1, ?2, 'tag')",
-        )
-        .bind(tag_group_id(tag))
-        .bind(tag)
-        .execute(&mut **tx)
-        .await?;
+        sqlx::query("INSERT OR IGNORE INTO groups (id, slug, group_type) VALUES (?1, ?2, 'tag')")
+            .bind(tag_group_id(tag))
+            .bind(tag)
+            .execute(&mut **tx)
+            .await?;
 
         let group_id: String = sqlx::query_scalar(
             "SELECT id FROM groups WHERE slug = ?1 AND group_type = 'tag' AND source_id IS NULL",
