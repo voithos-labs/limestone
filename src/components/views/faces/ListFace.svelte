@@ -25,6 +25,7 @@
 	import Group, { GroupType } from '$lib/models/Group';
 	import DocHandle from '$lib/models/DocHandle';
 	import FaceCard from '../FaceCard.svelte';
+	import { Plus } from '@lucide/svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import { onMount, untrack } from 'svelte';
@@ -34,13 +35,15 @@
 		face,
 		onOpenRow,
 		createSignal = 0,
-		scope = null
+		scope = null,
+		createCard = false
 	}: {
 		view: View;
 		face: ViewFace;
 		onOpenRow?: (rowId: string) => void;
 		createSignal?: number;
 		scope?: FilterNode | null;
+		createCard?: boolean;
 	} = $props();
 
 	type Row = MemberRow;
@@ -307,9 +310,16 @@
 		layout === 'list' ? 1 : Math.max(1, Math.floor((settledW + GAP) / (COL_MIN + GAP)))
 	);
 
+	// The create card is laid out as a row so it flows with the masonry; it just draws
+	// as a button instead of a FaceCard.
+	const NEW_SLOT = '__new';
+	const slots = $derived(
+		createCard ? [{ id: NEW_SLOT } as Row, ...rows] : rows
+	);
+
 	// Cards are hidden until every one has reported a real height: a single card's
 	// position depends on all the others, so a partial set means wrong positions.
-	const measured = $derived(rows.length > 0 && rows.every((r) => heights[r.id] !== undefined));
+	const measured = $derived(slots.length > 0 && slots.every((r) => heights[r.id] !== undefined));
 
 	// Don't break dom, just move shi around
 	$effect(() => {
@@ -321,7 +331,7 @@
 		const colW = (settledW - (colCount - 1) * GAP) / colCount;
 		const tot = new Array(colCount).fill(0);
 		const pos: Record<string, { x: number; y: number }> = {};
-		for (const r of rows) {
+		for (const r of slots) {
 			let ci = 0;
 			for (let i = 1; i < colCount; i++) if (tot[i] < tot[ci]) ci = i;
 			pos[r.id] = { x: ci * (colW + GAP), y: tot[ci] };
@@ -403,7 +413,7 @@
 		style:height="{measured ? cardLayout.height : 0}px"
 	>
 		{#if settledW > 0}
-			{#each rows as row (row.id)}
+			{#each slots as row (row.id)}
 				{@const p = cardLayout.pos[row.id]}
 				<div
 					class="card-slot"
@@ -412,22 +422,29 @@
 					style:transform="translate({p.x}px, {p.y}px)"
 					bind:clientHeight={heights[row.id]}
 				>
-					<FaceCard
-						{row}
-						fields={metaFields}
-						viewSlug={view.slug}
-						{sources}
-						tags={tagSlugsFor(row.id)}
-						preview={previews[row.id] ?? ''}
-						image={images[row.id] ?? ''}
-						onOpen={() => onOpenRow?.(row.id)}
-					/>
+					{#if row.id === NEW_SLOT}
+						<button class="new-card" type="button" onclick={createNote}>
+							<Plus size={16} strokeWidth={2} />
+							<span>New note</span>
+						</button>
+					{:else}
+						<FaceCard
+							{row}
+							fields={metaFields}
+							viewSlug={view.slug}
+							{sources}
+							tags={tagSlugsFor(row.id)}
+							preview={previews[row.id] ?? ''}
+							image={images[row.id] ?? ''}
+							onOpen={() => onOpenRow?.(row.id)}
+						/>
+					{/if}
 				</div>
 			{/each}
 		{/if}
 	</div>
 
-	{#if !loading && rows.length === 0}
+	{#if !loading && rows.length === 0 && !createCard}
 		<div class="lf-empty">No documents</div>
 	{:else}
 		<div class="lf-footer">
@@ -470,6 +487,32 @@
 
 	.card-slot.animated {
 		transition: transform 160ms ease;
+	}
+
+	/* A card-shaped create button that sits first in the masonry */
+	.new-card {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 7px;
+		width: 100%;
+		height: 54px;
+		border: 1px dashed var(--color-border);
+		border-radius: 10px;
+		background: transparent;
+		font: inherit;
+		font-family: var(--font-ui);
+		font-size: 13px;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
+	}
+
+	.new-card:hover {
+		background: var(--row-hover-bg, rgba(127, 127, 127, 0.06));
+		color: var(--color-text-primary);
 	}
 
 	.lf-empty {

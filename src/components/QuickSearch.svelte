@@ -248,7 +248,7 @@
 		padding: 0 18px;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
-		border-radius: 14px;
+		border-radius: 10px;
 		color: var(--color-ui-muted);
 		flex-shrink: 0;
 		box-sizing: border-box;
@@ -256,7 +256,7 @@
 	}
 
 	.search.open .quick-search {
-		border-radius: 14px 14px 0 0;
+		border-radius: 10px 10px 0 0;
 		border-color: var(--color-border);
 	}
 
@@ -309,7 +309,7 @@
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-top: none;
-		border-radius: 0 0 14px 14px;
+		border-radius: 0 0 10px 10px;
 		scrollbar-width: none;
 	}
 
