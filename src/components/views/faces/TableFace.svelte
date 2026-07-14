@@ -62,7 +62,7 @@
     import {defaultNoteDir, getDefaultSourceId, listSources, pickCreationSource, type Source} from '$lib/models/Source';
     import Group, {GroupType} from '$lib/models/Group';
     import DocHandle from '$lib/models/DocHandle';
-    import {deriveCreateContext, folderLinkChain, folderPath} from '$lib/views/createDefaults';
+    import {createMetaDate, deriveCreateContext, folderLinkChain, folderPath} from '$lib/views/createDefaults';
     import FolderValueEditor from '../FolderValueEditor.svelte';
     import CellEditor from '../CellEditor.svelte';
     import CellTextEditor from '../CellTextEditor.svelte';
@@ -1611,7 +1611,17 @@
             const props = Object.keys(draft.values).length
                 ? {views: {[view.slug]: draft.values}}
                 : {};
-            await DocHandle.createFromTitle(source, {title, dir, groupIds, properties: props});
+            const doc = await DocHandle.createFromTitle(source, {title, dir, groupIds, properties: props});
+            // e.g. a journal body scoped to a past day: the note must carry that day's
+            // date or it drops straight back out of the view it was created in
+            const createdAt = createMetaDate(createCtx, 'created_at');
+            const updatedAt = createMetaDate(createCtx, 'updated_at');
+            if (createdAt || updatedAt) {
+                await doc.saveMeta({
+                    createdAt: createdAt ?? undefined,
+                    updatedAt: updatedAt ?? undefined
+                });
+            }
             if (effectiveFolderId) {
                 folders.find((f) => f.id === effectiveFolderId)?.touch().catch(() => {});
             }

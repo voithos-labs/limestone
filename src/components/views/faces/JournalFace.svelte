@@ -20,12 +20,14 @@
 		view,
 		face,
 		flow = false,
-		onOpenRow
+		onOpenRow,
+		createSignal = 0
 	}: {
 		view: View;
 		face: ViewFace;
 		flow?: boolean;
 		onOpenRow?: (rowId: string) => void;
+		createSignal?: number;
 	} = $props();
 
 	const DAY_SIZE = 46;
@@ -86,8 +88,8 @@
 		else if (key === 'updated_at') raw = r.updated_at;
 		else {
 			const field = view.fields.find((f) => f.id === key);
-			if (!field) return null;
-			raw = rawStatefulValue(r, view.slug, field.name);
+			// Deleted date field: fall back to created_at, matching dayScopeNode
+			raw = field ? rawStatefulValue(r, view.slug, field.name) : r.created_at;
 		}
 		if (raw == null || raw === '') return null;
 		// A date-only string ("2026-07-13") parses as UTC via `new Date`, which lands on
@@ -169,10 +171,13 @@
 
 	function dayScopeNode(): FilterNode | null {
 		const key = dateFieldKey;
+		// Fall back to created_at rather than returning null: a null scope would leave the
+		// body unfiltered, showing every document in the view on every day.
 		const field =
-			key === 'created_at' || key === 'updated_at'
+			(key === 'created_at' || key === 'updated_at'
 				? view.fields.find((f) => f.type === key)
-				: view.fields.find((f) => f.id === key);
+				: view.fields.find((f) => f.id === key)) ??
+			view.fields.find((f) => f.type === 'created_at');
 		if (!field) return null;
 		// date-only bounds compare correctly both as ms (created_at/updated_at) and
 		// as wall-clock strings (stateful date fields)
@@ -678,7 +683,7 @@
 			<div class="body-face">
 				{#key bodyFace.id}
 					{#if bodyFace.type === 'list'}
-						<ListFace {view} face={bodyFace} {onOpenRow} />
+						<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} />
 					{:else}
 						<TableFace {view} face={bodyFace} {onOpenRow} {flow} />
 					{/if}

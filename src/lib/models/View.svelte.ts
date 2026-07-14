@@ -808,7 +808,9 @@ class View {
 			display_field_ids: [...json.display_field_ids],
 			sort: [...json.sort],
 			additive_filter: JSON.parse(JSON.stringify(json.additive_filter)),
-			config: JSON.parse(JSON.stringify(json.config))
+			config: JSON.parse(JSON.stringify(json.config)),
+			// regen ids for dupe
+			body: json.body ? { ...JSON.parse(JSON.stringify(json.body)), id: uuidv4() } : null
 		});
 		this.faces = [...this.faces, face];
 		return face;
@@ -833,6 +835,8 @@ class View {
 				pruneFieldFromFilter(f.additive_filter, fieldId);
 				f.sort = f.sort.filter((k) => k.field_id !== fieldId);
 				if (f.config.group_by === fieldId) delete f.config.group_by;
+				// A journal keyed on a deleted date field would lose its day scope entirely
+				if (f.config.date_field === fieldId) delete f.config.date_field;
 				if (f.config.column_widths) delete f.config.column_widths[fieldId];
 			}
 		}

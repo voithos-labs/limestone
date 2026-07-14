@@ -400,7 +400,7 @@
             </div>
 
             {#if activeFace?.type === 'journal'}
-                <JournalFace {view} face={activeFace} flow={true} {onOpenRow}/>
+                <JournalFace {view} face={activeFace} flow={true} {onOpenRow} {createSignal}/>
             {:else if activeFace?.type === 'list'}
                 <ListFace {view} face={activeFace} {onOpenRow} {createSignal}/>
             {:else}
@@ -408,7 +408,7 @@
             {/if}
         </div>
 
-        {#if activeFace?.type !== 'journal'}
+        {#if activeFace?.type !== 'journal' || activeFace?.body?.type === 'list'}
             <button class="new-fab" type="button" title="New note" onclick={() => createSignal++}>
                 <Plus size={18} strokeWidth={2}/>
             </button>

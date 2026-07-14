@@ -8,7 +8,12 @@
 		MemberRow
 	} from '$lib/models/View.svelte';
 	import { isLeafActive } from '$lib/models/View.svelte';
-	import { deriveCreateContext, folderLinkChain, folderPath } from '$lib/views/createDefaults';
+	import {
+		createMetaDate,
+		deriveCreateContext,
+		folderLinkChain,
+		folderPath
+	} from '$lib/views/createDefaults';
 	import { searchDocuments } from '$lib/services/search';
 	import { select } from '$lib/services/db';
 	import { listSources, pickCreationSource, getDefaultSourceId, type Source } from '$lib/models/Source';
@@ -335,6 +340,15 @@
 				groupIds,
 				properties: props
 			});
+			// keep the note inside the view's date scope (e.g. a journal body on a past day)
+			const createdAt = createMetaDate(createCtx, 'created_at');
+			const updatedAt = createMetaDate(createCtx, 'updated_at');
+			if (createdAt || updatedAt) {
+				await doc.saveMeta({
+					createdAt: createdAt ?? undefined,
+					updatedAt: updatedAt ?? undefined
+				});
+			}
 			load(true);
 			onOpenRow?.(doc.id);
 		} catch (e) {
