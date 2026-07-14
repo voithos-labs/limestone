@@ -3,6 +3,7 @@
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, FilterNode } from '$lib/models/View.svelte';
 	import { rawStatefulValue } from '$lib/views/fieldValue';
+	import { wallClockToMs } from '$lib/views/dateFormat';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import DocHandle from '$lib/models/DocHandle';
 	import { getDefaultSourceId, listSources, pickCreationSource } from '$lib/models/Source';
@@ -89,7 +90,12 @@
 			raw = rawStatefulValue(r, view.slug, field.name);
 		}
 		if (raw == null || raw === '') return null;
-		const d = new Date(raw as string);
+		// A date-only string ("2026-07-13") parses as UTC via `new Date`, which lands on
+		// the previous day west of UTC and disagrees with the SQL day scope. wallClockToMs
+		// reads it as local, matching how the filter compiles it.
+		const ms = wallClockToMs(raw);
+		if (ms === null) return null;
+		const d = new Date(ms);
 		return isNaN(d.getTime()) ? null : startOfDay(d);
 	}
 

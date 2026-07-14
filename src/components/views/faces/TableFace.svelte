@@ -886,11 +886,23 @@
     let tagEditRowId: string | null = $state(null);
 
     const tagItems = $derived(tagGroups.map((g) => ({value: g.id, label: g.slug, icon: Hash})));
-    const tagSelectedIds = $derived(
-        tagEditRowId ? (rowTags[tagEditRowId] ?? []).map((t) => t.id) : []
-    );
+
+    // The open menu edits this snapshot, NOT rowTags: a tag edit can drop the row out
+    // of the view (removing the tag a tag-scoped view filters on), and load() then
+    // rebuilds rowTags without it. Reading the row's tags back out of rowTags would
+    // yield [], so the next click would write a truncated list and delete the
+    // document's other tags.
+    let tagDraft: { id: string; slug: string }[] = $state([]);
+
+    const tagSelectedIds = $derived(tagDraft.map((t) => t.id));
 
     const tagsFor = (rowId: string) => (rowTags[rowId] ?? []).map((t) => t.slug);
+
+    // If the edited row is no longer loaded, close rather than act on a stale row.
+    $effect(() => {
+        if (!tagMenuOpen || !tagEditRowId) return;
+        if (!rows.some((r) => r.id === tagEditRowId)) tagMenuOpen = false;
+    });
 
     async function loadRowTags(list: Row[]) {
         if (list.length === 0) {
@@ -920,6 +932,7 @@
             return;
         }
         tagEditRowId = rowId;
+        tagDraft = [...(rowTags[rowId] ?? [])];
         tagMenuAnchor = anchor;
         tagMenuOpen = true;
     }
@@ -928,12 +941,15 @@
         try {
             const doc = await DocHandle.fromID(rowId);
             await doc.setTags(slugs);
-            rowTags = {...rowTags, [rowId]: doc.tags.map((t) => ({id: t.id, slug: t.slug}))};
+            const tags = doc.tags.map((t) => ({id: t.id, slug: t.slug}));
+            rowTags = {...rowTags, [rowId]: tags};
+            if (tagEditRowId === rowId) tagDraft = tags;
             tagGroups = (await Group.list()).filter((g) => g.groupType === GroupType.Tag);
             const fid = view.fields.find((f) => f.type === 'tags')?.id;
             if (fid && fieldAffectsView(fid)) load(true);
         } catch (e) {
             error = String(e);
+            if (tagEditRowId === rowId) tagMenuOpen = false;
             loadRowTags(rows);
         }
     }
@@ -941,7 +957,7 @@
     function toggleRowTag(groupId: string) {
         const rowId = tagEditRowId;
         if (!rowId) return;
-        const cur = rowTags[rowId] ?? [];
+        const cur = tagDraft;
         const has = cur.some((t) => t.id === groupId);
         const g = tagGroups.find((t) => t.id === groupId);
         const next = has
@@ -949,6 +965,7 @@
             : g
                 ? [...cur, {id: g.id, slug: g.slug}]
                 : cur;
+        tagDraft = next;
         rowTags = {...rowTags, [rowId]: next};
         applyRowTags(rowId, next.map((t) => t.slug));
     }
@@ -957,7 +974,7 @@
         const rowId = tagEditRowId;
         const slug = q.trim();
         if (!rowId || !slug) return;
-        const cur = rowTags[rowId] ?? [];
+        const cur = tagDraft;
         if (cur.some((t) => t.slug === slug)) return;
         applyRowTags(rowId, [...cur.map((t) => t.slug), slug]);
     }
