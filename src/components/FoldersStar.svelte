@@ -6,7 +6,9 @@
 
 <span class="folders-star" style="width: {size}px; height: {size}px">
 	<Folders {size} {strokeWidth} />
-	<span class="star"><Star size={Math.round(size * 0.6)} strokeWidth={0} fill="currentColor" /></span>
+	<span class="star"
+		><Star size={Math.round(size * 0.6)} strokeWidth={0} fill="currentColor" /></span
+	>
 </span>
 
 <style>

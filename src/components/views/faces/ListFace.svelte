@@ -313,9 +313,7 @@
 	// The create card is laid out as a row so it flows with the masonry; it just draws
 	// as a button instead of a FaceCard.
 	const NEW_SLOT = '__new';
-	const slots = $derived(
-		createCard ? [{ id: NEW_SLOT } as Row, ...rows] : rows
-	);
+	const slots = $derived(createCard ? [{ id: NEW_SLOT } as Row, ...rows] : rows);
 
 	// Cards are hidden until every one has reported a real height: a single card's
 	// position depends on all the others, so a partial set means wrong positions.
@@ -418,13 +416,14 @@
 		style:height="{measured ? cardLayout.height : 0}px"
 	>
 		{#if settledW > 0}
-			{#each slots as row (row.id)}
+			{#each slots as row, i (row.id)}
 				{@const p = cardLayout.pos[row.id]}
 				<div
 					class="card-slot"
 					class:animated={animate}
 					style:width="{cardLayout.colW}px"
 					style:transform="translate({p.x}px, {p.y}px)"
+					style:--in-delay="{Math.min(i * 8, 90)}ms"
 					bind:clientHeight={heights[row.id]}
 				>
 					{#if row.id === NEW_SLOT}
@@ -449,12 +448,13 @@
 		{/if}
 	</div>
 
-	{#if !loading && rows.length === 0 && !createCard}
+	{#if loading}
+		<div class="lf-footer"></div>
+	{:else if rows.length === 0 && !createCard}
 		<div class="lf-empty">No documents</div>
 	{:else}
 		<div class="lf-footer">
-			{#if loading}loading...
-			{:else if total > rows.length}showing {rows.length} of {total}{:else}{rows.length}
+			{#if total > rows.length}showing {rows.length} of {total}{:else}{rows.length}
 				{rows.length === 1 ? 'doc' : 'docs'}
 			{/if}
 		</div>
@@ -488,6 +488,21 @@
 
 	.lf-grid:not(.measured) .card-slot {
 		visibility: hidden;
+	}
+
+	/* Cards fade up once the grid settles */
+	.lf-grid.measured .card-slot {
+		animation: card-in 140ms ease both;
+		animation-delay: var(--in-delay, 0ms);
+	}
+
+	@keyframes card-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
 	}
 
 	.card-slot.animated {

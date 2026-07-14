@@ -712,8 +712,11 @@
 			{:else}
 				<div class="entry-empty">
 					<p>No entry for this day</p>
-					<button class="create-entry" type="button" disabled={creating} onclick={() => createEntry()}
-						>Create entry</button
+					<button
+						class="create-entry"
+						type="button"
+						disabled={creating}
+						onclick={() => createEntry()}>Create entry</button
 					>
 				</div>
 			{/if}
