@@ -174,7 +174,9 @@ fn json_eq(a: &Value, b: &Value) -> bool {
             x.len() == y.len() && x.iter().zip(y).all(|(av, bv)| json_eq(av, bv))
         }
         (Value::Object(x), Value::Object(y)) => {
-            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| json_eq(v, w)))
+            x.len() == y.len()
+                && x.iter()
+                    .all(|(k, v)| y.get(k).is_some_and(|w| json_eq(v, w)))
         }
         _ => a == b,
     }

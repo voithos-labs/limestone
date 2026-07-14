@@ -1,6 +1,7 @@
 import type View from '$lib/models/View.svelte';
 import type { FilterNode, FilterLeaf, ViewFace, ViewField } from '$lib/models/View.svelte';
 import type Group from '$lib/models/Group';
+import { wallClockToMs } from '$lib/views/dateFormat';
 
 export interface CreateContext {
 	folderGroupId: string | null;
@@ -8,6 +9,7 @@ export interface CreateContext {
 	fieldValues: Record<string, unknown>;
 	tagGroupIds: string[];
 	sourceId: string | null;
+	metaDates: { created_at?: string; updated_at?: string };
 }
 
 function conjunctiveLeaves(node: FilterNode, out: FilterLeaf[]): void {
@@ -46,10 +48,17 @@ function resolveFolder(
 	return { id: null, ambiguous: true };
 }
 
-export function deriveCreateContext(view: View, face: ViewFace, folders: Group[]): CreateContext {
+export function deriveCreateContext(
+	view: View,
+	face: ViewFace,
+	folders: Group[],
+	scope?: FilterNode | null
+): CreateContext {
 	const leaves: FilterLeaf[] = [];
 	conjunctiveLeaves(view.filter, leaves);
 	conjunctiveLeaves(face.additive_filter, leaves);
+	// the caller's scope (a journal's selected day) seeds new docs (so they stay on screen)
+	if (scope) conjunctiveLeaves(scope, leaves);
 
 	const fieldsById = new Map(view.fields.map((f) => [f.id, f]));
 	const byId = new Map(folders.map((g) => [g.id, g]));
@@ -57,6 +66,7 @@ export function deriveCreateContext(view: View, face: ViewFace, folders: Group[]
 	const folderIds: string[] = [];
 	const tagGroupIds: string[] = [];
 	const fieldValues: Record<string, unknown> = {};
+	const metaDates: { created_at?: string; updated_at?: string } = {};
 	let sourceId: string | null = null;
 
 	for (const field of view.fields) {
@@ -79,6 +89,11 @@ export function deriveCreateContext(view: View, face: ViewFace, folders: Group[]
 			if ((leaf.op === 'has_any' || leaf.op === 'has_all') && Array.isArray(leaf.value)) {
 				for (const v of leaf.value) if (typeof v === 'string') tagGroupIds.push(v);
 			}
+		} else if (field.type === 'created_at' || field.type === 'updated_at') {
+			// a day scope ("on or after <day>", "before <next day>") seeds
+			if (leaf.op === 'on_or_after' && typeof leaf.value === 'string') {
+				metaDates[field.type] = leaf.value;
+			}
 		} else {
 			collectFieldDefault(field, leaf, fieldValues);
 		}
@@ -92,8 +107,27 @@ export function deriveCreateContext(view: View, face: ViewFace, folders: Group[]
 		ambiguous: folder.ambiguous,
 		fieldValues,
 		tagGroupIds: [...new Set(tagGroupIds)],
-		sourceId
+		sourceId,
+		metaDates
 	};
+}
+
+/**
+ * The created_at/updated_at a new doc needs to land inside the view's date scope
+ * or null when shit does not work out
+ */
+export function createMetaDate(ctx: CreateContext, type: 'created_at' | 'updated_at'): Date | null {
+	const raw = ctx.metaDates[type];
+	if (!raw) return null;
+	const ms = wallClockToMs(raw);
+	if (ms === null) return null;
+	const d = new Date(ms);
+	const now = new Date();
+	const isToday =
+		d.getFullYear() === now.getFullYear() &&
+		d.getMonth() === now.getMonth() &&
+		d.getDate() === now.getDate();
+	return isToday ? null : d;
 }
 
 function collectFieldDefault(
@@ -109,6 +143,11 @@ function collectFieldDefault(
 	// boolean filters use eq with a real true/false ;;;; both are valid defaults
 	if (field.type === 'boolean') {
 		if (leaf.op === 'eq') out[field.name] = leaf.value === true || leaf.value === 'true';
+		return;
+	}
+	// a day scope is a range, so seed from its lower bound as well as from eq
+	if (field.type === 'date') {
+		if (leaf.op === 'eq' || leaf.op === 'on_or_after') out[field.name] = leaf.value;
 		return;
 	}
 	if (leaf.op === 'eq') out[field.name] = leaf.value;

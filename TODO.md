@@ -17,7 +17,7 @@ For lunch:
 - [ ] File watcher for external file changes
 - [ ] Split screen
 - [ ] Basic spell check with a disable-auto-replace option to actually make you learn to spell if you're dyslexic like
-  me
+      me
 - [ ] Kanban
 
 On shortcuts, maybe:

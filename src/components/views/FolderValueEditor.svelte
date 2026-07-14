@@ -130,9 +130,7 @@
 	function siblingExists(slug: string): boolean {
 		const s = slug.trim().toLowerCase();
 		if (!s) return false;
-		return (childrenByParent.get(focusId ?? null) ?? []).some(
-			(f) => f.slug.toLowerCase() === s
-		);
+		return (childrenByParent.get(focusId ?? null) ?? []).some((f) => f.slug.toLowerCase() === s);
 	}
 
 	const showCreate = $derived(searching && canCreate && !siblingExists(query));
@@ -170,9 +168,7 @@
 		if (!name || !canCreate || creating || siblingExists(name)) return;
 		creating = true;
 		try {
-			const parent = focusId
-				? { id: focusId, path: folderPath(focusId, folders) }
-				: null;
+			const parent = focusId ? { id: focusId, path: folderPath(focusId, folders) } : null;
 			const g = onCreateFolder
 				? await onCreateFolder(name, parent)
 				: await Group.createFolder(name, createSourceId!, parent ?? undefined);
@@ -207,7 +203,11 @@
 	}
 
 	function pick(id: string) {
-		if (id) byId.get(id)?.touch?.().catch(() => {});
+		if (id)
+			byId
+				.get(id)
+				?.touch?.()
+				.catch(() => {});
 		onChange(id, id ? folderPath(id, folders) : '');
 		open = false;
 	}
@@ -539,65 +539,65 @@
 				{/if}
 				{#key focusId}
 					<div class="level" in:fly={{ x: 24 * navDir, duration: 130 }}>
-				{#if rootOption && !focusId}
-					<div class="folder-row root-row" class:active={activeIndex === recentFolders.length}>
-						<span class="disclosure-spacer"></span>
-						<button
-							class="folder-name"
-							type="button"
-							tabindex="-1"
-							onclick={() => pick('')}
-							onmouseenter={() => (activeIndex = recentFolders.length)}
-						>
-							<Folders size={13} strokeWidth={1.75} />
-							<span class="name-label"
-								>{rootLabel ?? ((sourceId && sourceNames.get(sourceId)) || 'No folder')}</span
-							>
-						</button>
-					</div>
-				{/if}
-				{#each levelRows as folder, i (folder.id)}
-					{@const navIndex = levelBase + i}
-					{@const children = hasChildren(folder.id)}
-					{@const sourceLabel = folder.sourceId ? sourceNames.get(folder.sourceId) : undefined}
-					<div
-						class="folder-row"
-						class:selected={folder.id === value}
-						class:active={navIndex === activeIndex}
-					>
-						{#if children}
-							<button
-								class="disclosure"
-								type="button"
-								tabindex="-1"
-								aria-label="Open folder"
-								onclick={() => focusFolderId(folder.id)}
-							>
-								<ChevronRight size={12} strokeWidth={2} />
-							</button>
-						{:else}
-							<span class="disclosure-spacer"></span>
+						{#if rootOption && !focusId}
+							<div class="folder-row root-row" class:active={activeIndex === recentFolders.length}>
+								<span class="disclosure-spacer"></span>
+								<button
+									class="folder-name"
+									type="button"
+									tabindex="-1"
+									onclick={() => pick('')}
+									onmouseenter={() => (activeIndex = recentFolders.length)}
+								>
+									<Folders size={13} strokeWidth={1.75} />
+									<span class="name-label"
+										>{rootLabel ?? ((sourceId && sourceNames.get(sourceId)) || 'No folder')}</span
+									>
+								</button>
+							</div>
 						{/if}
-						<button
-							class="folder-name"
-							type="button"
-							tabindex="-1"
-							onclick={() => pick(folder.id)}
-							onmouseenter={() => (activeIndex = navIndex)}
-						>
-							<Folder size={13} strokeWidth={1.75} />
-							<span class="name-label">{folder.slug}</span>
-							{#if folder.id === value}
-								<Check size={13} strokeWidth={2} />
-							{/if}
-							{#if sourceLabel}
-								<span class="source-label">{sourceLabel}</span>
-							{/if}
-						</button>
-					</div>
-				{:else}
-					<div class="empty">{focusFolder ? 'No folders inside' : 'No folders'}</div>
-				{/each}
+						{#each levelRows as folder, i (folder.id)}
+							{@const navIndex = levelBase + i}
+							{@const children = hasChildren(folder.id)}
+							{@const sourceLabel = folder.sourceId ? sourceNames.get(folder.sourceId) : undefined}
+							<div
+								class="folder-row"
+								class:selected={folder.id === value}
+								class:active={navIndex === activeIndex}
+							>
+								{#if children}
+									<button
+										class="disclosure"
+										type="button"
+										tabindex="-1"
+										aria-label="Open folder"
+										onclick={() => focusFolderId(folder.id)}
+									>
+										<ChevronRight size={12} strokeWidth={2} />
+									</button>
+								{:else}
+									<span class="disclosure-spacer"></span>
+								{/if}
+								<button
+									class="folder-name"
+									type="button"
+									tabindex="-1"
+									onclick={() => pick(folder.id)}
+									onmouseenter={() => (activeIndex = navIndex)}
+								>
+									<Folder size={13} strokeWidth={1.75} />
+									<span class="name-label">{folder.slug}</span>
+									{#if folder.id === value}
+										<Check size={13} strokeWidth={2} />
+									{/if}
+									{#if sourceLabel}
+										<span class="source-label">{sourceLabel}</span>
+									{/if}
+								</button>
+							</div>
+						{:else}
+							<div class="empty">{focusFolder ? 'No folders inside' : 'No folders'}</div>
+						{/each}
 					</div>
 				{/key}
 			{/if}

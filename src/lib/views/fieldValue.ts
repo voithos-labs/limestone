@@ -116,7 +116,13 @@ export function titleFor(field: ViewField, row: MemberRow, viewSlug: string): st
 	}
 }
 
-const EDITABLE = new Set<string>([...CREATABLE_FIELD_TYPES, 'created_at', 'updated_at', 'folder']);
+const EDITABLE = new Set<string>([
+	...CREATABLE_FIELD_TYPES,
+	'created_at',
+	'updated_at',
+	'folder',
+	'tags'
+]);
 
 export function isEditable(field: ViewField): boolean {
 	return EDITABLE.has(field.type);

@@ -2,7 +2,6 @@
 
 <img width="930" height="730" alt="image" src="https://github.com/user-attachments/assets/fb850cdb-06c6-482d-b692-fc619e7b0ae8" />
 
-
 ## Dev Commands
 
 Run dev app ( you may need to install deps first, e.g. `npm i` )

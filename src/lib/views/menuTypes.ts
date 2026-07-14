@@ -6,6 +6,7 @@ export interface MenuItem {
 	icon?: Component;
 	children?: MenuItem[];
 	keepOpen?: boolean;
+	danger?: boolean;
 }
 
 export interface MenuDivider {

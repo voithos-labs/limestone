@@ -16,7 +16,8 @@ fn sources_store(app: &AppHandle) -> JsonSettingsStore {
 
 fn load_sources_file(app: &AppHandle) -> Sources {
     let mut data = sources_store(app).load::<Sources>().unwrap_or_default();
-    data.sources.sort_by_key(|v| std::cmp::Reverse(v.accessed_at));
+    data.sources
+        .sort_by_key(|v| std::cmp::Reverse(v.accessed_at));
     data
 }
 
@@ -116,7 +117,9 @@ pub fn create_source(
 
     // add fs access to new source dir
     let _ = app.fs_scope().allow_directory(&source.path, true);
-    let _ = app.asset_protocol_scope().allow_directory(&source.path, true);
+    let _ = app
+        .asset_protocol_scope()
+        .allow_directory(&source.path, true);
 
     data.sources.push(source.clone());
     save_sources_file(&app, &data)?;

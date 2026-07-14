@@ -12,7 +12,13 @@ import { load, type Store } from '@tauri-apps/plugin-store';
 import EditorState, { type EditorJSON } from '$lib/models/EditorState.svelte.js';
 import { SettingsState, getSetting } from '$lib/models/Settings.svelte.js';
 import type { Source } from '$lib/models/Source';
-import { applyAccent, applyTheme, BUILTIN_THEMES, DEFAULT_THEME, type Theme } from '$lib/services/theme';
+import {
+	applyAccent,
+	applyTheme,
+	BUILTIN_THEMES,
+	DEFAULT_THEME,
+	type Theme
+} from '$lib/services/theme';
 
 export interface ViewTab {
 	kind: string;

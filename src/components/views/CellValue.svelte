@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Square } from '@lucide/svelte';
+	import { Square, Hash } from '@lucide/svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
 	import type { Source } from '$lib/models/Source';
 	import {
@@ -17,12 +17,14 @@
 		field,
 		row,
 		viewSlug,
-		sources = []
+		sources = [],
+		tags = []
 	}: {
 		field: ViewField;
 		row: MemberRow;
 		viewSlug: string;
 		sources?: Source[];
+		tags?: string[];
 	} = $props();
 </script>
 
@@ -42,6 +44,12 @@
 	{#if arr.length}
 		<span class="pills">
 			{#each arr as t (t)}<span class="pill {tagClass(field, t)}">{t}</span>{/each}
+		</span>
+	{:else}<span class="muted">—</span>{/if}
+{:else if field.type === 'tags'}
+	{#if tags.length}
+		<span class="pills">
+			{#each tags as t (t)}<span class="tag"><Hash size={11} />{t}</span>{/each}
 		</span>
 	{:else}<span class="muted">—</span>{/if}
 {:else if field.type === 'folder'}
@@ -86,5 +94,23 @@
 		white-space: nowrap;
 		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
 		color: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-fg-l, 30%));
+	}
+
+	.tag {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		gap: 3px;
+		height: 18px;
+		padding: 0 9px 0 6px;
+		border-radius: 999px;
+		background: var(--chip-bg);
+		color: var(--color-ui-dulled);
+		font-size: 11px;
+		white-space: nowrap;
+	}
+
+	.tag :global(svg) {
+		opacity: 0.7;
 	}
 </style>

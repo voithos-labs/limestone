@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import type View from '$lib/models/View.svelte';
-	import type { ViewFace } from '$lib/models/View.svelte';
-	import { rawStatefulValue, fieldLabel } from '$lib/views/fieldValue';
+	import type { ViewFace, FilterNode } from '$lib/models/View.svelte';
+	import { rawStatefulValue } from '$lib/views/fieldValue';
+	import { wallClockToMs } from '$lib/views/dateFormat';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import DocHandle from '$lib/models/DocHandle';
 	import { getDefaultSourceId, listSources, pickCreationSource } from '$lib/models/Source';
@@ -12,9 +13,23 @@
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import DateValueEditor from '../DateValueEditor.svelte';
 	import MarkdownEditor from '../../editor/MarkdownEditor.svelte';
-	import { SlidersHorizontal, ScanBarcode, ScanLine, ChevronDown } from '@lucide/svelte';
+	import TableFace from './TableFace.svelte';
+	import ListFace from './ListFace.svelte';
+	import { ChevronDown, Plus } from '@lucide/svelte';
 
-	let { view, face, flow = false }: { view: View; face: ViewFace; flow?: boolean } = $props();
+	let {
+		view,
+		face,
+		flow = false,
+		onOpenRow,
+		createSignal = 0
+	}: {
+		view: View;
+		face: ViewFace;
+		flow?: boolean;
+		onOpenRow?: (rowId: string) => void;
+		createSignal?: number;
+	} = $props();
 
 	const DAY_SIZE = 46;
 	const DAY_GAP = 12;
@@ -68,17 +83,30 @@
 
 	const dateFieldKey = $derived((face.config.date_field as string) ?? 'created_at');
 
-	function rowDate(r: any, key: string): Date | null {
+	// The one place the journal's date field is resolved. The day strip and the SQL day
+	// scope MUST agree on it, so they both read this: a config pointing at a deleted
+	// field falls back to created_at here, once, rather than in each of them.
+	const dateField = $derived(
+		(dateFieldKey === 'created_at' || dateFieldKey === 'updated_at'
+			? view.fields.find((f) => f.type === dateFieldKey)
+			: view.fields.find((f) => f.id === dateFieldKey)) ??
+			view.fields.find((f) => f.type === 'created_at')
+	);
+
+	function rowDate(r: any): Date | null {
+		const field = dateField;
+		if (!field) return null;
 		let raw: unknown;
-		if (key === 'created_at') raw = r.created_at;
-		else if (key === 'updated_at') raw = r.updated_at;
-		else {
-			const field = view.fields.find((f) => f.id === key);
-			if (!field) return null;
-			raw = rawStatefulValue(r, view.slug, field.name);
-		}
+		if (field.type === 'created_at') raw = r.created_at;
+		else if (field.type === 'updated_at') raw = r.updated_at;
+		else raw = rawStatefulValue(r, view.slug, field.name);
 		if (raw == null || raw === '') return null;
-		const d = new Date(raw as string);
+		// A date-only string ("2026-07-13") parses as UTC via `new Date`, which lands on
+		// the previous day west of UTC and disagrees with the SQL day scope. wallClockToMs
+		// reads it as local, matching how the filter compiles it.
+		const ms = wallClockToMs(raw);
+		if (ms === null) return null;
+		const d = new Date(ms);
 		return isNaN(d.getTime()) ? null : startOfDay(d);
 	}
 
@@ -106,7 +134,7 @@
 	const entries = $derived.by(() => {
 		const set = new Set<string>();
 		for (const r of rows) {
-			const d = rowDate(r, dateFieldKey);
+			const d = rowDate(r);
 			if (d) set.add(dayKey(d));
 		}
 		return set;
@@ -116,7 +144,7 @@
 
 	const dayRows = $derived.by(() => {
 		const out = rows.filter((r) => {
-			const d = rowDate(r, dateFieldKey);
+			const d = rowDate(r);
 			return d && sameDay(d, selected);
 		});
 		if (sortBy === 'title') {
@@ -141,12 +169,41 @@
 	let pickOpen = $state(false);
 	let pickEl: HTMLElement | null = $state(null);
 
-	const dayDocItems = $derived(
-		dayRows.map((r) => ({ value: r.id, label: String(r.title ?? 'untitled') }))
-	);
+	const NEW_DOC = '::new-doc';
+
+	const dayDocItems = $derived.by((): MenuEntry[] => [
+		...dayRows.map((r) => ({ value: r.id, label: String(r.title ?? 'untitled') })),
+		{ kind: 'divider' },
+		{ value: NEW_DOC, label: 'New document', icon: Plus }
+	]);
+
+	// ── Compound body (table / grid) ──────────────────────────────────────────
+	// The body is a nested face. Its scope (the journal's own filters AND the selected
+	// day) is passed down as a value
+	const bodyFace = $derived(face.body);
+
+	const bodyScope = $derived.by((): FilterNode => {
+		const children: FilterNode[] = [face.additive_filter];
+		// date-only bounds compare correctly both as ms (created_at/updated_at) and
+		// as wall-clock strings (stateful date fields)
+		if (dateField) {
+			children.push({
+				op: 'and',
+				children: [
+					{ field_id: dateField.id, op: 'on_or_after', value: isoDay(selected) },
+					{ field_id: dateField.id, op: 'before', value: isoDay(addDays(selected, 1)) }
+				]
+			});
+		}
+		return { op: 'and', children };
+	});
 
 	let docTab: TabState | null = $state(null);
 	$effect(() => {
+		if (bodyFace) {
+			docTab = null;
+			return;
+		}
 		const row = selectedRow;
 		if (!row) {
 			docTab = null;
@@ -167,45 +224,8 @@
 		};
 	});
 
-	let optOpen = $state(false);
-	let optEl: HTMLElement | null = $state(null);
-
-	const dateFieldItems = $derived.by(() => {
-		const items: { value: string; label: string }[] = [
-			{ value: 'created_at', label: 'Created' },
-			{ value: 'updated_at', label: 'Updated' }
-		];
-		for (const f of view.fields) {
-			if (f.type === 'date') items.push({ value: f.id, label: fieldLabel(f) });
-		}
-		return items;
-	});
-
 	const showActivity = $derived(face.config.show_activity !== false);
 	let jumpOpen = $state(false);
-
-	const menuItems = $derived.by((): MenuEntry[] => [
-		{ kind: 'divider', section: 'Date field' },
-		...dateFieldItems,
-		{ kind: 'divider' },
-		{
-			value: '__sort',
-			label: 'Sort day by',
-			children: [
-				{ value: 'sort:created_at', label: 'Created' },
-				{ value: 'sort:updated_at', label: 'Updated' },
-				{ value: 'sort:title', label: 'Title' }
-			]
-		},
-		{ value: '__activity', label: 'Activity timeline', icon: showActivity ? ScanLine : ScanBarcode }
-	]);
-
-	function onOpt(value: string) {
-		if (value === '__activity') face.config.show_activity = !showActivity;
-		else if (value.startsWith('sort:')) face.config.sort_by = value.slice(5);
-		else face.config.date_field = value;
-		optOpen = false;
-	}
 
 	function onJumpDate(v: string | null) {
 		if (!v) return;
@@ -231,9 +251,7 @@
 	const sparkDayCount = $derived(
 		Math.round((tomorrow.getTime() - stripStart.getTime()) / 86400000) + 1
 	);
-	const sparkContentW = $derived(
-		sparkDayCount * SPARK_CELL + (sparkDayCount - 1) * SPARK_GAP
-	);
+	const sparkContentW = $derived(sparkDayCount * SPARK_CELL + (sparkDayCount - 1) * SPARK_GAP);
 
 	const sparkDays = $derived.by(() => {
 		const set = entries;
@@ -516,7 +534,7 @@
 		.catch(() => {});
 
 	let creating = $state(false);
-	async function createEntry() {
+	async function createEntry(title?: string) {
 		if (creating) return;
 		creating = true;
 		try {
@@ -545,7 +563,7 @@
 			const properties = Object.keys(values).length ? { views: { [view.slug]: values } } : {};
 
 			const doc = await DocHandle.createFromTitle(source, {
-				title: entryName(selected),
+				title: title?.trim() || entryName(selected),
 				dir,
 				groupIds,
 				properties
@@ -554,8 +572,13 @@
 				if (key === 'created_at') await doc.saveMeta({ createdAt: selected });
 				else if (key === 'updated_at') await doc.saveMeta({ updatedAt: selected });
 			}
-			if (folderId) folders.find((f) => f.id === folderId)?.touch().catch(() => {});
+			if (folderId)
+				folders
+					.find((f) => f.id === folderId)
+					?.touch()
+					.catch(() => {});
 			await loadRows();
+			dayDocId = doc.id;
 		} catch (e) {
 			console.error('create entry failed', e);
 		} finally {
@@ -649,70 +672,65 @@
 				<span
 					class="month-marker"
 					class:pinned={!atPresent}
-					style="left: {monthMarker.x}px; --fade: {monthMarker.fade}"
-					>{monthMarker.label}</span
+					style="left: {monthMarker.x}px; --fade: {monthMarker.fade}">{monthMarker.label}</span
 				>
 			{/if}
-			<button
-				class="ctl opt"
-				type="button"
-				aria-label="Journal options"
-				bind:this={optEl}
-				onclick={() => (optOpen = !optOpen)}
-			>
-				<SlidersHorizontal size={14} strokeWidth={1.75} />
-			</button>
 		</div>
 	</div>
 
-	<div class="entry">
-		{#if dayRows.length > 0}
-			<button
-				class="doc-pick"
-				class:multi={dayRows.length > 1}
-				type="button"
-				title="Documents on this day"
-				bind:this={pickEl}
-				onclick={() => (pickOpen = !pickOpen)}
-			>
-				<ChevronDown size={15} strokeWidth={2} />
-				{#if dayRows.length > 1}
-					<span class="doc-pick-count">{dayRows.length}</span>
-				{/if}
-			</button>
-		{/if}
-		{#if docTab}
-			{#key docTab.id}
-				<MarkdownEditor tab={docTab} {flow} />
-			{/key}
-		{:else}
-			<div class="entry-empty">
-				<p>No entry for this day</p>
-				<button class="create-entry" type="button" disabled={creating} onclick={createEntry}
-					>Create entry</button
-				>
+	<div class="entry" class:doc-body={!bodyFace}>
+		{#if bodyFace}
+			<div class="body-face">
+				{#key bodyFace.id}
+					{#if bodyFace.type === 'list'}
+						<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
+					{:else}
+						<TableFace {view} face={bodyFace} {onOpenRow} {flow} scope={bodyScope} />
+					{/if}
+				{/key}
 			</div>
+		{:else}
+			{#if dayRows.length > 0}
+				<button
+					class="doc-pick"
+					class:multi={dayRows.length > 1}
+					type="button"
+					title="Documents on this day"
+					bind:this={pickEl}
+					onclick={() => (pickOpen = !pickOpen)}
+				>
+					<ChevronDown size={15} strokeWidth={2} />
+					{#if dayRows.length > 1}
+						<span class="doc-pick-count">{dayRows.length}</span>
+					{/if}
+				</button>
+			{/if}
+			{#if docTab}
+				{#key docTab.id}
+					<MarkdownEditor tab={docTab} {flow} />
+				{/key}
+			{:else}
+				<div class="entry-empty">
+					<p>No entry for this day</p>
+					<button class="create-entry" type="button" disabled={creating} onclick={() => createEntry()}
+						>Create entry</button
+					>
+				</div>
+			{/if}
 		{/if}
 	</div>
 </div>
 
 <Menu
-	bind:open={optOpen}
-	anchor={optEl}
-	items={menuItems}
-	onSelect={onOpt}
-	multiple
-	selectedValues={[dateFieldKey, 'sort:' + sortBy]}
-	minWidth={170}
-/>
-<Menu
 	bind:open={pickOpen}
 	anchor={pickEl}
 	items={dayDocItems}
 	onSelect={(id) => {
-		dayDocId = id;
 		pickOpen = false;
+		if (id === NEW_DOC) createEntry();
+		else dayDocId = id;
 	}}
+	onCreate={(title) => createEntry(title)}
 	selected={selectedRow?.id}
 	searchable
 	placeholder="Search this day…"
@@ -822,7 +840,7 @@
 		min-height: 0;
 	}
 
-	.journal.flow .entry {
+	.journal.flow .entry.doc-body {
 		min-height: calc(100vh - 180px);
 	}
 
@@ -830,9 +848,14 @@
 		position: relative;
 	}
 
+	/* Body faces bring their own 24px gutter; cancel the journal's so it isn't doubled */
+	.body-face {
+		margin: 0 -24px;
+	}
+
 	.doc-pick {
 		position: absolute;
-		top: 15px;
+		top: 5px;
 		left: -23px;
 		z-index: 2;
 		display: inline-flex;
@@ -938,12 +961,6 @@
 		opacity: var(--fade, 1);
 	}
 
-	.controls .ctl {
-		margin-left: auto;
-		opacity: 0;
-		transition: opacity 120ms ease;
-	}
-
 	.nav-year {
 		padding: 0;
 		margin: 0;
@@ -989,24 +1006,8 @@
 		color: var(--color-text-secondary);
 	}
 
-	.day-nav:hover .nav-year,
-	.day-nav:hover .controls .ctl {
+	.day-nav:hover .nav-year {
 		opacity: 1;
-	}
-
-	.ctl {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		padding: 2px;
-		border: none;
-		background: transparent;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-	}
-
-	.ctl:hover {
-		color: var(--color-text-primary);
 	}
 
 	.days {

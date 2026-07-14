@@ -8,14 +8,35 @@
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import Menu from './views/Menu.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
-	import { Hash, EllipsisVertical, Trash2, Folders, Plus } from '@lucide/svelte';
+	import DocProperties from './views/DocProperties.svelte';
+	import {
+		Hash,
+		Ellipsis,
+		Trash2,
+		Folders,
+		Plus,
+		Copy,
+		SlidersHorizontal,
+		ExternalLink
+	} from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';
+	import { readTextFile } from '@tauri-apps/plugin-fs';
+	import { revealItemInDir } from '@tauri-apps/plugin-opener';
+	import { flushAll } from '$lib/util/flush';
 
 	let {
 		handle,
 		onDelete,
-		compact = false
-	}: { handle: DocHandle; onDelete?: () => void; compact?: boolean } = $props();
+		onDuplicated,
+		compact = false,
+		propsOpen = $bindable(false)
+	}: {
+		handle: DocHandle;
+		onDelete?: () => void;
+		onDuplicated?: (copy: DocHandle) => void;
+		compact?: boolean;
+		propsOpen?: boolean;
+	} = $props();
 
 	let title = $state(untrack(() => handle.title));
 	let relPath = $state(untrack(() => handle.relPath));
@@ -182,11 +203,64 @@
 	let menuOpen = $state(false);
 	let menuAnchor: HTMLElement | null = $state(null);
 	let pathAnchorEl: HTMLElement | null = $state(null);
-	const menuItems: MenuEntry[] = [{ value: 'delete', label: 'Delete', icon: Trash2 }];
+	let confirmingDelete = $state(false);
+
+	// Properties panel: the toggle lives in the meta bar, the panel renders below.
+	// Open state is owned by the caller so it can be persisted on the tab.
+	let propCount = $state(0);
+
+	$effect(() => {
+		if (!menuOpen) confirmingDelete = false;
+	});
+
+	const menuItems: MenuEntry[] = $derived([
+		{ value: 'duplicate', label: 'Duplicate', icon: Copy },
+		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
+		confirmingDelete
+			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
+			: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
+	]);
+
+	async function duplicateDoc() {
+		try {
+			await flushAll();
+			const raw = await readTextFile(`${source.path}/${relPath}`).catch(() => '');
+			const { body } = DocHandle.deserialize(raw);
+			const dir = folderDir(relPath);
+			const newRel = await DocHandle.uniqueRelPath(source, dir, `${handle.title} copy`);
+			const newTitle = newRel.split('/').pop()!.replace(/\.md$/i, '');
+			const copy = await DocHandle.create(
+				source,
+				newTitle,
+				newRel,
+				handle.groups.map((g) => g.id),
+				JSON.parse(JSON.stringify(handle.properties))
+			);
+			await copy.saveContent(body);
+			onDuplicated?.(copy);
+		} catch (e) {
+			console.error('duplicate failed', e);
+		}
+	}
+
+	async function revealDoc() {
+		try {
+			await flushAll();
+			await revealItemInDir(`${source.path}/${relPath}`);
+		} catch (e) {
+			console.error('reveal failed', e);
+		}
+	}
 
 	function onMenuSelect(value: string) {
+		if (value === 'delete') {
+			confirmingDelete = true;
+			return;
+		}
 		menuOpen = false;
-		if (value === 'delete') onDelete?.();
+		if (value === 'duplicate') duplicateDoc();
+		if (value === 'reveal') revealDoc();
+		if (value === 'confirm-delete') onDelete?.();
 	}
 
 	onMount(() => {
@@ -201,7 +275,16 @@
 
 <div class="doc-hero">
 	<div class="hero-inner" class:compact>
-		<div class="title-row">
+		<button
+			class="kebab"
+			bind:this={menuAnchor}
+			title="More"
+			onclick={() => (menuOpen = !menuOpen)}
+		>
+			<Ellipsis size={15} strokeWidth={1.75} />
+		</button>
+
+		<div class="head-row">
 			<span class="title-left">
 				<span class="title-field">
 					<span class="title-ghost">{title || ' '}</span>
@@ -216,64 +299,72 @@
 				</span>
 				<span class="ext">{ext}</span>
 			</span>
-			<button
-				class="kebab"
-				bind:this={menuAnchor}
-				title="More"
-				onclick={() => (menuOpen = !menuOpen)}
-			>
-				<EllipsisVertical size={18} />
-			</button>
+
+			<div class="meta-row">
+				<span class="path-crumb">
+					<button
+						class="src-chip"
+						bind:this={sourceAnchor}
+						title="Move to another source"
+						onclick={openSourceMenu}
+					>
+						<Folders size={12} />{srcName}
+					</button>
+					<button
+						class="crumb-path"
+						bind:this={pathAnchorEl}
+						title="Move within this source"
+						onclick={openCurrentSourceFolder}
+					>
+						{#if dirParts.length}
+							{#each dirParts as part}
+								<span class="crumb-sep">/</span>
+								<span class="crumb-part">{part}</span>
+							{/each}
+						{:else}
+							<span class="crumb-sep">/</span>
+							<span class="crumb-root">root</span>
+						{/if}
+					</button>
+				</span>
+				{#if source.use_frontmatter}
+					<span class="meta-div"></span>
+					<button
+						class="tags-chip"
+						class:has-tags={tagList.length > 0}
+						bind:this={tagAnchor}
+						title="Edit tags"
+						onclick={() => (tagMenuOpen = !tagMenuOpen)}
+					>
+						{#if tagList.length}
+							{#each tagList as t (t.id)}
+								<span class="tag"><Hash size={11} />{t.slug}</span>
+							{/each}
+						{:else}
+							<span class="add-tags"><Plus size={11} />tag</span>
+						{/if}
+					</button>
+				{/if}
+				{#if propCount > 0}
+					<span class="meta-div"></span>
+					<button
+						class="props-chip"
+						class:open={propsOpen}
+						title={propsOpen ? 'Hide properties' : 'Show properties'}
+						onclick={() => (propsOpen = !propsOpen)}
+					>
+						<SlidersHorizontal size={12} strokeWidth={1.75} />
+						<span class="props-count">{propCount}</span>
+					</button>
+				{/if}
+				<span class="meta-div"></span>
+				<span class="meta-date">Updated {formatDateFriendly(handle.updatedAt)}</span>
+			</div>
 		</div>
 
-		<div class="meta-row">
-			<span class="path-crumb">
-				<button
-					class="src-chip"
-					bind:this={sourceAnchor}
-					title="Move to another source"
-					onclick={openSourceMenu}
-				>
-					<Folders size={12} />{srcName}
-				</button>
-				<button
-					class="crumb-path"
-					bind:this={pathAnchorEl}
-					title="Move within this source"
-					onclick={openCurrentSourceFolder}
-				>
-					{#if dirParts.length}
-						{#each dirParts as part}
-							<span class="crumb-sep">/</span>
-							<span class="crumb-part">{part}</span>
-						{/each}
-					{:else}
-						<span class="crumb-sep">/</span>
-						<span class="crumb-root">root</span>
-					{/if}
-				</button>
-			</span>
-			{#if source.use_frontmatter}
-				<span class="meta-div"></span>
-				<button
-					class="tags-chip"
-					class:has-tags={tagList.length > 0}
-					bind:this={tagAnchor}
-					title="Edit tags"
-					onclick={() => (tagMenuOpen = !tagMenuOpen)}
-				>
-					{#if tagList.length}
-						{#each tagList as t (t.id)}
-							<span class="tag"><Hash size={11} />{t.slug}</span>
-						{/each}
-					{:else}
-						<span class="add-tags"><Plus size={11} />tag</span>
-					{/if}
-				</button>
-			{/if}
-			<span class="meta-div"></span>
-			<span class="meta-date">Updated {formatDateFriendly(handle.updatedAt)}</span>
-		</div>
+		{#if source.use_frontmatter}
+			<DocProperties {handle} open={propsOpen} onCount={(n) => (propCount = n)} />
+		{/if}
 	</div>
 </div>
 
@@ -320,26 +411,42 @@
 	}
 
 	.hero-inner {
+		position: relative;
 		max-width: var(--page-max-width, 1200px);
 		margin: 0 auto;
 		padding: 34px 24px 6px;
 	}
 
 	.hero-inner.compact {
-		padding: 10px 0 6px;
+		padding: 2px 0 6px;
 	}
 
-	/* ── Title row (editable filename + ext, kebab) ── */
-	.title-row {
+	/* Meta sits inline with the title; when the row can't give it its basis width
+	   it wraps to its own line, which is the old two-row layout. */
+	.head-row {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
+		flex-wrap: wrap;
+		align-items: baseline;
+		column-gap: 32px;
+		row-gap: 9px;
+		padding-right: 30px;
+	}
+
+	/* appearance.compact_doc_header off: meta always stacks under the title */
+	:global(:root[data-doc-header='full']) .head-row {
+		display: block;
+	}
+
+	:global(:root[data-doc-header='full']) .meta-row {
+		justify-content: flex-start;
+		margin-top: 10px;
+		transform: none;
 	}
 
 	.title-left {
 		display: flex;
 		align-items: baseline;
+		flex: 0 1 auto;
 		min-width: 0;
 	}
 
@@ -387,23 +494,39 @@
 		color: var(--color-ui-muted);
 	}
 
+	/* Out of flow so the meta can wrap under the title without dragging it along.
+	   Sized to the metadata row, not the title. */
+	/* The 22px button matches the title's line box, so it centres on the title line
+	   by simply starting where the row does. */
 	.kebab {
+		position: absolute;
+		top: 34px;
+		right: 24px;
+		z-index: 1;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 30px;
-		height: 30px;
+		width: 22px;
+		height: 22px;
 		flex-shrink: 0;
 		padding: 0;
 		border: none;
-		border-radius: var(--radius-ui);
+		border-radius: 5px;
 		background: transparent;
-		color: var(--color-ui-muted);
+		color: var(--color-ui-dulled);
 		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
+	}
+
+	.hero-inner.compact .kebab {
+		top: 2px;
+		right: 0;
 	}
 
 	.kebab:hover {
-		background: var(--chip-bg);
+		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
 
@@ -411,8 +534,11 @@
 	.meta-row {
 		display: flex;
 		align-items: center;
+		justify-content: flex-end;
 		gap: 8px;
-		margin-top: 10px;
+		flex: 1 1 340px;
+		min-width: 0;
+		transform: translateY(-1px);
 		font-family: var(--font-ui);
 		font-size: 12px;
 		color: var(--color-ui-muted);
@@ -487,6 +613,40 @@
 		flex-shrink: 0;
 		border-radius: 999px;
 		background: var(--color-border);
+	}
+
+	.props-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
+		height: 20px;
+		padding: 0 6px;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		font-family: var(--font-ui);
+		font-size: 12px;
+		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
+	}
+
+	.props-chip:hover,
+	.props-chip.open {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
+	}
+
+	.props-count {
+		color: var(--color-ui-dulled);
+	}
+
+	.props-chip:hover .props-count,
+	.props-chip.open .props-count {
+		color: var(--color-text-secondary);
 	}
 
 	.meta-date {
