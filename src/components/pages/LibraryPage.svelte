@@ -87,7 +87,12 @@
 		sourceViews = sources.map((s) => ({ view: View.createFromSource(s), source: s }));
 		defaultSourceId = defId;
 		counts = {};
+		loaded = true;
 	}
+
+	// The rows' "+" waits for the chips so it can land after them, rather than sitting
+	// there alone while they arrive.
+	let loaded = $state(false);
 
 	// ── Source options (same menu as Settings) ─────────────────────────────────
 	let defaultSourceId: string | null = $state(null);
@@ -234,13 +239,16 @@
 							{/if}
 						</button>
 					{/each}
-					<button
-						class="row-add"
-						title="New view"
-						onclick={() => editor.openView(View.create('New view'))}
-					>
-						<Plus size={16} strokeWidth={2} />
-					</button>
+					{#if loaded}
+						<button
+							class="row-add"
+							title="New view"
+							in:fly={{ y: 4, duration: 160, delay: visibleViews.length * 25 }}
+							onclick={() => editor.openView(View.create('New view'))}
+						>
+							<Plus size={16} strokeWidth={2} />
+						</button>
+					{/if}
 				</div>
 			</section>
 
@@ -266,9 +274,16 @@
 							</button>
 						</div>
 					{/each}
-					<button class="row-add" title="New source" onclick={newSource}>
-						<Plus size={16} strokeWidth={2} />
-					</button>
+					{#if loaded}
+						<button
+							class="row-add"
+							title="New source"
+							in:fly={{ y: 4, duration: 160, delay: orderedSources.length * 25 }}
+							onclick={newSource}
+						>
+							<Plus size={16} strokeWidth={2} />
+						</button>
+					{/if}
 				</div>
 			</section>
 
@@ -463,5 +478,4 @@
 	.docs-face {
 		margin: 0 -24px;
 	}
-
 </style>
