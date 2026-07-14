@@ -51,6 +51,12 @@
 	}
 
 	let handle = $derived(tab.handle);
+
+	// Persisted on the tab, so a doc reopens with its properties panel as you left it
+	let propsOpen = $state(untrack(() => tab.state.props_open ?? false));
+	$effect(() => {
+		tab.state.props_open = propsOpen;
+	});
 	let zoom = $state(untrack(() => tab.state.zoom ?? 16));
 	let scrolling = $state(false);
 	let scrollHideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,6 +68,9 @@
 	const THUMB_MAX_FRACTION = 1 / 5;
 	const THUMB_MIN_PX = 24;
 	const THUMB_INSET_PX = 8;
+	// The track starts level with the document title (the hero's top padding) rather
+	// than at the very top of the scroller.
+	const THUMB_TOP_PX = 34;
 
 	function startThumbDrag(e: PointerEvent) {
 		if (!scrollEl) return;
@@ -71,7 +80,7 @@
 		const startScroll = el.scrollTop;
 		const viewH = el.clientHeight;
 		const maxScroll = el.scrollHeight - viewH;
-		const trackRange = viewH - 2 * THUMB_INSET_PX - thumbHeight;
+		const trackRange = viewH - THUMB_TOP_PX - THUMB_INSET_PX - thumbHeight;
 		if (trackRange <= 0 || maxScroll <= 0) return;
 		const ratio = maxScroll / trackRange;
 
@@ -92,7 +101,7 @@
 		const viewH = scroll.clientHeight;
 		const contentH = scroll.scrollHeight;
 		const maxScroll = contentH - viewH;
-		const trackH = viewH - 2 * THUMB_INSET_PX;
+		const trackH = viewH - THUMB_TOP_PX - THUMB_INSET_PX;
 		if (maxScroll <= 0 || trackH <= 0) {
 			showThumb = false;
 			return;
@@ -100,7 +109,7 @@
 		const natural = (viewH / contentH) * trackH;
 		const capped = Math.min(natural, trackH * THUMB_MAX_FRACTION);
 		thumbHeight = Math.max(capped, THUMB_MIN_PX);
-		thumbTop = THUMB_INSET_PX + (scroll.scrollTop / maxScroll) * (trackH - thumbHeight);
+		thumbTop = THUMB_TOP_PX + (scroll.scrollTop / maxScroll) * (trackH - thumbHeight);
 		showThumb = true;
 	}
 	if (untrack(() => tab.state.zoom) === undefined) {
@@ -137,7 +146,7 @@
 		'.cm-content': {
 			fontFamily: 'var(--font-editor)',
 			lineHeight: '1.6',
-			padding: initFlow ? '16px 0 48px' : '48px 24px',
+			padding: initFlow ? '4px 0 48px' : '20px 24px 48px',
 			maxWidth: 'var(--page-max-width, 1200px)',
 			margin: '0 auto',
 			caretColor: 'var(--color-text-primary)'
@@ -165,7 +174,9 @@
 			backgroundColor: 'rgba(255, 255, 255, 0.15) !important'
 		},
 		'.cm-line': {
-			color: 'var(--color-text-primary)'
+			color: 'var(--color-text-primary)',
+			// CM defaults to 6px here, which pushes the text off the header's left edge
+			padding: '0 2px 0 0'
 		},
 		'.cm-task-marker': {
 			color: 'var(--syntax-task) !important'
@@ -580,6 +591,7 @@
 				onDelete={deleteDoc}
 				onDuplicated={(d) => editor?.openDoc(d)}
 				compact={flow}
+				bind:propsOpen
 			/>
 		{/if}
 		<div class="cm-wrapper" class:flow bind:this={container} style="--editor-font-size: {zoom}px"></div>

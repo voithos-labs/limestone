@@ -3,6 +3,7 @@
     import {v4 as uuidv4} from 'uuid';
     import View from '$lib/models/View.svelte';
     import type {ViewFace, FilterLeaf} from '$lib/models/View.svelte';
+    import {listSavedViewJSON} from '$lib/models/View.svelte';
     import type EditorState from '$lib/models/EditorState.svelte.js';
     import type {TabState} from '$lib/models/EditorState.svelte.js';
     import {listSources} from '$lib/models/Source';
@@ -162,7 +163,7 @@
         saveTimer = setTimeout(() => {
             saveTimer = null;
             view.save().catch((e) => console.error('save view failed', e));
-        }, 400);
+        }, 250);
     });
 
     onDestroy(() => {
@@ -172,6 +173,19 @@
     });
 
     let sourceRemoved = $state(false);
+
+    // The tab holds this view in memory, so field edits made elsewhere (a document's
+    // properties panel adding a select option) aren't reflected here. The tab remounts
+    // on every switch, so re-read the stored fields then.
+    onMount(async () => {
+        if (view.temporary) return;
+        try {
+            const stored = (await listSavedViewJSON()).find((v) => v.id === view.id);
+            if (stored) view.fields = stored.fields;
+        } catch (e) {
+            console.error('refresh view fields failed', e);
+        }
+    });
 
     onMount(async () => {
         const sourceField = view.fields.find((f) => f.type === 'source');
