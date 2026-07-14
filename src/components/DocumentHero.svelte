@@ -9,9 +9,19 @@
 	import Menu from './views/Menu.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
 	import DocProperties from './views/DocProperties.svelte';
-	import { Hash, Ellipsis, Trash2, Folders, Plus, Copy, SlidersHorizontal } from '@lucide/svelte';
+	import {
+		Hash,
+		Ellipsis,
+		Trash2,
+		Folders,
+		Plus,
+		Copy,
+		SlidersHorizontal,
+		ExternalLink
+	} from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
+	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { flushAll } from '$lib/util/flush';
 
 	let {
@@ -205,6 +215,7 @@
 
 	const menuItems: MenuEntry[] = $derived([
 		{ value: 'duplicate', label: 'Duplicate', icon: Copy },
+		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
 		confirmingDelete
 			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
 			: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
@@ -232,6 +243,15 @@
 		}
 	}
 
+	async function revealDoc() {
+		try {
+			await flushAll();
+			await revealItemInDir(`${source.path}/${relPath}`);
+		} catch (e) {
+			console.error('reveal failed', e);
+		}
+	}
+
 	function onMenuSelect(value: string) {
 		if (value === 'delete') {
 			confirmingDelete = true;
@@ -239,6 +259,7 @@
 		}
 		menuOpen = false;
 		if (value === 'duplicate') duplicateDoc();
+		if (value === 'reveal') revealDoc();
 		if (value === 'confirm-delete') onDelete?.();
 	}
 
