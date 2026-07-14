@@ -10,11 +10,12 @@
 	import { deriveCreateContext, folderPath, folderLinkChain } from '$lib/views/createDefaults';
 	import Group, { GroupType } from '$lib/models/Group';
 	import Menu from '../Menu.svelte';
+	import type { MenuEntry } from '$lib/views/menuTypes';
 	import DateValueEditor from '../DateValueEditor.svelte';
 	import MarkdownEditor from '../../editor/MarkdownEditor.svelte';
 	import TableFace from './TableFace.svelte';
 	import ListFace from './ListFace.svelte';
-	import { ChevronDown } from '@lucide/svelte';
+	import { ChevronDown, Plus } from '@lucide/svelte';
 
 	let {
 		view,
@@ -168,9 +169,13 @@
 	let pickOpen = $state(false);
 	let pickEl: HTMLElement | null = $state(null);
 
-	const dayDocItems = $derived(
-		dayRows.map((r) => ({ value: r.id, label: String(r.title ?? 'untitled') }))
-	);
+	const NEW_DOC = '::new-doc';
+
+	const dayDocItems = $derived.by((): MenuEntry[] => [
+		...dayRows.map((r) => ({ value: r.id, label: String(r.title ?? 'untitled') })),
+		{ kind: 'divider' },
+		{ value: NEW_DOC, label: 'New document', icon: Plus }
+	]);
 
 	// ── Compound body (table / grid) ──────────────────────────────────────────
 	// The body is a nested face. Its scope (the journal's own filters AND the selected
@@ -529,7 +534,7 @@
 		.catch(() => {});
 
 	let creating = $state(false);
-	async function createEntry() {
+	async function createEntry(title?: string) {
 		if (creating) return;
 		creating = true;
 		try {
@@ -558,7 +563,7 @@
 			const properties = Object.keys(values).length ? { views: { [view.slug]: values } } : {};
 
 			const doc = await DocHandle.createFromTitle(source, {
-				title: entryName(selected),
+				title: title?.trim() || entryName(selected),
 				dir,
 				groupIds,
 				properties
@@ -573,6 +578,7 @@
 					?.touch()
 					.catch(() => {});
 			await loadRows();
+			dayDocId = doc.id;
 		} catch (e) {
 			console.error('create entry failed', e);
 		} finally {
@@ -706,7 +712,7 @@
 			{:else}
 				<div class="entry-empty">
 					<p>No entry for this day</p>
-					<button class="create-entry" type="button" disabled={creating} onclick={createEntry}
+					<button class="create-entry" type="button" disabled={creating} onclick={() => createEntry()}
 						>Create entry</button
 					>
 				</div>
@@ -720,9 +726,11 @@
 	anchor={pickEl}
 	items={dayDocItems}
 	onSelect={(id) => {
-		dayDocId = id;
 		pickOpen = false;
+		if (id === NEW_DOC) createEntry();
+		else dayDocId = id;
 	}}
+	onCreate={(title) => createEntry(title)}
 	selected={selectedRow?.id}
 	searchable
 	placeholder="Search this day…"
