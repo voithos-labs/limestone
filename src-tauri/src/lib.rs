@@ -21,7 +21,8 @@ pub async fn create_pool(
     if version != SCHEMA_VERSION {
         // rebuild db on schema version change
         sqlx::raw_sql(
-            "DROP TABLE IF EXISTS document_groups;
+            "DROP TABLE IF EXISTS documents_fts;
+             DROP TABLE IF EXISTS document_groups;
              DROP TABLE IF EXISTS documents;
              DROP TABLE IF EXISTS groups;
              DROP TABLE IF EXISTS sources;",
@@ -185,13 +186,19 @@ pub fn run() {
                         let pool = pool.clone();
                         tasks.push(tauri::async_runtime::spawn(async move {
                             let source_id = source.id.to_string();
-                            if let Err(e) =
+                            // reconcile returns changes for deep indexing (FTS, in-body tags, etc.)
+                            let changed =
                                 services::reconcile_source(&source, &pool, &["md"], fm_buf_size)
                                     .await
-                            {
-                                eprintln!("Reconciliation failed: {e}");
-                            }
+                                    .unwrap_or_else(|e| {
+                                        eprintln!("Reconciliation failed: {e}");
+                                        Vec::new()
+                                    });
                             let _ = app_handle.emit("source-reconciled", &source_id);
+                            if let Err(e) = services::index_fts(&pool, &source, changed).await {
+                                eprintln!("FTS indexing failed: {e}");
+                            }
+                            let _ = app_handle.emit("source-indexed", &source_id);
                         }));
                     }
                     for task in tasks {
