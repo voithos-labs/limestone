@@ -57,6 +57,10 @@ create table if not exists document_groups (
     primary key (document_id, group_id)
 ) strict;
 
+
+-- FTS --
+create virtual table if not exists documents_fts using fts5(doc_id unindexed, body);
+
 -- ── Indexes ──────────────────────────────────────────────────────────────────────────
 
 create index if not exists idx_documents_source on documents(source_id);

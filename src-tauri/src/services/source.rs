@@ -541,6 +541,12 @@ pub async fn apply_plan(
                 .fetch_all(&mut *tx)
                 .await?;
         unlinked_groups.extend(group_ids);
+        sqlx::query(
+            "DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = ?1)",
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query("DELETE FROM documents WHERE id = ?1")
             .bind(id)
             .execute(&mut *tx)
@@ -735,6 +741,8 @@ pub(crate) async fn sync_folders(
 const ORPHAN_TAG_GRACE_MS: i64 = 60_000;
 
 // age guard: never collect tags younger than the grace window (may be mid-creation in the UI)
+// todo: with new routing this can basically only happen when the app first opens, barely worth the
+// extra code
 pub async fn cleanup_orphan_tag_groups(db: &SqlitePool) -> sqlx::Result<()> {
     let cutoff = Utc::now().timestamp_millis() - ORPHAN_TAG_GRACE_MS;
     sqlx::query(
@@ -882,12 +890,14 @@ pub async fn index_document(
     Ok(())
 }
 
+// ENTRY POINT
+
 pub async fn reconcile_source(
     source: &Source,
     db: &SqlitePool,
     extensions: &[&str],
     frontmatter_buffer_size: usize,
-) -> sqlx::Result<()> {
+) -> sqlx::Result<Vec<(String, String)>> {
     use std::time::Instant;
     let t_total = Instant::now();
     let source_path = &source.path;
@@ -955,7 +965,11 @@ pub async fn reconcile_source(
         db_entries.len(),
         ops_count
     );
-    Ok(())
+    Ok(plan
+        .docs
+        .iter()
+        .map(|d| (d.id.clone(), d.rel_path.clone()))
+        .collect())
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────────────

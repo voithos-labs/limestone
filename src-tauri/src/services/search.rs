@@ -21,7 +21,11 @@ pub struct SearchResult {
     pub match_indices: Vec<u32>,
     pub kind: SearchResultKind,
     pub group_type: Option<String>,
+    pub snippet: Option<String>,
 }
+
+pub const SNIPPET_MARK_START: char = '\u{1}';
+pub const SNIPPET_MARK_END: char = '\u{2}';
 
 pub struct SearchConfig {
     pub max_results: usize,
@@ -34,6 +38,9 @@ pub struct SearchConfig {
     pub group_max_results: usize,
     pub source_prefix_min_chars: usize,
     pub source_max_results: usize,
+    pub fts_min_chars: usize,
+    pub fts_max_results: usize,
+    pub fts_candidate_pool: usize,
 }
 
 impl Default for SearchConfig {
@@ -49,6 +56,9 @@ impl Default for SearchConfig {
             group_max_results: 5,
             source_prefix_min_chars: 3,
             source_max_results: 5,
+            fts_min_chars: 5,
+            fts_max_results: 5,
+            fts_candidate_pool: 25,
         }
     }
 }
@@ -72,6 +82,7 @@ impl DocEntry {
             match_indices: Vec::new(),
             kind: SearchResultKind::Document,
             group_type: None,
+            snippet: None,
         }
     }
 }
@@ -96,6 +107,7 @@ impl Container {
             match_indices: (0..match_len).collect(),
             kind: self.kind,
             group_type: self.group_type.clone(),
+            snippet: None,
         }
     }
 }
@@ -321,6 +333,100 @@ async fn search_fuzzy(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<S
         .collect()
 }
 
+fn tidy_snippet(raw: &str) -> String {
+    let first_mark = raw.find(SNIPPET_MARK_START).unwrap_or(0);
+    let last_mark = raw
+        .rfind(SNIPPET_MARK_END)
+        .map(|i| i + SNIPPET_MARK_END.len_utf8())
+        .unwrap_or(raw.len());
+
+    let begin = raw[..first_mark].rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let end = raw[last_mark..]
+        .find('\n')
+        .map(|i| last_mark + i)
+        .unwrap_or(raw.len());
+
+    raw[begin..end]
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn fts_match_query(query: &str) -> Option<String> {
+    let prefix_last = !query.ends_with(char::is_whitespace);
+    let terms: Vec<String> = query
+        .split_whitespace()
+        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .collect();
+    if terms.is_empty() {
+        return None;
+    }
+    let mut out = terms.join(" ");
+    if prefix_last {
+        out.push('*');
+    }
+    Some(out)
+}
+
+async fn search_fts(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+    let Some(match_query) = fts_match_query(query) else {
+        return Vec::new();
+    };
+    type FtsRow = (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+        String,
+        f64,
+    );
+    let rows: Vec<FtsRow> = sqlx::query_as(
+        "SELECT d.id, d.title, d.rel_path, d.source_id, d.accessed_at,
+                snippet(documents_fts, 1, ?2, ?3, '…', 16), bm25(documents_fts)
+         FROM documents_fts JOIN documents d ON d.rowid = documents_fts.rowid
+         WHERE documents_fts MATCH ?1 AND d.deleted_at IS NULL
+         ORDER BY bm25(documents_fts) LIMIT ?4",
+    )
+    .bind(&match_query)
+    .bind(SNIPPET_MARK_START.to_string())
+    .bind(SNIPPET_MARK_END.to_string())
+    .bind(cfg.fts_candidate_pool as i64)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    let mut results: Vec<SearchResult> = rows
+        .into_iter()
+        .map(
+            |(id, title, rel_path, source_id, accessed_at, snippet, bm25)| {
+                let recency_boost = 1.0
+                    + cfg.recency_weight
+                        / (1.0 + days_since(&accessed_at, cfg.recency_default_days));
+                SearchResult {
+                    id,
+                    title,
+                    rel_path,
+                    source_id,
+                    score: -bm25 * recency_boost,
+                    match_indices: Vec::new(),
+                    kind: SearchResultKind::Document,
+                    group_type: None,
+                    snippet: Some(tidy_snippet(&snippet)),
+                }
+            },
+        )
+        .collect();
+
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(cfg.fts_max_results);
+    results
+}
+
 pub async fn search(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
     let query = query.trim();
     let docs = match query.len() {
@@ -338,9 +444,22 @@ pub async fn search(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<Sea
         containers.extend(load_groups_prefix(db, query, cfg.group_max_results).await);
     }
 
-    containers
+    let mut results: Vec<SearchResult> = containers
         .iter()
         .map(|c| c.to_result(match_len))
         .chain(docs.into_iter())
-        .collect()
+        .collect();
+
+    if query.len() >= cfg.fts_min_chars {
+        let seen: std::collections::HashSet<String> =
+            results.iter().map(|r| r.id.clone()).collect();
+        results.extend(
+            search_fts(db, query, cfg)
+                .await
+                .into_iter()
+                .filter(|r| !seen.contains(&r.id)),
+        );
+    }
+
+    results
 }

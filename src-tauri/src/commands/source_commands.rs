@@ -51,10 +51,17 @@ fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
     drop(settings);
     tauri::async_runtime::spawn(async move {
         let source_id = source.id.to_string();
-        if let Err(e) = services::reconcile_source(&source, &pool, &["md"], fm_buf_size).await {
-            eprintln!("reconcile failed: {e}");
-        }
+        let changed = services::reconcile_source(&source, &pool, &["md"], fm_buf_size)
+            .await
+            .unwrap_or_else(|e| {
+                eprintln!("reconcile failed: {e}");
+                Vec::new()
+            });
         let _ = app_handle.emit("source-reconciled", &source_id);
+        if let Err(e) = services::index_fts(&pool, &source, changed).await {
+            eprintln!("FTS indexing failed: {e}");
+        }
+        let _ = app_handle.emit("source-indexed", &source_id);
     });
 }
 
@@ -198,6 +205,14 @@ pub async fn delete_source(
     app_data: State<'_, AppData>,
     id: Uuid,
 ) -> Result<(), String> {
+    sqlx::query(
+        "DELETE FROM documents_fts WHERE rowid IN (SELECT rowid FROM documents WHERE source_id = ?1)",
+    )
+    .bind(id.to_string())
+    .execute(&app_data.db)
+    .await
+    .map_err(|e| e.to_string())?;
+
     sqlx::query("DELETE FROM sources WHERE id = ?1")
         .bind(id.to_string())
         .execute(&app_data.db)
@@ -323,6 +338,18 @@ fn search_config_from_settings(settings: &serde_json::Value) -> services::search
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(defaults.source_max_results),
+        fts_min_chars: dot_get(settings, "search.fts_min_chars")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(defaults.fts_min_chars),
+        fts_max_results: dot_get(settings, "search.fts_max_results")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(defaults.fts_max_results),
+        fts_candidate_pool: dot_get(settings, "search.fts_candidate_pool")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(defaults.fts_candidate_pool),
     }
 }
 

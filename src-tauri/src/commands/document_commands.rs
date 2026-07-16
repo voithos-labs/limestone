@@ -34,7 +34,7 @@ pub async fn write_document(
     atomic_write(&full_path, contents.as_bytes()).map_err(|e| e.to_string())?;
 
     let mtime = mtime(&full_path);
-    let (fm, _) = frontmatter::split_content(&contents);
+    let (fm, body) = frontmatter::split_content(&contents);
 
     let mut tx = app_data.db.begin().await.map_err(|e| e.to_string())?;
 
@@ -98,6 +98,22 @@ pub async fn write_document(
         sync_folders(&mut tx, &source_id, &doc_id, &rel_path)
             .await
             .map_err(|e| e.to_string())?;
+        sqlx::query(
+            "DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = ?1)",
+        )
+        .bind(&doc_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        sqlx::query(
+            "INSERT INTO documents_fts (rowid, doc_id, body)
+             SELECT rowid, id, ?2 FROM documents WHERE id = ?1",
+        )
+        .bind(&doc_id)
+        .bind(body)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
@@ -345,12 +361,19 @@ pub async fn delete_document(
             .await
             .map_err(|e| e.to_string())?;
 
-    // Drop the row + its group memberships (folder/tag links)
+    // Drop the row + its group memberships (folder/tag links) + FTS index
     sqlx::query("DELETE FROM document_groups WHERE document_id = ?1")
         .bind(&id)
         .execute(&app_data.db)
         .await
         .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = ?1)",
+    )
+    .bind(&id)
+    .execute(&app_data.db)
+    .await
+    .map_err(|e| e.to_string())?;
     sqlx::query("DELETE FROM documents WHERE id = ?1")
         .bind(&id)
         .execute(&app_data.db)

@@ -7,5 +7,6 @@ export interface SearchResult {
 	match_indices: number[];
 	kind: 'document' | 'group' | 'source' | 'view';
 	group_type: string | null;
+	snippet?: string | null;
 	emoji?: string;
 }
