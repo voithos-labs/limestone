@@ -156,6 +156,21 @@
 		return chars.map((ch, i) => (set.has(i) ? `<mark>${ch}</mark>` : ch)).join('');
 	}
 
+	function parentPath(relPath: string | null): string | null {
+		if (!relPath) return null;
+		const dir = relPath.split('/').slice(0, -1).join('/');
+		return dir || null;
+	}
+
+	function highlightSnippet(snippet: string): string {
+		return snippet
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replaceAll('\u0001', '<mark>')
+			.replaceAll('\u0002', '</mark>');
+	}
+
 	onMount(() => {
 		if (autofocus) inputEl?.focus();
 		if (query.trim()) doSearch();
@@ -211,9 +226,12 @@
 							<span class="result-title"
 								>{@html highlightTitle(result.title, result.match_indices)}</span
 							>
+							{#if result.kind === 'document' && parentPath(result.rel_path)}
+								<span class="result-path">{parentPath(result.rel_path)}</span>
+							{/if}
 						</span>
-						{#if result.rel_path && result.kind === 'document'}
-							<span class="result-path">{result.rel_path}</span>
+						{#if result.snippet}
+							<span class="result-snippet">{@html highlightSnippet(result.snippet)}</span>
 						{/if}
 					</span>
 					{#if src}
@@ -357,6 +375,8 @@
 		align-items: center;
 		gap: 8px;
 		color: var(--color-ui-muted);
+		min-width: 0;
+		max-width: 100%;
 	}
 
 	.result-emoji {
@@ -370,12 +390,28 @@
 	.result-title {
 		font-weight: 500;
 		color: var(--color-text-primary);
+		white-space: nowrap;
 	}
 
 	.result-path {
 		font-size: 12px;
 		color: var(--color-ui-muted);
+		min-width: 0;
+		flex-shrink: 4;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.result-snippet {
+		font-size: 12px;
+		color: var(--color-text-secondary);
 		padding-left: 22px;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		box-sizing: border-box;
 	}
 
 	.src-chip {

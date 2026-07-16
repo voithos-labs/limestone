@@ -338,6 +338,18 @@ fn search_config_from_settings(settings: &serde_json::Value) -> services::search
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(defaults.source_max_results),
+        fts_min_chars: dot_get(settings, "search.fts_min_chars")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(defaults.fts_min_chars),
+        fts_max_results: dot_get(settings, "search.fts_max_results")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(defaults.fts_max_results),
+        fts_candidate_pool: dot_get(settings, "search.fts_candidate_pool")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(defaults.fts_candidate_pool),
     }
 }
 
