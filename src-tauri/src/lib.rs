@@ -225,6 +225,7 @@ pub fn run() {
             commands::source_commands::list_dirs,
             commands::source_commands::make_dir,
             commands::source_commands::search_documents,
+            commands::settings_commands::get_app_info,
             commands::settings_commands::get_setting,
             commands::settings_commands::get_all_settings,
             commands::settings_commands::get_default_settings,

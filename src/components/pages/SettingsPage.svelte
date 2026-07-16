@@ -1,9 +1,11 @@
 <script lang="ts">
 	import {
 		resetAllSettings,
+		getAppInfo,
 		getSetting,
 		setSetting,
 		SETTINGS_REGISTRY,
+		type AppInfo,
 		type SettingCategory,
 		type SettingDef
 	} from '$lib/models/Settings.svelte';
@@ -21,6 +23,7 @@
 	import SourceDialog from '../SourceDialog.svelte';
 	import Toggle from '../Toggle.svelte';
 	import Menu from '../views/Menu.svelte';
+	import ScrollThumb from '../ScrollThumb.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import type Session from '$lib/models/Session';
 	import type { ViewTab } from '$lib/models/Session';
@@ -28,6 +31,11 @@
 	import {
 		RotateCcw,
 		Search,
+		ChevronDown,
+		SlidersHorizontal,
+		Palette,
+		Copy,
+		Check,
 		FolderPlus,
 		Folders,
 		ExternalLink,
@@ -41,25 +49,31 @@
 	let { viewTab, session }: { viewTab: ViewTab; session: Session } = $props();
 
 	const settings = $derived(session.settings);
+	const GENERAL = 'general';
 	const SOURCES = 'sources';
 	const CUSTOM = 'custom';
-	const sectionIds = [...SETTINGS_REGISTRY.map((c) => c.id), SOURCES];
+	const sectionIds = [GENERAL, ...SETTINGS_REGISTRY.map((c) => c.id), SOURCES];
 
 	let activeSection = $state('');
-	let searchQuery = $state('');
+	let contentEl: HTMLElement | null = $state(null);
 	let themes: string[] = $state([]);
 	let customKeys: string[] = $state([]);
 	let resetDialogOpen = $state(false);
 	let resetBusy = $state(false);
 
-	let isSearching = $derived(searchQuery.trim().length > 0);
 	let activeCategory = $derived(SETTINGS_REGISTRY.find((c) => c.id === activeSection));
+
+	// ── Settings search ───────────────────────────────────────────────────────
+	let searchQuery = $state('');
+	let isSearching = $derived(searchQuery.trim().length > 0);
 
 	function matchesQuery(haystack: string): boolean {
 		const tokens = searchQuery.trim().toLowerCase().split(/\s+/);
 		const hay = haystack.toLowerCase();
 		return tokens.every((t) => hay.includes(t));
 	}
+
+	const appearanceCategory = SETTINGS_REGISTRY.find((c) => c.id === 'appearance') ?? null;
 
 	let searchResults = $derived.by((): { category: SettingCategory; def: SettingDef }[] => {
 		if (!searchQuery.trim()) return [];
@@ -74,13 +88,62 @@
 		return results;
 	});
 
-	const appearanceCategory = SETTINGS_REGISTRY.find((c) => c.id === 'appearance') ?? null;
 	let themeMatches = $derived(
 		searchQuery.trim().length > 0 && matchesQuery('Appearance Theme Active color theme accent')
 	);
 	let resultCount = $derived(searchResults.length + (themeMatches ? 1 : 0));
-	let matchedCategoryIds = $derived(new Set(searchResults.map((r) => r.category.id)));
-	let sourcesMatches = $derived(searchQuery.trim().length > 0 && matchesQuery('Sources'));
+
+	const sectionItems: MenuEntry[] = [
+		{ value: GENERAL, label: 'General', icon: SlidersHorizontal },
+		...SETTINGS_REGISTRY.map((c) => ({
+			value: c.id,
+			label: c.label,
+			icon: c.id === 'appearance' ? Palette : undefined
+		})),
+		{ value: SOURCES, label: 'Sources', icon: Folders }
+	];
+
+	function sectionLabel(id: string): string {
+		if (id === GENERAL) return 'General';
+		if (id === SOURCES) return 'Sources';
+		return SETTINGS_REGISTRY.find((c) => c.id === id)?.label ?? id;
+	}
+
+	let currentLabel = $derived(sectionLabel(activeSection));
+
+	let sectionMenuOpen = $state(false);
+	let sectionAnchor: HTMLElement | null = $state(null);
+
+	function onSectionSelect(value: string) {
+		sectionMenuOpen = false;
+		selectSection(value);
+	}
+
+	// ── General tab ────────────────────────────────────────────────────────────
+	let appInfo: AppInfo | null = $state(null);
+	let keyCopied = $state(false);
+
+	async function loadGeneral() {
+		try {
+			appInfo = await getAppInfo();
+		} catch (e) {
+			console.error('app info failed', e);
+		}
+	}
+
+	let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+	async function copyDeviceKey() {
+		if (!appInfo) return;
+		try {
+			await navigator.clipboard.writeText(appInfo.device_key);
+			keyCopied = true;
+			if (copyTimer) clearTimeout(copyTimer);
+			copyTimer = setTimeout(() => (keyCopied = false), 1400);
+		} catch (e) {
+			console.error('copy failed', e);
+		}
+	}
 
 	// ── Sources tab ──────────────────────────────────────────────────────────
 	let sources: Source[] = $state([]);
@@ -194,6 +257,7 @@
 		const saved = viewTab.state?.activeSection;
 		activeSection = saved && sectionIds.includes(saved) ? saved : sectionIds[0];
 		loadSources();
+		loadGeneral();
 	});
 
 	// ── Accent ───────────────────────────────────────────────────────────────
@@ -420,139 +484,179 @@
 {/snippet}
 
 <div class="settings-page">
-	<div class="settings-topbar">
-		<div class="search-bar">
-			<Search size={14} />
-			<input
-				class="search-input"
-				type="text"
-				placeholder="Search settings"
-				bind:value={searchQuery}
-				onkeydown={(e) => e.key === 'Escape' && (searchQuery = '')}
-			/>
-			{#if searchQuery}
-				<button class="search-clear" title="Clear search" onclick={() => (searchQuery = '')}>
-					<X size={12} />
+	<div class="settings-header">
+		<button
+			class="section-select"
+			bind:this={sectionAnchor}
+			onclick={() => (sectionMenuOpen = !sectionMenuOpen)}
+		>
+			<span class="section-select-label">{currentLabel}</span>
+			<ChevronDown size={17} strokeWidth={2} />
+		</button>
+		<div class="header-actions">
+			{#if activeSection === SOURCES && !isSearching}
+				<button class="add-source-btn" onclick={addSource}>
+					<FolderPlus size={14} />
+					Add source
 				</button>
 			{/if}
+			<div class="search-bar">
+				<Search size={14} />
+				<input
+					class="search-input"
+					type="text"
+					placeholder="Search settings"
+					bind:value={searchQuery}
+					onkeydown={(e) => e.key === 'Escape' && (searchQuery = '')}
+				/>
+				{#if searchQuery}
+					<button class="search-clear" title="Clear search" onclick={() => (searchQuery = '')}>
+						<X size={12} />
+					</button>
+				{/if}
+			</div>
 		</div>
 	</div>
 
-	<div class="settings-body">
-		<nav class="settings-sidebar">
-			{#each SETTINGS_REGISTRY as category}
-				{#if !isSearching || matchedCategoryIds.has(category.id) || (category.id === 'appearance' && themeMatches)}
-					<button
-						class="section-btn"
-						class:active={!isSearching && activeSection === category.id}
-						onclick={() => selectSection(category.id)}
-					>
-						{category.label}
-					</button>
+	<div class="settings-scroll">
+		<div class="settings-content" bind:this={contentEl}>
+		<div class="settings-inner">
+		{#if isSearching}
+			<p class="results-count">
+				{resultCount}
+				{resultCount === 1 ? 'setting' : 'settings'} found
+			</p>
+			<div class="settings-list">
+				{#if themeMatches}
+					{@render themeItem(appearanceCategory)}
+					{@render accentItem(appearanceCategory)}
 				{/if}
-			{/each}
-			{#if !isSearching || sourcesMatches}
-				<button
-					class="section-btn"
-					class:active={!isSearching && activeSection === SOURCES}
-					onclick={() => selectSection(SOURCES)}
-				>
-					Sources
-				</button>
-			{/if}
-			<div class="sidebar-spacer"></div>
-			<button class="reset-settings-btn" onclick={() => (resetDialogOpen = true)}>
-				<RotateCcw size={14} />
-				Reset settings
-			</button>
-		</nav>
-
-		<div class="settings-content">
-			{#if isSearching}
-				<h2 class="section-title">
-					{resultCount}
-					{resultCount === 1 ? 'setting' : 'settings'} found
-				</h2>
-				<div class="settings-list">
-					{#if themeMatches}
-						{@render themeItem(appearanceCategory)}
-						{@render accentItem(appearanceCategory)}
-					{/if}
-					{#each searchResults as { category, def } (def.key)}
-						{@render settingItem(def, category)}
-					{/each}
-					{#if resultCount === 0}
-						<p class="empty">No matching settings</p>
-					{/if}
-				</div>
-			{:else if activeSection === SOURCES}
-				<div class="section-header">
-					<h2 class="section-title">Sources</h2>
-					<button class="add-source-btn" onclick={addSource}>
-						<FolderPlus size={14} />
-						Add source
-					</button>
-				</div>
-				{#if sourceError}
-					<p class="source-error">{sourceError}</p>
+				{#each searchResults as { category, def } (def.key)}
+					{@render settingItem(def, category)}
+				{/each}
+				{#if resultCount === 0}
+					<p class="empty">No matching settings</p>
 				{/if}
-				<div class="sources-list">
-					{#each sources as s (s.id)}
-						<div class="source-card">
-							<div class="src-main">
-								<div class="src-title-row">
-									<Folders size={13} />
-									<span class="src-title">{sourceName(s)}</span>
-									{#if s.id === defaultSourceId}
-										<span class="src-default">Default</span>
-									{/if}
-								</div>
-								<span class="src-path" title={s.path}>{s.path}</span>
-							</div>
-							<div class="src-right">
-								<span class="src-count">
-									{#if sourceCounts[s.id] === undefined}
-										…
-									{:else}
-										{sourceCounts[s.id]} {sourceCounts[s.id] === 1 ? 'doc' : 'docs'}
-									{/if}
-								</span>
-								{#if confirmingRemoveId === s.id}
-									<span class="confirm-text">Remove?</span>
-									<button
-										class="src-btn"
-										title="Cancel"
-										onclick={() => (confirmingRemoveId = null)}
-									>
-										<X size={14} />
-									</button>
-									<button class="src-btn confirm" onclick={() => confirmRemove(s)}>Remove</button>
+			</div>
+		{:else if activeSection === GENERAL}
+			<div class="settings-list">
+				<!-- prettier-ignore -->
+				<div class="general-banner">
+<pre class="ascii-logo">              ,,
+`7MMF'        db                                      mm
+  MM                                                  MM
+  MM        `7MM  `7MMpMMMb.pMMMb.  .gP"Ya  ,pP"Ybd mmMMmm ,pW"Wq.`7MMpMMMb.  .gP"Ya
+  MM          MM    MM    MM    MM ,M'   Yb 8I   `"   MM  6W'   `Wb MM    MM ,M'   Yb
+  MM      ,   MM    MM    MM    MM 8M"""""" `YMMMa.   MM  8M     M8 MM    MM 8M""""""
+  MM     ,M   MM    MM    MM    MM YM.    , L.   I8   MM  YA.   ,A9 MM    MM YM.    ,
+.JMMmmmmMMM .JMML..JMML  JMML  JMML.`Mbmmd' M9mmmP'   `Mbmo`Ybmd9'.JMML  JMML.`Mbmmd'</pre>
+				</div>
+				<div class="info-list">
+					<div class="info-row">
+						<div class="item-info">
+							<span class="item-label">Device key</span>
+							<p class="item-desc">Local identifier for this device.</p>
+						</div>
+						<div class="info-value">
+							<code class="info-mono">{appInfo?.device_key ?? '…'}</code>
+							<button class="copy-btn" title="Copy device key" onclick={copyDeviceKey}>
+								{#if keyCopied}
+									<Check size={13} />
 								{:else}
-									<button class="src-btn" title="More" onclick={(e) => openSourceMenu(s, e)}>
-										<EllipsisVertical size={14} />
-									</button>
+									<Copy size={13} />
+								{/if}
+							</button>
+						</div>
+					</div>
+					<div class="info-row">
+						<div class="item-info">
+							<span class="item-label">Version</span>
+							<p class="item-desc">Installed application version.</p>
+						</div>
+						<div class="info-value">
+							<code class="info-mono">{appInfo?.version ?? '…'}</code>
+						</div>
+					</div>
+				</div>
+
+				<button class="reset-settings-btn" onclick={() => (resetDialogOpen = true)}>
+					<RotateCcw size={14} />
+					Reset all settings to defaults
+				</button>
+			</div>
+		{:else if activeSection === SOURCES}
+			{#if sourceError}
+				<p class="source-error">{sourceError}</p>
+			{/if}
+			<div class="sources-list">
+				{#each sources as s (s.id)}
+					<div class="source-card">
+						<div class="src-main">
+							<div class="src-title-row">
+								<Folders size={13} />
+								<span class="src-title">{sourceName(s)}</span>
+								{#if s.id === defaultSourceId}
+									<span class="src-default">Default</span>
 								{/if}
 							</div>
+							<span class="src-path" title={s.path}>{s.path}</span>
 						</div>
-					{:else}
-						<p class="sources-empty">No sources yet</p>
-					{/each}
-				</div>
-			{:else if activeCategory}
-				<h2 class="section-title">{activeCategory.label}</h2>
-				<div class="settings-list">
-					{#if activeCategory.id === 'appearance'}
-						{@render themeItem(null)}
-						{@render accentItem(null)}
-					{/if}
-					{#each activeCategory.settings as def (def.key)}
-						{@render settingItem(def, null)}
-					{/each}
-				</div>
-			{/if}
+						<div class="src-right">
+							<span class="src-count">
+								{#if sourceCounts[s.id] === undefined}
+									…
+								{:else}
+									{sourceCounts[s.id]} {sourceCounts[s.id] === 1 ? 'doc' : 'docs'}
+								{/if}
+							</span>
+							{#if confirmingRemoveId === s.id}
+								<span class="confirm-text">Remove?</span>
+								<button
+									class="src-btn"
+									title="Cancel"
+									onclick={() => (confirmingRemoveId = null)}
+								>
+									<X size={14} />
+								</button>
+								<button class="src-btn confirm" onclick={() => confirmRemove(s)}>Remove</button>
+							{:else}
+								<button class="src-btn" title="More" onclick={(e) => openSourceMenu(s, e)}>
+									<EllipsisVertical size={14} />
+								</button>
+							{/if}
+						</div>
+					</div>
+				{:else}
+					<p class="sources-empty">No sources yet</p>
+				{/each}
+			</div>
+		{:else if activeCategory}
+			<div class="settings-list">
+				{#if activeCategory.id === 'appearance'}
+					{@render themeItem(null)}
+					{@render accentItem(null)}
+				{/if}
+				{#each activeCategory.settings as def (def.key)}
+					{@render settingItem(def, null)}
+				{/each}
+			</div>
+		{/if}
 		</div>
+		</div>
+		<ScrollThumb scroller={contentEl} top={12} />
 	</div>
 </div>
+
+<Menu
+	bind:open={sectionMenuOpen}
+	anchor={sectionAnchor}
+	items={sectionItems}
+	selected={activeSection}
+	onSelect={onSectionSelect}
+	searchable
+	minWidth={220}
+	placeholder="Search sections…"
+/>
 
 {#if resetDialogOpen}
 	<div class="overlay" onclick={() => (resetDialogOpen = false)} role="presentation">
@@ -600,20 +704,67 @@
 		font-family: var(--font-ui);
 	}
 
-	/* ── Top bar ── */
-	.settings-topbar {
+	/* ── Header (section dropdown) ── */
+	.settings-header {
+		position: relative;
 		display: flex;
 		align-items: center;
+		justify-content: space-between;
 		gap: 12px;
-		padding: 24px 24px 8px;
+		width: 100%;
+		max-width: var(--page-max-width, none);
+		margin: 0 auto;
+		padding: 24px 32px 14px;
+		box-sizing: border-box;
+	}
+
+	.settings-header::after {
+		content: '';
+		position: absolute;
+		left: 32px;
+		right: 32px;
+		bottom: 0;
+		height: 1px;
+		background: var(--color-border);
+	}
+
+	.section-select {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-left: -10px;
+		padding: 5px 8px 5px 10px;
+		border: none;
+		border-radius: var(--radius-ui);
+		background: transparent;
+		color: var(--color-text-primary);
+		font-family: var(--font-ui);
+		font-size: 18px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.section-select:hover {
+		background: var(--chip-bg);
+	}
+
+	.section-select :global(svg) {
+		color: var(--color-ui-muted);
+	}
+
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 	}
 
 	.search-bar {
 		display: flex;
 		align-items: center;
-		flex: 1;
 		gap: 8px;
-		padding: 9px 14px;
+		width: 240px;
+		max-width: 40vw;
+		padding: 7px 12px;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-ui);
 		color: var(--color-ui-muted);
@@ -654,62 +805,23 @@
 		color: var(--color-text-primary);
 	}
 
-	/* ── Body ── */
-	.settings-body {
-		display: flex;
-		flex: 1;
-		min-height: 0;
-	}
-
-	.settings-sidebar {
-		position: relative;
-		display: flex;
-		flex-direction: column;
-		width: 220px;
-		padding: 20px 24px;
-		flex-shrink: 0;
-		gap: 4px;
-	}
-
-	.settings-sidebar::after {
-		content: '';
-		position: absolute;
-		top: 20px;
-		right: 0;
-		bottom: 20px;
-		width: 1px;
-		background: var(--color-border);
-	}
-
-	.sidebar-spacer {
-		flex: 1;
-	}
-
-	.section-btn {
-		padding: 8px 12px;
-		border: none;
-		border-radius: var(--radius-ui);
-		background: transparent;
-		color: var(--color-ui-dulled);
-		font-family: var(--font-ui);
+	.results-count {
+		margin: 0 0 18px;
 		font-size: 13px;
-		text-align: left;
-		cursor: pointer;
+		color: var(--color-ui-muted);
 	}
 
-	.section-btn:hover {
-		color: var(--color-text-primary);
-	}
-
-	.section-btn.active {
-		background: var(--color-bg);
-		color: var(--color-text-primary);
+	.empty {
+		padding: 12px 0;
+		color: var(--color-ui-muted);
+		font-size: 14px;
 	}
 
 	.reset-settings-btn {
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		margin-top: 36px;
 		padding: 8px 12px;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-ui);
@@ -718,6 +830,7 @@
 		font-family: var(--font-ui);
 		font-size: 12px;
 		cursor: pointer;
+		align-self: flex-end;
 	}
 
 	.reset-settings-btn:hover {
@@ -726,25 +839,35 @@
 	}
 
 	/* ── Content ── */
-	.settings-content {
+	.settings-scroll {
+		position: relative;
+		display: flex;
 		flex: 1;
+		min-height: 0;
+		width: 100%;
 		max-width: var(--page-max-width, none);
 		margin-left: auto;
 		margin-right: auto;
-		padding: 20px 32px 48px 24px;
+	}
+
+	.settings-content {
+		flex: 1;
+		min-width: 0;
+		padding: 24px 32px 48px;
+		box-sizing: border-box;
 		overflow-y: auto;
 		scrollbar-width: none;
 		mask-image: linear-gradient(
 			to bottom,
 			transparent,
-			black 20px,
+			black 12px,
 			black calc(100% - 28px),
 			transparent
 		);
 		-webkit-mask-image: linear-gradient(
 			to bottom,
 			transparent,
-			black 20px,
+			black 12px,
 			black calc(100% - 28px),
 			transparent
 		);
@@ -754,22 +877,78 @@
 		display: none;
 	}
 
-	.section-header {
+	/* ── General tab ── */
+	.general-banner {
+		container-type: inline-size;
+		width: 100%;
+		padding: 12px 0 40px;
+		text-align: center;
+	}
+
+	.ascii-logo {
+		display: inline-block;
+		margin: 0;
+		font-family: var(--font-editor, monospace);
+		font-size: min(calc(100cqw / 80), 13px);
+		line-height: 1.15;
+		white-space: pre;
+		text-align: left;
+		color: var(--color-ui-muted);
+	}
+
+	.info-list {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin-bottom: 20px;
+	}
+
+	.info-row {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 24px;
+		gap: 24px;
+		padding: 12px 16px;
+		margin: 0 -16px;
+		border-radius: var(--radius-ui);
 	}
 
-	.section-title {
-		margin: 0 0 24px;
-		font-size: 18px;
-		font-weight: 600;
+	.info-row:hover {
+		background: rgba(255, 255, 255, 0.02);
+	}
+
+	.info-value {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	.info-mono {
+		font-family: var(--font-editor, monospace);
+		font-size: 12px;
+		color: var(--color-text-secondary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.copy-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		padding: 4px;
+		border: none;
+		border-radius: var(--radius-ui);
+		background: transparent;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+	}
+
+	.copy-btn:hover {
+		background: var(--chip-bg);
 		color: var(--color-text-primary);
-	}
-
-	.section-header .section-title {
-		margin: 0;
 	}
 
 	.settings-list {
@@ -864,12 +1043,6 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-	}
-
-	.empty {
-		padding: 12px 0;
-		color: var(--color-ui-muted);
-		font-size: 14px;
 	}
 
 	/* ── Inputs ── */
@@ -1028,14 +1201,14 @@
 	.add-source-btn {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		padding: 6px 12px;
+		gap: 8px;
+		padding: 7px 12px;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-ui);
 		background: transparent;
-		color: var(--color-text-secondary);
+		color: var(--color-ui-muted);
 		font-family: var(--font-ui);
-		font-size: 12px;
+		font-size: 13px;
 		cursor: pointer;
 	}
 
