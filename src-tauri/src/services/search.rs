@@ -306,6 +306,19 @@ fn fts_match_query(query: &str) -> Option<String> {
     Some(out)
 }
 
+fn fts_phrase_query(query: &str) -> Option<String> {
+    let prefix_last = !query.ends_with(char::is_whitespace);
+    let terms: Vec<&str> = query.split_whitespace().collect();
+    if terms.len() < 2 {
+        return None;
+    }
+    let mut out = format!("\"{}\"", terms.join(" ").replace('"', "\"\""));
+    if prefix_last {
+        out.push('*');
+    }
+    Some(out)
+}
+
 type FtsRow = (
     String,
     String,
@@ -316,10 +329,7 @@ type FtsRow = (
     f64,
 );
 
-async fn fts_candidates(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<FtsRow> {
-    let Some(match_query) = fts_match_query(query) else {
-        return Vec::new();
-    };
+async fn fts_candidates(db: &SqlitePool, match_query: &str, cfg: &SearchConfig) -> Vec<FtsRow> {
     sqlx::query_as(
         "SELECT d.id, d.title, d.rel_path, d.source_id, d.accessed_at,
                 snippet(documents_fts, 1, ?2, ?3, '…', 16), bm25(documents_fts)
@@ -327,7 +337,7 @@ async fn fts_candidates(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec
          WHERE documents_fts MATCH ?1 AND d.deleted_at IS NULL
          ORDER BY bm25(documents_fts) LIMIT ?4",
     )
-    .bind(&match_query)
+    .bind(match_query)
     .bind(SNIPPET_MARK_START.to_string())
     .bind(SNIPPET_MARK_END.to_string())
     .bind(cfg.fts_candidate_pool as i64)
@@ -337,6 +347,7 @@ async fn fts_candidates(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec
 }
 
 const BODY_QUALITY_CAP: f64 = 0.9;
+const PHRASE_BONUS: f64 = 0.15;
 
 struct HybridCandidate {
     result: SearchResult,
@@ -346,11 +357,12 @@ struct HybridCandidate {
 }
 
 async fn search_hybrid(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+    let trimmed = query.trim();
     let docs = load_docs(db, None).await;
 
     let mut matcher = Matcher::new(Config::DEFAULT);
     let atom = Atom::new(
-        query,
+        trimmed,
         CaseMatching::Ignore,
         Normalization::Smart,
         AtomKind::Fuzzy,
@@ -359,7 +371,7 @@ async fn search_hybrid(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<
 
     let mut buf = Vec::new();
     let self_max = atom
-        .score(Utf32Str::new(query, &mut buf), &mut matcher)
+        .score(Utf32Str::new(trimmed, &mut buf), &mut matcher)
         .unwrap_or(1)
         .max(1) as f64;
 
@@ -386,40 +398,51 @@ async fn search_hybrid(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<
         );
     }
 
-    if query.len() >= cfg.fts_min_chars {
-        for (id, title, rel_path, source_id, accessed_at, snippet, bm25) in
-            fts_candidates(db, query, cfg).await
-        {
-            let relevance = (-bm25).max(0.0);
-            let quality = BODY_QUALITY_CAP * relevance / (relevance + cfg.bm25_saturation);
-            match candidates.get_mut(&id) {
-                Some(existing) => {
-                    existing.strong = true;
-                    if quality > existing.quality {
-                        existing.quality = quality;
-                        existing.result.snippet = Some(tidy_snippet(&snippet));
+    if trimmed.len() >= cfg.fts_min_chars {
+        let passes = [
+            (fts_match_query(query), 0.0),
+            (fts_phrase_query(query), PHRASE_BONUS),
+        ];
+        for (match_query, bonus) in passes {
+            let Some(match_query) = match_query else {
+                continue;
+            };
+            for (id, title, rel_path, source_id, accessed_at, snippet, bm25) in
+                fts_candidates(db, &match_query, cfg).await
+            {
+                let relevance = (-bm25).max(0.0);
+                let quality = (BODY_QUALITY_CAP * relevance / (relevance + cfg.bm25_saturation)
+                    + bonus)
+                    .min(BODY_QUALITY_CAP);
+                match candidates.get_mut(&id) {
+                    Some(existing) => {
+                        existing.strong = true;
+                        if quality > existing.quality {
+                            existing.quality = quality;
+                            existing.result.snippet = Some(tidy_snippet(&snippet));
+                        }
                     }
-                }
-                None => {
-                    candidates.insert(
-                        id.clone(),
-                        HybridCandidate {
-                            result: SearchResult {
-                                id,
-                                title,
-                                rel_path,
-                                source_id,
-                                score: 0.0,
-                                match_indices: Vec::new(),
-                                kind: SearchResultKind::Document,
-                                group_type: None,
-                                snippet: Some(tidy_snippet(&snippet)),
+                    None => {
+                        candidates.insert(
+                            id.clone(),
+                            HybridCandidate {
+                                result: SearchResult {
+                                    id,
+                                    title,
+                                    rel_path,
+                                    source_id,
+                                    score: 0.0,
+                                    match_indices: Vec::new(),
+                                    kind: SearchResultKind::Document,
+                                    group_type: None,
+                                    snippet: Some(tidy_snippet(&snippet)),
+                                },
+                                quality,
+                                strong: true,
+                                accessed_at,
                             },
-                            quality,
-                            strong: true,
-                            accessed_at,
-                        },
-                    );
+                        );
+                    }
                 }
             }
         }
@@ -468,20 +491,20 @@ async fn search_hybrid(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<
 }
 
 pub async fn search(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
-    let query = query.trim();
-    let docs = match query.len() {
+    let trimmed = query.trim();
+    let docs = match trimmed.len() {
         0 => search_recents(db, cfg.max_results).await,
-        n if n <= cfg.fuzzy_threshold => search_prefix(db, query, cfg).await,
+        n if n <= cfg.fuzzy_threshold => search_prefix(db, trimmed, cfg).await,
         _ => search_hybrid(db, query, cfg).await,
     };
 
-    let match_len = query.chars().count() as u32;
+    let match_len = trimmed.chars().count() as u32;
     let mut containers: Vec<Container> = Vec::new();
-    if query.len() >= cfg.source_prefix_min_chars {
-        containers.extend(load_sources_prefix(db, query, cfg.source_max_results).await);
+    if trimmed.len() >= cfg.source_prefix_min_chars {
+        containers.extend(load_sources_prefix(db, trimmed, cfg.source_max_results).await);
     }
-    if query.len() >= cfg.group_prefix_min_chars {
-        containers.extend(load_groups_prefix(db, query, cfg.group_max_results).await);
+    if trimmed.len() >= cfg.group_prefix_min_chars {
+        containers.extend(load_groups_prefix(db, trimmed, cfg.group_max_results).await);
     }
 
     containers

@@ -63,14 +63,14 @@
 	}
 
 	async function doSearch() {
-		const q = query.trim();
-		if (!q) {
+		const q = query;
+		if (!q.trim()) {
 			results = [];
 			return;
 		}
 		const docResults = await searchDocuments(q);
 		// Saved views live in views.json (frontend)
-		const ql = q.toLowerCase();
+		const ql = q.trim().toLowerCase();
 		const viewResults: SearchResult[] = (await View.listSaved())
 			.filter((v) => v.slug.toLowerCase().includes(ql))
 			.map((v) => ({
@@ -84,7 +84,7 @@
 				group_type: null,
 				emoji: v.emoji
 			}));
-		if (q !== query.trim()) return;
+		if (q !== query) return;
 		results = [...viewResults, ...docResults];
 	}
 
