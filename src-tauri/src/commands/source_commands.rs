@@ -316,9 +316,6 @@ fn search_config_from_settings(settings: &serde_json::Value) -> services::search
         recency_weight: dot_get(settings, "search.recency_weight")
             .and_then(|v| v.as_f64())
             .unwrap_or(defaults.recency_weight),
-        recency_multiplier: dot_get(settings, "search.recency_multiplier")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(defaults.recency_multiplier),
         recency_default_days: dot_get(settings, "search.recency_default_days")
             .and_then(|v| v.as_f64())
             .unwrap_or(defaults.recency_default_days),
@@ -342,14 +339,16 @@ fn search_config_from_settings(settings: &serde_json::Value) -> services::search
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(defaults.fts_min_chars),
-        fts_max_results: dot_get(settings, "search.fts_max_results")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize)
-            .unwrap_or(defaults.fts_max_results),
         fts_candidate_pool: dot_get(settings, "search.fts_candidate_pool")
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(defaults.fts_candidate_pool),
+        hybrid_quality_gate: dot_get(settings, "search.hybrid_quality_gate")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(defaults.hybrid_quality_gate),
+        bm25_saturation: dot_get(settings, "search.bm25_saturation")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(defaults.bm25_saturation),
     }
 }
 

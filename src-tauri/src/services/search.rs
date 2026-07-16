@@ -32,15 +32,15 @@ pub struct SearchConfig {
     pub prefix_candidate_pool: usize,
     pub fuzzy_threshold: usize,
     pub recency_weight: f64,
-    pub recency_multiplier: f64,
     pub recency_default_days: f64,
     pub group_prefix_min_chars: usize,
     pub group_max_results: usize,
     pub source_prefix_min_chars: usize,
     pub source_max_results: usize,
     pub fts_min_chars: usize,
-    pub fts_max_results: usize,
     pub fts_candidate_pool: usize,
+    pub hybrid_quality_gate: f64,
+    pub bm25_saturation: f64,
 }
 
 impl Default for SearchConfig {
@@ -50,15 +50,15 @@ impl Default for SearchConfig {
             prefix_candidate_pool: 50,
             fuzzy_threshold: 2,
             recency_weight: 0.5,
-            recency_multiplier: 100.0,
             recency_default_days: 365.0,
             group_prefix_min_chars: 3,
             group_max_results: 5,
             source_prefix_min_chars: 3,
             source_max_results: 5,
             fts_min_chars: 5,
-            fts_max_results: 5,
             fts_candidate_pool: 25,
+            hybrid_quality_gate: 0.5,
+            bm25_saturation: 5.0,
         }
     }
 }
@@ -271,68 +271,6 @@ async fn search_prefix(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<
         .collect()
 }
 
-async fn search_fuzzy(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
-    let docs = load_docs(db, None).await;
-    if docs.is_empty() {
-        return Vec::new();
-    }
-
-    let mut matcher = Matcher::new(Config::DEFAULT);
-    let atom = Atom::new(
-        query,
-        CaseMatching::Ignore,
-        Normalization::Smart,
-        AtomKind::Fuzzy,
-        false,
-    );
-
-    // Score all docs
-    let mut scored: Vec<(usize, u16)> = Vec::new();
-    let mut buf = Vec::new();
-
-    for (i, doc) in docs.iter().enumerate() {
-        let haystack = Utf32Str::new(&doc.title, &mut buf);
-        if let Some(score) = atom.score(haystack, &mut matcher) {
-            if score > 0 {
-                scored.push((i, score));
-            }
-        }
-    }
-
-    // scores w/ recency
-    let mut results: Vec<(usize, f64)> = scored
-        .iter()
-        .map(|&(i, nucleo_score)| {
-            let recency_bonus = cfg.recency_multiplier
-                / (1.0 + days_since(&docs[i].accessed_at, cfg.recency_default_days));
-            let composite = nucleo_score as f64 + (recency_bonus * cfg.recency_weight);
-            (i, composite)
-        })
-        .collect();
-
-    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    results.truncate(cfg.max_results);
-
-    // Get match indices for top results only
-    results
-        .iter()
-        .map(|&(i, composite)| {
-            let doc = &docs[i];
-            let mut indices = Vec::new();
-            let mut buf = Vec::new();
-            let haystack = Utf32Str::new(&doc.title, &mut buf);
-            atom.indices(haystack, &mut matcher, &mut indices);
-            indices.sort();
-
-            SearchResult {
-                score: composite,
-                match_indices: indices,
-                ..doc.to_result()
-            }
-        })
-        .collect()
-}
-
 fn tidy_snippet(raw: &str) -> String {
     let first_mark = raw.find(SNIPPET_MARK_START).unwrap_or(0);
     let last_mark = raw
@@ -368,20 +306,21 @@ fn fts_match_query(query: &str) -> Option<String> {
     Some(out)
 }
 
-async fn search_fts(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+type FtsRow = (
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+    String,
+    f64,
+);
+
+async fn fts_candidates(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<FtsRow> {
     let Some(match_query) = fts_match_query(query) else {
         return Vec::new();
     };
-    type FtsRow = (
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<i64>,
-        String,
-        f64,
-    );
-    let rows: Vec<FtsRow> = sqlx::query_as(
+    sqlx::query_as(
         "SELECT d.id, d.title, d.rel_path, d.source_id, d.accessed_at,
                 snippet(documents_fts, 1, ?2, ?3, '…', 16), bm25(documents_fts)
          FROM documents_fts JOIN documents d ON d.rowid = documents_fts.rowid
@@ -394,37 +333,138 @@ async fn search_fts(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<Sea
     .bind(cfg.fts_candidate_pool as i64)
     .fetch_all(db)
     .await
-    .unwrap_or_default();
+    .unwrap_or_default()
+}
 
-    let mut results: Vec<SearchResult> = rows
-        .into_iter()
-        .map(
-            |(id, title, rel_path, source_id, accessed_at, snippet, bm25)| {
-                let recency_boost = 1.0
-                    + cfg.recency_weight
-                        / (1.0 + days_since(&accessed_at, cfg.recency_default_days));
-                SearchResult {
-                    id,
-                    title,
-                    rel_path,
-                    source_id,
-                    score: -bm25 * recency_boost,
-                    match_indices: Vec::new(),
-                    kind: SearchResultKind::Document,
-                    group_type: None,
-                    snippet: Some(tidy_snippet(&snippet)),
-                }
+const BODY_QUALITY_CAP: f64 = 0.9;
+
+struct HybridCandidate {
+    result: SearchResult,
+    quality: f64,
+    strong: bool,
+    accessed_at: Option<i64>,
+}
+
+async fn search_hybrid(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
+    let docs = load_docs(db, None).await;
+
+    let mut matcher = Matcher::new(Config::DEFAULT);
+    let atom = Atom::new(
+        query,
+        CaseMatching::Ignore,
+        Normalization::Smart,
+        AtomKind::Fuzzy,
+        false,
+    );
+
+    let mut buf = Vec::new();
+    let self_max = atom
+        .score(Utf32Str::new(query, &mut buf), &mut matcher)
+        .unwrap_or(1)
+        .max(1) as f64;
+
+    let mut candidates: std::collections::HashMap<String, HybridCandidate> =
+        std::collections::HashMap::new();
+
+    for doc in &docs {
+        let haystack = Utf32Str::new(&doc.title, &mut buf);
+        let Some(score) = atom.score(haystack, &mut matcher) else {
+            continue;
+        };
+        if score == 0 {
+            continue;
+        }
+        let quality = (score as f64 / self_max).min(1.0);
+        candidates.insert(
+            doc.id.clone(),
+            HybridCandidate {
+                result: doc.to_result(),
+                quality,
+                strong: quality >= cfg.hybrid_quality_gate,
+                accessed_at: doc.accessed_at,
             },
-        )
-        .collect();
+        );
+    }
 
-    results.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
+    if query.len() >= cfg.fts_min_chars {
+        for (id, title, rel_path, source_id, accessed_at, snippet, bm25) in
+            fts_candidates(db, query, cfg).await
+        {
+            let relevance = (-bm25).max(0.0);
+            let quality = BODY_QUALITY_CAP * relevance / (relevance + cfg.bm25_saturation);
+            match candidates.get_mut(&id) {
+                Some(existing) => {
+                    existing.strong = true;
+                    if quality > existing.quality {
+                        existing.quality = quality;
+                        existing.result.snippet = Some(tidy_snippet(&snippet));
+                    }
+                }
+                None => {
+                    candidates.insert(
+                        id.clone(),
+                        HybridCandidate {
+                            result: SearchResult {
+                                id,
+                                title,
+                                rel_path,
+                                source_id,
+                                score: 0.0,
+                                match_indices: Vec::new(),
+                                kind: SearchResultKind::Document,
+                                group_type: None,
+                                snippet: Some(tidy_snippet(&snippet)),
+                            },
+                            quality,
+                            strong: true,
+                            accessed_at,
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    let mut strong: Vec<HybridCandidate> = Vec::new();
+    let mut weak: Vec<HybridCandidate> = Vec::new();
+    for (_, mut c) in candidates {
+        let boost =
+            1.0 + cfg.recency_weight / (1.0 + days_since(&c.accessed_at, cfg.recency_default_days));
+        c.result.score = c.quality * boost;
+        if c.strong {
+            strong.push(c);
+        } else {
+            weak.push(c);
+        }
+    }
+
+    fn by_score(a: &HybridCandidate, b: &HybridCandidate) -> std::cmp::Ordering {
+        b.result
+            .score
+            .partial_cmp(&a.result.score)
             .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    results.truncate(cfg.fts_max_results);
-    results
+            .then_with(|| a.result.title.cmp(&b.result.title))
+    }
+    strong.sort_by(by_score);
+    weak.sort_by(by_score);
+    strong.truncate(cfg.max_results);
+    weak.truncate(cfg.max_results.saturating_sub(strong.len()));
+
+    strong
+        .into_iter()
+        .chain(weak)
+        .map(|c| {
+            let mut result = c.result;
+            if result.snippet.is_none() {
+                let haystack = Utf32Str::new(&result.title, &mut buf);
+                let mut indices = Vec::new();
+                atom.indices(haystack, &mut matcher, &mut indices);
+                indices.sort();
+                result.match_indices = indices;
+            }
+            result
+        })
+        .collect()
 }
 
 pub async fn search(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<SearchResult> {
@@ -432,7 +472,7 @@ pub async fn search(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<Sea
     let docs = match query.len() {
         0 => search_recents(db, cfg.max_results).await,
         n if n <= cfg.fuzzy_threshold => search_prefix(db, query, cfg).await,
-        _ => search_fuzzy(db, query, cfg).await,
+        _ => search_hybrid(db, query, cfg).await,
     };
 
     let match_len = query.chars().count() as u32;
@@ -444,22 +484,9 @@ pub async fn search(db: &SqlitePool, query: &str, cfg: &SearchConfig) -> Vec<Sea
         containers.extend(load_groups_prefix(db, query, cfg.group_max_results).await);
     }
 
-    let mut results: Vec<SearchResult> = containers
+    containers
         .iter()
         .map(|c| c.to_result(match_len))
         .chain(docs.into_iter())
-        .collect();
-
-    if query.len() >= cfg.fts_min_chars {
-        let seen: std::collections::HashSet<String> =
-            results.iter().map(|r| r.id.clone()).collect();
-        results.extend(
-            search_fts(db, query, cfg)
-                .await
-                .into_iter()
-                .filter(|r| !seen.contains(&r.id)),
-        );
-    }
-
-    results
+        .collect()
 }
