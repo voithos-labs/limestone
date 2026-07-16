@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { getVersion } from '@tauri-apps/api/app';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import '@fontsource/jetbrains-mono/400.css';
 	import '@fontsource/jetbrains-mono/500.css';
 	import '@fontsource/jetbrains-mono/700.css';
 	import '@fontsource/jetbrains-mono/800.css';
+
+	let { animateIn = true }: { animateIn?: boolean } = $props();
 
 	let now = $state(new Date());
 	let version = $state('');
@@ -19,8 +21,11 @@
 	);
 	const ampm = $derived(now.getHours() < 12 ? 'am' : 'pm');
 
+	let ready = $state(untrack(() => !animateIn));
+
 	onMount(() => {
 		getVersion().then((v) => (version = v));
+		if (!ready) requestAnimationFrame(() => (ready = true));
 		const id = setInterval(() => {
 			now = new Date();
 		}, 1000);
@@ -28,7 +33,7 @@
 	});
 </script>
 
-<div class="hero">
+<div class="hero" class:ready>
 	<div class="time">{timeStr}</div>
 	<div class="meta">
 		<div class="date">{dateStr}</div>
@@ -42,6 +47,25 @@
 		align-items: stretch;
 		justify-content: center;
 		gap: 13.5px;
+	}
+
+	.time,
+	.meta {
+		opacity: 0;
+		transform: translateY(6px);
+		transition:
+			opacity 420ms ease,
+			transform 420ms cubic-bezier(0.2, 0.7, 0.3, 1);
+	}
+
+	.hero.ready .time,
+	.hero.ready .meta {
+		opacity: 1;
+		transform: none;
+	}
+
+	.hero.ready .meta {
+		transition-delay: 90ms;
 	}
 
 	.time {

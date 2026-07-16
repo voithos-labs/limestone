@@ -1,96 +1,156 @@
 <script lang="ts">
 	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import type { SearchResult } from '$lib/types/SearchResult';
-	import { creationSource } from '$lib/models/Source';
+	import {
+		listSources,
+		removeSource,
+		setDefaultSource,
+		getDefaultSourceId,
+		type Source
+	} from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import View from '$lib/models/View.svelte';
-	import { searchDocuments } from '$lib/services/search';
-	import { readTextFile } from '@tauri-apps/plugin-fs';
 	import { listen } from '@tauri-apps/api/event';
-	import { formatDateFriendly } from '$lib/views/dateFormat';
+	import { openPath } from '@tauri-apps/plugin-opener';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import ClockHero from '../ClockHero.svelte';
 	import QuickSearch from '../QuickSearch.svelte';
 	import SourceDialog from '../SourceDialog.svelte';
 	import Menu from '../views/Menu.svelte';
-	import { Box, Plus, FolderPlus } from '@lucide/svelte';
-	import BoxPlus from '../BoxPlus.svelte';
-	import IconAddNotes from '~icons/material-symbols/add-notes';
+	import ListFace from '../views/faces/ListFace.svelte';
+	import {
+		Box,
+		Plus,
+		Folders,
+		EllipsisVertical,
+		Pencil,
+		Star,
+		ExternalLink,
+		Trash2
+	} from '@lucide/svelte';
+	import FoldersStar from '../FoldersStar.svelte';
+	import { fly } from 'svelte/transition';
 	import { onMount } from 'svelte';
 
 	let { editor }: { editor: EditorState } = $props();
 
-	interface DocCard {
-		id: string;
-		title: string;
-		relPath: string | null;
-		preview: string;
-		updatedAt: Date;
-		tags: string[];
-	}
-
 	let savedViews: View[] = $state([]);
-	let docs: DocCard[] = $state([]);
 
-	// Recent views show a single row: render only as many cards as columns fit at
-	// the current width. Same 240px/14px basis as the docs grid so both reflow together.
-	const GRID_MIN = 220;
-	const GRID_GAP = 12;
-	let viewsWidth = $state(0);
-	const viewCols = $derived(
-		Math.max(1, Math.floor((viewsWidth + GRID_GAP) / (GRID_MIN + GRID_GAP)))
+	// Every document, newest first, drawn by the list face's grid. A throwaway view:
+	// never saved, no filters, just the sort.
+	const recentView = View.create('Recent');
+	recentView.temporary = true;
+	const recentFace = recentView.addFace('list');
+	recentView.faces = [recentFace];
+	recentView.state.active_face_id = recentFace.id;
+	{
+		const updated = recentView.fields.find((f) => f.type === 'updated_at');
+		if (updated) recentFace.sort = [{ field_id: updated.id, direction: 'desc' }];
+	}
+
+	// Views are a peek, not a list: the most recent dozen, wrapping as they need to.
+	const MAX_VIEWS = 12;
+	const visibleViews = $derived(savedViews.slice(0, MAX_VIEWS));
+
+	// A source is browsable as the view that filters to it, so the row is just views:
+	// same card, same open path. Sources are few and none may be hidden, so show them all.
+	let sourceViews: { view: View; source: Source }[] = $state([]);
+
+	// Default source leads the row; the rest keep their listed order
+	const orderedSources = $derived(
+		[...sourceViews].sort(
+			(a, b) => Number(b.source.id === defaultSourceId) - Number(a.source.id === defaultSourceId)
+		)
 	);
-	const visibleViews = $derived(savedViews.slice(0, viewCols));
 
-	// Skeleton rows for the view "database" preview: each row is [col2, col3] bar widths.
-	const ROWS = [
-		[78, 54],
-		[60, 40],
-		[88, 36],
-		[50, 62],
-		[70, 46]
-	];
+	// Counted after the cards are on screen; a card without its count yet just has a gap
+	let counts: Record<string, number> = $state({});
 
-	function makePreview(body: string): string {
-		return body
-			.replace(/^#{1,6}\s+/gm, '')
-			.replace(/[*_`>]/g, '')
-			.replace(/[ \t]+/g, ' ')
-			.replace(/\n{3,}/g, '\n\n')
-			.trim()
-			.slice(0, 320);
-	}
-
-	async function loadDoc(r: SearchResult): Promise<DocCard> {
-		try {
-			const h = await DocHandle.fromID(r.id);
-			// Read the file directly (don't loadContent — that bumps accessed_at).
-			const raw = await readTextFile(`${h.source.path}/${h.relPath}`);
-			const { body } = DocHandle.deserialize(raw);
-			return {
-				id: h.id,
-				title: h.title,
-				relPath: h.relPath,
-				preview: makePreview(body),
-				updatedAt: h.updatedAt,
-				tags: h.tags.map((g) => g.slug)
-			};
-		} catch {
-			return {
-				id: r.id,
-				title: r.title,
-				relPath: r.rel_path,
-				preview: '',
-				updatedAt: new Date(0),
-				tags: []
-			};
+	$effect(() => {
+		for (const v of visibleViews) {
+			if (counts[v.id] !== undefined) continue;
+			v.countMembers()
+				.then((n) => (counts[v.id] = n))
+				.catch(() => {});
 		}
-	}
+	});
+
+	// Remounts the list face so a reconcile (files changed on disk) redraws the cards
+	let docsKey = $state(0);
 
 	async function loadRecents() {
-		const [recents, saved] = await Promise.all([searchDocuments(''), View.listSaved()]);
+		const [saved, sources, defId] = await Promise.all([
+			View.listSaved(),
+			listSources(),
+			getDefaultSourceId()
+		]);
 		savedViews = saved.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
-		docs = await Promise.all(recents.filter((r) => r.kind === 'document').map(loadDoc));
+		sourceViews = sources.map((s) => ({ view: View.createFromSource(s), source: s }));
+		defaultSourceId = defId;
+		counts = {};
+		loaded = true;
+	}
+
+	// The rows' "+" waits for the chips so it can land after them, rather than sitting
+	// there alone while they arrive.
+	let loaded = $state(false);
+
+	// ── Source options (same menu as Settings) ─────────────────────────────────
+	let defaultSourceId: string | null = $state(null);
+	let srcMenuOpen = $state(false);
+	let srcMenuAnchor: HTMLElement | null = $state(null);
+	let menuSource: Source | null = $state(null);
+	let confirmingRemove = $state(false);
+
+	$effect(() => {
+		if (!srcMenuOpen) confirmingRemove = false;
+	});
+
+	const srcMenuItems: MenuEntry[] = $derived([
+		{ value: 'edit', label: 'Edit', icon: Pencil },
+		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
+		{
+			value: 'default',
+			label: menuSource?.id === defaultSourceId ? 'Remove default' : 'Set as default',
+			icon: Star
+		},
+		{ kind: 'divider' },
+		confirmingRemove
+			? { value: 'confirm-remove', label: 'Confirm remove', icon: Trash2, danger: true }
+			: { value: 'remove', label: 'Remove', icon: Trash2, keepOpen: true }
+	]);
+
+	function openSourceMenu(s: Source, e: MouseEvent) {
+		menuSource = s;
+		srcMenuAnchor = e.currentTarget as HTMLElement;
+		srcMenuOpen = true;
+	}
+
+	async function onSourceMenuSelect(value: string) {
+		if (value === 'remove') {
+			confirmingRemove = true;
+			return;
+		}
+		srcMenuOpen = false;
+		const s = menuSource;
+		if (!s) return;
+		try {
+			if (value === 'edit') {
+				dialogMode = 'edit';
+				dialogSource = s;
+				sourceDialogOpen = true;
+			} else if (value === 'reveal') {
+				await openPath(s.path);
+			} else if (value === 'default') {
+				await setDefaultSource(s.id === defaultSourceId ? null : s.id);
+				defaultSourceId = await getDefaultSourceId();
+			} else if (value === 'confirm-remove') {
+				await removeSource(s.id);
+				await loadRecents();
+				docsKey++;
+			}
+		} catch (e) {
+			console.error('source action failed', e);
+		}
 	}
 
 	function openSavedView(v: View) {
@@ -104,141 +164,148 @@
 		editor.openView(v);
 	}
 
-	// ── New menu (+ ▾) ─────────────────────────────────────────────────────────
-	let newOpen = $state(false);
-	let newBtnEl: HTMLButtonElement | null = $state(null);
-
-	const newItems: MenuEntry[] = [
-		{ value: 'doc', label: 'New document', icon: IconAddNotes },
-		{ value: 'view', label: 'New view', icon: BoxPlus },
-		{ value: 'source', label: 'New source', icon: FolderPlus }
-	];
-
-	function handleNew(value: string) {
-		newOpen = false;
-		if (value === 'doc') newDocument();
-		else if (value === 'view') editor.openView(View.create('New view'));
-		else if (value === 'source') sourceDialogOpen = true;
-	}
-
 	let sourceDialogOpen = $state(false);
+	let dialogMode: 'create' | 'edit' = $state('create');
+	let dialogSource: Source | null = $state(null);
 
-	async function newDocument() {
-		const source = await creationSource();
-		if (!source) {
-			sourceDialogOpen = true;
-			return;
-		}
-		const doc = await DocHandle.createFromTitle(source, { title: 'Untitled', draft: true });
-		editor.openDoc(doc);
+	function newSource() {
+		dialogMode = 'create';
+		dialogSource = null;
+		sourceDialogOpen = true;
 	}
 
-	async function openDoc(d: DocCard) {
-		const existing = editor.tabs.find((t) => t.id === d.id);
+	async function openDoc(id: string) {
+		const existing = editor.tabs.find((t) => t.id === id);
 		if (existing) {
 			editor.focusTab({ kind: 'tab', id: existing.id });
 			return;
 		}
-		const doc = await DocHandle.fromID(d.id);
+		const doc = await DocHandle.fromID(id);
 		editor.openDoc(doc);
 	}
 
 	onMount(() => {
 		loadRecents();
-		const unlisten = listen('source-reconciled', () => loadRecents());
+		const unlisten = listen('source-reconciled', () => {
+			loadRecents();
+			docsKey++;
+		});
 		return () => {
 			unlisten.then((fn) => fn());
 		};
 	});
 </script>
 
-<div class="library">
-	<div class="lib-inner">
-		<div class="lib-hero">
-			<ClockHero />
-		</div>
-		<div class="search-row">
-			<div class="search-cell">
+<div class="library-page">
+	<div class="library">
+		<div class="lib-inner">
+			<div class="lib-hero">
+				<ClockHero animateIn={false} />
+			</div>
+			<div class="search-row">
 				<QuickSearch {editor} />
 			</div>
-			<button class="new-btn" bind:this={newBtnEl} title="New" onclick={() => (newOpen = !newOpen)}>
-				<Plus size={19} />
-			</button>
-		</div>
-		<Menu
-			bind:open={newOpen}
-			anchor={newBtnEl}
-			items={newItems}
-			onSelect={handleNew}
-			minWidth={180}
-		/>
-		<SourceDialog bind:open={sourceDialogOpen} mode="create" onSaved={loadRecents} />
+			<SourceDialog
+				bind:open={sourceDialogOpen}
+				mode={dialogMode}
+				source={dialogSource}
+				onSaved={loadRecents}
+			/>
+			<Menu
+				bind:open={srcMenuOpen}
+				anchor={srcMenuAnchor}
+				items={srcMenuItems}
+				onSelect={onSourceMenuSelect}
+				minWidth={190}
+			/>
 
-		<section class="lib-section">
-			<h2 class="sec-title">Recent Views</h2>
-			<div class="views-grid" bind:clientWidth={viewsWidth}>
-				{#each visibleViews as v (v.id)}
-					<button class="view-card" onclick={() => openSavedView(v)}>
-						<div class="vc-header">
+			<section class="lib-section">
+				<h2 class="sec-title">Recent Views</h2>
+				<div class="views-grid">
+					{#each visibleViews as v, i (v.id)}
+						<button
+							class="view-card"
+							transition:fly={{ y: 4, duration: 160, delay: i * 25 }}
+							onclick={() => openSavedView(v)}
+						>
 							{#if v.emoji}
 								<span class="vc-emoji">{v.emoji}</span>
 							{:else}
-								<Box size={13} />
+								<Box size={14} />
 							{/if}
 							<span class="vc-title">{v.slug}</span>
-							<span class="vc-pill"></span>
-						</div>
-						<div class="vc-table">
-							{#each ROWS as r}
-								<div class="vc-row">
-									<span class="vc-cell"><span class="vc-dot"></span></span>
-									<span class="vc-cell"><span class="vc-bar" style:width="{r[0]}%"></span></span>
-									<span class="vc-cell"><span class="vc-bar" style:width="{r[1]}%"></span></span>
-								</div>
-							{/each}
-						</div>
-					</button>
-				{/each}
-			</div>
-			{#if savedViews.length === 0}
-				<p class="lib-empty">No saved views yet</p>
-			{/if}
-		</section>
-
-		<section class="lib-section">
-			<h2 class="sec-title">Recent documents</h2>
-			{#if docs.length}
-				<div class="docs-grid">
-					{#each docs as d (d.id)}
-						<button class="doc-card" onclick={() => openDoc(d)}>
-							<div class="dc-title">{d.title}</div>
-							{#if d.preview}
-								<div class="dc-preview">{d.preview}</div>
-							{/if}
-							<div class="dc-footer">
-								<span class="dc-time">{formatDateFriendly(d.updatedAt)}</span>
-								{#if d.tags.length}
-									<span class="dc-tags">
-										{#each d.tags.slice(0, 3) as t}
-											<span class="dc-tag">{t}</span>
-										{/each}
-									</span>
-								{/if}
-							</div>
-							{#if d.relPath}
-								<div class="dc-path">{d.relPath}</div>
+							{#if counts[v.id] !== undefined}
+								<span class="vc-count">{counts[v.id]}</span>
 							{/if}
 						</button>
 					{/each}
+					{#if loaded}
+						<button
+							class="row-add"
+							title="New view"
+							in:fly={{ y: 4, duration: 160, delay: visibleViews.length * 25 }}
+							onclick={() => editor.openView(View.create('New view'))}
+						>
+							<Plus size={16} strokeWidth={2} />
+						</button>
+					{/if}
 				</div>
-			{:else}
-				<p class="lib-empty">No documents yet</p>
-			{/if}
-		</section>
+			</section>
+
+			<section class="lib-section">
+				<h2 class="sec-title">Sources</h2>
+				<div class="views-grid">
+					{#each orderedSources as s, i (s.view.id)}
+						<div class="card-wrap" transition:fly={{ y: 4, duration: 160, delay: i * 25 }}>
+							<button class="view-card has-menu" onclick={() => openSavedView(s.view)}>
+								{#if s.source.id === defaultSourceId}
+									<FoldersStar size={14} />
+								{:else}
+									<Folders size={14} />
+								{/if}
+								<span class="vc-title">{s.view.slug}</span>
+							</button>
+							<button
+								class="card-kebab"
+								title="Source options"
+								onclick={(e) => openSourceMenu(s.source, e)}
+							>
+								<EllipsisVertical size={14} strokeWidth={1.75} />
+							</button>
+						</div>
+					{/each}
+					{#if loaded}
+						<button
+							class="row-add"
+							title="New source"
+							in:fly={{ y: 4, duration: 160, delay: orderedSources.length * 25 }}
+							onclick={newSource}
+						>
+							<Plus size={16} strokeWidth={2} />
+						</button>
+					{/if}
+				</div>
+			</section>
+
+			<section class="lib-section">
+				<h2 class="sec-title">Recent documents</h2>
+				<div class="docs-face">
+					{#key docsKey}
+						<ListFace view={recentView} face={recentFace} onOpenRow={openDoc} createCard />
+					{/key}
+				</div>
+			</section>
+		</div>
 	</div>
 </div>
 
 <style>
+	.library-page {
+		position: relative;
+		height: 100%;
+		overflow: hidden;
+	}
+
 	.library {
 		height: 100%;
 		overflow-y: auto;
@@ -250,9 +317,9 @@
 	}
 
 	.lib-inner {
-		max-width: 900px;
+		max-width: var(--page-max-width, 900px);
 		margin: 0 auto;
-		padding: 36px 24px 64px;
+		padding: 72px 24px 64px;
 	}
 
 	.lib-hero {
@@ -262,31 +329,31 @@
 	.search-row {
 		display: flex;
 		align-items: center;
-		gap: 12px;
 	}
 
-	.search-cell {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.new-btn {
+	/* Bare "+" closing each chip row: no card around it, just the glyph in a square hitbox */
+	.row-add {
+		align-self: center;
 		display: flex;
 		align-items: center;
-		gap: 2px;
-		height: 42px;
-		padding: 0 12px;
+		justify-content: center;
 		flex-shrink: 0;
-		border: 1px solid var(--color-border);
-		border-radius: 14px;
-		background: var(--color-bg);
-		color: var(--color-text-secondary);
+		width: 30px;
+		height: 30px;
+		padding: 0;
+		border: none;
+		border-radius: 8px;
+		background: transparent;
+		color: var(--color-ui-dulled);
 		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
-	.new-btn:hover {
+	.row-add:hover {
+		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
-		border-color: var(--color-ui-muted);
 	}
 
 	.lib-section {
@@ -303,40 +370,39 @@
 		color: var(--color-ui-muted);
 	}
 
-	/* ── Views (basic database cards) ── */
+	/* ── Views (chip-ish cards, styled like the note cards below) ── */
+	/* Cards take only the width their content needs, up to a cap: a short view name
+	   shouldn't be stretched across a column. */
 	.views-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-		gap: 12px;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
 	}
 
 	.view-card {
 		display: flex;
-		flex-direction: column;
-		padding: 0;
+		align-items: center;
+		gap: 8px;
+		flex: 0 1 auto;
+		min-width: 0;
+		max-width: 220px;
+		height: 38px;
+		padding: 0 12px;
 		border: 1px solid var(--color-border);
 		border-radius: 10px;
-		background: var(--color-bg);
-		overflow: hidden;
+		background: transparent;
+		color: var(--color-text-primary);
 		cursor: pointer;
 		text-align: left;
 		font-family: var(--font-ui);
-		transition: border-color 120ms ease;
+		transition: background-color 120ms ease;
 	}
 
 	.view-card:hover {
-		border-color: var(--color-ui-muted);
+		background: var(--row-hover-bg, rgba(127, 127, 127, 0.06));
 	}
 
-	.vc-header {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		padding: 10px 12px;
-		color: var(--color-text-primary);
-	}
-
-	.vc-header :global(svg) {
+	.view-card :global(svg) {
 		flex-shrink: 0;
 		color: var(--color-ui-muted);
 	}
@@ -348,154 +414,68 @@
 	}
 
 	.vc-title {
-		flex: 1;
+		flex: 0 1 auto;
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-size: 13px;
-		font-weight: 600;
+		font-weight: 500;
 	}
 
-	.vc-pill {
-		width: 26px;
-		height: 6px;
-		border-radius: 999px;
-		background: var(--color-accent);
+	.vc-count {
 		flex-shrink: 0;
-	}
-
-	.vc-table {
-		display: flex;
-		flex-direction: column;
-		border-top: 1px solid var(--color-border);
-	}
-
-	.vc-row {
-		display: grid;
-		grid-template-columns: 26px 1fr 1fr;
-		align-items: center;
-		height: 18px;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.vc-row:last-child {
-		border-bottom: none;
-	}
-
-	.vc-cell {
-		display: flex;
-		align-items: center;
-		height: 100%;
-		padding: 0 10px;
-		border-right: 1px solid var(--color-border);
-	}
-
-	.vc-cell:last-child {
-		border-right: none;
-	}
-
-	.vc-dot {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: var(--color-ui-muted);
-		opacity: 0.55;
-		flex-shrink: 0;
-	}
-
-	.vc-bar {
-		height: 6px;
-		border-radius: 999px;
-		background: var(--color-ui-muted);
-		opacity: 0.28;
-	}
-
-	/* ── Documents (Google Keep masonry) ── */
-	.docs-grid {
-		columns: 220px;
-		column-gap: 12px;
-	}
-
-	.doc-card {
-		display: inline-block;
-		width: 100%;
-		margin: 0 0 12px;
-		padding: 12px 14px;
-		border: 1px solid var(--color-border);
-		border-radius: 10px;
-		background: var(--color-bg);
-		cursor: pointer;
-		text-align: left;
-		font-family: var(--font-ui);
-		break-inside: avoid;
-		transition: border-color 120ms ease;
-	}
-
-	.doc-card:hover {
-		border-color: var(--color-ui-muted);
-	}
-
-	.dc-title {
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--color-text-primary);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.dc-preview {
-		margin-top: 6px;
-		font-size: 12.5px;
-		line-height: 1.5;
-		color: var(--color-text-secondary);
-		white-space: pre-wrap;
-		display: -webkit-box;
-		-webkit-line-clamp: 9;
-		line-clamp: 9;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-
-	.dc-footer {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin-top: 12px;
-		flex-wrap: wrap;
-	}
-
-	.dc-time {
-		font-size: 11px;
-		color: var(--color-ui-muted);
-	}
-
-	.dc-tags {
-		display: flex;
-		gap: 4px;
-		flex-wrap: wrap;
-	}
-
-	.dc-tag {
-		padding: 1px 7px;
-		border-radius: 999px;
-		background: var(--chip-bg);
 		font-size: 11px;
 		color: var(--color-ui-dulled);
+		font-variant-numeric: tabular-nums;
 	}
 
-	.dc-path {
-		margin-top: 6px;
-		font-size: 11px;
-		color: var(--color-ui-muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	/* A card that carries its own options button: the kebab can't nest inside the
+	   card's <button>, so it sits over it. */
+	.card-wrap {
+		position: relative;
+		min-width: 0;
+		max-width: 220px;
 	}
 
-	.lib-empty {
-		color: var(--color-ui-muted);
-		font-size: 13px;
+	.card-wrap .view-card {
+		width: 100%;
+		max-width: none;
+	}
+
+	.view-card.has-menu {
+		padding-right: 32px;
+	}
+
+	.card-kebab {
+		position: absolute;
+		top: 50%;
+		right: 6px;
+		transform: translateY(-50%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-ui-dulled);
+		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
+	}
+
+	.card-kebab:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	/* The list face carries its own 24px side margin (it sits flush in a view page),
+	   so pull it back out to line the cards up with the views grid above. */
+	.docs-face {
+		margin: 0 -24px;
 	}
 </style>
