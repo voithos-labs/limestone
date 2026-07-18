@@ -1,4 +1,3 @@
-pub mod assets;
 pub mod bulk_ops;
 pub mod frontmatter;
 pub mod fs;
