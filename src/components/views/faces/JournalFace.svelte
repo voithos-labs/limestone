@@ -700,9 +700,6 @@
 					onclick={() => (pickOpen = !pickOpen)}
 				>
 					<ChevronDown size={15} strokeWidth={2} />
-					{#if dayRows.length > 1}
-						<span class="doc-pick-count">{dayRows.length}</span>
-					{/if}
 				</button>
 			{/if}
 			{#if docTab}
@@ -853,7 +850,7 @@
 
 	/* Body faces bring their own 24px gutter; cancel the journal's so it isn't doubled */
 	.body-face {
-		margin: 0 -24px;
+		margin: 24px -24px 0;
 	}
 
 	.doc-pick {
@@ -888,10 +885,6 @@
 
 	.doc-pick:hover {
 		color: var(--color-text-primary);
-	}
-
-	.doc-pick-count {
-		line-height: 1;
 	}
 
 	.entry-empty {

@@ -4,26 +4,28 @@ use tauri::State;
 
 use crate::AppData;
 
-fn bind_params<'q>(
-    mut query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
-    params: &'q [Value],
-) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
-    for val in params {
-        query = match val {
-            Value::Null => query.bind(None::<String>),
-            Value::Bool(b) => query.bind(*b),
-            Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    query.bind(i)
-                } else {
-                    query.bind(n.as_f64().unwrap_or_default())
+/// Binds serde_json param list onto a sqlx query, saving your hemorrhaging mind instantly
+#[macro_export]
+macro_rules! bind_json {
+    ($query:expr, $params:expr) => {{
+        let mut q = $query;
+        for val in $params {
+            q = match val {
+                serde_json::Value::Null => q.bind(None::<String>),
+                serde_json::Value::Bool(b) => q.bind(*b),
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        q.bind(i)
+                    } else {
+                        q.bind(n.as_f64().unwrap_or_default())
+                    }
                 }
-            }
-            Value::String(s) => query.bind(s.as_str()),
-            other => query.bind(other.to_string()),
-        };
-    }
-    query
+                serde_json::Value::String(s) => q.bind(s.as_str()),
+                other => q.bind(other.to_string()),
+            };
+        }
+        q
+    }};
 }
 
 fn row_to_json(row: &sqlx::sqlite::SqliteRow) -> Result<Value, String> {
@@ -65,7 +67,7 @@ pub async fn sql_select(
     params: Vec<Value>,
 ) -> Result<Vec<Value>, String> {
     let q = sqlx::query(&query);
-    let q = bind_params(q, &params);
+    let q = bind_json!(q, &params);
     let rows = q.fetch_all(&app_data.db).await.map_err(|e| e.to_string())?;
     rows.iter().map(row_to_json).collect()
 }
@@ -77,7 +79,7 @@ pub async fn sql_execute(
     params: Vec<Value>,
 ) -> Result<Value, String> {
     let q = sqlx::query(&query);
-    let q = bind_params(q, &params);
+    let q = bind_json!(q, &params);
     let result = q.execute(&app_data.db).await.map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "rows_affected": result.rows_affected(),

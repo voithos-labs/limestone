@@ -14,8 +14,9 @@
 		folderLinkChain,
 		folderPath
 	} from '$lib/views/createDefaults';
-	import { searchDocuments } from '$lib/services/search';
 	import { select } from '$lib/services/db';
+	import { searchDocuments } from '$lib/services/search';
+	import type { SearchResult } from '$lib/types/SearchResult';
 	import {
 		listSources,
 		pickCreationSource,
@@ -68,12 +69,13 @@
 		try {
 			const q = query.trim();
 			let out: Row[];
+			let hits: Record<string, SearchResult> = {};
 			if (q) {
-				const hits = await searchDocuments(q);
-				const ids = hits
-					.filter((h) => h.kind === 'document')
-					.map((h) => h.id)
-					.slice(0, 100);
+				// map quick-search commands to list-UI-like shape
+				const results = await searchDocuments(query, view.searchScope({ face, scope }));
+				if (token !== loadToken) return;
+				const ids = results.map((r) => r.id);
+				hits = Object.fromEntries(results.map((r) => [r.id, r]));
 				if (ids.length === 0) {
 					out = [];
 				} else {
@@ -99,6 +101,7 @@
 			rowTags = tags;
 			previews = content.previews;
 			images = content.images;
+			searchHits = hits;
 			total = out.length;
 
 			if (!q && out.length === 100) {
@@ -205,6 +208,7 @@
 	const previewCache = new Map<string, Preview>();
 	let previews: Record<string, string> = $state({});
 	let images: Record<string, string> = $state({});
+	let searchHits: Record<string, SearchResult> = $state({});
 
 	function stripMd(s: string): string {
 		return s
@@ -440,6 +444,8 @@
 							tags={tagSlugsFor(row.id)}
 							preview={previews[row.id] ?? ''}
 							image={images[row.id] ?? ''}
+							matchIndices={searchHits[row.id]?.match_indices ?? []}
+							snippet={searchHits[row.id]?.snippet ?? ''}
 							onOpen={() => onOpenRow?.(row.id)}
 						/>
 					{/if}

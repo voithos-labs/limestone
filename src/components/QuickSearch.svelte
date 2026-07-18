@@ -13,7 +13,7 @@
 	let {
 		editor,
 		tab,
-		placeholder = 'quick-search...',
+		placeholder = 'quick search...',
 		autofocus = true
 	}: {
 		editor: EditorState;
@@ -438,8 +438,7 @@
 	}
 
 	:global(.result mark) {
-		background: rgba(255, 255, 0, 0.2);
-		color: var(--color-accent);
-		padding: 0;
+		background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+		color: inherit;
 	}
 </style>

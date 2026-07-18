@@ -11,17 +11,5 @@
 	},
 	"indexing": {
 		"frontmatter_read_buffer_size": 1024
-	},
-	"search": {
-		"max_results": 15,
-		"prefix_candidate_pool": 50,
-		"fuzzy_threshold": 2,
-		"recency_weight": 0.5,
-		"recency_multiplier": 100.0,
-		"recency_default_days": 365.0,
-		"group_prefix_min_chars": 3,
-		"group_max_results": 5,
-		"source_prefix_min_chars": 3,
-		"source_max_results": 5
 	}
 }

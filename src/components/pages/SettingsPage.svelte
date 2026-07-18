@@ -520,28 +520,28 @@
 
 	<div class="settings-scroll">
 		<div class="settings-content" bind:this={contentEl}>
-		<div class="settings-inner">
-		{#if isSearching}
-			<p class="results-count">
-				{resultCount}
-				{resultCount === 1 ? 'setting' : 'settings'} found
-			</p>
-			<div class="settings-list">
-				{#if themeMatches}
-					{@render themeItem(appearanceCategory)}
-					{@render accentItem(appearanceCategory)}
-				{/if}
-				{#each searchResults as { category, def } (def.key)}
-					{@render settingItem(def, category)}
-				{/each}
-				{#if resultCount === 0}
-					<p class="empty">No matching settings</p>
-				{/if}
-			</div>
-		{:else if activeSection === GENERAL}
-			<div class="settings-list">
-				<!-- prettier-ignore -->
-				<div class="general-banner">
+			<div class="settings-inner">
+				{#if isSearching}
+					<p class="results-count">
+						{resultCount}
+						{resultCount === 1 ? 'setting' : 'settings'} found
+					</p>
+					<div class="settings-list">
+						{#if themeMatches}
+							{@render themeItem(appearanceCategory)}
+							{@render accentItem(appearanceCategory)}
+						{/if}
+						{#each searchResults as { category, def } (def.key)}
+							{@render settingItem(def, category)}
+						{/each}
+						{#if resultCount === 0}
+							<p class="empty">No matching settings</p>
+						{/if}
+					</div>
+				{:else if activeSection === GENERAL}
+					<div class="settings-list">
+						<!-- prettier-ignore -->
+						<div class="general-banner">
 <pre class="ascii-logo">              ,,
 `7MMF'        db                                      mm
   MM                                                  MM
@@ -551,97 +551,97 @@
   MM     ,M   MM    MM    MM    MM YM.    , L.   I8   MM  YA.   ,A9 MM    MM YM.    ,
 .JMMmmmmMMM .JMML..JMML  JMML  JMML.`Mbmmd' M9mmmP'   `Mbmo`Ybmd9'.JMML  JMML.`Mbmmd'</pre>
 				</div>
-				<div class="info-list">
-					<div class="info-row">
-						<div class="item-info">
-							<span class="item-label">Device key</span>
-							<p class="item-desc">Local identifier for this device.</p>
-						</div>
-						<div class="info-value">
-							<code class="info-mono">{appInfo?.device_key ?? '…'}</code>
-							<button class="copy-btn" title="Copy device key" onclick={copyDeviceKey}>
-								{#if keyCopied}
-									<Check size={13} />
-								{:else}
-									<Copy size={13} />
-								{/if}
-							</button>
-						</div>
-					</div>
-					<div class="info-row">
-						<div class="item-info">
-							<span class="item-label">Version</span>
-							<p class="item-desc">Installed application version.</p>
-						</div>
-						<div class="info-value">
-							<code class="info-mono">{appInfo?.version ?? '…'}</code>
-						</div>
-					</div>
-				</div>
-
-				<button class="reset-settings-btn" onclick={() => (resetDialogOpen = true)}>
-					<RotateCcw size={14} />
-					Reset all settings to defaults
-				</button>
-			</div>
-		{:else if activeSection === SOURCES}
-			{#if sourceError}
-				<p class="source-error">{sourceError}</p>
-			{/if}
-			<div class="sources-list">
-				{#each sources as s (s.id)}
-					<div class="source-card">
-						<div class="src-main">
-							<div class="src-title-row">
-								<Folders size={13} />
-								<span class="src-title">{sourceName(s)}</span>
-								{#if s.id === defaultSourceId}
-									<span class="src-default">Default</span>
-								{/if}
+						<div class="info-list">
+							<div class="info-row">
+								<div class="item-info">
+									<span class="item-label">Device key</span>
+									<p class="item-desc">Local identifier for this device.</p>
+								</div>
+								<div class="info-value">
+									<code class="info-mono">{appInfo?.device_key ?? '…'}</code>
+									<button class="copy-btn" title="Copy device key" onclick={copyDeviceKey}>
+										{#if keyCopied}
+											<Check size={13} />
+										{:else}
+											<Copy size={13} />
+										{/if}
+									</button>
+								</div>
 							</div>
-							<span class="src-path" title={s.path}>{s.path}</span>
+							<div class="info-row">
+								<div class="item-info">
+									<span class="item-label">Version</span>
+									<p class="item-desc">Installed application version.</p>
+								</div>
+								<div class="info-value">
+									<code class="info-mono">{appInfo?.version ?? '…'}</code>
+								</div>
+							</div>
 						</div>
-						<div class="src-right">
-							<span class="src-count">
-								{#if sourceCounts[s.id] === undefined}
-									…
-								{:else}
-									{sourceCounts[s.id]} {sourceCounts[s.id] === 1 ? 'doc' : 'docs'}
-								{/if}
-							</span>
-							{#if confirmingRemoveId === s.id}
-								<span class="confirm-text">Remove?</span>
-								<button
-									class="src-btn"
-									title="Cancel"
-									onclick={() => (confirmingRemoveId = null)}
-								>
-									<X size={14} />
-								</button>
-								<button class="src-btn confirm" onclick={() => confirmRemove(s)}>Remove</button>
-							{:else}
-								<button class="src-btn" title="More" onclick={(e) => openSourceMenu(s, e)}>
-									<EllipsisVertical size={14} />
-								</button>
-							{/if}
-						</div>
+
+						<button class="reset-settings-btn" onclick={() => (resetDialogOpen = true)}>
+							<RotateCcw size={14} />
+							Reset all settings to defaults
+						</button>
 					</div>
-				{:else}
-					<p class="sources-empty">No sources yet</p>
-				{/each}
-			</div>
-		{:else if activeCategory}
-			<div class="settings-list">
-				{#if activeCategory.id === 'appearance'}
-					{@render themeItem(null)}
-					{@render accentItem(null)}
+				{:else if activeSection === SOURCES}
+					{#if sourceError}
+						<p class="source-error">{sourceError}</p>
+					{/if}
+					<div class="sources-list">
+						{#each sources as s (s.id)}
+							<div class="source-card">
+								<div class="src-main">
+									<div class="src-title-row">
+										<Folders size={13} />
+										<span class="src-title">{sourceName(s)}</span>
+										{#if s.id === defaultSourceId}
+											<span class="src-default">Default</span>
+										{/if}
+									</div>
+									<span class="src-path" title={s.path}>{s.path}</span>
+								</div>
+								<div class="src-right">
+									<span class="src-count">
+										{#if sourceCounts[s.id] === undefined}
+											…
+										{:else}
+											{sourceCounts[s.id]} {sourceCounts[s.id] === 1 ? 'doc' : 'docs'}
+										{/if}
+									</span>
+									{#if confirmingRemoveId === s.id}
+										<span class="confirm-text">Remove?</span>
+										<button
+											class="src-btn"
+											title="Cancel"
+											onclick={() => (confirmingRemoveId = null)}
+										>
+											<X size={14} />
+										</button>
+										<button class="src-btn confirm" onclick={() => confirmRemove(s)}>Remove</button>
+									{:else}
+										<button class="src-btn" title="More" onclick={(e) => openSourceMenu(s, e)}>
+											<EllipsisVertical size={14} />
+										</button>
+									{/if}
+								</div>
+							</div>
+						{:else}
+							<p class="sources-empty">No sources yet</p>
+						{/each}
+					</div>
+				{:else if activeCategory}
+					<div class="settings-list">
+						{#if activeCategory.id === 'appearance'}
+							{@render themeItem(null)}
+							{@render accentItem(null)}
+						{/if}
+						{#each activeCategory.settings as def (def.key)}
+							{@render settingItem(def, null)}
+						{/each}
+					</div>
 				{/if}
-				{#each activeCategory.settings as def (def.key)}
-					{@render settingItem(def, null)}
-				{/each}
 			</div>
-		{/if}
-		</div>
 		</div>
 		<ScrollThumb scroller={contentEl} top={12} />
 	</div>

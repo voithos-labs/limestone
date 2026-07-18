@@ -3,7 +3,6 @@ pub mod bulk_ops;
 pub mod frontmatter;
 pub mod fs;
 mod fts_index;
-pub mod search;
 mod settings;
 mod source;
 mod user;
