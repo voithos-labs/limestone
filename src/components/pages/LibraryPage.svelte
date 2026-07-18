@@ -62,19 +62,8 @@
 		)
 	);
 
-	// Counted after the cards are on screen; a card without its count yet just has a gap
-	let counts: Record<string, number> = $state({});
-
-	$effect(() => {
-		for (const v of visibleViews) {
-			if (counts[v.id] !== undefined) continue;
-			v.countMembers()
-				.then((n) => (counts[v.id] = n))
-				.catch(() => {});
-		}
-	});
-
 	// Remounts the list face so a reconcile (files changed on disk) redraws the cards
+	// todo: this may need to be reworked when file watching is configured
 	let docsKey = $state(0);
 
 	async function loadRecents() {
@@ -86,7 +75,6 @@
 		savedViews = saved.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
 		sourceViews = sources.map((s) => ({ view: View.createFromSource(s), source: s }));
 		defaultSourceId = defId;
-		counts = {};
 		loaded = true;
 	}
 
@@ -234,9 +222,6 @@
 								<Box size={14} />
 							{/if}
 							<span class="vc-title">{v.slug}</span>
-							{#if counts[v.id] !== undefined}
-								<span class="vc-count">{counts[v.id]}</span>
-							{/if}
 						</button>
 					{/each}
 					{#if loaded}
@@ -319,7 +304,7 @@
 	.lib-inner {
 		max-width: var(--page-max-width, 900px);
 		margin: 0 auto;
-		padding: 72px 24px 64px;
+		padding: 40px 24px 64px;
 	}
 
 	.lib-hero {
@@ -357,11 +342,11 @@
 	}
 
 	.lib-section {
-		margin-top: 30px;
+		margin-top: 20px;
 	}
 
 	.sec-title {
-		margin: 0 0 10px;
+		margin: 0 0 6px;
 		font-family: var(--font-ui);
 		font-size: 11px;
 		font-weight: 600;
@@ -372,7 +357,7 @@
 
 	/* ── Views (chip-ish cards, styled like the note cards below) ── */
 	/* Cards take only the width their content needs, up to a cap: a short view name
-	   shouldn't be stretched across a column. */
+       shouldn't be stretched across a column. */
 	.views-grid {
 		display: flex;
 		flex-wrap: wrap;
@@ -423,15 +408,8 @@
 		font-weight: 500;
 	}
 
-	.vc-count {
-		flex-shrink: 0;
-		font-size: 11px;
-		color: var(--color-ui-dulled);
-		font-variant-numeric: tabular-nums;
-	}
-
 	/* A card that carries its own options button: the kebab can't nest inside the
-	   card's <button>, so it sits over it. */
+       card's <button>, so it sits over it. */
 	.card-wrap {
 		position: relative;
 		min-width: 0;
@@ -474,7 +452,7 @@
 	}
 
 	/* The list face carries its own 24px side margin (it sits flush in a view page),
-	   so pull it back out to line the cards up with the views grid above. */
+       so pull it back out to line the cards up with the views grid above. */
 	.docs-face {
 		margin: 0 -24px;
 	}

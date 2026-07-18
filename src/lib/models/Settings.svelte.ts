@@ -98,6 +98,15 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 	}
 ];
 
+export interface AppInfo {
+	device_key: string;
+	version: string;
+}
+
+export async function getAppInfo(): Promise<AppInfo> {
+	return invoke<AppInfo>('get_app_info');
+}
+
 export async function getSetting<T extends SettingValue>(key: string): Promise<T | null> {
 	return invoke<T | null>('get_setting', { key });
 }

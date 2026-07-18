@@ -957,6 +957,16 @@ class View {
 		return select<MemberRow>(sql, params);
 	}
 
+	// This face's scope (view filter + face filter + any extra scope) as compiled SQL
+	searchScope(opts?: { face?: ViewFace; scope?: FilterNode | null }): {
+		sql: string;
+		params: unknown[];
+	} {
+		const filterNode = memberFilter(this.filter, opts?.face, opts?.scope);
+		const compiled = compileFilter(filterNode, this.fields, this.slug);
+		return { sql: compiled.sql, params: [...compiled.params] };
+	}
+
 	// total matching members
 	async countMembers(opts?: { face?: ViewFace; scope?: FilterNode | null }): Promise<number> {
 		const filterNode = memberFilter(this.filter, opts?.face, opts?.scope);

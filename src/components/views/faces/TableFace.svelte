@@ -40,8 +40,8 @@
 		withStatefulValue
 	} from '$lib/views/fieldValue';
 	import { toWallClock } from '$lib/views/dateFormat';
-	import { searchDocuments } from '$lib/services/search';
 	import { select } from '$lib/services/db';
+	import { searchDocuments } from '$lib/services/search';
 	import Menu from '../Menu.svelte';
 	import IconAddColumnRight from '~icons/material-symbols/add-column-right';
 	import {
@@ -258,22 +258,20 @@
 		try {
 			const q = query.trim();
 			if (q) {
-				const hits = await searchDocuments(q);
-				const idsInOrder = hits
-					.filter((r) => r.kind === 'document')
-					.map((r) => r.id)
-					.slice(0, 100);
-				if (idsInOrder.length === 0) {
+				const results = await searchDocuments(query, view.searchScope({ face, scope }));
+				if (token !== countToken) return;
+				const ids = results.map((r) => r.id);
+				if (ids.length === 0) {
 					rows = [];
 				} else {
 					const members = (await view.getMembers({
 						face,
 						scope,
-						ids_in: idsInOrder,
-						limit: idsInOrder.length
+						ids_in: ids,
+						limit: ids.length
 					})) as Row[];
-					const byId = new Map(members.map((r) => [r.id, r]));
-					rows = idsInOrder.map((id) => byId.get(id)).filter((r): r is Row => !!r);
+					const byId = new Map(members.map((m) => [m.id, m]));
+					rows = ids.map((id) => byId.get(id)).filter((r): r is Row => !!r);
 				}
 				perfQuery = performance.now();
 				total = rows.length;

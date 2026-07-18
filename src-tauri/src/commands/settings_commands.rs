@@ -1,7 +1,22 @@
 use crate::services::{dot_get, JsonSettingsStore};
 use crate::AppData;
+use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, State};
+
+#[derive(Serialize)]
+pub struct AppInfo {
+    pub device_key: String,
+    pub version: String,
+}
+
+#[tauri::command]
+pub fn get_app_info(app: AppHandle, app_data: State<AppData>) -> AppInfo {
+    AppInfo {
+        device_key: app_data.user.device_key.to_string(),
+        version: app.package_info().version.to_string(),
+    }
+}
 
 #[tauri::command]
 pub fn get_setting(app_data: State<AppData>, key: String) -> Option<Value> {

@@ -2236,7 +2236,6 @@ dependencies = [
  "chrono",
  "globset",
  "jwalk",
- "nucleo-matcher",
  "rayon",
  "serde",
  "serde_json",
@@ -2397,16 +2396,6 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
-
-[[package]]
-name = "nucleo-matcher"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf33f538733d1a5a3494b836ba913207f14d9d4a1d3cd67030c5061bdd2cac85"
-dependencies = [
- "memchr",
- "unicode-segmentation",
-]
 
 [[package]]
 name = "num-bigint-dig"
