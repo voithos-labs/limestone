@@ -16,17 +16,10 @@ Format
 npm run format
 ```
 
-## Structure
+## Assorted diagrams of little or no meaning
 
-_slabs = views_ ; dev name
 <img width="5280" height="3584" alt="image" src="https://github.com/user-attachments/assets/db91b6b1-b27a-41fc-9596-e909cd96e91f" />
-
-## Working idea for history and cloud sync
-
 <img width="3456" height="2816" alt="image" src="https://github.com/user-attachments/assets/03eeed74-87c8-472c-87d2-ed9c927202bd" />
-
-## Dataflow _outdated_
-
 <img width="6336" height="3360" alt="image" src="https://github.com/user-attachments/assets/5e0326b0-af55-4c45-bb18-5b82fc8452d0" />
 
 ## Tools
