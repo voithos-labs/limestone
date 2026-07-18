@@ -1,14 +1,11 @@
-import { invoke } from '@tauri-apps/api/core';
 import { select } from '$lib/services/db';
 import type { SearchResult } from '$lib/types/SearchResult';
 
-// Ranking constants, tuned by bench (d070d231): title fuzzy quality blended with
-// bm25-saturated body relevance, boosted by recency.
+// Ranking constants (fml I spent 4 hours playing with this shiot)
 const MAX_RESULTS = 100;
-const FUZZY_THRESHOLD = 2;
+const TITLE_POOL = 200;
 const FTS_MIN_CHARS = 5;
 const FTS_CANDIDATE_POOL = 25;
-const HYBRID_QUALITY_GATE = 0.5;
 const BM25_SATURATION = 5.0;
 const BODY_QUALITY_CAP = 0.9;
 const PHRASE_BONUS = 0.15;
@@ -22,22 +19,10 @@ const CONTAINER_MAX_RESULTS = 5;
 export const SNIPPET_MARK_START = String.fromCharCode(1);
 export const SNIPPET_MARK_END = String.fromCharCode(2);
 
-// The view's scope, as the compiled filter predicate `getMembers` uses (aliased on
-// `documents AS d`). When given, results are restricted to and ranked within that scope,
-// documents only; omit it for a library-wide quick search that includes containers.
+// compiled sql filter for tyhe cool and the hip
 export interface SearchScope {
 	sql: string;
 	params: unknown[];
-}
-
-interface TitleMatch {
-	id: string;
-	title: string;
-	rel_path: string | null;
-	source_id: string | null;
-	accessed_at: number | null;
-	quality: number;
-	match_indices: number[];
 }
 
 interface DocRow {
@@ -55,12 +40,7 @@ interface FtsRow extends DocRow {
 
 export async function searchDocuments(query: string, scope?: SearchScope): Promise<SearchResult[]> {
 	const q = query.trim();
-	const docs =
-		q.length === 0
-			? await recents(scope)
-			: q.length <= FUZZY_THRESHOLD
-				? await prefix(q, scope)
-				: await hybrid(query, q, scope);
+	const docs = q.length === 0 ? await recents(scope) : await hybrid(query, q, scope);
 	if (scope) return docs;
 
 	const containers = await containerMatches(q);
@@ -126,14 +106,35 @@ async function recents(scope?: SearchScope): Promise<SearchResult[]> {
 	return merged.slice(0, MAX_RESULTS).map((m) => m.result);
 }
 
-async function prefix(q: string, scope?: SearchScope): Promise<SearchResult[]> {
+// instr matches first (e.g. q:"lo" => a:"lobster")
+async function titleMatches(q: string, scope?: SearchScope): Promise<DocRow[]> {
 	const s = scoped(scope);
-	const docs = await select<DocRow>(
+	const needle = q.toLowerCase();
+	return select<DocRow>(
 		`SELECT id, title, rel_path, source_id, accessed_at FROM documents d
-		 WHERE d.deleted_at IS NULL AND instr(lower(d.title), ?) > 0${s.and} LIMIT ?`,
-		[q.toLowerCase(), ...s.params, MAX_RESULTS]
+		 WHERE d.deleted_at IS NULL AND instr(lower(d.title), ?) > 0${s.and}
+		 ORDER BY instr(lower(d.title), ?) ASC, length(d.title) ASC LIMIT ?`,
+		[needle, ...s.params, needle, TITLE_POOL]
 	);
-	return docs.map(docResult);
+}
+
+// substring match rank groups
+function titleQuality(title: string, query: string): { quality: number; indices: number[] } | null {
+	const chars = [...title];
+	const lower = chars.map((c) => c.toLowerCase());
+	const needle = [...query.toLowerCase()];
+	let start = -1;
+	outer: for (let i = 0; i + needle.length <= lower.length; i++) {
+		for (let j = 0; j < needle.length; j++) {
+			if (lower[i + j] !== needle[j]) continue outer;
+		}
+		start = i;
+		break;
+	}
+	if (start < 0) return null;
+	const wordStart = start === 0 || !/[\p{L}\p{N}]/u.test(chars[start - 1]);
+	const quality = needle.length === chars.length ? 1 : start === 0 ? 0.9 : wordStart ? 0.8 : 0.6;
+	return { quality, indices: Array.from({ length: needle.length }, (_, i) => start + i) };
 }
 
 function ftsMatchQuery(query: string): string | null {
@@ -185,7 +186,6 @@ function tidySnippet(raw: string): string {
 interface Candidate {
 	result: SearchResult;
 	quality: number;
-	strong: boolean;
 	accessedAt: number | null;
 }
 
@@ -195,23 +195,19 @@ async function hybrid(
 	scope?: SearchScope
 ): Promise<SearchResult[]> {
 	const runFts = trimmed.length >= FTS_MIN_CHARS;
-	const [titleMatches, matchRows, phraseRows] = await Promise.all([
-		invoke<TitleMatch[]>('fuzzy_match_titles', { query: trimmed, scope: scope ?? null }),
+	const [titleRows, matchRows, phraseRows] = await Promise.all([
+		titleMatches(trimmed, scope),
 		runFts ? ftsPass(ftsMatchQuery(query), scope) : [],
 		runFts ? ftsPass(ftsPhraseQuery(query), scope) : []
 	]);
 
 	const candidates = new Map<string, Candidate>();
-	for (const m of titleMatches) {
-		if (m.quality <= 0) continue;
-		const result = docResult(m);
-		result.match_indices = m.match_indices;
-		candidates.set(m.id, {
-			result,
-			quality: m.quality,
-			strong: m.quality >= HYBRID_QUALITY_GATE,
-			accessedAt: m.accessed_at
-		});
+	for (const row of titleRows) {
+		const m = titleQuality(row.title, trimmed);
+		if (!m) continue;
+		const result = docResult(row);
+		result.match_indices = m.indices;
+		candidates.set(row.id, { result, quality: m.quality, accessedAt: row.accessed_at });
 	}
 
 	const passes: [FtsRow[], number, number][] = [
@@ -224,7 +220,6 @@ async function hybrid(
 			const base = (BODY_QUALITY_CAP * relevance) / (relevance + BM25_SATURATION);
 			const existing = candidates.get(row.id);
 			if (existing) {
-				existing.strong = true;
 				const quality = Math.min(Math.max(existing.quality, base) + bonus, cap);
 				if (quality > existing.quality) {
 					existing.quality = quality;
@@ -236,7 +231,6 @@ async function hybrid(
 				candidates.set(row.id, {
 					result,
 					quality: Math.min(base + bonus, cap),
-					strong: true,
 					accessedAt: row.accessed_at
 				});
 			}
@@ -244,26 +238,18 @@ async function hybrid(
 	}
 
 	const now = Date.now();
-	const strong: Candidate[] = [];
-	const weak: Candidate[] = [];
-	for (const c of candidates.values()) {
+	const ranked = [...candidates.values()];
+	for (const c of ranked) {
 		const days =
 			c.accessedAt != null ? Math.max(now - c.accessedAt, 0) / 86_400_000 : RECENCY_DEFAULT_DAYS;
 		const boost = 1 + RECENCY_WEIGHT / (1 + days / RECENCY_SCALE_DAYS);
 		c.result.score = c.quality * boost;
-		(c.strong ? strong : weak).push(c);
 	}
+	ranked.sort(
+		(a, b) => b.result.score - a.result.score || a.result.title.localeCompare(b.result.title)
+	);
 
-	const byScore = (a: Candidate, b: Candidate) =>
-		b.result.score - a.result.score || a.result.title.localeCompare(b.result.title);
-	strong.sort(byScore);
-	weak.sort(byScore);
-
-	return [
-		...strong.slice(0, MAX_RESULTS),
-		...weak.slice(0, Math.max(MAX_RESULTS - strong.length, 0))
-	].map((c) => {
-		// FTS-matched cards preview the body snippet; suppress the title highlight there.
+	return ranked.slice(0, MAX_RESULTS).map((c) => {
 		if (c.result.snippet) c.result.match_indices = [];
 		return c.result;
 	});
