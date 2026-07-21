@@ -15,7 +15,6 @@
 		Folder,
 		Folders,
 		X,
-		GripVertical,
 		Plus,
 		TextSearch,
 		TextAlignStart,
@@ -218,7 +217,10 @@
 <nav class="nav-bar" onmousedown={handleDrag}>
 	<!-- Drag handle -->
 	<div class="drag-handle">
-		<GripVertical size={16} />
+		<svg width="15" height="15" viewBox="0 0 588 588" xmlns="http://www.w3.org/2000/svg">
+			<path d="M196 0 L196 588 L0 588 L196 392 L0 392 L0 196 Z" fill="#C7BDC2" />
+			<path d="M196 0 L392 0 L392 196 L196 392 L588 392 L392 588 L196 588 Z" fill="white" />
+		</svg>
 	</div>
 
 	<!-- Pinned icon tabs -->
@@ -348,6 +350,7 @@
 		justify-content: center;
 		width: 24px;
 		height: 32px;
+		padding-left: 4px;
 		margin-bottom: 4px;
 		flex-shrink: 0;
 		color: var(--color-ui-muted);
