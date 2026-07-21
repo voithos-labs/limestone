@@ -1,6 +1,6 @@
 /**
  * todo:
- * - Tab interface would be a nice wrapper so we can put more things in tabs
+ * - [x] Tab interface would be a nice wrapper so we can put more things in tabs
  * >> this would also allow mapping to components
  *
  * okay just thinking: you open the app and your editor state is restored from your last session,

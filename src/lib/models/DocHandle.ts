@@ -16,7 +16,7 @@ import yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '$lib/services/db';
-import { defaultNoteDir, getSource, type Source } from './Source';
+import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
 import Group, { type GroupRow } from './Group';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
@@ -209,6 +209,12 @@ class DocHandle {
 			await doc.saveContent(opts.body ?? '');
 		}
 		return doc;
+	}
+
+	static async createDraft(): Promise<DocHandle | null> {
+		const source = await creationSource();
+		if (!source) return null;
+		return DocHandle.createFromTitle(source, { title: 'Untitled', draft: true });
 	}
 
 	// ── Groups ───────────────────────────────────────────────────────────────────────
