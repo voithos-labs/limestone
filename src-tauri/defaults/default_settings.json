@@ -11,5 +11,6 @@
 	},
 	"indexing": {
 		"frontmatter_read_buffer_size": 1024
-	}
+	},
+	"shortcuts": {}
 }

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
-	import { creationSource } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import View from '$lib/models/View.svelte';
 	import BoxPlus from '../BoxPlus.svelte';
@@ -15,12 +14,11 @@
 
 	async function createNewDocument() {
 		actionError = '';
-		const source = await creationSource();
-		if (!source) {
+		const doc = await DocHandle.createDraft();
+		if (!doc) {
 			actionError = 'Add a source before creating a document';
 			return;
 		}
-		const doc = await DocHandle.createFromTitle(source, { title: 'Untitled', draft: true });
 		editor.replaceTab(tab.id, TabState.forDoc(doc));
 	}
 

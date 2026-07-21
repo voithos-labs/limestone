@@ -12,6 +12,7 @@
 	import MarkdownEditor from '../components/editor/MarkdownEditor.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
+	import { actionForKey, keyCapture } from '$lib/actions';
 
 	let session = $state<Session>();
 	let tab: TabState | undefined = $state();
@@ -64,6 +65,15 @@
 		};
 	});
 
+	function onKeydown(e: KeyboardEvent) {
+		if (!session || e.repeat || e.defaultPrevented || keyCapture.active) return;
+		const action = actionForKey(e, session.settings);
+		if (!action) return;
+		e.preventDefault();
+		e.stopPropagation();
+		void action.run(session);
+	}
+
 	// When nothing valid is focused (no tabs, or a stale focus), fall back to the library tab.
 	$effect(() => {
 		const ed = session?.editors[0];
@@ -76,6 +86,8 @@
 		if (!valid) ed.focusTab({ kind: 'search' });
 	});
 </script>
+
+<svelte:window onkeydowncapture={onKeydown} />
 
 {#if session}
 	{@const editor = session.editors[0]}

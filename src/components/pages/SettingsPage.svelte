@@ -5,6 +5,7 @@
 		getSetting,
 		setSetting,
 		SETTINGS_REGISTRY,
+		settingEquals,
 		type AppInfo,
 		type SettingCategory,
 		type SettingDef
@@ -27,7 +28,8 @@
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import type Session from '$lib/models/Session';
 	import type { ViewTab } from '$lib/models/Session';
-	import { onMount } from 'svelte';
+	import { actions, formatKey, keysFor, specFromEvent, keyCapture, type Action } from '$lib/actions';
+	import { onDestroy, onMount } from 'svelte';
 	import {
 		RotateCcw,
 		Search,
@@ -43,7 +45,8 @@
 		Trash2,
 		X,
 		Pencil,
-		Star
+		Star,
+		Keyboard
 	} from '@lucide/svelte';
 
 	let { viewTab, session }: { viewTab: ViewTab; session: Session } = $props();
@@ -51,8 +54,9 @@
 	const settings = $derived(session.settings);
 	const GENERAL = 'general';
 	const SOURCES = 'sources';
+	const SHORTCUTS = 'shortcuts';
 	const CUSTOM = 'custom';
-	const sectionIds = [GENERAL, ...SETTINGS_REGISTRY.map((c) => c.id), SOURCES];
+	const sectionIds = [GENERAL, ...SETTINGS_REGISTRY.map((c) => c.id), SHORTCUTS, SOURCES];
 
 	let activeSection = $state('');
 	let contentEl: HTMLElement | null = $state(null);
@@ -100,12 +104,14 @@
 			label: c.label,
 			icon: c.id === 'appearance' ? Palette : undefined
 		})),
+		{ value: SHORTCUTS, label: 'Shortcuts', icon: Keyboard },
 		{ value: SOURCES, label: 'Sources', icon: Folders }
 	];
 
 	function sectionLabel(id: string): string {
 		if (id === GENERAL) return 'General';
 		if (id === SOURCES) return 'Sources';
+		if (id === SHORTCUTS) return 'Shortcuts';
 		return SETTINGS_REGISTRY.find((c) => c.id === id)?.label ?? id;
 	}
 
@@ -293,7 +299,54 @@
 	function selectSection(section: string) {
 		activeSection = section;
 		searchQuery = '';
+		stopRecording();
 		saveTabState();
+	}
+
+	// ── Shortcuts tab ─────────────────────────────────────────────────────────
+	let recording = $state<{ id: string; index: number } | null>(null);
+
+	function startRecording(action: Action, index: number) {
+		recording = { id: action.id, index };
+		keyCapture.active = true;
+	}
+
+	function stopRecording() {
+		recording = null;
+		keyCapture.active = false;
+	}
+
+	function setActionKeys(action: Action, keys: string[]) {
+		const map = $state.snapshot(settings.get<Record<string, string[]>>('shortcuts')) ?? {};
+		if (settingEquals(keys, action.defaultKeys ?? [])) delete map[action.id];
+		else map[action.id] = keys;
+		settings.set('shortcuts', map);
+	}
+
+	function shortcutModified(action: Action): boolean {
+		const overrides = settings.get<Record<string, string[]>>('shortcuts');
+		return !!overrides && action.id in overrides;
+	}
+
+	onDestroy(stopRecording);
+
+	function onRecordKey(e: KeyboardEvent) {
+		if (!recording) return;
+		e.preventDefault();
+		e.stopPropagation();
+		if (e.key === 'Escape') return stopRecording();
+		const action = actions.find((a) => a.id === recording!.id);
+		if (!action) return stopRecording();
+		const keys = [...keysFor(action, settings)];
+		if (e.key === 'Backspace' || e.key === 'Delete') {
+			keys.splice(recording.index, 1);
+		} else {
+			const spec = specFromEvent(e);
+			if (!spec) return;
+			keys[recording.index] = spec;
+		}
+		setActionKeys(action, keys);
+		stopRecording();
 	}
 
 	function setValue(def: SettingDef, value: boolean | number) {
@@ -483,6 +536,8 @@
 	</div>
 {/snippet}
 
+<svelte:window onkeydowncapture={onRecordKey} />
+
 <div class="settings-page">
 	<div class="settings-header">
 		<button
@@ -583,6 +638,61 @@
 							<RotateCcw size={14} />
 							Reset all settings to defaults
 						</button>
+					</div>
+				{:else if activeSection === SHORTCUTS}
+					<div class="settings-list">
+						{#each actions as action (action.id)}
+							{@const keys = keysFor(action, settings)}
+							{@const modified = shortcutModified(action)}
+							<div class="setting-item" class:modified>
+								<div class="item-info">
+									<div class="item-head">
+										<span class="item-label">{action.title}</span>
+										{#if modified}
+											<button
+												class="item-reset"
+												title="Reset to default"
+												onclick={() => setActionKeys(action, action.defaultKeys ?? [])}
+											>
+												<RotateCcw size={12} />
+											</button>
+										{/if}
+									</div>
+								</div>
+								<div class="item-control">
+									<div class="key-list">
+										{#each keys as key, i (i)}
+											{#if recording?.id === action.id && recording.index === i}
+												<kbd class="key-chip recording">Press keys…</kbd>
+											{:else}
+												<button
+													class="key-chip"
+													title="Click, then press keys. Backspace removes."
+													onclick={() => startRecording(action, i)}
+												>
+													{formatKey(key)}
+												</button>
+											{/if}
+										{/each}
+										{#if recording?.id === action.id && recording.index === keys.length}
+											<kbd class="key-chip recording">Press keys…</kbd>
+										{:else if keys.length === 0}
+											<button class="key-chip unbound" onclick={() => startRecording(action, 0)}>
+												Not bound
+											</button>
+										{:else}
+											<button
+												class="key-add"
+												title="Add binding"
+												onclick={() => startRecording(action, keys.length)}
+											>
+												+
+											</button>
+										{/if}
+									</div>
+								</div>
+							</div>
+						{/each}
 					</div>
 				{:else if activeSection === SOURCES}
 					{#if sourceError}
@@ -1336,5 +1446,64 @@
 		padding: 12px 4px;
 		color: var(--color-ui-muted);
 		font-size: 13px;
+	}
+
+	/* ── Shortcuts tab ── */
+	.key-list {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.key-chip {
+		padding: 3px 8px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-ui);
+		background: var(--color-bg);
+		font-family: var(--font-editor, monospace);
+		font-size: 12px;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+	}
+
+	.key-chip:hover {
+		border-color: var(--focus-border);
+		color: var(--color-text-primary);
+	}
+
+	.key-chip.recording {
+		border-color: var(--color-accent);
+		color: var(--color-accent);
+		cursor: default;
+	}
+
+	.key-chip.unbound {
+		border-style: dashed;
+		color: var(--color-ui-muted);
+	}
+
+	.key-add {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		border: 1px dashed var(--color-border);
+		border-radius: var(--radius-ui);
+		background: transparent;
+		color: var(--color-ui-muted);
+		font-size: 13px;
+		cursor: pointer;
+		opacity: 0;
+	}
+
+	.setting-item:hover .key-add {
+		opacity: 1;
+	}
+
+	.key-add:hover {
+		border-color: var(--focus-border);
+		color: var(--color-text-primary);
 	}
 </style>
