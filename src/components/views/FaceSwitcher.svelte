@@ -22,16 +22,25 @@
 		ArrowDownUp,
 		CalendarClock,
 		ScanLine,
-		ScanBarcode
+		ScanBarcode,
+		Columns3Cog,
+		ChevronRight
 	} from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
-	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '$lib/models/View.svelte';
+	import type {
+		ViewFace,
+		ViewFaceType,
+		ViewField,
+		ViewFieldType,
+		FilterNode
+	} from '$lib/models/View.svelte';
 	import { VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import Menu from './Menu.svelte';
 	import FaceFilters from './FaceFilters.svelte';
+	import ViewManageMenu from './ViewManageMenu.svelte';
 
 	let { view, face }: { view: View; face: ViewFace } = $props();
 
@@ -58,6 +67,24 @@
 
 	let groupEl: HTMLButtonElement | null = $state(null);
 	let groupOpen = $state(false);
+
+	// ── Fields (columns shown in this face) ───────────────────────────────────
+	let fieldsEl: HTMLButtonElement | null = $state(null);
+	let fieldsOpen = $state(false);
+	const shownCount = $derived(face.display_field_ids.length);
+
+	function toggleColumn(id: string) {
+		if (face.display_field_ids.includes(id)) {
+			face.display_field_ids = face.display_field_ids.filter((fid: string) => fid !== id);
+		} else {
+			face.display_field_ids = [...face.display_field_ids, id];
+		}
+	}
+
+	function addField(type: ViewFieldType) {
+		const field = view.addFieldOfType(type);
+		face.display_field_ids = [...face.display_field_ids, field.id];
+	}
 
 	// ── List-face options (layout + sort) ────────────────────────────────────
 	let layoutEl: HTMLButtonElement | null = $state(null);
@@ -213,7 +240,7 @@
 
 	function onPopLeave() {
 		if (!closeOnSwapLeave) return;
-		if (groupOpen || addFaceOpen || renamingId || confirmFor) return;
+		if (groupOpen || addFaceOpen || renamingId || confirmFor || fieldsOpen) return;
 		if (layoutOpen || sortOpen || bodyOpen || dateFieldOpen || daySortOpen) return;
 		open = false;
 	}
@@ -312,6 +339,7 @@
 				renamingId = null;
 				groupOpen = false;
 				addFaceOpen = false;
+				fieldsOpen = false;
 				closeOnSwapLeave = false;
 			});
 			queueMicrotask(position);
@@ -467,16 +495,29 @@
 			/>
 		</div>
 
+		<div class="divider edge"></div>
+
+		<div class="face-scope">
+			<SwitchIcon size={13} strokeWidth={2} />
+			<span class="face-scope-name">{face.label}</span>
+			<span class="face-scope-tag">Face Options</span>
+		</div>
+
 		<div class="divider"></div>
 
-		<div class="pop-label">
-			Face Filters{#if faceFilterCount > 0}{' · '}{faceFilterCount}{/if}
-		</div>
-		<FaceFilters {view} {face} sourceId={sourceScopeId} />
+		<button
+			class="action group-toggle"
+			type="button"
+			bind:this={fieldsEl}
+			onclick={() => (fieldsOpen = !fieldsOpen)}
+		>
+			<Columns3Cog size={14} strokeWidth={1.75} />
+			<span>Fields</span>
+			<span class="trailing">{shownCount} shown</span>
+			<ChevronRight size={13} strokeWidth={2} />
+		</button>
 
 		{#if face.type === 'table'}
-			<div class="divider"></div>
-
 			<button
 				class="action group-toggle"
 				type="button"
@@ -486,11 +527,9 @@
 				<Layers size={14} strokeWidth={1.75} />
 				<span>Group by</span>
 				<span class="trailing">{groupLabel}</span>
-				<ChevronDown size={13} strokeWidth={2} />
+				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 		{:else if face.type === 'list'}
-			<div class="divider"></div>
-
 			<button
 				class="action group-toggle"
 				type="button"
@@ -504,7 +543,7 @@
 				{/if}
 				<span>Layout</span>
 				<span class="trailing">{layoutLabel}</span>
-				<ChevronDown size={13} strokeWidth={2} />
+				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 
 			<button
@@ -516,11 +555,9 @@
 				<ArrowDownUp size={14} strokeWidth={1.75} />
 				<span>Sort by</span>
 				<span class="trailing">{sortLabel}</span>
-				<ChevronDown size={13} strokeWidth={2} />
+				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 		{:else if face.type === 'journal'}
-			<div class="divider"></div>
-
 			<button
 				class="action group-toggle"
 				type="button"
@@ -530,7 +567,7 @@
 				<BodyIcon size={14} strokeWidth={1.75} />
 				<span>Day shows</span>
 				<span class="trailing">{bodyLabel}</span>
-				<ChevronDown size={13} strokeWidth={2} />
+				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 
 			<button
@@ -542,7 +579,7 @@
 				<CalendarClock size={14} strokeWidth={1.75} />
 				<span>Date field</span>
 				<span class="trailing">{dateFieldLabel}</span>
-				<ChevronDown size={13} strokeWidth={2} />
+				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 
 			{#if !face.body}
@@ -555,7 +592,7 @@
 					<ArrowDownUp size={14} strokeWidth={1.75} />
 					<span>Sort day by</span>
 					<span class="trailing">{daySortLabel}</span>
-					<ChevronDown size={13} strokeWidth={2} />
+					<ChevronRight size={13} strokeWidth={2} />
 				</button>
 			{/if}
 
@@ -569,7 +606,26 @@
 				<span class="trailing">{showActivity ? 'On' : 'Off'}</span>
 			</button>
 		{/if}
+
+		<div class="divider"></div>
+
+		<div class="pop-label">
+			Face Filters{#if faceFilterCount > 0}{' · '}{faceFilterCount}{/if}
+		</div>
+		<FaceFilters {view} {face} sourceId={sourceScopeId} />
 	</div>
+
+	<ViewManageMenu
+		bind:open={fieldsOpen}
+		anchor={fieldsEl}
+		fields={view.fields}
+		shownIds={face.display_field_ids}
+		canAddFields={!view.temporary}
+		placement="right"
+		onToggleVisible={toggleColumn}
+		onDelete={(id) => view.removeField(id)}
+		onAddField={addField}
+	/>
 
 	{#if face.type === 'table'}
 		<Menu
@@ -682,6 +738,41 @@
 		font-weight: 500;
 		color: var(--color-ui-muted);
 		padding: 4px 8px 6px;
+	}
+
+	.face-scope {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		margin: 7px 2px;
+		padding: 5px 9px;
+		background: var(--chip-bg);
+		border-radius: 6px;
+	}
+
+	.face-scope :global(svg) {
+		flex-shrink: 0;
+		color: var(--color-ui-muted);
+	}
+
+	.face-scope-name {
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		color: var(--color-ui-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.face-scope-tag {
+		margin-left: auto;
+		flex-shrink: 0;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--color-ui-dulled);
 	}
 
 	.list {
@@ -830,6 +921,11 @@
 		height: 1px;
 		margin: 4px 6px;
 		background: var(--color-border);
+	}
+
+	/* Edge-to-edge divider between major sections (bleeds past the pop's padding) */
+	.divider.edge {
+		margin: 6px -4px;
 	}
 
 	.action {

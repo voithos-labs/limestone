@@ -116,7 +116,7 @@
 		bind:open
 		{anchor}
 		{value}
-		mode={field.type === 'created_at' || field.type === 'updated_at' ? 'datetime' : 'date'}
+		mode="date"
 		clearable={field.type === 'date' || opValue !== ''}
 		onChange={(v) => onChange(v)}
 	/>
