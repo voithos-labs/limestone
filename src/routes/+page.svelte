@@ -106,6 +106,7 @@
 		if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
 		if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
 		if (inEditable(e)) return;
+		if (document.querySelector('[role="menu"], [role="listbox"], [role="dialog"], .overlay')) return;
 		const scroller = activeScroller();
 		if (!scroller) return;
 		e.preventDefault();

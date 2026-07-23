@@ -284,6 +284,23 @@
 		} else viewMonth++;
 	}
 
+	let cursor: { y: number; m: number; d: number } | null = $state(null);
+
+	function defaultCursor(): { y: number; m: number; d: number } {
+		if (hasSelection) return { y: selY!, m: selM!, d: selD! };
+		const n = new Date(viewYear, viewMonth, 1);
+		return { y: n.getFullYear(), m: n.getMonth(), d: 1 };
+	}
+
+	function moveCursor(days: number, months: number) {
+		const c = cursor ?? defaultCursor();
+		const clampD = months !== 0 ? Math.min(c.d, new Date(c.y, c.m + months + 1, 0).getDate()) : c.d;
+		const dt = new Date(c.y, c.m + months, clampD + days);
+		cursor = { y: dt.getFullYear(), m: dt.getMonth(), d: dt.getDate() };
+		viewYear = cursor.y;
+		viewMonth = cursor.m;
+	}
+
 	function compose(): string | null {
 		if (selY === null || selM === null || selD === null) return null;
 		const date = key(selY, selM, selD);
@@ -377,6 +394,7 @@
 				// default to the locale's 12/24h preference
 				meridiem = prefers24h() ? '24' : hh >= 12 ? 'PM' : 'AM';
 				textValue = selectionText();
+				cursor = null;
 			});
 			requestAnimationFrame(() => {
 				position();
@@ -455,10 +473,19 @@
 		// While typing in the text field, leave arrow keys to the caret
 		if (textFocused) return;
 		if (e.key === 'ArrowLeft') {
-			prevMonth();
+			moveCursor(0, -1);
 			e.preventDefault();
 		} else if (e.key === 'ArrowRight') {
-			nextMonth();
+			moveCursor(0, 1);
+			e.preventDefault();
+		} else if (e.key === 'ArrowUp') {
+			moveCursor(-7, 0);
+			e.preventDefault();
+		} else if (e.key === 'ArrowDown') {
+			moveCursor(7, 0);
+			e.preventDefault();
+		} else if (e.key === 'Enter' && cursor) {
+			pickDay(cursor);
 			e.preventDefault();
 		}
 	}
@@ -517,12 +544,14 @@
 			{#each cells as c (c.y + '-' + c.m + '-' + c.d)}
 				{@const k = key(c.y, c.m, c.d)}
 				{@const isSel = hasSelection && selY === c.y && selM === c.m && selD === c.d}
+				{@const isCur = !!cursor && cursor.y === c.y && cursor.m === c.m && cursor.d === c.d}
 				<button
 					type="button"
 					class="day"
 					class:outside={c.outside}
 					class:today={k === todayKey}
 					class:selected={isSel}
+					class:cursor={isCur}
 					onclick={() => pickDay(c)}>{c.d}</button
 				>
 			{/each}
@@ -710,6 +739,10 @@
 	.day.selected:hover {
 		background: var(--color-accent);
 		color: var(--color-accent-contrast);
+	}
+
+	.day.cursor:not(.selected) {
+		background: var(--chip-bg-hover);
 	}
 
 	.time-row {

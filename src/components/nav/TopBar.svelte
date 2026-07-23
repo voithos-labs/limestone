@@ -229,7 +229,7 @@
 		class:active={editor.isTabFocused(settingsTab)}
 		onclick={() => editor.focusTab(settingsTab)}
 		role="button"
-		tabindex="0"
+		tabindex="-1"
 	>
 		<Settings size={16} />
 	</div>
@@ -238,7 +238,7 @@
 		class:active={editor.isTabFocused(searchTab)}
 		onclick={() => editor.focusTab(searchTab)}
 		role="button"
-		tabindex="0"
+		tabindex="-1"
 	>
 		<Library size={16} />
 	</div>
@@ -278,7 +278,7 @@
 				onlostpointercapture={onPointerUp}
 				bind:this={tabEls[i]}
 				role="button"
-				tabindex="0"
+				tabindex="-1"
 			>
 				{#if d.content.type === 'view'}
 					{#if d.content.view.emoji}
@@ -298,6 +298,7 @@
 					<button
 						class="close-btn"
 						title="Close tab"
+						tabindex="-1"
 						onclick={(e) => {
 							e.stopPropagation();
 							editor.closeTab(d.id);
@@ -308,24 +309,25 @@
 				</span>
 			</div>
 		{/each}
-		<button class="new-tab-btn" title="New tab" onclick={() => editor.openNewTab()}>
+		<button class="new-tab-btn" title="New tab" tabindex="-1" onclick={() => editor.openNewTab()}>
 			<Plus size={15} />
 		</button>
 	</div>
 
 	<!-- Window controls -->
 	<div class="window-controls">
-		<button class="caption-btn" title="Minimize" onclick={minimize}>
+		<button class="caption-btn" title="Minimize" tabindex="-1" onclick={minimize}>
 			<span class="caption-icon">&#xE921;</span>
 		</button>
 		<button
 			class="caption-btn"
 			title={isMaximized ? 'Restore' : 'Maximize'}
+			tabindex="-1"
 			onclick={toggleMaximize}
 		>
 			<span class="caption-icon">{isMaximized ? '\uE923' : '\uE922'}</span>
 		</button>
-		<button class="caption-btn close" title="Close" onclick={close}>
+		<button class="caption-btn close" title="Close" tabindex="-1" onclick={close}>
 			<span class="caption-icon">&#xE8BB;</span>
 		</button>
 	</div>
