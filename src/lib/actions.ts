@@ -85,8 +85,7 @@ const KEY_SYMBOLS: Record<string, string> = {
 	space: 'Space',
 	escape: 'Esc',
 	backspace: '⌫',
-	delete: 'Del',
-	tab: '⇥'
+	delete: 'Del'
 };
 
 export function keyTokens(spec: string): string[] {
@@ -107,6 +106,38 @@ export const actions: Action[] = [
 		run: (session) => session.editors[0].openNewTab()
 	},
 	{
+		id: 'tab.next',
+		title: 'Next tab',
+		category: 'tabs',
+		defaultKeys: ['ctrl+tab', 'mod+alt+arrowright', 'ctrl+.'],
+		run: (session) => session.editors[0].focusAdjacentTab(1)
+	},
+	{
+		id: 'tab.prev',
+		title: 'Previous tab',
+		category: 'tabs',
+		defaultKeys: ['ctrl+shift+tab', 'mod+alt+arrowleft', 'ctrl+,'],
+		run: (session) => session.editors[0].focusAdjacentTab(-1)
+	},
+	{
+		id: 'tab.close',
+		title: 'Close tab',
+		category: 'tabs',
+		defaultKeys: ['mod+w'],
+		run: (session) => {
+			const ed = session.editors[0];
+			const f = ed.focused;
+			if (f?.kind === 'tab' && !ed.isPinned(f.id)) ed.closeTab(f.id);
+		}
+	},
+	{
+		id: 'tab.restore',
+		title: 'Reopen closed tab',
+		category: 'tabs',
+		defaultKeys: ['mod+shift+t'],
+		run: (session) => session.editors[0].reopenClosedTab()
+	},
+	{
 		id: 'doc.new',
 		title: 'New document',
 		category: 'documents',
@@ -115,5 +146,19 @@ export const actions: Action[] = [
 			const doc = await DocHandle.createDraft();
 			if (doc) session.editors[0].openDoc(doc);
 		}
+	},
+	{
+		id: 'nav.library',
+		title: 'Open library',
+		category: 'navigation',
+		defaultKeys: ['mod+l'],
+		run: (session) => session.editors[0].focusTab({ kind: 'search' })
+	},
+	{
+		id: 'nav.settings',
+		title: 'Open settings',
+		category: 'navigation',
+		defaultKeys: ['mod+i'],
+		run: (session) => session.editors[0].focusTab({ kind: 'settings' })
 	}
 ];

@@ -297,6 +297,19 @@
 		!!editing && editing.index < keysFor(editing.action, settings).length
 	);
 
+	const draftConflict = $derived.by(() => {
+		if (!editing || !draftSpec) return null;
+		for (const a of actions) {
+			const keys = keysFor(a, settings);
+			for (let i = 0; i < keys.length; i++) {
+				if (keys[i] !== draftSpec) continue;
+				if (a.id === editing.action.id && i === editing.index) continue;
+				return a;
+			}
+		}
+		return null;
+	});
+
 	const CATEGORY_ICON: Record<string, Component> = {
 		global: LayoutGrid,
 		tabs: AppWindow,
@@ -869,6 +882,15 @@
 					<span class="capture-ph">Press desired keys…</span>
 				{/if}
 			</div>
+			{#if draftConflict}
+				<p class="conflict">
+					{#if draftConflict.id === editing.action.id}
+						This command already has that binding.
+					{:else}
+						Also used by “{draftConflict.title}”.
+					{/if}
+				</p>
+			{/if}
 			<div class="dialog-actions">
 				{#if editingExisting}
 					<button class="btn remove" onclick={removeBinding}>Remove</button>
@@ -1562,6 +1584,12 @@
 	.capture-ph {
 		font-size: 12px;
 		color: var(--color-ui-muted);
+	}
+
+	.conflict {
+		margin: -8px 0 14px;
+		font-size: 12px;
+		color: var(--error-fg);
 	}
 
 	/* ── Sources tab ── */

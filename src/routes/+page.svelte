@@ -74,6 +74,44 @@
 		void action.run(session);
 	}
 
+	const SCROLL_STEP = 48;
+	const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], .cm-editor';
+
+	function inEditable(e: KeyboardEvent): boolean {
+		const t = e.target as HTMLElement | null;
+		const a = document.activeElement as HTMLElement | null;
+		return !!(t?.closest(EDITABLE) || a?.closest(EDITABLE));
+	}
+
+	function activeScroller(): HTMLElement | null {
+		const area = document.querySelector('.content-area');
+		if (!area) return null;
+		const r = area.getBoundingClientRect();
+		let el = document.elementFromPoint(
+			r.left + r.width / 2,
+			r.top + r.height / 2
+		) as HTMLElement | null;
+		while (el && el !== document.body) {
+			if (area.contains(el)) {
+				const oy = getComputedStyle(el).overflowY;
+				if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight - el.clientHeight > 1) return el;
+			}
+			el = el.parentElement;
+		}
+		return null;
+	}
+
+	function onArrowScroll(e: KeyboardEvent) {
+		if (e.defaultPrevented || keyCapture.active) return;
+		if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+		if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+		if (inEditable(e)) return;
+		const scroller = activeScroller();
+		if (!scroller) return;
+		e.preventDefault();
+		scroller.scrollBy({ top: e.key === 'ArrowDown' ? SCROLL_STEP : -SCROLL_STEP });
+	}
+
 	// When nothing valid is focused (no tabs, or a stale focus), fall back to the library tab.
 	$effect(() => {
 		const ed = session?.editors[0];
@@ -87,7 +125,7 @@
 	});
 </script>
 
-<svelte:window onkeydowncapture={onKeydown} />
+<svelte:window onkeydowncapture={onKeydown} onkeydown={onArrowScroll} />
 
 {#if session}
 	{@const editor = session.editors[0]}
