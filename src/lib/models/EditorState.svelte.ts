@@ -171,6 +171,7 @@ export class TabState {
 export interface EditorJSON {
 	tabs: TabJSON[];
 	tabAccessOrderById: string[];
+	focusOrder?: FocusTarget[];
 	focused?: FocusTarget;
 }
 
@@ -190,11 +191,28 @@ class EditorState {
 	tabs: TabState[] = $state([]);
 	focused: FocusTarget | null = $state(null);
 	private tabAccessOrderById: string[] = $state([]); // reverse accessed order, last = most recent
+	private focusOrder: FocusTarget[] = $state([]);
 
 	constructor(json?: EditorJSON, tabs?: TabState[]) {
 		this.focused = json?.focused ?? null;
 		if (json?.tabAccessOrderById) this.tabAccessOrderById = json.tabAccessOrderById;
+		if (json?.focusOrder) this.focusOrder = json.focusOrder;
 		if (tabs) this.tabs = tabs;
+	}
+
+	private sameTarget(a: FocusTarget, b: FocusTarget): boolean {
+		if (a.kind !== b.kind) return false;
+		if (a.kind === 'tab' && b.kind === 'tab') return a.id === b.id;
+		return true;
+	}
+
+	private mostRecentValidFocus(): FocusTarget | null {
+		for (let i = this.focusOrder.length - 1; i >= 0; i--) {
+			const t = this.focusOrder[i];
+			if (t.kind !== 'tab') return t;
+			if (this.tabs.some((tab) => tab.id === t.id)) return t;
+		}
+		return null;
 	}
 
 	// ── Getters ─────────────────────────────────────────────────────────────────────────
@@ -256,6 +274,7 @@ class EditorState {
 		return {
 			tabs: this.tabs.map((t) => t.toJSON()),
 			tabAccessOrderById: this.tabAccessOrderById,
+			focusOrder: this.focusOrder,
 			focused: this.focused ?? undefined
 		};
 	}
@@ -271,6 +290,7 @@ class EditorState {
 			accessedOrder.push(tab.id);
 			this.tabAccessOrderById = accessedOrder;
 		}
+		this.focusOrder = [...this.focusOrder.filter((t) => !this.sameTarget(t, tab)), tab];
 	}
 
 	openTab(tab: TabState) {
@@ -315,6 +335,9 @@ class EditorState {
 			this.tabs[idx] = tab;
 		}
 		this.tabAccessOrderById = this.tabAccessOrderById.map((id) => (id === oldId ? tab.id : id));
+		this.focusOrder = this.focusOrder.map((t) =>
+			t.kind === 'tab' && t.id === oldId ? { kind: 'tab', id: tab.id } : t
+		);
 		if (this.focused?.kind === 'tab' && this.focused.id === oldId) {
 			this.focused = { kind: 'tab', id: tab.id };
 		}
@@ -326,11 +349,12 @@ class EditorState {
 
 		this.tabs.splice(idx, 1);
 		this.tabAccessOrderById = this.tabAccessOrderById.filter((v) => v != id);
+		this.focusOrder = this.focusOrder.filter((t) => !(t.kind === 'tab' && t.id === id));
 
 		if (this.focused?.kind === 'tab' && this.focused.id === id) {
-			let lastAccessedId = this.tabAccessOrderById.at(-1);
-			if (lastAccessedId) {
-				this.focused = { kind: 'tab', id: lastAccessedId };
+			const prev = this.mostRecentValidFocus();
+			if (prev) {
+				this.focused = prev;
 			} else if (this.tabs.length > 0) {
 				this.focused = {
 					kind: 'tab',
