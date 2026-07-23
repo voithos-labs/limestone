@@ -140,8 +140,7 @@ pub fn create_source(
     let mut source = Source::new(title, path);
     source.use_frontmatter = use_frontmatter;
     source.note_location = clean_location(&note_location.unwrap_or_default())?;
-    source.asset_location =
-        clean_location(&asset_location.unwrap_or_else(default_asset_location))?;
+    source.asset_location = clean_location(&asset_location.unwrap_or_else(default_asset_location))?;
     Ok(source)
 }
 

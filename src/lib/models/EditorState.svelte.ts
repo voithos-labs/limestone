@@ -329,9 +329,7 @@ class EditorState {
 
 	focusAdjacentTab(delta: number) {
 		const targets = this.navTargets();
-		const cur = this.focused
-			? targets.findIndex((t) => this.sameTarget(t, this.focused!))
-			: -1;
+		const cur = this.focused ? targets.findIndex((t) => this.sameTarget(t, this.focused!)) : -1;
 		const base = cur === -1 ? (delta > 0 ? -1 : 0) : cur;
 		const next = (base + delta + targets.length) % targets.length;
 		this.focusTab(targets[next]);

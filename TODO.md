@@ -32,4 +32,4 @@ for lunch
 
 **Editor Integration**
 
-- [ ] 
+- [ ]
