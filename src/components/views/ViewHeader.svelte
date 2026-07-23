@@ -440,7 +440,7 @@
     {/if}
 </div>
 
-{#if !hasCover && view.temporary}
+{#if !hasCover && view.temporary && view.isDirty}
     <div class="save-row">
         {@render saveButton()}
     </div>

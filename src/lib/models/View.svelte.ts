@@ -764,6 +764,7 @@ class View {
 	temporary: boolean = $state(false);
 	emoji: string = $state(''); // user-set per-view emoji
 	cover: string = $state('');
+	private pristine = '';
 
 	constructor(json: ViewJSON) {
 		this.id = json.id;
@@ -777,6 +778,18 @@ class View {
 		this.temporary = json.temporary ?? false;
 		this.emoji = json.emoji ?? '';
 		this.cover = json.cover ?? '';
+	}
+
+	private snapshot(): string {
+		return JSON.stringify({ fields: this.fields, filter: this.filter, faces: this.faces });
+	}
+
+	markPristine(): void {
+		this.pristine = this.snapshot();
+	}
+
+	get isDirty(): boolean {
+		return this.snapshot() !== this.pristine;
 	}
 
 	static create(slug: string): View {
@@ -795,6 +808,7 @@ class View {
 		});
 		view.initDefaultFields();
 		view.initDefaultFaces();
+		view.markPristine();
 		return view;
 	}
 
@@ -819,6 +833,7 @@ class View {
 		}
 
 		view.temporary = true;
+		view.markPristine();
 		return view;
 	}
 
@@ -834,6 +849,7 @@ class View {
 		});
 
 		view.temporary = true;
+		view.markPristine();
 		return view;
 	}
 
