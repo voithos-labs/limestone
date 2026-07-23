@@ -31,6 +31,7 @@ input[type='number']::-webkit-outer-spin-button {
 
 	--color-accent: #567b67;
 	--color-accent-primary: #567b67;
+	--color-accent-default: #567b67;
 	--color-accent-contrast: #ffffff;
 
 	--font-ui: 'Inter', system-ui, sans-serif;
