@@ -65,13 +65,13 @@
 		if (trackRange <= 0 || maxScroll <= 0) return;
 		const ratio = maxScroll / trackRange;
 
-		function onMove(ev: PointerEvent) {
+		const onMove = (ev: PointerEvent) => {
 			el.scrollTop = startScroll + (ev.clientY - startY) * ratio;
-		}
-		function onUp() {
+		};
+		const onUp = () => {
 			window.removeEventListener('pointermove', onMove);
 			window.removeEventListener('pointerup', onUp);
-		}
+		};
 		window.addEventListener('pointermove', onMove);
 		window.addEventListener('pointerup', onUp);
 	}
