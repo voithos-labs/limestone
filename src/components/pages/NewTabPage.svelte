@@ -57,9 +57,9 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		justify-content: center;
+		justify-content: safe center;
 		height: 100%;
-		padding: 0 24px 14vh;
+		padding: 24px 24px 14vh;
 		overflow-y: auto;
 		scrollbar-width: none;
 	}

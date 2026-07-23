@@ -16,6 +16,8 @@
 				"title": "limestone",
 				"width": 800,
 				"height": 600,
+				"minWidth": 420,
+				"minHeight": 256,
 				"decorations": false
 			}
 		],

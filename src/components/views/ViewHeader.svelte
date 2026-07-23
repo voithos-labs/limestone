@@ -1,12 +1,11 @@
 <script lang="ts">
     import type View from '$lib/models/View.svelte';
-    import type {FilterNode, FilterLeaf, ViewField, ViewFieldType} from '$lib/models/View.svelte';
+    import type {FilterNode, FilterLeaf, ViewField} from '$lib/models/View.svelte';
     import {VIEW_FIELD_OPS, sanitizeName, isViewSlugTaken} from '$lib/models/View.svelte';
     import Group from '$lib/models/Group';
     import {getSource, sourceName} from '$lib/models/Source';
     import FilterChipIsland from './FilterChipIsland.svelte';
     import Menu from './Menu.svelte';
-    import ViewManageMenu from './ViewManageMenu.svelte';
     import FaceSwitcher from './FaceSwitcher.svelte';
     import EmojiPicker from './EmojiPicker.svelte';
     import {
@@ -23,7 +22,6 @@
         ChevronLeft,
         ChevronRight,
         Search,
-        Columns3Cog,
         EllipsisVertical,
         X
     } from '@lucide/svelte';
@@ -190,6 +188,16 @@
         if (view.state.filters_collapsed) view.state.filters_collapsed = false;
     }
 
+    const BAR_UNIT = 5;
+    const BAR_WIDTH = 1;
+
+    let fillWidth = $state(0);
+    const barRunWidth = $derived.by(() => {
+        if (fillWidth < BAR_WIDTH) return 0;
+        const bars = Math.floor((fillWidth - BAR_WIDTH) / BAR_UNIT) + 1;
+        return (bars - 1) * BAR_UNIT + BAR_WIDTH;
+    });
+
     let chipsWidth = $state(0);
     let hasMounted = $state(false);
     onMount(() => {
@@ -203,20 +211,6 @@
         if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
         el.scrollLeft += e.deltaY;
         e.preventDefault();
-    }
-
-    // ── View management menu ─────────────────────────────────────────────────
-    let manageEl: HTMLButtonElement | null = $state(null);
-    let manageOpen = $state(false);
-
-    function deleteField(id: string) {
-        view.removeField(id);
-    }
-
-    function addField(type: ViewFieldType) {
-        const field = view.addFieldOfType(type);
-        // Surface the new column in the active face
-        if (activeFace) activeFace.display_field_ids = [...activeFace.display_field_ids, field.id];
     }
 
     // ── Inline view-title (slug) editing — type-in-place, saved views only ────
@@ -268,70 +262,84 @@
     function setEmoji(emoji: string) {
         view.emoji = emoji;
     }
-
-    function toggleColumn(id: string) {
-        if (!activeFace) return;
-        if (activeFace.display_field_ids.includes(id)) {
-            activeFace.display_field_ids = activeFace.display_field_ids.filter(
-                (fid: string) => fid !== id
-            );
-        } else {
-            activeFace.display_field_ids = [...activeFace.display_field_ids, id];
-        }
-    }
 </script>
 
-<header class="view-header" class:has-cover={hasCover}>
-    <div class="title-block" class:on-cover={hasCover}>
-        {#if !view.temporary}
-            <button
-                    class="view-emoji"
-                    bind:this={emojiAnchor}
-                    title="Set an emoji"
-                    onclick={() => (emojiOpen = !emojiOpen)}
-            >
-                {#if view.emoji}{view.emoji}{:else}<span class="view-emoji-empty">☆</span>{/if}
-            </button>
-        {/if}
-        {#if view.temporary}
-            <h2 class="view-title">{view.slug}</h2>
-        {:else}
-			<span class="title-field">
-				<span class="title-ghost">{slugDraft || ' '}</span>
-				<input
-                        class="title-input"
-                        class:invalid={slugTaken}
-                        bind:value={slugDraft}
-                        onblur={commitSlug}
-                        onkeydown={slugKey}
-                        spellcheck="false"
-                />
-			</span>
-        {/if}
-    </div>
-    {#if view.temporary}
+{#snippet titleBlock()}
+    {#if !view.temporary}
         <button
-                class="save-view"
-                type="button"
-                onclick={() => view.save().catch((e) => console.error('save view failed', e))}
+                class="view-emoji"
+                bind:this={emojiAnchor}
+                title="Set an emoji"
+                onclick={() => (emojiOpen = !emojiOpen)}
         >
-            <span>Save as view</span>
-        </button>
-    {:else if !view.cover}
-        <button
-                class="more-btn"
-                type="button"
-                aria-label="More"
-                onclick={(e) => onMore?.(e.currentTarget as HTMLElement)}
-        >
-            <EllipsisVertical size={16}/>
+            {#if view.emoji}{view.emoji}{:else}<span class="view-emoji-empty">☆</span>{/if}
         </button>
     {/if}
-</header>
+    {#if view.temporary}
+        <h2 class="view-title">{view.slug}</h2>
+    {:else}
+		<span class="title-field">
+			<span class="title-ghost">{slugDraft || ' '}</span>
+			<input
+                    class="title-input"
+                    class:invalid={slugTaken}
+                    bind:value={slugDraft}
+                    onblur={commitSlug}
+                    onkeydown={slugKey}
+                    spellcheck="false"
+            />
+		</span>
+    {/if}
+{/snippet}
+
+{#snippet saveButton()}
+    <button
+            class="save-view"
+            type="button"
+            onclick={() => view.save().catch((e) => console.error('save view failed', e))}
+    >
+        <span>Save as view</span>
+    </button>
+{/snippet}
+
+{#snippet moreButton()}
+    <button
+            class="more-btn"
+            type="button"
+            aria-label="More"
+            onclick={(e) => onMore?.(e.currentTarget as HTMLElement)}
+    >
+        <EllipsisVertical size={16}/>
+    </button>
+{/snippet}
+
+{#snippet actionButton()}
+    {#if view.temporary}
+        {@render saveButton()}
+    {:else if !view.cover}
+        {@render moreButton()}
+    {/if}
+{/snippet}
+
+{#if hasCover}
+    <header class="view-header has-cover">
+        <div class="title-block on-cover">
+            {@render titleBlock()}
+        </div>
+        {@render actionButton()}
+    </header>
+{/if}
 
 <EmojiPicker bind:open={emojiOpen} anchor={emojiAnchor} onPick={setEmoji}/>
 
 <div class="filter-bar" onwheel={onFilterWheel}>
+    {#if !hasCover}
+        <div class="title-inline">
+            {@render titleBlock()}
+        </div>
+        <div class="title-divider"></div>
+    {/if}
+
     <FaceSwitcher {view} face={activeFace}/>
 
     {#if leafFilters.length > 0}
@@ -418,46 +426,71 @@
             {/if}
         </label>
     {:else}
-        <div class="header-spacer"></div>
+        <div class="search-placeholder" aria-hidden="true">
+            <span
+                    class="placeholder-fill"
+                    bind:clientWidth={fillWidth}
+                    style:background-size="{barRunWidth}px 9px"
+            ></span>
+        </div>
     {/if}
 
-    <button
-            class="manage-view"
-            type="button"
-            aria-label="Manage view"
-            bind:this={manageEl}
-            onclick={() => (manageOpen = !manageOpen)}
-    >
-        <Columns3Cog size={14} strokeWidth={1.75}/>
-    </button>
-    <ViewManageMenu
-            bind:open={manageOpen}
-            anchor={manageEl}
-            fields={view.fields}
-            shownIds={activeFace.display_field_ids}
-            canAddFields={!view.temporary}
-            onToggleVisible={toggleColumn}
-            onDelete={deleteField}
-            onAddField={addField}
-    />
+    {#if !hasCover && !view.temporary}
+        {@render moreButton()}
+    {/if}
 </div>
+
+{#if !hasCover && view.temporary}
+    <div class="save-row">
+        {@render saveButton()}
+    </div>
+{/if}
 
 <style>
     .view-header {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 4px;
         margin-bottom: 12px;
         padding-right: 24px;
         flex-shrink: 0;
     }
 
-    .view-header.has-cover {
-        align-items: flex-start;
+    .title-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+        margin-right: 5px;
+        max-width: 40%;
     }
 
-    .title-block {
-        display: contents;
+    .title-divider {
+        width: 1px;
+        height: 20px;
+        margin-right: 5px;
+        background: var(--color-border);
+        border-radius: 999px;
+        flex-shrink: 0;
+    }
+
+    .title-inline .view-emoji {
+        width: 24px;
+        height: 24px;
+        margin-left: -5px;
+        font-size: 16px;
+        border-radius: 5px;
+    }
+
+    .title-inline .view-title,
+    .title-inline .title-ghost,
+    .title-inline .title-input {
+        font-size: 18px;
+    }
+
+    .title-inline .view-title,
+    .title-inline .title-field {
+        transform: none;
     }
 
     .title-block.on-cover {
@@ -552,6 +585,8 @@
         align-items: center;
         gap: 6px;
         margin-bottom: 14px;
+        margin-left: -6px;
+        padding-left: 6px;
         padding-right: 24px;
         flex-shrink: 0;
         /* Scroll horizontally in place when the row is too wide, no visible bar */
@@ -646,21 +681,29 @@
         padding: 0;
         border: none;
         border-radius: 6px;
-        background: transparent;
+        background: var(--chip-bg);
         color: var(--color-ui-muted);
         cursor: pointer;
+        transition: background-color 120ms ease,
+        color 120ms ease;
     }
 
     .more-btn:hover {
-        color: var(--color-text-secondary);
-        background: var(--chip-bg);
+        color: var(--color-text-primary);
+        background: var(--chip-bg-hover);
+    }
+
+    .save-row {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 14px;
+        padding-right: 24px;
     }
 
     .save-view {
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        margin-left: auto;
         background: none;
         border: none;
         padding: 0;
@@ -676,29 +719,29 @@
         text-decoration: underline;
     }
 
-    .manage-view {
-        display: inline-flex;
+    .search-placeholder {
+        display: flex;
         align-items: center;
-        justify-content: center;
         height: 28px;
-        padding: 0 10px;
-        flex-shrink: 0;
-        background: var(--chip-bg);
-        border: none;
-        border-radius: 6px;
-        color: var(--color-ui-muted);
-        cursor: pointer;
-        transition: background-color 120ms ease,
-        color 120ms ease;
-    }
-
-    .manage-view:hover {
-        background: var(--chip-bg-hover);
-        color: var(--color-text-primary);
-    }
-
-    .header-spacer {
+        padding: 0 9px;
         flex: 1;
+        min-width: 80px;
+        background: var(--chip-bg);
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .placeholder-fill {
+        flex: 1;
+        height: 9px;
+        opacity: 0.5;
+        background-image: repeating-linear-gradient(
+                90deg,
+                var(--color-ui-dulled) 0 1px,
+                transparent 1px 5px
+        );
+        background-repeat: no-repeat;
+        background-position: center;
     }
 
     .search-chip {
@@ -709,7 +752,7 @@
         padding: 0 9px;
         flex: 1;
         min-width: 80px;
-        background: transparent;
+        background: var(--chip-bg);
         border-radius: 6px;
         color: var(--color-ui-muted);
         font-family: var(--font-ui);
@@ -721,7 +764,7 @@
     }
 
     .search-chip:hover {
-        background: var(--chip-bg);
+        background: var(--chip-bg-hover);
         color: var(--color-text-secondary);
     }
 

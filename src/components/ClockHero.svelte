@@ -46,13 +46,13 @@
 		display: flex;
 		align-items: stretch;
 		justify-content: center;
-		gap: 13.5px;
+		gap: 12px;
 	}
 
 	.time,
 	.meta {
 		opacity: 0;
-		transform: translateY(6px);
+		transform: translateY(5px);
 		transition:
 			opacity 420ms ease,
 			transform 420ms cubic-bezier(0.2, 0.7, 0.3, 1);
@@ -70,7 +70,7 @@
 
 	.time {
 		font-family: 'JetBrains Mono', var(--font-editor), monospace;
-		font-size: 54px;
+		font-size: 45px;
 		font-weight: 800;
 		line-height: 1;
 		letter-spacing: -0.01em;
@@ -83,13 +83,13 @@
 		flex-direction: column;
 		justify-content: center;
 		align-items: flex-start;
-		gap: 9px;
-		padding-bottom: 1.5px;
+		gap: 8px;
+		padding-bottom: 1px;
 	}
 
 	.date {
 		font-family: 'JetBrains Mono', var(--font-editor), monospace;
-		font-size: 22.5px;
+		font-size: 18px;
 		font-weight: 500;
 		line-height: 1;
 		letter-spacing: -0.06em;
@@ -99,7 +99,7 @@
 
 	.brand {
 		font-family: 'JetBrains Mono', var(--font-editor), monospace;
-		font-size: 13px;
+		font-size: 12px;
 		font-weight: 400;
 		line-height: 1;
 		letter-spacing: 0.08em;

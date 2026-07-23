@@ -99,7 +99,6 @@ export interface AccentPreset {
 }
 
 export const ACCENT_PRESETS: Record<string, AccentPreset> = {
-	fern: { name: 'Fern', light: '#567b67', dark: '#567b67' },
 	slate: { name: 'Slate', light: '#5b7286', dark: '#6d8ba3' },
 	violet: { name: 'Violet', light: '#75689a', dark: '#8d7fb5' },
 	clay: { name: 'Clay', light: '#9a6b52', dark: '#b08267' },
@@ -165,6 +164,9 @@ export function applyTheme(theme: Theme) {
 	for (const [key, value] of Object.entries(theme.variables)) {
 		root.style.setProperty(`--${key}`, value);
 	}
+	// The theme's own accent, preserved so the "default" accent swatch can show it
+	// even while a preset override has replaced --color-accent
+	root.style.setProperty('--color-accent-default', theme.variables['color-accent'] ?? '#567b67');
 	root.style.setProperty(
 		'--color-accent-contrast',
 		accentContrast(theme.variables['color-accent'] ?? '#567b67')

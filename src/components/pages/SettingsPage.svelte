@@ -371,8 +371,7 @@
 		setValue(def, n);
 	}
 
-	function commitSelect(def: SettingDef, e: Event) {
-		const v = (e.target as HTMLSelectElement).value;
+	function applySelect(def: SettingDef, v: string) {
 		if (v === CUSTOM) {
 			if (!customKeys.includes(def.key)) customKeys.push(def.key);
 			return;
@@ -380,6 +379,50 @@
 		customKeys = customKeys.filter((k) => k !== def.key);
 		const option = def.options?.find((o) => String(o.value) === v);
 		if (option) setValue(def, option.value as number);
+	}
+
+	// ── App-styled dropdowns (native <select> option lists can't match our menus) ─
+	let themeMenuOpen = $state(false);
+	let themeAnchor: HTMLElement | null = $state(null);
+	const themeItems = $derived<MenuEntry[]>(themes.map((name) => ({ value: name, label: name })));
+
+	let selectMenuOpen = $state(false);
+	let selectAnchor: HTMLElement | null = $state(null);
+	let openSelectDef: SettingDef | null = $state(null);
+
+	const openSelectItems = $derived.by((): MenuEntry[] => {
+		const def = openSelectDef;
+		if (!def) return [];
+		const items: MenuEntry[] = (def.options ?? []).map((o) => ({
+			value: String(o.value),
+			label: o.label
+		}));
+		if (def.allowCustom) items.push({ value: CUSTOM, label: 'Custom…' });
+		return items;
+	});
+
+	const openSelectValue = $derived.by(() => {
+		const def = openSelectDef;
+		if (!def) return '';
+		const value = settings.get(def.key);
+		const inOptions = (def.options ?? []).some((o) => o.value === value);
+		const showCustom = def.allowCustom && (customKeys.includes(def.key) || !inOptions);
+		return showCustom ? CUSTOM : String(value);
+	});
+
+	function openSelect(def: SettingDef, e: MouseEvent) {
+		if (selectMenuOpen && openSelectDef === def) {
+			selectMenuOpen = false;
+			return;
+		}
+		openSelectDef = def;
+		selectAnchor = e.currentTarget as HTMLElement;
+		selectMenuOpen = true;
+	}
+
+	function onSelectMenu(v: string) {
+		selectMenuOpen = false;
+		if (openSelectDef) applySelect(openSelectDef, v);
 	}
 
 	async function confirmResetAll() {
@@ -408,17 +451,16 @@
 			<p class="item-desc">Active color theme.</p>
 		</div>
 		<div class="item-control">
-			<select
-				class="input-select"
-				value={session.activeTheme}
-				onchange={async (e) => {
-					await session.setTheme((e.target as HTMLSelectElement).value);
-				}}
-			>
-				{#each themes as name}
-					<option value={name}>{name}</option>
-				{/each}
-			</select>
+			<div class="select-field">
+				<button
+					class="input-select select-trigger"
+					bind:this={themeAnchor}
+					onclick={() => (themeMenuOpen = !themeMenuOpen)}
+				>
+					<span class="select-value">{session.activeTheme}</span>
+				</button>
+				<span class="select-chevron"><ChevronDown size={14} strokeWidth={2} /></span>
+			</div>
 		</div>
 	</div>
 {/snippet}
@@ -437,7 +479,7 @@
 		<div class="item-control">
 			<div class="accent-row">
 				<button
-					class="accent-swatch"
+					class="accent-swatch default-swatch"
 					class:active={accentSetting === 'default'}
 					title="Theme default"
 					onclick={() => setAccent('default')}
@@ -469,6 +511,22 @@
 	</div>
 {/snippet}
 
+{#snippet numberField(def: SettingDef)}
+	<div class="num-field">
+		<input
+			class="input-number"
+			class:has-unit={def.unit}
+			type="number"
+			min={def.min}
+			max={def.max}
+			step={def.step}
+			value={settings.get<number>(def.key)}
+			onchange={(e) => commitNumber(def, e)}
+		/>
+		{#if def.unit}<span class="num-unit">{def.unit}</span>{/if}
+	</div>
+{/snippet}
+
 {#snippet settingItem(def: SettingDef, category: SettingCategory | null)}
 	{@const modified = settings.isModified(def.key)}
 	<div class="setting-item" class:modified>
@@ -494,41 +552,24 @@
 					bind:checked={() => settings.get<boolean>(def.key) ?? false, (v) => setValue(def, v)}
 				/>
 			{:else if def.control === 'stepper'}
-				<input
-					class="input-number"
-					type="number"
-					min={def.min}
-					max={def.max}
-					step={def.step}
-					value={settings.get<number>(def.key)}
-					onchange={(e) => commitNumber(def, e)}
-				/>
+				{@render numberField(def)}
 			{:else if def.control === 'select'}
 				{@const value = settings.get(def.key)}
 				{@const inOptions = (def.options ?? []).some((o) => o.value === value)}
 				{@const showCustom = def.allowCustom && (customKeys.includes(def.key) || !inOptions)}
 				<div class="select-control">
-					<select
-						class="input-select"
-						value={showCustom ? CUSTOM : String(value)}
-						onchange={(e) => commitSelect(def, e)}
-					>
-						{#each def.options ?? [] as option}
-							<option value={String(option.value)}>{option.label}</option>
-						{/each}
-						{#if def.allowCustom}
-							<option value={CUSTOM}>Custom…</option>
-						{/if}
-					</select>
+					<div class="select-field">
+						<button class="input-select select-trigger" onclick={(e) => openSelect(def, e)}>
+							<span class="select-value">
+								{showCustom
+									? 'Custom…'
+									: ((def.options ?? []).find((o) => o.value === value)?.label ?? String(value))}
+							</span>
+						</button>
+						<span class="select-chevron"><ChevronDown size={14} strokeWidth={2} /></span>
+					</div>
 					{#if showCustom}
-						<input
-							class="input-number"
-							type="number"
-							min={def.min}
-							max={def.max}
-							value={settings.get<number>(def.key)}
-							onchange={(e) => commitNumber(def, e)}
-						/>
+						{@render numberField(def)}
 					{/if}
 				</div>
 			{/if}
@@ -540,21 +581,30 @@
 
 <div class="settings-page">
 	<div class="settings-header">
-		<button
-			class="section-select"
-			bind:this={sectionAnchor}
-			onclick={() => (sectionMenuOpen = !sectionMenuOpen)}
-		>
-			<span class="section-select-label">{currentLabel}</span>
-			<ChevronDown size={17} strokeWidth={2} />
-		</button>
+		<div class="section-nav">
+			<div class="section-tabs">
+				{#each sectionItems as item (item.value)}
+					{@const Icon = item.icon}
+					<button
+						class="section-tab"
+						class:active={activeSection === item.value}
+						onclick={() => selectSection(item.value)}
+					>
+						{#if Icon}<Icon size={14} strokeWidth={1.75} />{/if}
+						<span>{item.label}</span>
+					</button>
+				{/each}
+			</div>
+			<button
+				class="section-select"
+				bind:this={sectionAnchor}
+				onclick={() => (sectionMenuOpen = !sectionMenuOpen)}
+			>
+				<span class="section-select-label">{currentLabel}</span>
+				<ChevronDown size={14} strokeWidth={2} />
+			</button>
+		</div>
 		<div class="header-actions">
-			{#if activeSection === SOURCES && !isSearching}
-				<button class="add-source-btn" onclick={addSource}>
-					<FolderPlus size={14} />
-					Add source
-				</button>
-			{/if}
 			<div class="search-bar">
 				<Search size={14} />
 				<input
@@ -699,6 +749,10 @@
 						<p class="source-error">{sourceError}</p>
 					{/if}
 					<div class="sources-list">
+						<button class="source-card add-source-card" onclick={addSource}>
+							<FolderPlus size={14} />
+							<span>Add source</span>
+						</button>
 						{#each sources as s (s.id)}
 							<div class="source-card">
 								<div class="src-main">
@@ -768,6 +822,27 @@
 	placeholder="Search sections…"
 />
 
+<Menu
+	bind:open={themeMenuOpen}
+	anchor={themeAnchor}
+	items={themeItems}
+	selected={session.activeTheme}
+	onSelect={(v) => {
+		themeMenuOpen = false;
+		session.setTheme(v).catch((e) => console.error('set theme failed', e));
+	}}
+	minWidth={148}
+/>
+
+<Menu
+	bind:open={selectMenuOpen}
+	anchor={selectAnchor}
+	items={openSelectItems}
+	selected={openSelectValue}
+	onSelect={onSelectMenu}
+	minWidth={148}
+/>
+
 {#if resetDialogOpen}
 	<div class="overlay" onclick={() => (resetDialogOpen = false)} role="presentation">
 		<div
@@ -808,14 +883,16 @@
 
 <style>
 	.settings-page {
+		--control-w: 148px;
 		display: flex;
 		flex-direction: column;
 		height: 100%;
 		font-family: var(--font-ui);
 	}
 
-	/* ── Header (section dropdown) ── */
+	/* ── Header (section tabs / dropdown) ── */
 	.settings-header {
+		container-type: inline-size;
 		position: relative;
 		display: flex;
 		align-items: center;
@@ -828,6 +905,73 @@
 		box-sizing: border-box;
 	}
 
+	.section-nav {
+		display: flex;
+		align-items: center;
+		min-width: 0;
+	}
+
+	/* Wide: a row of tabs. Narrow: collapses to the dropdown (see @container below). */
+	.section-tabs {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		margin-left: -6px;
+	}
+
+	.section-tab {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 7px 12px;
+		border: none;
+		border-radius: var(--radius-ui);
+		background: transparent;
+		color: var(--color-ui-muted);
+		font-family: var(--font-ui);
+		font-size: 14px;
+		font-weight: 500;
+		white-space: nowrap;
+		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
+	}
+
+	.section-tab :global(svg) {
+		color: var(--color-ui-muted);
+		transition: color 120ms ease;
+	}
+
+	.section-tab:hover {
+		background: var(--chip-bg);
+		color: var(--color-text-secondary);
+	}
+
+	.section-tab.active {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
+		font-weight: 600;
+	}
+
+	.section-tab.active :global(svg) {
+		color: var(--color-text-primary);
+	}
+
+	.section-select {
+		display: none;
+	}
+
+	@container (max-width: 720px) {
+		.section-tabs {
+			display: none;
+		}
+
+		.section-select {
+			display: inline-flex;
+		}
+	}
+
 	.settings-header::after {
 		content: '';
 		position: absolute;
@@ -838,24 +982,24 @@
 		background: var(--color-border);
 	}
 
+	/* Visibility is owned by the header container query above; matches an active tab. */
 	.section-select {
-		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		margin-left: -10px;
-		padding: 5px 8px 5px 10px;
+		margin-left: -6px;
+		padding: 7px 12px;
 		border: none;
 		border-radius: var(--radius-ui);
-		background: transparent;
+		background: var(--chip-bg);
 		color: var(--color-text-primary);
 		font-family: var(--font-ui);
-		font-size: 18px;
+		font-size: 14px;
 		font-weight: 600;
 		cursor: pointer;
 	}
 
 	.section-select:hover {
-		background: var(--chip-bg);
+		background: var(--chip-bg-hover);
 	}
 
 	.section-select :global(svg) {
@@ -1024,7 +1168,7 @@
 	}
 
 	.info-row:hover {
-		background: rgba(255, 255, 255, 0.02);
+		background: var(--chip-bg);
 	}
 
 	.info-value {
@@ -1087,18 +1231,7 @@
 	}
 
 	.setting-item:hover {
-		background: rgba(255, 255, 255, 0.02);
-	}
-
-	.setting-item.modified::before {
-		content: '';
-		position: absolute;
-		left: 6px;
-		top: 12px;
-		bottom: 12px;
-		width: 2px;
-		border-radius: 1px;
-		background: var(--color-accent);
+		background: var(--chip-bg);
 	}
 
 	.item-head {
@@ -1147,6 +1280,8 @@
 	.item-control {
 		display: flex;
 		flex-shrink: 0;
+		justify-content: flex-end;
+		min-width: var(--control-w);
 	}
 
 	.select-control {
@@ -1156,38 +1291,98 @@
 	}
 
 	/* ── Inputs ── */
-	.input-number {
-		width: 100px;
-		padding: 6px 10px;
+	.input-number,
+	.input-select {
+		width: var(--control-w);
+		box-sizing: border-box;
+		height: 32px;
+		padding: 0 10px;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-ui);
-		background: var(--color-bg);
+		background: var(--chip-bg);
 		color: var(--color-text-primary);
 		font-family: var(--font-ui);
 		font-size: 13px;
 		outline: none;
+		transition:
+			background-color 120ms ease,
+			border-color 120ms ease;
+	}
+
+	.input-select {
+		appearance: none;
+		-webkit-appearance: none;
+		width: 100%;
+		padding-right: 30px;
+		cursor: pointer;
+	}
+
+	.select-field {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		width: var(--control-w);
+	}
+
+	.select-trigger {
+		display: inline-flex;
+		align-items: center;
+		text-align: left;
+	}
+
+	.select-value {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.select-chevron {
+		position: absolute;
+		right: 11px;
+		top: 50%;
+		transform: translateY(-50%);
+		display: inline-flex;
+		color: var(--color-ui-dulled);
+		pointer-events: none;
+	}
+
+	.input-number::-webkit-inner-spin-button,
+	.input-number::-webkit-outer-spin-button {
+		-webkit-appearance: none;
+		margin: 0;
+	}
+
+	.num-field {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.input-number.has-unit {
+		padding-right: 30px;
+	}
+
+	.num-unit {
+		position: absolute;
+		right: 11px;
+		top: 50%;
+		transform: translateY(-50%);
+		font-size: 12px;
+		color: var(--color-ui-dulled);
+		pointer-events: none;
+	}
+
+	.input-number:hover,
+	.input-select:hover {
+		background: var(--chip-bg-hover);
 	}
 
 	.input-number:focus,
 	.input-select:focus {
 		border-color: var(--focus-border);
-	}
-
-	.input-select {
-		padding: 6px 10px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-ui);
-		background: var(--color-surface);
-		color: var(--color-text-primary);
-		font-family: var(--font-ui);
-		font-size: 13px;
-		outline: none;
-		cursor: pointer;
-	}
-
-	.input-select option {
-		background: var(--color-surface);
-		color: var(--color-text-primary);
+		background: var(--chip-bg-hover);
 	}
 
 	/* ── Reset dialog ── */
@@ -1261,12 +1456,28 @@
 		padding: 0;
 		border: 1px solid var(--color-border);
 		border-radius: 50%;
-		background: linear-gradient(135deg, var(--color-accent) 50%, var(--color-surface) 50%);
 		cursor: pointer;
 	}
 
+	/* Theme-default accent: the base accent with a small surface dot in the center. */
+	.default-swatch {
+		background: var(--color-accent-default);
+	}
+
+	.default-swatch::after {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		background: var(--color-surface);
+		transform: translate(-50%, -50%);
+	}
+
 	.accent-swatch.active {
-		outline: 2px solid var(--color-text-primary);
+		outline: 2px solid var(--color-ui-muted);
 		outline-offset: 2px;
 	}
 
@@ -1308,13 +1519,11 @@
 	}
 
 	/* ── Sources tab ── */
-	.add-source-btn {
-		display: flex;
-		align-items: center;
+	.source-card.add-source-card {
+		justify-content: center;
 		gap: 8px;
-		padding: 7px 12px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-ui);
+		width: 100%;
+		border-style: dashed;
 		background: transparent;
 		color: var(--color-ui-muted);
 		font-family: var(--font-ui);
@@ -1322,7 +1531,12 @@
 		cursor: pointer;
 	}
 
-	.add-source-btn:hover {
+	.add-source-card :global(svg) {
+		flex-shrink: 0;
+		color: var(--color-ui-muted);
+	}
+
+	.source-card.add-source-card:hover {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
 	}

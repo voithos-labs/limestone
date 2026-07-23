@@ -24,6 +24,7 @@ export interface SettingDef {
 	min?: number;
 	max?: number;
 	step?: number;
+	unit?: string;
 	options?: SettingOption[];
 	allowCustom?: boolean;
 }
@@ -68,7 +69,8 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				description: 'Font size in pixels for the document editor.',
 				min: 8,
 				max: 32,
-				step: 1
+				step: 1,
+				unit: 'px'
 			},
 			{
 				key: 'appearance.ui_scale_percent',
@@ -78,6 +80,7 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				description: 'Scale of the entire interface.',
 				min: 25,
 				max: 500,
+				unit: '%',
 				options: [75, 90, 100, 110, 125, 150, 175, 200].map((v) => ({
 					value: v,
 					label: `${v}%`
@@ -92,7 +95,8 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				description: 'Maximum content width in pixels for documents and views.',
 				min: 600,
 				max: 3000,
-				step: 50
+				step: 50,
+				unit: 'px'
 			}
 		]
 	}

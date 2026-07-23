@@ -401,7 +401,7 @@
 
 				{#if activeFace?.type === 'journal'}
 					<JournalFace {view} face={activeFace} flow={true} {onOpenRow} {createSignal} />
-				{:else if activeFace?.type === 'list'}
+				{:else if activeFace?.type === 'list' || activeFace?.type === 'grid'}
 					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{:else}
 					<TableFace {view} face={activeFace} {onOpenRow} {createSignal} flow={bodyFlow} />
@@ -411,7 +411,7 @@
 
 		<ScrollThumb scroller={bodyEl} top={20} />
 
-		{#if activeFace?.type !== 'journal' || activeFace?.body?.type === 'list'}
+		{#if activeFace?.type !== 'journal' || activeFace?.body?.type === 'grid' || activeFace?.body?.type === 'list'}
 			<button class="new-fab" type="button" title="New note" onclick={() => createSignal++}>
 				<Plus size={18} strokeWidth={2} />
 			</button>
@@ -533,7 +533,7 @@
 
 	.view-chrome {
 		flex-shrink: 0;
-		padding: 20px 0 0 24px;
+		padding: 34px 0 0 24px;
 	}
 
 	.view-chrome.has-cover {

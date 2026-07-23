@@ -289,6 +289,18 @@
 	// Drag scrolls the activity bar itself; the strip above stays the fine view.
 	let sparkEl: HTMLElement | null = $state(null);
 	let sparkAtEnd = $state(true);
+	let sparkW = $state(0);
+
+	// Right-anchor the activity timeline across width changes, same as the date strip.
+	let prevSparkW = 0;
+	$effect(() => {
+		const w = sparkW;
+		const el = sparkEl;
+		if (el && prevSparkW > 0 && w > 0 && w !== prevSparkW) {
+			el.scrollLeft += prevSparkW - w;
+		}
+		prevSparkW = w;
+	});
 	let dragMoved = false;
 	function dragScroll(el: HTMLElement, e: PointerEvent, onUp?: () => void) {
 		if (e.button !== 0) return;
@@ -373,6 +385,19 @@
 
 	let stripScrollLeft = $state(0);
 	let stripW = $state(0);
+
+	// Keep the strip right-anchored across width changes: when the viewport grows or
+	// shrinks, hold the right edge (today) fixed relative to the window rather than the
+	// browser default of anchoring the left edge (which pushes today off-screen).
+	let prevStripW = 0;
+	$effect(() => {
+		const w = stripW;
+		const el = stripEl;
+		if (el && prevStripW > 0 && w > 0 && w !== prevStripW) {
+			el.scrollLeft += prevStripW - w;
+		}
+		prevStripW = w;
+	});
 
 	function dayOffset(d: Date): number {
 		return Math.round((d.getTime() - stripStart.getTime()) / 86400000);
@@ -622,6 +647,7 @@
 			<div
 				class="spark"
 				bind:this={sparkEl}
+				bind:clientWidth={sparkW}
 				onpointerdown={(e) => sparkEl && dragScroll(sparkEl, e)}
 				onwheel={sparkWheel}
 				onscroll={sparkScroll}
@@ -682,7 +708,7 @@
 		{#if bodyFace}
 			<div class="body-face">
 				{#key bodyFace.id}
-					{#if bodyFace.type === 'list'}
+					{#if bodyFace.type === 'list' || bodyFace.type === 'grid'}
 						<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
 					{:else}
 						<TableFace {view} face={bodyFace} {onOpenRow} {flow} scope={bodyScope} />

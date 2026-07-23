@@ -217,7 +217,7 @@
 <nav class="nav-bar" onmousedown={handleDrag}>
 	<!-- Drag handle -->
 	<div class="drag-handle">
-		<svg width="15" height="15" viewBox="0 0 588 588" xmlns="http://www.w3.org/2000/svg">
+		<svg width="16" height="16" viewBox="0 0 588 588" xmlns="http://www.w3.org/2000/svg">
 			<path d="M196 0 L196 588 L0 588 L196 392 L0 392 L0 196 Z" fill="#C7BDC2" />
 			<path d="M196 0 L392 0 L392 196 L196 392 L588 392 L392 588 L196 588 Z" fill="white" />
 		</svg>
@@ -338,7 +338,7 @@
 		height: 42px;
 		width: 100%;
 		background: transparent;
-		padding-left: 8px;
+		padding-left: 10px;
 		gap: 6px;
 		overflow: hidden;
 	}
@@ -429,7 +429,7 @@
 
 	.tabs-scroll .tab {
 		flex-shrink: 1;
-		min-width: 32px;
+		min-width: 36px;
 		max-width: 240px;
 		padding: 0 13px 0 12px;
 	}
@@ -489,7 +489,7 @@
 		color: var(--color-ui-dulled);
 	}
 
-	.tab.icon-tab:not(.active):hover::after {
+	.tab:not(.active):hover::after {
 		content: '';
 		position: absolute;
 		bottom: -3px;

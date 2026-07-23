@@ -149,22 +149,24 @@
 <div class="ff">
 	{#each leaves as leaf (leaf)}
 		{@const field = fieldsById.get(leaf.field_id)}
-		<FilterChipIsland
-			icon={getFieldIcon(field?.type)}
-			fieldName={field ? fieldLabel(field) : 'unknown'}
-			operator={getOpLabel(leaf.op)}
-			opValue={leaf.op}
-			opOptions={opsFor(field?.type)}
-			value={displayValue(leaf, field)}
-			valuePills={valuePillsFor(leaf, field)}
-			rawValue={leaf.value}
-			{field}
-			{sourceId}
-			autoOpenValue={leaf === pendingFocusLeaf}
-			onOpChange={(op) => changeOp(leaf, op)}
-			onValueChange={(v) => changeValue(leaf, v)}
-			onRemove={() => removeFilter(leaf)}
-		/>
+		<div class="ff-chip">
+			<FilterChipIsland
+				icon={getFieldIcon(field?.type)}
+				fieldName={field ? fieldLabel(field) : 'unknown'}
+				operator={getOpLabel(leaf.op)}
+				opValue={leaf.op}
+				opOptions={opsFor(field?.type)}
+				value={displayValue(leaf, field)}
+				valuePills={valuePillsFor(leaf, field)}
+				rawValue={leaf.value}
+				{field}
+				{sourceId}
+				autoOpenValue={leaf === pendingFocusLeaf}
+				onOpChange={(op) => changeOp(leaf, op)}
+				onValueChange={(v) => changeValue(leaf, v)}
+				onRemove={() => removeFilter(leaf)}
+			/>
+		</div>
 	{/each}
 
 	<button class="ff-add" type="button" bind:this={addEl} onclick={() => (addOpen = !addOpen)}>
@@ -190,11 +192,26 @@
 		flex-direction: column;
 		align-items: flex-start;
 		gap: 5px;
-		max-height: 280px;
-		overflow-y: auto;
-		scrollbar-width: thin;
-		scrollbar-color: var(--menu-scrollbar-thumb) transparent;
 		padding: 2px 2px 0;
+	}
+
+	/* Clip a wide chip to the menu width; reveal the overflow (extending past the
+	   menu's right edge) on hover, keyboard focus, or while a segment is open. */
+	.ff-chip {
+		position: relative;
+		max-width: 100%;
+		overflow: hidden;
+		border-radius: 6px;
+	}
+
+	.ff-chip:hover,
+	.ff-chip:focus-within,
+	.ff-chip:has(.seg.open) {
+		max-width: none;
+		overflow: visible;
+		z-index: 5;
+		background: var(--color-bg);
+		box-shadow: var(--menu-shadow);
 	}
 
 	.ff-add {

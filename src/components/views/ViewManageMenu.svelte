@@ -23,6 +23,7 @@
 		fields,
 		shownIds,
 		canAddFields = true,
+		placement = 'bottom',
 		onToggleVisible,
 		onDelete,
 		onAddField
@@ -32,6 +33,7 @@
 		fields: ViewField[];
 		shownIds: string[];
 		canAddFields?: boolean;
+		placement?: 'bottom' | 'right';
 		onToggleVisible: (fieldId: string) => void;
 		onDelete: (fieldId: string) => void;
 		onAddField: (type: ViewFieldType) => void;
@@ -72,10 +74,20 @@
 		const a = anchor.getBoundingClientRect();
 		const m = popEl.getBoundingClientRect();
 		const margin = 4;
-		let top = a.bottom + margin;
-		let left = a.left;
-		if (top + m.height > window.innerHeight - 8) top = Math.max(8, a.top - m.height - margin);
-		if (left + m.width > window.innerWidth - 8) left = Math.max(8, a.right - m.width);
+		let top: number;
+		let left: number;
+		if (placement === 'right') {
+			top = a.top;
+			left = a.right + margin;
+			if (left + m.width > window.innerWidth - 8) left = Math.max(8, a.left - m.width - margin);
+			if (top + m.height > window.innerHeight - 8)
+				top = Math.max(8, window.innerHeight - 8 - m.height);
+		} else {
+			top = a.bottom + margin;
+			left = a.left;
+			if (top + m.height > window.innerHeight - 8) top = Math.max(8, a.top - m.height - margin);
+			if (left + m.width > window.innerWidth - 8) left = Math.max(8, a.right - m.width);
+		}
 		pos = { top, left };
 	}
 
