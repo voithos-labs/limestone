@@ -5,6 +5,7 @@
 	import { formatDateFriendly } from '$lib/views/dateFormat';
 	import { folderDir, fileName } from '$lib/views/fieldValue';
 	import { folderPath } from '$lib/views/createDefaults';
+	import { isValidSegment } from '$lib/util/paths';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import Menu from './views/Menu.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
@@ -98,6 +99,7 @@
 	// ── Title rename ───────────────────────────────────────────────────────────
 	let titleTaken = $state(false);
 	let titleCheckToken = 0;
+	const titleIllegal = $derived(title.trim() !== '' && !isValidSegment(`${title.trim()}${ext}`));
 
 	function titleCandidate(next: string): string {
 		const dir = folderDir(relPath);
@@ -118,7 +120,7 @@
 
 	async function commitTitle() {
 		const next = title.trim();
-		if (!next || next === handle.title) {
+		if (!next || next === handle.title || !isValidSegment(`${next}${ext}`)) {
 			title = handle.title;
 			return;
 		}
@@ -290,7 +292,7 @@
 					<span class="title-ghost">{title || ' '}</span>
 					<input
 						class="title-input"
-						class:invalid={titleTaken}
+						class:invalid={titleTaken || titleIllegal}
 						bind:value={title}
 						onblur={commitTitle}
 						onkeydown={onTitleKeydown}

@@ -24,6 +24,7 @@
 	} from '$lib/models/View.svelte';
 	import { toasts } from '$lib/toasts.svelte';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
+	import { isValidSegment } from '$lib/util/paths';
 	import {
 		rawStatefulValue as rawStateful,
 		statefulValue as stateful,
@@ -833,7 +834,7 @@
 		if (titleSaving) return;
 		const next = titleDraft.trim();
 		titleEditRowId = null;
-		if (!next || next === row.title) return;
+		if (!next || next === row.title || !isValidSegment(`${next}.md`)) return;
 		titleSaving = true;
 		try {
 			const doc = await DocHandle.fromID(row.id);
@@ -1913,6 +1914,8 @@
 									{#if titleEditRowId === row.id}
 										<input
 											class="title-input"
+											class:invalid={titleDraft.trim() !== '' &&
+												!isValidSegment(`${titleDraft.trim()}.md`)}
 											bind:this={titleInput}
 											bind:value={titleDraft}
 											onkeydown={(e) => onTitleKey(e, row)}
@@ -2445,6 +2448,12 @@
 		line-height: 1.4;
 		color: var(--color-text-primary);
 		outline: none;
+	}
+
+	.title-input.invalid {
+		text-decoration: underline;
+		text-decoration-color: var(--error-fg);
+		text-underline-offset: 3px;
 	}
 
 	.basic-table tbody tr:hover td {

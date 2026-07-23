@@ -16,6 +16,7 @@ import yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '$lib/services/db';
+import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
 import Group, { type GroupRow } from './Group';
 
@@ -190,7 +191,7 @@ class DocHandle {
 			draft?: boolean;
 		}
 	): Promise<DocHandle> {
-		const base = opts.title.replace(/[\\/]/g, '-');
+		const base = sanitizeSegment(opts.title) || 'Untitled';
 		const dir = opts.dir || defaultNoteDir(source);
 		const relPath = await DocHandle.uniqueRelPath(source, dir, base);
 		// Title must match the de-duplicated filename (e.g. "Untitled 2"), not the
