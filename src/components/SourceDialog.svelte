@@ -93,8 +93,7 @@
 	}
 
 	async function createFsFolder(name: string, parent: { id: string; path: string } | null) {
-		const slug = name.replace(/[\\/]/g, '-');
-		const rel = parent ? `${parent.id}/${slug}` : slug;
+		const rel = parent ? `${parent.id}/${name}` : name;
 		await makeDir(folderPath, rel);
 		return dirNode(rel);
 	}

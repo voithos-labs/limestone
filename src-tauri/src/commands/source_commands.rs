@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
-use crate::services::fs::resolve_in_source;
+use crate::services::fs::{clean_location, resolve_in_source};
 use crate::services::{self, dot_get, JsonSettingsStore, Source, Sources};
 use crate::AppData;
 
@@ -175,6 +175,9 @@ pub fn update_source(
     note_location: String,
     asset_location: String,
 ) -> Result<(), String> {
+    let note_location = clean_location(&note_location).map_err(|e| e.to_string())?;
+    let asset_location = clean_location(&asset_location).map_err(|e| e.to_string())?;
+
     let mut data = load_sources_file(&app);
     let source = data
         .sources

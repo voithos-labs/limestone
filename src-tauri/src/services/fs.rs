@@ -33,6 +33,14 @@ pub fn resolve_in_source(root: &Path, rel: &str) -> io::Result<PathBuf> {
     Ok(root.join(rel))
 }
 
+pub fn clean_location(raw: &str) -> io::Result<String> {
+    let cleaned = raw.trim().trim_matches(['/', '\\']).to_string();
+    if !cleaned.is_empty() && !is_contained(&cleaned) {
+        return Err(invalid("folder path", raw));
+    }
+    Ok(cleaned)
+}
+
 /// .tmp atomic write, big safe
 pub fn atomic_write(path: &Path, content: &[u8]) -> io::Result<()> {
     if let Some(parent) = path.parent() {
@@ -136,6 +144,22 @@ mod tests {
             "a\\b.md",
         ] {
             assert!(resolve_in_source(root, rel).is_err(), "{rel:?}");
+        }
+    }
+
+    #[test]
+    fn clean_location_normalizes_and_allows_root() {
+        assert_eq!(clean_location("").unwrap(), "");
+        assert_eq!(clean_location("   ").unwrap(), "");
+        assert_eq!(clean_location("assets").unwrap(), "assets");
+        assert_eq!(clean_location("/assets/").unwrap(), "assets");
+        assert_eq!(clean_location("notes/daily").unwrap(), "notes/daily");
+    }
+
+    #[test]
+    fn clean_location_rejects_escapes() {
+        for raw in ["..", "../out", "a/../../out", "a\\b", "note/../.."] {
+            assert!(clean_location(raw).is_err(), "{raw:?}");
         }
     }
 

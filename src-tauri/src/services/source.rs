@@ -1,4 +1,5 @@
 use crate::services::frontmatter;
+use crate::services::fs::clean_location;
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -138,8 +139,9 @@ pub fn create_source(
 
     let mut source = Source::new(title, path);
     source.use_frontmatter = use_frontmatter;
-    source.note_location = note_location.unwrap_or_default();
-    source.asset_location = asset_location.unwrap_or_else(default_asset_location);
+    source.note_location = clean_location(&note_location.unwrap_or_default())?;
+    source.asset_location =
+        clean_location(&asset_location.unwrap_or_else(default_asset_location))?;
     Ok(source)
 }
 

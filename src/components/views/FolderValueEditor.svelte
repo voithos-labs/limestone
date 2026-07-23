@@ -5,6 +5,7 @@
 	import Group, { GroupType } from '$lib/models/Group';
 	import { listSources, sourceName } from '$lib/models/Source';
 	import { folderPath } from '$lib/views/createDefaults';
+	import { isValidSegment } from '$lib/util/paths';
 
 	type FolderNode = {
 		id: string;
@@ -133,7 +134,9 @@
 		return (childrenByParent.get(focusId ?? null) ?? []).some((f) => f.slug.toLowerCase() === s);
 	}
 
-	const showCreate = $derived(searching && canCreate && !siblingExists(query));
+	const showCreate = $derived(
+		searching && canCreate && isValidSegment(query) && !siblingExists(query)
+	);
 
 	type NavEntry = { kind: 'folder'; folder: FolderNode } | { kind: 'root' } | { kind: 'create' };
 
@@ -165,7 +168,7 @@
 
 	async function createFolderNamed(slug: string) {
 		const name = slug.trim();
-		if (!name || !canCreate || creating || siblingExists(name)) return;
+		if (!isValidSegment(name) || !canCreate || creating || siblingExists(name)) return;
 		creating = true;
 		try {
 			const parent = focusId ? { id: focusId, path: folderPath(focusId, folders) } : null;
@@ -392,7 +395,9 @@
 			{/if}
 			<input
 				class="search-input"
-				class:invalid={createMode && siblingExists(query)}
+				class:invalid={createMode &&
+					query.trim() !== '' &&
+					(!isValidSegment(query) || siblingExists(query))}
 				type="text"
 				bind:value={query}
 				bind:this={searchEl}
