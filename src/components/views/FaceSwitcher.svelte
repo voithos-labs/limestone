@@ -48,6 +48,7 @@
 		table: Table,
 		kanban: Columns3,
 		list: List,
+		grid: LayoutGrid,
 		calendar: Calendar,
 		pinned: Pin,
 		journal: NotebookText
@@ -86,18 +87,9 @@
 		face.display_field_ids = [...face.display_field_ids, field.id];
 	}
 
-	// ── List-face options (layout + sort) ────────────────────────────────────
-	let layoutEl: HTMLButtonElement | null = $state(null);
-	let layoutOpen = $state(false);
+	// ── List / grid face options (sort) ──────────────────────────────────────
 	let sortEl: HTMLButtonElement | null = $state(null);
 	let sortOpen = $state(false);
-
-	const layoutValue = $derived((face.config.layout as string) ?? 'grid');
-	const layoutLabel = $derived(layoutValue === 'list' ? 'List' : 'Grid');
-	const LAYOUT_ITEMS = [
-		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
-		{ value: 'list', label: 'List', icon: List }
-	];
 
 	const sortFieldId = $derived(face.sort[0]?.field_id ?? '');
 	const sortDir = $derived(face.sort[0]?.direction ?? 'desc');
@@ -120,10 +112,6 @@
 		{ value: 'dir:desc', label: 'Descending', icon: ArrowDownAZ, keepOpen: true }
 	]);
 
-	function setLayout(v: string) {
-		face.config.layout = v;
-		layoutOpen = false;
-	}
 
 	// ── Journal (compound face) ──────────────────────────────────────────────
 	let bodyEl: HTMLButtonElement | null = $state(null);
@@ -132,7 +120,7 @@
 	const bodyValue = $derived(face.body?.type ?? 'doc');
 	const BODY_ITEMS = [
 		{ value: 'doc', label: 'Document', icon: NotebookText },
-		{ value: 'list', label: 'Grid', icon: LayoutGrid },
+		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
 		{ value: 'table', label: 'Table', icon: Table }
 	];
 	const bodyLabel = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.label ?? 'Document');
@@ -241,7 +229,7 @@
 	function onPopLeave() {
 		if (!closeOnSwapLeave) return;
 		if (groupOpen || addFaceOpen || renamingId || confirmFor || fieldsOpen) return;
-		if (layoutOpen || sortOpen || bodyOpen || dateFieldOpen || daySortOpen) return;
+		if (sortOpen || bodyOpen || dateFieldOpen || daySortOpen) return;
 		open = false;
 	}
 
@@ -249,6 +237,7 @@
 	let addFaceEl: HTMLElement | null = $state(null);
 	const ADD_FACE_ITEMS = [
 		{ value: 'table', label: 'Table', icon: Table },
+		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
 		{ value: 'list', label: 'List', icon: List },
 		{ value: 'journal', label: 'Journal', icon: NotebookText }
 	];
@@ -529,23 +518,7 @@
 				<span class="trailing">{groupLabel}</span>
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
-		{:else if face.type === 'list'}
-			<button
-				class="action group-toggle"
-				type="button"
-				bind:this={layoutEl}
-				onclick={() => (layoutOpen = !layoutOpen)}
-			>
-				{#if layoutValue === 'list'}
-					<List size={14} strokeWidth={1.75} />
-				{:else}
-					<LayoutGrid size={14} strokeWidth={1.75} />
-				{/if}
-				<span>Layout</span>
-				<span class="trailing">{layoutLabel}</span>
-				<ChevronRight size={13} strokeWidth={2} />
-			</button>
-
+		{:else if face.type === 'list' || face.type === 'grid'}
 			<button
 				class="action group-toggle"
 				type="button"
@@ -637,16 +610,7 @@
 			minWidth={170}
 			placement="right"
 		/>
-	{:else if face.type === 'list'}
-		<Menu
-			bind:open={layoutOpen}
-			anchor={layoutEl}
-			items={LAYOUT_ITEMS}
-			selected={layoutValue}
-			onSelect={setLayout}
-			minWidth={150}
-			placement="right"
-		/>
+	{:else if face.type === 'list' || face.type === 'grid'}
 		<Menu
 			bind:open={sortOpen}
 			anchor={sortEl}

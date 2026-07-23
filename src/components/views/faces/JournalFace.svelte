@@ -708,7 +708,7 @@
 		{#if bodyFace}
 			<div class="body-face">
 				{#key bodyFace.id}
-					{#if bodyFace.type === 'list'}
+					{#if bodyFace.type === 'list' || bodyFace.type === 'grid'}
 						<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
 					{:else}
 						<TableFace {view} face={bodyFace} {onOpenRow} {flow} scope={bodyScope} />

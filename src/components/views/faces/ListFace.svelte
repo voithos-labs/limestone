@@ -50,7 +50,7 @@
 	type Row = MemberRow;
 
 	const query = $derived((view.state.search as string | undefined) ?? '');
-	const layout = $derived((face.config.layout as string) ?? 'grid');
+	const layout = $derived(face.type === 'list' ? 'list' : 'grid');
 
 	let rows: Row[] = $state([]);
 	let total = $state(0);

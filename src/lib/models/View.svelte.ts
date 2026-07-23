@@ -68,7 +68,14 @@ import { wallClockToMs } from '$lib/views/dateFormat';
  * faces: table, list, kanban, calendar, pinned doc
  *
  */
-export type ViewFaceType = 'table' | 'list' | 'kanban' | 'calendar' | 'pinned' | 'journal';
+export type ViewFaceType =
+	| 'table'
+	| 'list'
+	| 'grid'
+	| 'kanban'
+	| 'calendar'
+	| 'pinned'
+	| 'journal';
 
 interface ViewFaceJSON {
 	id: string;
@@ -84,6 +91,7 @@ interface ViewFaceJSON {
 const FACE_TYPE_LABEL: Record<ViewFaceType, string> = {
 	table: 'Table',
 	list: 'List',
+	grid: 'Grid',
 	kanban: 'Board',
 	calendar: 'Calendar',
 	pinned: 'Pinned',
@@ -834,7 +842,7 @@ class View {
 	}
 
 	private initDefaultFaces(): void {
-		this.faces = [ViewFace.create('table', this.defaultFaceFieldIds())];
+		this.faces = [ViewFace.create('grid', this.defaultFaceFieldIds())];
 	}
 
 	private defaultFaceFieldIds(): string[] {

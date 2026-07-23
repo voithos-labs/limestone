@@ -292,24 +292,32 @@
     {/if}
 {/snippet}
 
+{#snippet saveButton()}
+    <button
+            class="save-view"
+            type="button"
+            onclick={() => view.save().catch((e) => console.error('save view failed', e))}
+    >
+        <span>Save as view</span>
+    </button>
+{/snippet}
+
+{#snippet moreButton()}
+    <button
+            class="more-btn"
+            type="button"
+            aria-label="More"
+            onclick={(e) => onMore?.(e.currentTarget as HTMLElement)}
+    >
+        <EllipsisVertical size={16}/>
+    </button>
+{/snippet}
+
 {#snippet actionButton()}
     {#if view.temporary}
-        <button
-                class="save-view"
-                type="button"
-                onclick={() => view.save().catch((e) => console.error('save view failed', e))}
-        >
-            <span>Save as view</span>
-        </button>
+        {@render saveButton()}
     {:else if !view.cover}
-        <button
-                class="more-btn"
-                type="button"
-                aria-label="More"
-                onclick={(e) => onMore?.(e.currentTarget as HTMLElement)}
-        >
-            <EllipsisVertical size={16}/>
-        </button>
+        {@render moreButton()}
     {/if}
 {/snippet}
 
@@ -427,10 +435,16 @@
         </div>
     {/if}
 
-    {#if !hasCover}
-        {@render actionButton()}
+    {#if !hasCover && !view.temporary}
+        {@render moreButton()}
     {/if}
 </div>
+
+{#if !hasCover && view.temporary}
+    <div class="save-row">
+        {@render saveButton()}
+    </div>
+{/if}
 
 <style>
     .view-header {
@@ -445,7 +459,7 @@
     .title-inline {
         display: inline-flex;
         align-items: center;
-        gap: 2px;
+        gap: 4px;
         flex-shrink: 0;
         margin-right: 5px;
         max-width: 40%;
@@ -471,7 +485,7 @@
     .title-inline .view-title,
     .title-inline .title-ghost,
     .title-inline .title-input {
-        font-size: 16px;
+        font-size: 18px;
     }
 
     .title-inline .view-title,
@@ -679,11 +693,17 @@
         background: var(--chip-bg-hover);
     }
 
+    .save-row {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 14px;
+        padding-right: 24px;
+    }
+
     .save-view {
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        margin-left: auto;
         background: none;
         border: none;
         padding: 0;
