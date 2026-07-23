@@ -540,6 +540,10 @@
 		padding-top: 0;
 	}
 
+	.view-inner > :global(.list-face) {
+		padding-top: 6px;
+	}
+
 	.view-cover {
 		position: relative;
 		flex-shrink: 0;
