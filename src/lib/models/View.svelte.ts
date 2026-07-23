@@ -1094,6 +1094,7 @@ class View {
 	async renameField(field: ViewField, newName: string): Promise<void> {
 		const oldName = field.name;
 		if (!newName || newName === oldName) return;
+		this.fields = this.fields.map((f) => (f.id === field.id ? { ...f, name: newName } : f));
 		const sources = await listSources();
 		const results: BulkResult[] = [];
 		for (const s of sources) {
@@ -1107,7 +1108,6 @@ class View {
 				})
 			);
 		}
-		this.fields = this.fields.map((f) => (f.id === field.id ? { ...f, name: newName } : f));
 		toastBulkFailures(results);
 	}
 

@@ -34,7 +34,7 @@
 		ViewFieldType,
 		FilterNode
 	} from '$lib/models/View.svelte';
-	import { VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
+	import { VIEW_FIELD_SORTABLE, sanitizeName } from '$lib/models/View.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
@@ -82,9 +82,18 @@
 		}
 	}
 
-	function addField(type: ViewFieldType) {
+	function addField(type: ViewFieldType): ViewField {
 		const field = view.addFieldOfType(type);
 		face.display_field_ids = [...face.display_field_ids, field.id];
+		return field;
+	}
+
+	function renameField(fieldId: string, raw: string) {
+		const f = view.fields.find((ff) => ff.id === fieldId);
+		if (!f) return;
+		const newName = sanitizeName(raw);
+		if (!newName || newName === f.name) return;
+		view.renameField(f, newName).catch((e) => console.error('rename field failed', e));
 	}
 
 	// ── List / grid face options (sort) ──────────────────────────────────────
@@ -659,6 +668,7 @@
 		onToggleVisible={toggleColumn}
 		onDelete={(id) => view.removeField(id)}
 		onAddField={addField}
+		onRename={renameField}
 	/>
 
 	{#if face.type === 'table'}

@@ -209,6 +209,10 @@
 		color: var(--color-ui-muted);
 	}
 
+	.fc-line :global(.crumb-seg.last) {
+		color: inherit;
+	}
+
 	.fc-icon {
 		display: inline-flex;
 		align-items: center;
