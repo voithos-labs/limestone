@@ -101,7 +101,7 @@ export interface AccentPreset {
 export const ACCENT_PRESETS: Record<string, AccentPreset> = {
 	slate: { name: 'Slate', light: '#5b7286', dark: '#6d8ba3' },
 	violet: { name: 'Violet', light: '#75689a', dark: '#8d7fb5' },
-	clay: { name: 'Clay', light: '#9a6b52', dark: '#b08267' },
+	copper: { name: 'Copper', light: '#C56836', dark: '#C56836' },
 	amber: { name: 'Amber', light: '#a3812f', dark: '#c2a04a' },
 	rose: { name: 'Rose', light: '#a05e72', dark: '#b87990' },
 	teal: { name: 'Teal', light: '#3f7f7a', dark: '#569a94' },
