@@ -1,32 +1,27 @@
 # TODO n shit
+for lunch
 
-For lunch:
+@finnrw
 
-**Major**
+**Plumbing**
+- [ ] in-body tag indexing
+- [ ] in-body internal wikilink indexing (or passive, just needs to cover doc renames)
+- [ ] filesystem watcher (see figjam plan)
 
-- [ ] In-house editor
-- [ ] Document history
-- [ ] Global shortcuts
-- [ ] Executable code blocks (with env config)
-- [ ] Upgraded quick action bar with actions and quick-filtering
+**Review**
+- [ ] All argonite fundemental components, full visual/UX pass
 
-**Minor**
+**UI/UX**
+- [ ] view creation preamble (select folder, default type, eventually templates, etc.)
+- [ ] Kanban view face
+- [ ] File explorer view face? (default for sources / folders opened as a view)
 
-- [ ] Full body indexing (tags, intralinks--only because they need to be updated on rename, and FTS)
-- [ ] Bookmarking (see figma)
-- [ ] File watcher for external file changes
-- [ ] Split screen
-- [ ] Basic spell check with a disable-auto-replace option to actually make you learn to spell if you're dyslexic like
-      me
-- [ ] Kanban
+**Chores**
+- [ ] Finish designing limestone.app launch site
+- [ ] Repo organization for o-s, deployment streams, etc.
+- [ ] Gh actions CI (build, sign, etc.) configuration :: link to download stable on website
 
-On shortcuts, maybe:
+@danielzfliu
 
-`CTRL` + `Space` (& `CTRL + N` & `CTRL + T`) => open straight to new search, type `/` for command -- shows last search /
-state before you type
-`CTRL` + `Shift` + `Space` => use last filters / state
-`CTRL` + `P` => command, basically just the search but with `/` already entered
-
-Think about:
-
-- Hmm maybe document templates
+**Editor Integration**
+- [ ] 
