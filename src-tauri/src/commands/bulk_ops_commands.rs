@@ -1,8 +1,7 @@
-use crate::commands::source_commands::source_uses_frontmatter;
+use crate::commands::source_commands::{source_root, source_uses_frontmatter};
 use crate::services::bulk_ops::BulkResult;
 use crate::AppData;
 use serde_json::Value;
-use std::path::Path;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
@@ -10,7 +9,6 @@ pub async fn bulk_set_view_field(
     app_data: State<'_, AppData>,
     app: AppHandle,
     source_id: String,
-    source_path: String,
     view_slug: String,
     field_name: String,
     value: Value,
@@ -25,7 +23,7 @@ pub async fn bulk_set_view_field(
             &app_data.db,
             &app,
             &source_id,
-            Path::new(&source_path),
+            &source_root(&app, &source_id)?,
             &view_slug,
             &field_name,
             value,
@@ -39,7 +37,6 @@ pub async fn bulk_rename_view_field(
     app_data: State<'_, AppData>,
     app: AppHandle,
     source_id: String,
-    source_path: String,
     view_slug: String,
     old_name: String,
     new_name: String,
@@ -50,7 +47,7 @@ pub async fn bulk_rename_view_field(
             &app_data.db,
             &app,
             &source_id,
-            Path::new(&source_path),
+            &source_root(&app, &source_id)?,
             &view_slug,
             &old_name,
             &new_name,
@@ -63,7 +60,6 @@ pub async fn bulk_rename_view(
     app_data: State<'_, AppData>,
     app: AppHandle,
     source_id: String,
-    source_path: String,
     old_slug: String,
     new_slug: String,
 ) -> Result<BulkResult, String> {
@@ -73,7 +69,7 @@ pub async fn bulk_rename_view(
             &app_data.db,
             &app,
             &source_id,
-            Path::new(&source_path),
+            &source_root(&app, &source_id)?,
             &old_slug,
             &new_slug,
         )
@@ -85,7 +81,6 @@ pub async fn bulk_rename_view_option(
     app_data: State<'_, AppData>,
     app: AppHandle,
     source_id: String,
-    source_path: String,
     view_slug: String,
     field_name: String,
     old_value: String,
@@ -97,7 +92,7 @@ pub async fn bulk_rename_view_option(
             &app_data.db,
             &app,
             &source_id,
-            Path::new(&source_path),
+            &source_root(&app, &source_id)?,
             &view_slug,
             &field_name,
             &old_value,
@@ -111,7 +106,6 @@ pub async fn bulk_remove_view_field(
     app_data: State<'_, AppData>,
     app: AppHandle,
     source_id: String,
-    source_path: String,
     view_slug: String,
     field_name: String,
 ) -> Result<BulkResult, String> {
@@ -121,7 +115,7 @@ pub async fn bulk_remove_view_field(
             &app_data.db,
             &app,
             &source_id,
-            Path::new(&source_path),
+            &source_root(&app, &source_id)?,
             &view_slug,
             &field_name,
         )

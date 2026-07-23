@@ -1,5 +1,5 @@
-use crate::commands::source_commands::source_uses_frontmatter;
-use crate::services::fs::{atomic_write, move_file, validate_file_name};
+use crate::commands::source_commands::{source_root, source_uses_frontmatter};
+use crate::services::fs::{atomic_write, move_file, resolve_in_source, validate_file_name};
 use crate::services::{
     cleanup_orphan_folder_groups, fm_properties, frontmatter, index_document, sync_folders,
     sync_tags,
@@ -19,14 +19,15 @@ fn mtime(path: &std::path::Path) -> i64 {
 #[tauri::command]
 pub async fn write_document(
     app_data: State<'_, AppData>,
+    app: AppHandle,
     source_id: String,
-    source_path: String,
     rel_path: String,
     contents: String,
     updated_at: i64,
     create: Option<bool>,
 ) -> Result<(), String> {
-    let full_path = std::path::Path::new(&source_path).join(&rel_path);
+    let root = source_root(&app, &source_id)?;
+    let full_path = resolve_in_source(&root, &rel_path).map_err(|e| e.to_string())?;
 
     if create.unwrap_or(false) && full_path.exists() {
         return Err(format!("\"{rel_path}\" already exists"));
@@ -126,7 +127,6 @@ pub async fn set_document_tags(
     app: AppHandle,
     id: String,
     source_id: String,
-    source_path: String,
     rel_path: String,
     tags: Vec<String>,
 ) -> Result<(), String> {
@@ -136,7 +136,8 @@ pub async fn set_document_tags(
         );
     }
 
-    let full_path = std::path::Path::new(&source_path).join(&rel_path);
+    let root = source_root(&app, &source_id)?;
+    let full_path = resolve_in_source(&root, &rel_path).map_err(|e| e.to_string())?;
     let fm_tags = tags.clone();
     frontmatter::rewrite_frontmatter(&full_path, move |fm| {
         if let Some(obj) = fm.as_object_mut() {
@@ -174,22 +175,22 @@ pub async fn set_document_tags(
 #[tauri::command]
 pub async fn rename_document(
     app_data: State<'_, AppData>,
+    app: AppHandle,
     source_id: String,
-    source_path: String,
     rel_path: String,
     new_name: String,
 ) -> Result<String, String> {
     validate_file_name(&new_name).map_err(|e| e.to_string())?;
 
-    let source = std::path::Path::new(&source_path);
-    let old_full = source.join(&rel_path);
+    let root = source_root(&app, &source_id)?;
+    let old_full = resolve_in_source(&root, &rel_path).map_err(|e| e.to_string())?;
     let new_rel = std::path::Path::new(&rel_path)
         .parent()
         .unwrap_or(std::path::Path::new(""))
         .join(&new_name)
         .to_string_lossy()
         .replace('\\', "/");
-    let new_full = source.join(&new_rel);
+    let new_full = resolve_in_source(&root, &new_rel).map_err(|e| e.to_string())?;
 
     if new_full.exists() {
         return Err(format!("\"{new_rel}\" already exists"));
@@ -222,7 +223,6 @@ pub async fn save_document_meta(
     app: AppHandle,
     id: String,
     source_id: String,
-    source_path: String,
     rel_path: String,
     created_at: Option<String>,
     updated_at: Option<String>,
@@ -234,7 +234,8 @@ pub async fn save_document_meta(
         );
     }
 
-    let full_path = std::path::Path::new(&source_path).join(&rel_path);
+    let root = source_root(&app, &source_id)?;
+    let full_path = resolve_in_source(&root, &rel_path).map_err(|e| e.to_string())?;
 
     // Patch frontmatter on fs
     let c = created_at.clone();
@@ -281,19 +282,18 @@ pub async fn save_document_meta(
 #[tauri::command]
 pub async fn move_document(
     app_data: State<'_, AppData>,
+    app: AppHandle,
     source_id: String,
-    source_path: String,
     rel_path: String,
     new_rel_path: String,
     new_source_id: Option<String>,
-    new_source_path: Option<String>,
 ) -> Result<(), String> {
     let dest_source_id = new_source_id.unwrap_or_else(|| source_id.clone());
-    let dest_source_path = new_source_path.unwrap_or_else(|| source_path.clone());
 
-    let old_full = std::path::Path::new(&source_path).join(&rel_path);
-    let dest_source = std::path::Path::new(&dest_source_path);
-    let new_full = dest_source.join(&new_rel_path);
+    let root = source_root(&app, &source_id)?;
+    let dest_source = source_root(&app, &dest_source_id)?;
+    let old_full = resolve_in_source(&root, &rel_path).map_err(|e| e.to_string())?;
+    let new_full = resolve_in_source(&dest_source, &new_rel_path).map_err(|e| e.to_string())?;
 
     move_file(&old_full, &new_full).map_err(|e| e.to_string())?;
 
@@ -317,7 +317,7 @@ pub async fn move_document(
         index_document(
             &app_data.db,
             &dest_source_id,
-            dest_source,
+            &dest_source,
             &doc_id,
             &new_rel_path,
             1024,
@@ -337,11 +337,13 @@ pub async fn move_document(
 #[tauri::command]
 pub async fn delete_document(
     app_data: State<'_, AppData>,
+    app: AppHandle,
     id: String,
-    source_path: String,
+    source_id: String,
     rel_path: String,
 ) -> Result<(), String> {
-    let full_path = std::path::Path::new(&source_path).join(&rel_path);
+    let root = source_root(&app, &source_id)?;
+    let full_path = resolve_in_source(&root, &rel_path).map_err(|e| e.to_string())?;
 
     // Remove the file (ignore a missing file so the DB row is still cleaned up)
     match std::fs::remove_file(&full_path) {
@@ -350,12 +352,6 @@ pub async fn delete_document(
         Err(e) => return Err(e.to_string()),
     }
 
-    let source_id: Option<String> =
-        sqlx::query_scalar("SELECT source_id FROM documents WHERE id = ?1")
-            .bind(&id)
-            .fetch_optional(&app_data.db)
-            .await
-            .map_err(|e| e.to_string())?;
     let group_ids: Vec<String> =
         sqlx::query_scalar("SELECT group_id FROM document_groups WHERE document_id = ?1")
             .bind(&id)
@@ -392,11 +388,9 @@ pub async fn delete_document(
         .await
         .map_err(|e| e.to_string())?;
     }
-    if let Some(source_id) = source_id {
-        cleanup_orphan_folder_groups(&app_data.db, &source_id)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
+    cleanup_orphan_folder_groups(&app_data.db, &source_id)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }

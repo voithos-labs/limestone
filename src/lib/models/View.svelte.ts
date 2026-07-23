@@ -1080,7 +1080,6 @@ class View {
 			results.push(
 				await invoke<BulkResult>('bulk_rename_view', {
 					sourceId: s.id,
-					sourcePath: s.path,
 					oldSlug,
 					newSlug
 				})
@@ -1101,7 +1100,6 @@ class View {
 			results.push(
 				await invoke<BulkResult>('bulk_rename_view_field', {
 					sourceId: s.id,
-					sourcePath: s.path,
 					viewSlug: this.slug,
 					oldName,
 					newName
@@ -1119,7 +1117,6 @@ class View {
 			results.push(
 				await invoke<BulkResult>('bulk_rename_view_option', {
 					sourceId: s.id,
-					sourcePath: s.path,
 					viewSlug: this.slug,
 					fieldName: field.name,
 					oldValue,
@@ -1140,7 +1137,6 @@ class View {
 		const source = await getSource(sourceId);
 		return await invoke<BulkResult>('bulk_set_view_field', {
 			sourceId,
-			sourcePath: source.path,
 			viewSlug: this.slug,
 			fieldName: field.name,
 			value,

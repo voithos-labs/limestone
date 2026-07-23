@@ -1,19 +1,36 @@
 use atomicwrites::{AtomicFile, OverwriteBehavior::AllowOverwrite};
 use std::fs;
 use std::io::{self, Write};
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 use uuid::Uuid;
 
+fn invalid(what: &str, value: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!("invalid {what}: {value}"),
+    )
+}
+
+fn is_contained(rel: &str) -> bool {
+    !rel.is_empty()
+        && !rel.contains('\\')
+        && Path::new(rel)
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)))
+}
+
 pub fn validate_file_name(name: &str) -> io::Result<()> {
-    let mut parts = Path::new(name).components();
-    let single = matches!(parts.next(), Some(Component::Normal(_))) && parts.next().is_none();
-    if !single || name.contains(['/', '\\']) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("invalid file name: {name}"),
-        ));
+    if !is_contained(name) || name.contains('/') {
+        return Err(invalid("file name", name));
     }
     Ok(())
+}
+
+pub fn resolve_in_source(root: &Path, rel: &str) -> io::Result<PathBuf> {
+    if !is_contained(rel) {
+        return Err(invalid("path", rel));
+    }
+    Ok(root.join(rel))
 }
 
 /// .tmp atomic write, big safe
@@ -86,5 +103,63 @@ mod tests {
     fn rejects_absolute_windows_path() {
         assert!(validate_file_name("C:/Windows/x.md").is_err());
         assert!(validate_file_name("C:\\Windows\\x.md").is_err());
+    }
+
+    #[test]
+    fn resolve_joins_nested_paths() {
+        let root = Path::new("/vault");
+        assert_eq!(
+            resolve_in_source(root, "a/b/c.md").unwrap(),
+            Path::new("/vault/a/b/c.md")
+        );
+        assert_eq!(
+            resolve_in_source(root, "note.md").unwrap(),
+            Path::new("/vault/note.md")
+        );
+        assert_eq!(
+            resolve_in_source(root, "a/./b.md").unwrap(),
+            Path::new("/vault/a/b.md")
+        );
+    }
+
+    #[test]
+    fn resolve_rejects_escapes() {
+        let root = Path::new("/vault");
+        for rel in [
+            "",
+            "..",
+            "../out.md",
+            "a/../../out.md",
+            "/etc/passwd",
+            "./x.md",
+            "..\\out.md",
+            "a\\b.md",
+        ] {
+            assert!(resolve_in_source(root, rel).is_err(), "{rel:?}");
+        }
+    }
+
+    #[test]
+    fn resolve_never_escapes_root() {
+        let root = Path::new("/vault");
+        for rel in [
+            "..",
+            "../out.md",
+            "a/../../out.md",
+            "/etc/passwd",
+            "C:/Windows/x.md",
+            "C:\\Windows\\x.md",
+            "\\\\server\\share\\x.md",
+            "a/./b.md",
+            "....//....//out.md",
+        ] {
+            if let Ok(p) = resolve_in_source(root, rel) {
+                assert!(p.starts_with(root), "{rel:?} -> {p:?}");
+                assert!(
+                    !p.components().any(|c| matches!(c, Component::ParentDir)),
+                    "{rel:?} -> {p:?}"
+                );
+            }
+        }
     }
 }
