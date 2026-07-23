@@ -1,6 +1,7 @@
 # LIMESTONE (V4 (fml))
 
-<img width="930" height="730" alt="image" src="https://github.com/user-attachments/assets/fb850cdb-06c6-482d-b692-fc619e7b0ae8" />
+<img width="818" height="537" alt="image" src="https://github.com/user-attachments/assets/656ab889-dfca-4058-9c6f-7965713e3072" />
+
 
 ## Dev Commands
 
