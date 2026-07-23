@@ -1,4 +1,4 @@
-import type Session from '$lib/models/Session';
+import type Session from '$lib/models/Session.svelte.js';
 import type { SettingsState } from '$lib/models/Settings.svelte';
 import DocHandle from '$lib/models/DocHandle';
 

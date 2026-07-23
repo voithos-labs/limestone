@@ -16,6 +16,7 @@
 	import QuickSearch from '../QuickSearch.svelte';
 	import SourceDialog from '../SourceDialog.svelte';
 	import Menu from '../views/Menu.svelte';
+	import SourceMenu from '../SourceMenu.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import {
 		Box,
@@ -25,10 +26,7 @@
 		FolderPlus,
 		GripVertical,
 		EllipsisVertical,
-		Pencil,
-		Star,
-		ExternalLink,
-		Trash2
+		Star
 	} from '@lucide/svelte';
 	import FoldersStar from '../FoldersStar.svelte';
 	import { fly } from 'svelte/transition';
@@ -137,25 +135,6 @@
 	let srcMenuOpen = $state(false);
 	let srcMenuAnchor: HTMLElement | null = $state(null);
 	let menuSource: Source | null = $state(null);
-	let confirmingRemove = $state(false);
-
-	$effect(() => {
-		if (!srcMenuOpen) confirmingRemove = false;
-	});
-
-	const srcMenuItems: MenuEntry[] = $derived([
-		{ value: 'edit', label: 'Edit', icon: Pencil },
-		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
-		{
-			value: 'default',
-			label: menuSource?.id === defaultSourceId ? 'Remove default' : 'Set as default',
-			icon: Star
-		},
-		{ kind: 'divider' },
-		confirmingRemove
-			? { value: 'confirm-remove', label: 'Confirm remove', icon: Trash2, danger: true }
-			: { value: 'remove', label: 'Remove', icon: Trash2, keepOpen: true }
-	]);
 
 	function openSourceMenu(s: Source, e: MouseEvent) {
 		menuSource = s;
@@ -163,29 +142,34 @@
 		srcMenuOpen = true;
 	}
 
-	async function onSourceMenuSelect(value: string) {
-		if (value === 'remove') {
-			confirmingRemove = true;
-			return;
-		}
-		srcMenuOpen = false;
-		const s = menuSource;
-		if (!s) return;
+	function configureSource(s: Source) {
+		dialogMode = 'edit';
+		dialogSource = s;
+		sourceDialogOpen = true;
+	}
+
+	async function revealSource(s: Source) {
 		try {
-			if (value === 'edit') {
-				dialogMode = 'edit';
-				dialogSource = s;
-				sourceDialogOpen = true;
-			} else if (value === 'reveal') {
-				await openPath(s.path);
-			} else if (value === 'default') {
-				await setDefaultSource(s.id === defaultSourceId ? null : s.id);
-				defaultSourceId = await getDefaultSourceId();
-			} else if (value === 'confirm-remove') {
-				await removeSource(s.id);
-				await loadRecents();
-				docsKey++;
-			}
+			await openPath(s.path);
+		} catch (e) {
+			console.error('source action failed', e);
+		}
+	}
+
+	async function toggleDefaultSource(s: Source) {
+		try {
+			await setDefaultSource(s.id === defaultSourceId ? null : s.id);
+			defaultSourceId = await getDefaultSourceId();
+		} catch (e) {
+			console.error('source action failed', e);
+		}
+	}
+
+	async function removeSourceAction(s: Source) {
+		try {
+			await removeSource(s.id);
+			await loadRecents();
+			docsKey++;
 		} catch (e) {
 			console.error('source action failed', e);
 		}
@@ -279,12 +263,15 @@
 				source={dialogSource}
 				onSaved={loadRecents}
 			/>
-			<Menu
+			<SourceMenu
 				bind:open={srcMenuOpen}
 				anchor={srcMenuAnchor}
-				items={srcMenuItems}
-				onSelect={onSourceMenuSelect}
-				minWidth={190}
+				source={menuSource}
+				{defaultSourceId}
+				onConfigure={configureSource}
+				onReveal={revealSource}
+				onToggleDefault={toggleDefaultSource}
+				onRemove={removeSourceAction}
 			/>
 
 			<section class="lib-section">

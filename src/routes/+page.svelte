@@ -4,7 +4,7 @@
 	import { getCurrentWebview } from '@tauri-apps/api/webview';
 	import TopBar from '../components/nav/TopBar.svelte';
 	import { flushAll } from '$lib/util/flush';
-	import Session from '$lib/models/Session';
+	import Session from '$lib/models/Session.svelte.js';
 	import LibraryPage from '../components/pages/LibraryPage.svelte';
 	import SettingsPage from '../components/pages/SettingsPage.svelte';
 	import ViewPage from '../components/pages/ViewPage.svelte';

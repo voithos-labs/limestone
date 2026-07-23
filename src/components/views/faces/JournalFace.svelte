@@ -428,13 +428,19 @@
 	let utilW = $state(0);
 
 	const monthMarker = $derived.by(() => {
-		if (!stripW) return null;
-		const first = Math.max(0, Math.floor(stripScrollLeft / DAY_STEP));
-		const last = Math.min(stripDays.length - 1, Math.ceil((stripScrollLeft + stripW) / DAY_STEP));
+		if (!stripW || !stripEl) return null;
+		const stripLeft = stripEl.getBoundingClientRect().left;
+		const first = Math.max(0, Math.floor(stripScrollLeft / DAY_STEP) - 2);
+		const last = Math.min(
+			stripDays.length - 1,
+			Math.ceil((stripScrollLeft + stripW) / DAY_STEP) + 2
+		);
 		for (let i = first; i <= last; i++) {
 			const d = stripDays[i];
 			if (d.getDate() !== 1) continue;
-			const x = cellLeft(i) - DAY_GAP / 2 - stripScrollLeft;
+			const btn = stripEl.children[i] as HTMLElement | undefined;
+			if (!btn) continue;
+			const x = btn.getBoundingClientRect().left - stripLeft - DAY_GAP / 2;
 			const fade = Math.min(1, (x - (utilW + 16)) / 12, (stripW - 72 - x) / 12);
 			if (fade <= 0) continue;
 			return { x, fade, label: `${d.toLocaleDateString(undefined, { month: 'short' })} 1st` };

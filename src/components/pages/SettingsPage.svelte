@@ -22,12 +22,13 @@
 	import { select } from '$lib/services/db';
 	import { openPath } from '@tauri-apps/plugin-opener';
 	import SourceDialog from '../SourceDialog.svelte';
+	import SourceMenu from '../SourceMenu.svelte';
 	import Toggle from '../Toggle.svelte';
 	import Menu from '../views/Menu.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
-	import type Session from '$lib/models/Session';
-	import type { ViewTab } from '$lib/models/Session';
+	import type Session from '$lib/models/Session.svelte.js';
+	import type { ViewTab } from '$lib/models/Session.svelte.js';
 	import {
 		actions,
 		formatKey,
@@ -47,12 +48,8 @@
 		Check,
 		FolderPlus,
 		Folders,
-		ExternalLink,
 		EllipsisVertical,
-		Trash2,
 		X,
-		Pencil,
-		Star,
 		Keyboard
 	} from '@lucide/svelte';
 
@@ -161,7 +158,6 @@
 	// ── Sources tab ──────────────────────────────────────────────────────────
 	let sources: Source[] = $state([]);
 	let sourceCounts: Record<string, number> = $state({});
-	let confirmingRemoveId: string | null = $state(null);
 	let sourceError = $state('');
 
 	let dialogOpen = $state(false);
@@ -171,7 +167,6 @@
 	async function loadSources() {
 		sources = await listSources();
 		defaultSourceId = await getDefaultSourceId();
-		confirmingRemoveId = null;
 		for (const s of sources) countSource(s.id);
 	}
 
@@ -215,10 +210,9 @@
 		dialogOpen = true;
 	}
 
-	async function confirmRemove(s: Source) {
+	async function removeSourceAction(s: Source) {
 		try {
 			await removeSource(s.id);
-			confirmingRemoveId = null;
 			await loadSources();
 		} catch (e) {
 			sourceError = String(e);
@@ -236,32 +230,11 @@
 	let srcMenuOpen = $state(false);
 	let srcMenuAnchor: HTMLElement | null = $state(null);
 	let menuSource: Source | null = $state(null);
-	const srcMenuItems: MenuEntry[] = $derived.by(() => [
-		{ value: 'edit', label: 'Edit', icon: Pencil },
-		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
-		{
-			value: 'default',
-			label: menuSource?.id === defaultSourceId ? 'Remove default' : 'Set as default',
-			icon: Star
-		},
-		{ kind: 'divider' },
-		{ value: 'remove', label: 'Remove', icon: Trash2 }
-	]);
 
 	function openSourceMenu(s: Source, e: MouseEvent) {
 		menuSource = s;
 		srcMenuAnchor = e.currentTarget as HTMLElement;
 		srcMenuOpen = true;
-	}
-
-	function onSourceMenuSelect(value: string) {
-		srcMenuOpen = false;
-		const s = menuSource;
-		if (!s) return;
-		if (value === 'edit') editSource(s);
-		else if (value === 'reveal') revealSource(s);
-		else if (value === 'default') toggleDefaultSource(s);
-		else if (value === 'remove') confirmingRemoveId = s.id;
 	}
 
 	onMount(async () => {
@@ -780,21 +753,9 @@
 											{sourceCounts[s.id]} {sourceCounts[s.id] === 1 ? 'doc' : 'docs'}
 										{/if}
 									</span>
-									{#if confirmingRemoveId === s.id}
-										<span class="confirm-text">Remove?</span>
-										<button
-											class="src-btn"
-											title="Cancel"
-											onclick={() => (confirmingRemoveId = null)}
-										>
-											<X size={14} />
-										</button>
-										<button class="src-btn confirm" onclick={() => confirmRemove(s)}>Remove</button>
-									{:else}
-										<button class="src-btn" title="More" onclick={(e) => openSourceMenu(s, e)}>
-											<EllipsisVertical size={14} />
-										</button>
-									{/if}
+									<button class="src-btn" title="More" onclick={(e) => openSourceMenu(s, e)}>
+										<EllipsisVertical size={14} />
+									</button>
 								</div>
 							</div>
 						{:else}
@@ -873,12 +834,16 @@
 	</div>
 {/if}
 
-<Menu
+<SourceMenu
 	bind:open={srcMenuOpen}
 	anchor={srcMenuAnchor}
-	items={srcMenuItems}
-	onSelect={onSourceMenuSelect}
+	source={menuSource}
+	{defaultSourceId}
 	minWidth={180}
+	onConfigure={editSource}
+	onReveal={revealSource}
+	onToggleDefault={toggleDefaultSource}
+	onRemove={removeSourceAction}
 />
 
 <SourceDialog
@@ -1627,11 +1592,6 @@
 		white-space: nowrap;
 	}
 
-	.confirm-text {
-		font-size: 12px;
-		color: var(--color-text-secondary);
-	}
-
 	.src-btn {
 		display: flex;
 		align-items: center;
@@ -1651,16 +1611,6 @@
 	.src-btn:hover {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
-	}
-
-	.src-btn.confirm {
-		background: var(--color-accent);
-		color: var(--color-accent-contrast);
-	}
-
-	.src-btn.confirm:hover {
-		opacity: 0.9;
-		color: var(--color-accent-contrast);
 	}
 
 	.sources-empty {
