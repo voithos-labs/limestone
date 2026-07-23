@@ -335,7 +335,9 @@
 	}
 
 	function navEls(): HTMLElement[] {
-		return popEl ? Array.from(popEl.querySelectorAll<HTMLElement>('[data-nav]:not([disabled])')) : [];
+		return popEl
+			? Array.from(popEl.querySelectorAll<HTMLElement>('[data-nav]:not([disabled])'))
+			: [];
 	}
 
 	function focusRel(delta: number) {

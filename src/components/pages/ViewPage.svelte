@@ -328,7 +328,11 @@
 	{#if sourceRemoved}
 		<div class="source-removed">
 			<p class="source-removed-msg">Source <strong>{view.slug}</strong> was removed.</p>
-			<button class="source-removed-close" type="button" onclick={() => editor.closeTab(view.id, false)}>
+			<button
+				class="source-removed-close"
+				type="button"
+				onclick={() => editor.closeTab(view.id, false)}
+			>
 				Close tab
 			</button>
 		</div>

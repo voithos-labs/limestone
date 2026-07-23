@@ -93,7 +93,8 @@ export function keyTokens(spec: string): string[] {
 	const key = parts.pop()!;
 	const mods = parts.map((m) => (isMac ? (MAC_SYMBOLS[m] ?? m) : (PC_LABELS[m] ?? m)));
 	const keyLabel =
-		KEY_SYMBOLS[key] ?? (key.length === 1 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1));
+		KEY_SYMBOLS[key] ??
+		(key.length === 1 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1));
 	return [...mods, keyLabel];
 }
 

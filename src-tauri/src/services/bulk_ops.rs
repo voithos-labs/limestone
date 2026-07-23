@@ -13,7 +13,7 @@
 //! so an interrupted op finishes on the next launch
 
 use crate::services::frontmatter;
-use crate::services::fs::atomic_write;
+use crate::services::fs::{atomic_write, resolve_in_source};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -509,7 +509,9 @@ async fn write_files(
         let step = (total / 50).max(50);
 
         rel_paths.par_iter().for_each(|rel| {
-            match frontmatter::rewrite_frontmatter(&source_path.join(rel), &mutate) {
+            let written = resolve_in_source(&source_path, rel)
+                .and_then(|path| frontmatter::rewrite_frontmatter(&path, &mutate));
+            match written {
                 Ok(()) => {
                     let n = done.fetch_add(1, Ordering::Relaxed) + 1;
                     if n % step == 0 || n == total {
@@ -594,4 +596,23 @@ fn validate_ident(s: &str, what: &str) -> Result<(), String> {
         return Err(format!("{what} has unsafe characters: {s}"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ident_accepts_ordinary_names() {
+        for s in ["due", "Due Date", "status/state", "priority-1", "café", "a_b"] {
+            assert!(validate_ident(s, "field name").is_ok(), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn ident_rejects_json_path_and_control_chars() {
+        for s in ["", "a.b", "a\"b", "a'b", "a\\b", "a\nb", "a\tb", "a\u{1}b", "a\u{7f}b"] {
+            assert!(validate_ident(s, "field name").is_err(), "{s:?}");
+        }
+    }
 }

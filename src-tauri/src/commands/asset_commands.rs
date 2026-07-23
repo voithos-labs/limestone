@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use crate::commands::source_commands::find_source;
-use crate::services::fs::atomic_write;
+use crate::services::fs::{atomic_write, clean_location, resolve_in_source, validate_new_name};
 
 fn decode_base64(data: &str) -> Result<Vec<u8>, String> {
     base64::engine::general_purpose::STANDARD
@@ -13,9 +13,17 @@ fn decode_base64(data: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| e.to_string())
 }
 
+fn clean_ext(ext: &str) -> Result<String, String> {
+    let ext = ext.trim_start_matches('.').to_ascii_lowercase();
+    if !ext.is_empty() && !ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(format!("invalid file extension: {ext}"));
+    }
+    Ok(ext)
+}
+
 fn global_import(app: &AppHandle, bytes: &[u8], ext: &str) -> Result<String, String> {
     let hash = blake3::hash(bytes).to_hex().to_string();
-    let ext = ext.trim_start_matches('.').to_ascii_lowercase();
+    let ext = clean_ext(ext)?;
     let name = if ext.is_empty() {
         hash
     } else {
@@ -63,14 +71,15 @@ fn source_import(
     ext: &str,
 ) -> Result<String, String> {
     let source = find_source(app, source_id)?;
-    let loc = source.asset_location.trim_matches('/');
+    let loc = clean_location(&source.asset_location).map_err(|e| e.to_string())?;
     let dir = if loc.is_empty() {
         source.path.clone()
     } else {
-        source.path.join(loc)
+        resolve_in_source(&source.path, &loc).map_err(|e| e.to_string())?
     };
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let ext = ext.trim_start_matches('.').to_ascii_lowercase();
+    validate_new_name(stem).map_err(|e| e.to_string())?;
+    let ext = clean_ext(ext)?;
     let dest = unique_dest(&dir, stem, &ext);
     atomic_write(&dest, bytes).map_err(|e| e.to_string())?;
     Ok(dest
@@ -122,4 +131,24 @@ pub async fn import_source_asset_bytes(
         chrono::Local::now().format("%Y%m%d%H%M%S")
     );
     source_import(&app, source_id, &decode_base64(&data)?, &stem, &ext)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_ext_normalizes() {
+        assert_eq!(clean_ext("PNG").unwrap(), "png");
+        assert_eq!(clean_ext(".Jpeg").unwrap(), "jpeg");
+        assert_eq!(clean_ext("").unwrap(), "");
+        assert_eq!(clean_ext("mp4").unwrap(), "mp4");
+    }
+
+    #[test]
+    fn clean_ext_rejects_path_syntax() {
+        for ext in ["png/../../evil", "png.md", "../x", "a\\b", "png "] {
+            assert!(clean_ext(ext).is_err(), "{ext:?}");
+        }
+    }
 }

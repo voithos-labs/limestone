@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
+use crate::services::fs::{clean_location, resolve_in_source};
 use crate::services::{self, dot_get, JsonSettingsStore, Source, Sources};
 use crate::AppData;
 
@@ -31,6 +32,15 @@ pub(crate) fn source_uses_frontmatter(app: &AppHandle, source_id: &str) -> bool 
         .find(|s| s.id.to_string() == source_id)
         .map(|s| s.use_frontmatter)
         .unwrap_or(true)
+}
+
+// todo: could probably cache sources to avoid reading the sources.json file on every save
+pub(crate) fn source_root(app: &AppHandle, source_id: &str) -> Result<PathBuf, String> {
+    load_sources(app)
+        .into_iter()
+        .find(|s| s.id.to_string() == source_id)
+        .map(|s| s.path)
+        .ok_or_else(|| "source not found".to_string())
 }
 
 pub(crate) fn find_source(app: &AppHandle, id: Uuid) -> Result<Source, String> {
@@ -165,6 +175,9 @@ pub fn update_source(
     note_location: String,
     asset_location: String,
 ) -> Result<(), String> {
+    let note_location = clean_location(&note_location).map_err(|e| e.to_string())?;
+    let asset_location = clean_location(&asset_location).map_err(|e| e.to_string())?;
+
     let mut data = load_sources_file(&app);
     let source = data
         .sources
@@ -269,14 +282,8 @@ fn collect_dirs(root: &Path, dir: &Path, depth: usize, out: &mut Vec<String>) {
 
 #[tauri::command]
 pub fn make_dir(path: String, rel: String) -> Result<(), String> {
-    let rel_path = Path::new(&rel);
-    if rel_path
-        .components()
-        .any(|c| !matches!(c, std::path::Component::Normal(_)))
-    {
-        return Err("invalid folder name".to_string());
-    }
-    std::fs::create_dir_all(Path::new(&path).join(rel_path)).map_err(|e| e.to_string())
+    let dir = resolve_in_source(Path::new(&path), &rel).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

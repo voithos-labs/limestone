@@ -26,7 +26,7 @@
 	import Toggle from '../Toggle.svelte';
 	import Menu from '../views/Menu.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
-	import type { MenuEntry } from '$lib/views/menuTypes';
+	import type { MenuEntry, MenuItem } from '$lib/views/menuTypes';
 	import type Session from '$lib/models/Session.svelte.js';
 	import type { ViewTab } from '$lib/models/Session.svelte.js';
 	import {
@@ -107,7 +107,7 @@
 	);
 	let resultCount = $derived(searchResults.length + (themeMatches ? 1 : 0));
 
-	const sectionItems: MenuEntry[] = [
+	const sectionItems: MenuItem[] = [
 		{ value: GENERAL, label: 'General', icon: SlidersHorizontal },
 		...SETTINGS_REGISTRY.map((c) => ({
 			value: c.id,

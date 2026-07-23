@@ -16,6 +16,7 @@ import yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '$lib/services/db';
+import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
 import Group, { type GroupRow } from './Group';
 
@@ -190,7 +191,7 @@ class DocHandle {
 			draft?: boolean;
 		}
 	): Promise<DocHandle> {
-		const base = opts.title.replace(/[\\/]/g, '-');
+		const base = sanitizeSegment(opts.title) || 'Untitled';
 		const dir = opts.dir || defaultNoteDir(source);
 		const relPath = await DocHandle.uniqueRelPath(source, dir, base);
 		// Title must match the de-duplicated filename (e.g. "Untitled 2"), not the
@@ -235,7 +236,6 @@ class DocHandle {
 		await invoke('set_document_tags', {
 			id: this.id,
 			sourceId: this.source.id,
-			sourcePath: this.source.path,
 			relPath: this._relPath,
 			tags: slugs
 		});
@@ -373,7 +373,6 @@ class DocHandle {
 		const contents = await this.serialize(body);
 		await invoke('write_document', {
 			sourceId: this.source.id,
-			sourcePath: this.source.path,
 			relPath: this._relPath,
 			contents,
 			updatedAt: this.updatedAt.getTime(),
@@ -390,7 +389,7 @@ class DocHandle {
 	async delete(): Promise<void> {
 		await invoke('delete_document', {
 			id: this.id,
-			sourcePath: this.source.path,
+			sourceId: this.source.id,
 			relPath: this._relPath
 		});
 	}
@@ -405,7 +404,6 @@ class DocHandle {
 		await this.ensureFile();
 		await invoke('move_document', {
 			sourceId: this.source.id,
-			sourcePath: this.source.path,
 			relPath: this._relPath,
 			newRelPath
 		});
@@ -419,11 +417,9 @@ class DocHandle {
 		await this.ensureFile();
 		await invoke('move_document', {
 			sourceId: this.source.id,
-			sourcePath: this.source.path,
 			relPath: this._relPath,
 			newRelPath,
-			newSourceId: newSource.id,
-			newSourcePath: newSource.path
+			newSourceId: newSource.id
 		});
 		this._relPath = newRelPath;
 		(this as { source: Source }).source = newSource;
@@ -437,7 +433,6 @@ class DocHandle {
 		await invoke('save_document_meta', {
 			id: this.id,
 			sourceId: this.source.id,
-			sourcePath: this.source.path,
 			relPath: this._relPath,
 			createdAt: meta.createdAt ? meta.createdAt.toISOString() : null,
 			updatedAt: meta.updatedAt ? meta.updatedAt.toISOString() : null
@@ -455,7 +450,6 @@ class DocHandle {
 		await this.ensureFile();
 		const newRel: string = await invoke('rename_document', {
 			sourceId: this.source.id,
-			sourcePath: this.source.path,
 			relPath: this._relPath,
 			newName
 		});
