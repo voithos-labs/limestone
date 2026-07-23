@@ -771,10 +771,16 @@ class View {
 		this.temporary = json.temporary ?? false;
 		this.emoji = json.emoji ?? '';
 		this.cover = json.cover ?? '';
+		this.markPristine();
 	}
 
 	private snapshot(): string {
-		return JSON.stringify({ fields: this.fields, filter: this.filter, faces: this.faces });
+		return JSON.stringify({
+			slug: this.slug,
+			fields: this.fields,
+			filter: this.filter,
+			faces: this.faces
+		});
 	}
 
 	markPristine(): void {
@@ -783,6 +789,15 @@ class View {
 
 	get isDirty(): boolean {
 		return this.snapshot() !== this.pristine;
+	}
+
+	revert(): void {
+		if (!this.pristine) return;
+		const snap = JSON.parse(this.pristine);
+		this.slug = snap.slug;
+		this.fields = snap.fields;
+		this.filter = snap.filter;
+		this.faces = snap.faces.map((j: ViewFaceJSON) => new ViewFace(j));
 	}
 
 	static create(slug: string): View {
