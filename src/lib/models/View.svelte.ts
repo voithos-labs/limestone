@@ -446,6 +446,46 @@ function compileTagsLeaf(op: string, value: unknown): CompiledFilter {
 	}
 }
 
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function nextDay(dateOnly: string): string {
+	const m = dateOnly.match(DATE_ONLY_RE);
+	if (!m) return dateOnly;
+	const dt = new Date(+m[1], +m[2] - 1, +m[3]);
+	dt.setDate(dt.getDate() + 1);
+	const p = (n: number) => String(n).padStart(2, '0');
+	return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+}
+
+// A bare YYYY-MM-DD bound spans the whole day, [start, nextDay)
+function compileDateOnlyLeaf(
+	field: ViewField,
+	op: string,
+	dateOnly: string,
+	expr: string
+): CompiledFilter | null {
+	const numeric = field.type === 'created_at' || field.type === 'updated_at';
+	const lo = numeric ? wallClockToMs(dateOnly) : dateOnly;
+	const hi = numeric ? wallClockToMs(nextDay(dateOnly)) : nextDay(dateOnly);
+	if (lo === null || hi === null) return null;
+	switch (op) {
+		case 'before':
+			return { sql: `${expr} < ?`, params: [lo] };
+		case 'on_or_before':
+			return { sql: `${expr} < ?`, params: [hi] };
+		case 'after':
+			return { sql: `${expr} >= ?`, params: [hi] };
+		case 'on_or_after':
+			return { sql: `${expr} >= ?`, params: [lo] };
+		case 'eq':
+			return { sql: `(${expr} >= ? AND ${expr} < ?)`, params: [lo, hi] };
+		case 'neq':
+			return { sql: `(${expr} < ? OR ${expr} >= ?)`, params: [lo, hi] };
+		default:
+			return null;
+	}
+}
+
 function compileLeafSql(
 	field: ViewField,
 	op: string,
@@ -455,11 +495,18 @@ function compileLeafSql(
 	if (field.type === 'folder') return compileFolderLeaf(op, value);
 	if (field.type === 'tags') return compileTagsLeaf(op, value);
 
+	const expr = resolveColumn(field.type, field.name, viewSlug);
+
+	const dateLike =
+		field.type === 'date' || field.type === 'created_at' || field.type === 'updated_at';
+	if (dateLike && typeof value === 'string' && DATE_ONLY_RE.test(value)) {
+		const compiled = compileDateOnlyLeaf(field, op, value, expr);
+		if (compiled) return compiled;
+	}
+
 	if (field.type === 'created_at' || field.type === 'updated_at') {
 		value = wallClockToMs(value) ?? value;
 	}
-
-	const expr = resolveColumn(field.type, field.name, viewSlug);
 
 	// Booleans: an unset prop (NULL) reads as false
 	if (field.type === 'boolean' && op === 'eq') {
