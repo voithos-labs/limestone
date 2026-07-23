@@ -201,7 +201,7 @@
 	let chipsWidth = $state(0);
 	let hasMounted = $state(false);
 	onMount(() => {
-		hasMounted = true;
+		requestAnimationFrame(() => requestAnimationFrame(() => (hasMounted = true)));
 	});
 
 	// Translate vertical wheel into horizontal scroll over the overflowing bar
@@ -362,7 +362,7 @@
 		class="chips-wrap"
 		class:collapsed={view.state.filters_collapsed}
 		class:animate={hasMounted}
-		style:max-width={view.state.filters_collapsed ? '0px' : chipsWidth + 'px'}
+		style:max-width={view.state.filters_collapsed ? '0px' : hasMounted ? chipsWidth + 'px' : 'none'}
 	>
 		<div class="chips-inner" bind:clientWidth={chipsWidth}>
 			{#each leafFilters as leaf (leaf)}
