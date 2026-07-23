@@ -694,6 +694,7 @@ interface ViewJSON {
 	temporary?: boolean;
 	emoji?: string;
 	cover?: string;
+	accessed_at?: Date;
 }
 
 // ── Saved views store (views.json) ───────────────────────────────────────────────────
@@ -757,6 +758,7 @@ class View {
 	temporary: boolean = $state(false);
 	emoji: string = $state(''); // user-set per-view emoji
 	cover: string = $state('');
+	accessedAt: Date = $state(new Date());
 	private pristine = '';
 
 	constructor(json: ViewJSON) {
@@ -771,6 +773,7 @@ class View {
 		this.temporary = json.temporary ?? false;
 		this.emoji = json.emoji ?? '';
 		this.cover = json.cover ?? '';
+		this.accessedAt = json.accessed_at ?? json.updated_at;
 		this.markPristine();
 	}
 
@@ -966,6 +969,12 @@ class View {
 		await saveViewJSON(this.toJSON());
 	}
 
+	async touchAccessed() {
+		if (this.temporary) return;
+		this.accessedAt = new Date();
+		await saveViewJSON(this.toJSON());
+	}
+
 	/** Remove this view from views.json; it becomes a temporary view again. */
 	async unsave() {
 		this.temporary = true;
@@ -988,7 +997,8 @@ class View {
 			state: this.state,
 			temporary: this.temporary,
 			emoji: this.emoji,
-			cover: this.cover
+			cover: this.cover,
+			accessed_at: this.accessedAt
 		};
 	}
 

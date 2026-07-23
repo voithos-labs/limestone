@@ -125,7 +125,7 @@
 			listSources(),
 			getDefaultSourceId()
 		]);
-		savedViews = saved.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
+		savedViews = saved.sort((a, b) => +new Date(b.accessedAt) - +new Date(a.accessedAt));
 		sourceViews = sources.map((s) => ({ view: View.createFromSource(s), source: s }));
 		defaultSourceId = defId;
 	}

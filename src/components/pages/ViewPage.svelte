@@ -151,7 +151,9 @@
 
 	$effect(() => {
 		const sig = JSON.stringify(view.toJSON(), (k, v) =>
-			k === 'active_cell' || k === 'search' || k === 'temporary' ? undefined : v
+			k === 'active_cell' || k === 'search' || k === 'temporary' || k === 'accessed_at'
+				? undefined
+				: v
 		);
 		if (lastSig === '') {
 			lastSig = sig;
@@ -184,6 +186,7 @@
 		} catch (e) {
 			console.error('refresh view fields failed', e);
 		}
+		view.touchAccessed().catch((e) => console.error('touch view failed', e));
 	});
 
 	onMount(async () => {
