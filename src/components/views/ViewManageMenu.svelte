@@ -26,7 +26,8 @@
 		placement = 'bottom',
 		onToggleVisible,
 		onDelete,
-		onAddField
+		onAddField,
+		onRename
 	}: {
 		open: boolean;
 		anchor: HTMLElement | null;
@@ -36,7 +37,8 @@
 		placement?: 'bottom' | 'right';
 		onToggleVisible: (fieldId: string) => void;
 		onDelete: (fieldId: string) => void;
-		onAddField: (type: ViewFieldType) => void;
+		onAddField: (type: ViewFieldType) => ViewField;
+		onRename: (fieldId: string, name: string) => void;
 	} = $props();
 
 	const defaults = $derived(fields.filter((f) => isDerived(f.type)));
@@ -52,6 +54,39 @@
 	let addEl: HTMLButtonElement | null = $state(null);
 	let addOpen = $state(false);
 
+	let editingId: string | null = $state(null);
+	let editDraft = $state('');
+
+	function startEdit(field: ViewField) {
+		if (isDerived(field.type)) return;
+		editingId = field.id;
+		editDraft = field.name;
+	}
+
+	function commitEdit() {
+		if (editingId === null) return;
+		const id = editingId;
+		editingId = null;
+		const raw = editDraft.trim();
+		if (raw) onRename(id, raw);
+	}
+
+	function editKey(e: KeyboardEvent) {
+		e.stopPropagation();
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			(e.currentTarget as HTMLInputElement).blur();
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			editingId = null;
+		}
+	}
+
+	function editFocus(node: HTMLInputElement) {
+		node.focus();
+		node.select();
+	}
+
 	const addItems = CREATABLE_FIELD_TYPES.map((t) => ({
 		value: t,
 		label: t.charAt(0).toUpperCase() + t.slice(1),
@@ -60,8 +95,8 @@
 
 	function addField(type: ViewFieldType) {
 		addOpen = false;
-		onAddField(type);
-		open = false;
+		const field = onAddField(type);
+		if (field) startEdit(field);
 	}
 
 	$effect(() => {
@@ -101,7 +136,7 @@
 	}
 
 	function onKey(e: KeyboardEvent) {
-		if (!open) return;
+		if (!open || editingId !== null) return;
 		const n = ordered.length;
 		if (e.key === 'Escape') {
 			open = false;
@@ -125,6 +160,7 @@
 				activeIndex = 0;
 				addOpen = false;
 				defaultFor = null;
+				editingId = null;
 			});
 			queueMicrotask(position);
 			window.addEventListener('resize', position);
@@ -187,10 +223,32 @@
 					class="row"
 					class:active={i === activeIndex}
 					class:confirming={confirmFor === field.id}
+					class:shown={isShown}
 				>
 					<span class="name" onmouseenter={() => (activeIndex = i)} role="presentation">
 						<Icon size={14} strokeWidth={1.75} />
-						<span class="name-text">{fieldLabel(field)}</span>
+						{#if editingId === field.id}
+							<input
+								class="name-input"
+								bind:value={editDraft}
+								use:editFocus
+								onblur={commitEdit}
+								onkeydown={editKey}
+								spellcheck="false"
+							/>
+						{:else if !isDerived(field.type)}
+							<button
+								class="name-text editable"
+								type="button"
+								tabindex="-1"
+								onclick={(e) => {
+									e.stopPropagation();
+									startEdit(field);
+								}}>{fieldLabel(field)}</button
+							>
+						{:else}
+							<span class="name-text">{fieldLabel(field)}</span>
+						{/if}
 					</span>
 					{#if confirmFor === field.id}
 						<button
@@ -341,8 +399,7 @@
 	.pop {
 		position: fixed;
 		z-index: 1000;
-		min-width: 240px;
-		max-width: 320px;
+		width: 240px;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
@@ -407,10 +464,36 @@
 		color: var(--color-ui-muted);
 	}
 
+	.row.shown .name :global(svg) {
+		color: var(--color-accent);
+	}
+
 	.name-text {
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	button.name-text {
+		border: 0;
+		background: transparent;
+		font: inherit;
+		color: inherit;
+		padding: 0;
+		text-align: left;
+		cursor: text;
+	}
+
+	.name-input {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		background: transparent;
+		outline: none;
+		font: inherit;
+		color: var(--color-text-primary);
+		padding: 0;
 	}
 
 	.row.confirming .name-text {
@@ -447,6 +530,10 @@
 
 	.row.active .icon-btn.vis {
 		color: var(--color-ui-muted);
+	}
+
+	.row.shown .icon-btn.vis {
+		color: var(--color-accent);
 	}
 
 	.confirm-btn {
