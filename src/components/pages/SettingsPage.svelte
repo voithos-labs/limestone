@@ -22,21 +22,23 @@
 	import { select } from '$lib/services/db';
 	import { openPath } from '@tauri-apps/plugin-opener';
 	import SourceDialog from '../SourceDialog.svelte';
+	import SourceMenu from '../SourceMenu.svelte';
 	import Toggle from '../Toggle.svelte';
 	import Menu from '../views/Menu.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
-	import type Session from '$lib/models/Session';
-	import type { ViewTab } from '$lib/models/Session';
+	import type Session from '$lib/models/Session.svelte.js';
+	import type { ViewTab } from '$lib/models/Session.svelte.js';
 	import {
 		actions,
-		formatKey,
+		keyTokens,
 		keysFor,
 		specFromEvent,
 		keyCapture,
+		SHORTCUT_CATEGORIES,
 		type Action
 	} from '$lib/actions';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, type Component } from 'svelte';
 	import {
 		RotateCcw,
 		Search,
@@ -47,13 +49,14 @@
 		Check,
 		FolderPlus,
 		Folders,
-		ExternalLink,
 		EllipsisVertical,
-		Trash2,
 		X,
-		Pencil,
-		Star,
-		Keyboard
+		Keyboard,
+		LayoutGrid,
+		AppWindow,
+		FileText,
+		Compass,
+		Eye
 	} from '@lucide/svelte';
 
 	let { viewTab, session }: { viewTab: ViewTab; session: Session } = $props();
@@ -161,7 +164,6 @@
 	// ── Sources tab ──────────────────────────────────────────────────────────
 	let sources: Source[] = $state([]);
 	let sourceCounts: Record<string, number> = $state({});
-	let confirmingRemoveId: string | null = $state(null);
 	let sourceError = $state('');
 
 	let dialogOpen = $state(false);
@@ -171,7 +173,6 @@
 	async function loadSources() {
 		sources = await listSources();
 		defaultSourceId = await getDefaultSourceId();
-		confirmingRemoveId = null;
 		for (const s of sources) countSource(s.id);
 	}
 
@@ -215,10 +216,9 @@
 		dialogOpen = true;
 	}
 
-	async function confirmRemove(s: Source) {
+	async function removeSourceAction(s: Source) {
 		try {
 			await removeSource(s.id);
-			confirmingRemoveId = null;
 			await loadSources();
 		} catch (e) {
 			sourceError = String(e);
@@ -236,32 +236,11 @@
 	let srcMenuOpen = $state(false);
 	let srcMenuAnchor: HTMLElement | null = $state(null);
 	let menuSource: Source | null = $state(null);
-	const srcMenuItems: MenuEntry[] = $derived.by(() => [
-		{ value: 'edit', label: 'Edit', icon: Pencil },
-		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
-		{
-			value: 'default',
-			label: menuSource?.id === defaultSourceId ? 'Remove default' : 'Set as default',
-			icon: Star
-		},
-		{ kind: 'divider' },
-		{ value: 'remove', label: 'Remove', icon: Trash2 }
-	]);
 
 	function openSourceMenu(s: Source, e: MouseEvent) {
 		menuSource = s;
 		srcMenuAnchor = e.currentTarget as HTMLElement;
 		srcMenuOpen = true;
-	}
-
-	function onSourceMenuSelect(value: string) {
-		srcMenuOpen = false;
-		const s = menuSource;
-		if (!s) return;
-		if (value === 'edit') editSource(s);
-		else if (value === 'reveal') revealSource(s);
-		else if (value === 'default') toggleDefaultSource(s);
-		else if (value === 'remove') confirmingRemoveId = s.id;
 	}
 
 	onMount(async () => {
@@ -306,22 +285,45 @@
 	function selectSection(section: string) {
 		activeSection = section;
 		searchQuery = '';
-		stopRecording();
+		closeBindingDialog();
 		saveTabState();
 	}
 
 	// ── Shortcuts tab ─────────────────────────────────────────────────────────
-	let recording = $state<{ id: string; index: number } | null>(null);
+	let editing = $state<{ action: Action; index: number } | null>(null);
+	let draftSpec = $state<string | null>(null);
 
-	function startRecording(action: Action, index: number) {
-		recording = { id: action.id, index };
-		keyCapture.active = true;
-	}
+	const editingExisting = $derived(
+		!!editing && editing.index < keysFor(editing.action, settings).length
+	);
 
-	function stopRecording() {
-		recording = null;
-		keyCapture.active = false;
-	}
+	const draftConflict = $derived.by(() => {
+		if (!editing || !draftSpec) return null;
+		for (const a of actions) {
+			const keys = keysFor(a, settings);
+			for (let i = 0; i < keys.length; i++) {
+				if (keys[i] !== draftSpec) continue;
+				if (a.id === editing.action.id && i === editing.index) continue;
+				return a;
+			}
+		}
+		return null;
+	});
+
+	const CATEGORY_ICON: Record<string, Component> = {
+		global: LayoutGrid,
+		tabs: AppWindow,
+		documents: FileText,
+		navigation: Compass,
+		views: Eye
+	};
+
+	const groupedShortcuts = $derived(
+		SHORTCUT_CATEGORIES.map((cat) => ({
+			cat,
+			items: actions.filter((a) => a.category === cat.id)
+		})).filter((g) => g.items.length > 0)
+	);
 
 	function setActionKeys(action: Action, keys: string[]) {
 		const map = $state.snapshot(settings.get<Record<string, string[]>>('shortcuts')) ?? {};
@@ -330,30 +332,47 @@
 		settings.set('shortcuts', map);
 	}
 
-	function shortcutModified(action: Action): boolean {
-		const overrides = settings.get<Record<string, string[]>>('shortcuts');
-		return !!overrides && action.id in overrides;
+	function openBindingDialog(action: Action, index: number) {
+		editing = { action, index };
+		draftSpec = keysFor(action, settings)[index] ?? null;
+		keyCapture.active = true;
 	}
 
-	onDestroy(stopRecording);
+	function closeBindingDialog() {
+		editing = null;
+		draftSpec = null;
+		keyCapture.active = false;
+	}
 
-	function onRecordKey(e: KeyboardEvent) {
-		if (!recording) return;
+	function saveBinding() {
+		if (editing && draftSpec) {
+			const keys = [...keysFor(editing.action, settings)];
+			keys[editing.index] = draftSpec;
+			setActionKeys(editing.action, keys);
+		}
+		closeBindingDialog();
+	}
+
+	function removeBinding() {
+		if (editing) {
+			const keys = [...keysFor(editing.action, settings)];
+			keys.splice(editing.index, 1);
+			setActionKeys(editing.action, keys);
+		}
+		closeBindingDialog();
+	}
+
+	onDestroy(closeBindingDialog);
+
+	function onDialogKey(e: KeyboardEvent) {
+		if (!editing) return;
+		if (e.key === 'Escape') return closeBindingDialog();
+		const bare = !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey;
+		if (e.key === 'Enter' && bare) return saveBinding();
 		e.preventDefault();
 		e.stopPropagation();
-		if (e.key === 'Escape') return stopRecording();
-		const action = actions.find((a) => a.id === recording!.id);
-		if (!action) return stopRecording();
-		const keys = [...keysFor(action, settings)];
-		if (e.key === 'Backspace' || e.key === 'Delete') {
-			keys.splice(recording.index, 1);
-		} else {
-			const spec = specFromEvent(e);
-			if (!spec) return;
-			keys[recording.index] = spec;
-		}
-		setActionKeys(action, keys);
-		stopRecording();
+		const spec = specFromEvent(e);
+		if (spec) draftSpec = spec;
 	}
 
 	function setValue(def: SettingDef, value: boolean | number) {
@@ -584,7 +603,7 @@
 	</div>
 {/snippet}
 
-<svelte:window onkeydowncapture={onRecordKey} />
+<svelte:window onkeydowncapture={onDialogKey} />
 
 <div class="settings-page">
 	<div class="settings-header">
@@ -697,57 +716,42 @@
 						</button>
 					</div>
 				{:else if activeSection === SHORTCUTS}
-					<div class="settings-list">
-						{#each actions as action (action.id)}
-							{@const keys = keysFor(action, settings)}
-							{@const modified = shortcutModified(action)}
-							<div class="setting-item" class:modified>
-								<div class="item-info">
-									<div class="item-head">
-										<span class="item-label">{action.title}</span>
-										{#if modified}
-											<button
-												class="item-reset"
-												title="Reset to default"
-												onclick={() => setActionKeys(action, action.defaultKeys ?? [])}
-											>
-												<RotateCcw size={12} />
-											</button>
-										{/if}
-									</div>
+					<div class="shortcuts">
+						{#each groupedShortcuts as group (group.cat.id)}
+							{@const CatIcon = CATEGORY_ICON[group.cat.id]}
+							<div class="shortcut-group">
+								<div class="shortcut-head">
+									{#if CatIcon}<CatIcon size={13} strokeWidth={1.75} />{/if}
+									<span>{group.cat.label}</span>
 								</div>
-								<div class="item-control">
-									<div class="key-list">
-										{#each keys as key, i (i)}
-											{#if recording?.id === action.id && recording.index === i}
-												<kbd class="key-chip recording">Press keys…</kbd>
-											{:else}
-												<button
-													class="key-chip"
-													title="Click, then press keys. Backspace removes."
-													onclick={() => startRecording(action, i)}
-												>
-													{formatKey(key)}
-												</button>
-											{/if}
-										{/each}
-										{#if recording?.id === action.id && recording.index === keys.length}
-											<kbd class="key-chip recording">Press keys…</kbd>
-										{:else if keys.length === 0}
-											<button class="key-chip unbound" onclick={() => startRecording(action, 0)}>
-												Not bound
-											</button>
-										{:else}
+								{#each group.items as action (action.id)}
+									{@const keys = keysFor(action, settings)}
+									<div class="shortcut-row">
+										<span class="shortcut-label">{action.title}</span>
+										<span class="shortcut-keys">
 											<button
-												class="key-add"
+												class="new-bind"
 												title="Add binding"
-												onclick={() => startRecording(action, keys.length)}
+												onclick={() => openBindingDialog(action, keys.length)}
 											>
-												+
+												new bind
 											</button>
-										{/if}
+											{#each keys as key, i (i)}
+												{#if i > 0}<span class="key-sep">,</span>{/if}
+												<button
+													class="combo"
+													title="Edit binding"
+													onclick={() => openBindingDialog(action, i)}
+												>
+													{#each keyTokens(key) as tok, t (t)}
+														{#if t > 0}<span class="key-plus">+</span>{/if}
+														<kbd class="keycap">{tok}</kbd>
+													{/each}
+												</button>
+											{/each}
+										</span>
 									</div>
-								</div>
+								{/each}
 							</div>
 						{/each}
 					</div>
@@ -780,21 +784,9 @@
 											{sourceCounts[s.id]} {sourceCounts[s.id] === 1 ? 'doc' : 'docs'}
 										{/if}
 									</span>
-									{#if confirmingRemoveId === s.id}
-										<span class="confirm-text">Remove?</span>
-										<button
-											class="src-btn"
-											title="Cancel"
-											onclick={() => (confirmingRemoveId = null)}
-										>
-											<X size={14} />
-										</button>
-										<button class="src-btn confirm" onclick={() => confirmRemove(s)}>Remove</button>
-									{:else}
-										<button class="src-btn" title="More" onclick={(e) => openSourceMenu(s, e)}>
-											<EllipsisVertical size={14} />
-										</button>
-									{/if}
+									<button class="src-btn" title="More" onclick={(e) => openSourceMenu(s, e)}>
+										<EllipsisVertical size={14} />
+									</button>
 								</div>
 							</div>
 						{:else}
@@ -873,12 +865,53 @@
 	</div>
 {/if}
 
-<Menu
+{#if editing}
+	<div class="overlay" onclick={closeBindingDialog} role="presentation">
+		<div class="dialog" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+			<h3 class="dialog-title">{editing.action.title}</h3>
+			<p class="dialog-text">Press the keys you want, then Enter to save. Escape to cancel.</p>
+			<div class="capture" class:empty={!draftSpec}>
+				{#if draftSpec}
+					<span class="combo">
+						{#each keyTokens(draftSpec) as tok, t (t)}
+							{#if t > 0}<span class="key-plus">+</span>{/if}
+							<kbd class="keycap">{tok}</kbd>
+						{/each}
+					</span>
+				{:else}
+					<span class="capture-ph">Press desired keys…</span>
+				{/if}
+			</div>
+			{#if draftConflict}
+				<p class="conflict">
+					{#if draftConflict.id === editing.action.id}
+						This command already has that binding.
+					{:else}
+						Also used by “{draftConflict.title}”.
+					{/if}
+				</p>
+			{/if}
+			<div class="dialog-actions">
+				{#if editingExisting}
+					<button class="btn remove" onclick={removeBinding}>Remove</button>
+				{/if}
+				<button class="btn" onclick={closeBindingDialog}>Cancel</button>
+				<button class="btn danger" disabled={!draftSpec} onclick={saveBinding}>Save</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<SourceMenu
 	bind:open={srcMenuOpen}
 	anchor={srcMenuAnchor}
-	items={srcMenuItems}
-	onSelect={onSourceMenuSelect}
+	source={menuSource}
+	{defaultSourceId}
 	minWidth={180}
+	onConfigure={editSource}
+	onReveal={revealSource}
+	onToggleDefault={toggleDefaultSource}
+	onRemove={removeSourceAction}
 />
 
 <SourceDialog
@@ -1525,6 +1558,40 @@
 		cursor: default;
 	}
 
+	.btn.remove {
+		margin-right: auto;
+		border-color: transparent;
+		color: var(--error-fg);
+	}
+
+	.btn.remove:hover {
+		background: var(--error-bg);
+		color: var(--error-fg);
+	}
+
+	.capture {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 54px;
+		margin: 2px 0 16px;
+		padding: 12px;
+		border: 1px dashed var(--color-border);
+		border-radius: 8px;
+		background: var(--chip-bg);
+	}
+
+	.capture-ph {
+		font-size: 12px;
+		color: var(--color-ui-muted);
+	}
+
+	.conflict {
+		margin: -8px 0 14px;
+		font-size: 12px;
+		color: var(--error-fg);
+	}
+
 	/* ── Sources tab ── */
 	.source-card.add-source-card {
 		justify-content: center;
@@ -1627,11 +1694,6 @@
 		white-space: nowrap;
 	}
 
-	.confirm-text {
-		font-size: 12px;
-		color: var(--color-text-secondary);
-	}
-
 	.src-btn {
 		display: flex;
 		align-items: center;
@@ -1653,16 +1715,6 @@
 		color: var(--color-text-primary);
 	}
 
-	.src-btn.confirm {
-		background: var(--color-accent);
-		color: var(--color-accent-contrast);
-	}
-
-	.src-btn.confirm:hover {
-		opacity: 0.9;
-		color: var(--color-accent-contrast);
-	}
-
 	.sources-empty {
 		padding: 12px 4px;
 		color: var(--color-ui-muted);
@@ -1670,60 +1722,118 @@
 	}
 
 	/* ── Shortcuts tab ── */
-	.key-list {
+	.shortcuts {
 		display: flex;
-		align-items: center;
-		gap: 6px;
+		flex-direction: column;
+		gap: 22px;
 	}
 
-	.key-chip {
-		padding: 3px 8px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-ui);
-		background: var(--color-bg);
-		font-family: var(--font-editor, monospace);
+	.shortcut-group {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.shortcut-head {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		margin-bottom: 4px;
+		padding: 0 2px;
 		font-size: 12px;
-		color: var(--color-text-secondary);
+		font-weight: 500;
+		color: var(--color-ui-muted);
+	}
+
+	.shortcut-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 24px;
+		min-height: 40px;
+		padding: 4px 2px;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.shortcut-row:last-child {
+		border-bottom: none;
+	}
+
+	.shortcut-label {
+		font-size: 13px;
+		color: var(--color-text-primary);
+	}
+
+	.shortcut-keys {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 6px;
+		flex-shrink: 0;
+	}
+
+	.combo {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 0;
+		border: none;
+		background: transparent;
+		font: inherit;
 		cursor: pointer;
 	}
 
-	.key-chip:hover {
+	.keycap {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 22px;
+		height: 22px;
+		padding: 0 6px;
+		border: 1px solid var(--color-border);
+		border-bottom-width: 2px;
+		border-radius: 5px;
+		background: var(--color-surface);
+		box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
+		font-family: var(--font-ui);
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+	}
+
+	.combo:hover .keycap {
 		border-color: var(--focus-border);
 		color: var(--color-text-primary);
 	}
 
-	.key-chip.recording {
-		border-color: var(--color-accent);
-		color: var(--color-accent);
-		cursor: default;
-	}
-
-	.key-chip.unbound {
-		border-style: dashed;
+	.key-plus {
+		font-size: 11px;
 		color: var(--color-ui-muted);
 	}
 
-	.key-add {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 22px;
+	.key-sep {
+		color: var(--color-ui-muted);
+		font-size: 12px;
+	}
+
+	.new-bind {
 		height: 22px;
-		padding: 0;
-		border: 1px dashed var(--color-border);
-		border-radius: var(--radius-ui);
+		padding: 0 8px;
+		border: 1px solid var(--color-border);
+		border-radius: 5px;
 		background: transparent;
+		font-family: var(--font-ui);
+		font-size: 11px;
 		color: var(--color-ui-muted);
-		font-size: 13px;
+		white-space: nowrap;
 		cursor: pointer;
 		opacity: 0;
 	}
 
-	.setting-item:hover .key-add {
+	.shortcut-row:hover .new-bind {
 		opacity: 1;
 	}
 
-	.key-add:hover {
+	.new-bind:hover {
 		border-color: var(--focus-border);
 		color: var(--color-text-primary);
 	}

@@ -481,8 +481,8 @@
 		padding: 0 10px;
 		border: 0;
 		border-radius: 5px;
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
+		background: var(--error-bg);
+		color: var(--error-fg);
 		font: inherit;
 		font-size: 12px;
 		font-weight: 500;
@@ -491,7 +491,7 @@
 	}
 
 	.confirm-btn:hover {
-		background: var(--chip-bg-hover);
+		background: color-mix(in srgb, var(--color-error) 18%, transparent);
 	}
 
 	.opt.rename {

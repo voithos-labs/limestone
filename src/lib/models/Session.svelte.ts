@@ -75,7 +75,7 @@ async function updateAppState(partial: Partial<AppState>): Promise<void> {
 
 class Session {
 	editors: EditorState[];
-	activeTheme: string; // ;;;;;; replace the current theme config here, managed here
+	activeTheme: string = $state(''); // ;;;;;; replace the current theme config here, managed here
 	// sources: Source[];
 	viewTabs: Map<string, ViewTab> = new Map();
 	settings = new SettingsState();

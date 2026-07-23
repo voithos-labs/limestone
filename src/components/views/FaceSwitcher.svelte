@@ -311,10 +311,54 @@
 		open = false;
 	}
 
+	function anyFlyoutOpen(): boolean {
+		return (
+			addFaceOpen ||
+			fieldsOpen ||
+			groupOpen ||
+			sortOpen ||
+			bodyOpen ||
+			dateFieldOpen ||
+			daySortOpen ||
+			!!renamingId ||
+			!!confirmFor
+		);
+	}
+
+	function navEls(): HTMLElement[] {
+		return popEl ? Array.from(popEl.querySelectorAll<HTMLElement>('[data-nav]:not([disabled])')) : [];
+	}
+
+	function focusRel(delta: number) {
+		const els = navEls();
+		if (els.length === 0) return;
+		const cur = els.indexOf(document.activeElement as HTMLElement);
+		const base = cur === -1 ? (delta > 0 ? -1 : 0) : cur;
+		els[(base + delta + els.length) % els.length].focus();
+	}
+
+	function focusFirstNav() {
+		const els = navEls();
+		(els.find((el) => el.closest('.row.active')) ?? els[0])?.focus();
+	}
+
 	function onKey(e: KeyboardEvent) {
-		if (open && e.key === 'Escape' && !renamingId) {
+		if (!open || anyFlyoutOpen()) return;
+		if (e.key === 'Escape') {
 			open = false;
 			e.preventDefault();
+		} else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+			focusRel(1);
+			e.preventDefault();
+		} else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+			focusRel(-1);
+			e.preventDefault();
+		} else if (e.key === 'ArrowRight') {
+			const el = document.activeElement as HTMLElement | null;
+			if (el?.hasAttribute('data-flyout')) {
+				el.click();
+				e.preventDefault();
+			}
 		}
 	}
 
@@ -330,7 +374,10 @@
 				fieldsOpen = false;
 				closeOnSwapLeave = false;
 			});
-			queueMicrotask(position);
+			queueMicrotask(() => {
+				position();
+				focusFirstNav();
+			});
 			window.addEventListener('resize', position);
 			window.addEventListener('scroll', position, true);
 			document.addEventListener('pointerdown', onDocPointerDown);
@@ -394,6 +441,7 @@
 						<button
 							class="name"
 							type="button"
+							data-nav
 							onclick={() => selectFace(f.id)}
 							ondblclick={() => startRename(f)}
 						>
@@ -412,7 +460,7 @@
 							<ArrowLeft size={14} strokeWidth={2} />
 						</button>
 						<button class="confirm-btn" type="button" onclick={() => deleteFace(f.id)}
-							>Delete</button
+							>Confirm</button
 						>
 					{:else}
 						<button
@@ -468,6 +516,8 @@
 			<button
 				class="action add-face"
 				type="button"
+				data-nav
+				data-flyout
 				bind:this={addFaceEl}
 				onclick={() => (addFaceOpen = !addFaceOpen)}
 			>
@@ -496,6 +546,8 @@
 		<button
 			class="action group-toggle"
 			type="button"
+			data-nav
+			data-flyout
 			bind:this={fieldsEl}
 			onclick={() => (fieldsOpen = !fieldsOpen)}
 		>
@@ -509,6 +561,8 @@
 			<button
 				class="action group-toggle"
 				type="button"
+				data-nav
+				data-flyout
 				bind:this={groupEl}
 				onclick={() => (groupOpen = !groupOpen)}
 			>
@@ -521,6 +575,8 @@
 			<button
 				class="action group-toggle"
 				type="button"
+				data-nav
+				data-flyout
 				bind:this={sortEl}
 				onclick={() => (sortOpen = !sortOpen)}
 			>
@@ -533,6 +589,8 @@
 			<button
 				class="action group-toggle"
 				type="button"
+				data-nav
+				data-flyout
 				bind:this={bodyEl}
 				onclick={() => (bodyOpen = !bodyOpen)}
 			>
@@ -545,6 +603,8 @@
 			<button
 				class="action group-toggle"
 				type="button"
+				data-nav
+				data-flyout
 				bind:this={dateFieldEl}
 				onclick={() => (dateFieldOpen = !dateFieldOpen)}
 			>
@@ -558,6 +618,8 @@
 				<button
 					class="action group-toggle"
 					type="button"
+					data-nav
+					data-flyout
 					bind:this={daySortEl}
 					onclick={() => (daySortOpen = !daySortOpen)}
 				>
@@ -568,7 +630,7 @@
 				</button>
 			{/if}
 
-			<button class="action group-toggle" type="button" onclick={toggleActivity}>
+			<button class="action group-toggle" type="button" data-nav onclick={toggleActivity}>
 				{#if showActivity}
 					<ScanLine size={14} strokeWidth={1.75} />
 				{:else}
@@ -863,12 +925,13 @@
 
 	.confirm-btn {
 		flex-shrink: 0;
-		height: 22px;
+		align-self: center;
+		height: 24px;
 		padding: 0 10px;
 		border: 0;
 		border-radius: 5px;
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
+		background: var(--error-bg);
+		color: var(--error-fg);
 		font: inherit;
 		font-size: 12px;
 		font-weight: 500;
@@ -877,7 +940,7 @@
 	}
 
 	.confirm-btn:hover {
-		background: var(--chip-bg-hover);
+		background: color-mix(in srgb, var(--color-error) 18%, transparent);
 	}
 
 	.divider {
@@ -908,6 +971,19 @@
 	}
 
 	.action:hover {
+		background: var(--menu-item-hover);
+	}
+
+	.pop [data-nav]:focus-visible {
+		outline: none;
+		box-shadow: none;
+	}
+
+	.pop .action:focus-visible {
+		background: var(--menu-item-hover);
+	}
+
+	.pop .row:has(.name:focus-visible) {
 		background: var(--menu-item-hover);
 	}
 

@@ -170,6 +170,7 @@
 					disabled={!folderPath}
 					onclick={() => (noteMenuOpen = true)}
 				>
+					<Folder size={14} />
 					<span class="folder-text grow" class:placeholder={!noteLocation}
 						>{noteLocation || '(source root)'}</span
 					>
@@ -186,6 +187,7 @@
 					disabled={!folderPath}
 					onclick={() => (assetMenuOpen = true)}
 				>
+					<Folder size={14} />
 					<span class="folder-text grow">{assetLocation}</span>
 					<ChevronDown size={14} />
 				</button>

@@ -192,6 +192,7 @@ class EditorState {
 	focused: FocusTarget | null = $state(null);
 	private tabAccessOrderById: string[] = $state([]); // reverse accessed order, last = most recent
 	private focusOrder: FocusTarget[] = $state([]);
+	private closedTabs: { tab: TabState; index: number }[] = [];
 
 	constructor(json?: EditorJSON, tabs?: TabState[]) {
 		this.focused = json?.focused ?? null;
@@ -318,6 +319,24 @@ class EditorState {
 		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
+	navTargets(): FocusTarget[] {
+		return [
+			{ kind: 'settings' },
+			{ kind: 'search' },
+			...this.tabs.map((t): FocusTarget => ({ kind: 'tab', id: t.id }))
+		];
+	}
+
+	focusAdjacentTab(delta: number) {
+		const targets = this.navTargets();
+		const cur = this.focused
+			? targets.findIndex((t) => this.sameTarget(t, this.focused!))
+			: -1;
+		const base = cur === -1 ? (delta > 0 ? -1 : 0) : cur;
+		const next = (base + delta + targets.length) % targets.length;
+		this.focusTab(targets[next]);
+	}
+
 	/**
 	 * Swap the tab `oldId` for `tab` in place
 	 */
@@ -347,6 +366,9 @@ class EditorState {
 		const idx = this.tabs.findIndex((v) => v.id === id);
 		if (idx === -1) return;
 
+		this.closedTabs.push({ tab: this.tabs[idx], index: idx });
+		if (this.closedTabs.length > 25) this.closedTabs.shift();
+
 		this.tabs.splice(idx, 1);
 		this.tabAccessOrderById = this.tabAccessOrderById.filter((v) => v != id);
 		this.focusOrder = this.focusOrder.filter((t) => !(t.kind === 'tab' && t.id === id));
@@ -364,6 +386,18 @@ class EditorState {
 				this.focused = null;
 			}
 		}
+	}
+
+	reopenClosedTab() {
+		const entry = this.closedTabs.pop();
+		if (!entry) return;
+		if (this.tabs.some((t) => t.id === entry.tab.id)) {
+			this.focusTab({ kind: 'tab', id: entry.tab.id });
+			return;
+		}
+		const idx = Math.min(entry.index, this.tabs.length);
+		this.tabs.splice(idx, 0, entry.tab);
+		this.focusTab({ kind: 'tab', id: entry.tab.id });
 	}
 
 	moveTab(fromIndex: number, toIndex: number) {

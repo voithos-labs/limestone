@@ -26,17 +26,47 @@
 
 	const GROUPS = groups as Group[];
 	const ALL: Emoji[] = GROUPS.flatMap((g) => g.emojis);
+	const COLS = 8;
+	const GROUP_OFFSETS: number[] = (() => {
+		const offs: number[] = [];
+		let acc = 0;
+		for (const g of GROUPS) {
+			offs.push(acc);
+			acc += g.emojis.length;
+		}
+		return offs;
+	})();
 
 	let popEl: HTMLDivElement | null = $state(null);
 	let searchEl: HTMLInputElement | null = $state(null);
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
 	let query = $state('');
+	let activeIndex = $state(-1);
 
 	const results = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		if (!q) return null;
 		return ALL.filter((e) => e.name.includes(q) || e.slug.includes(q)).slice(0, 180);
 	});
+
+	const nav = $derived(results ?? ALL);
+
+	$effect(() => {
+		query;
+		activeIndex = results && results.length > 0 ? 0 : -1;
+	});
+
+	function scrollActiveIntoView() {
+		queueMicrotask(() =>
+			popEl?.querySelector('.ep-cell.active')?.scrollIntoView({ block: 'nearest' })
+		);
+	}
+
+	function move(delta: number) {
+		if (nav.length === 0) return;
+		activeIndex = activeIndex < 0 ? 0 : Math.max(0, Math.min(nav.length - 1, activeIndex + delta));
+		scrollActiveIntoView();
+	}
 
 	function pick(emoji: string) {
 		onPick(emoji);
@@ -63,9 +93,26 @@
 	}
 
 	function onKey(e: KeyboardEvent) {
-		if (open && e.key === 'Escape') {
+		if (!open) return;
+		if (e.key === 'Escape') {
 			e.preventDefault();
 			open = false;
+		} else if (e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey)) {
+			move(1);
+			e.preventDefault();
+		} else if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) {
+			move(-1);
+			e.preventDefault();
+		} else if (e.key === 'ArrowDown') {
+			move(COLS);
+			e.preventDefault();
+		} else if (e.key === 'ArrowUp') {
+			move(-COLS);
+			e.preventDefault();
+		} else if (e.key === 'Enter') {
+			const em = nav[activeIndex];
+			if (em) pick(em.emoji);
+			e.preventDefault();
 		}
 	}
 
@@ -119,9 +166,15 @@
 			{#if results}
 				{#if results.length}
 					<div class="ep-grid">
-						{#each results as e (e.slug)}
-							<button class="ep-cell" type="button" title={e.name} onclick={() => pick(e.emoji)}
-								>{e.emoji}</button
+						{#each results as e, i (e.slug)}
+							<button
+								class="ep-cell"
+								class:active={i === activeIndex}
+								type="button"
+								tabindex="-1"
+								title={e.name}
+								onmouseenter={() => (activeIndex = i)}
+								onclick={() => pick(e.emoji)}>{e.emoji}</button
 							>
 						{/each}
 					</div>
@@ -129,12 +182,18 @@
 					<p class="ep-empty">No emoji</p>
 				{/if}
 			{:else}
-				{#each GROUPS as g (g.name)}
+				{#each GROUPS as g, gi (g.name)}
 					<div class="ep-group">{g.name}</div>
 					<div class="ep-grid">
-						{#each g.emojis as e (e.slug)}
-							<button class="ep-cell" type="button" title={e.name} onclick={() => pick(e.emoji)}
-								>{e.emoji}</button
+						{#each g.emojis as e, j (e.slug)}
+							<button
+								class="ep-cell"
+								class:active={GROUP_OFFSETS[gi] + j === activeIndex}
+								type="button"
+								tabindex="-1"
+								title={e.name}
+								onmouseenter={() => (activeIndex = GROUP_OFFSETS[gi] + j)}
+								onclick={() => pick(e.emoji)}>{e.emoji}</button
 							>
 						{/each}
 					</div>
@@ -236,6 +295,10 @@
 	}
 
 	.ep-cell:hover {
+		background: var(--menu-item-hover);
+	}
+
+	.ep-cell.active {
 		background: var(--menu-item-hover);
 	}
 
