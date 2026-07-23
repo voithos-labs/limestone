@@ -112,7 +112,6 @@
 		{ value: 'dir:desc', label: 'Descending', icon: ArrowDownAZ, keepOpen: true }
 	]);
 
-
 	// ── Journal (compound face) ──────────────────────────────────────────────
 	let bodyEl: HTMLButtonElement | null = $state(null);
 	let bodyOpen = $state(false);

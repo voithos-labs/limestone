@@ -297,4 +297,3 @@ pub fn set_default_source(app: AppHandle, id: Option<Uuid>) -> Result<(), String
     data.default_source_id = id;
     save_sources_file(&app, &data)
 }
-

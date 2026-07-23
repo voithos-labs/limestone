@@ -28,7 +28,14 @@
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import type Session from '$lib/models/Session';
 	import type { ViewTab } from '$lib/models/Session';
-	import { actions, formatKey, keysFor, specFromEvent, keyCapture, type Action } from '$lib/actions';
+	import {
+		actions,
+		formatKey,
+		keysFor,
+		specFromEvent,
+		keyCapture,
+		type Action
+	} from '$lib/actions';
 	import { onDestroy, onMount } from 'svelte';
 	import {
 		RotateCcw,

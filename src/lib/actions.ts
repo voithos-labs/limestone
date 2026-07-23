@@ -47,8 +47,20 @@ export function specFromEvent(e: KeyboardEvent): string | null {
 	return parts.join('+');
 }
 
-const MAC_SYMBOLS: Record<string, string> = { mod: '⌘', ctrl: '⌃', alt: '⌥', shift: '⇧', meta: '⌘' };
-const PC_LABELS: Record<string, string> = { mod: 'Ctrl', ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift', meta: 'Win' };
+const MAC_SYMBOLS: Record<string, string> = {
+	mod: '⌘',
+	ctrl: '⌃',
+	alt: '⌥',
+	shift: '⇧',
+	meta: '⌘'
+};
+const PC_LABELS: Record<string, string> = {
+	mod: 'Ctrl',
+	ctrl: 'Ctrl',
+	alt: 'Alt',
+	shift: 'Shift',
+	meta: 'Win'
+};
 
 export function formatKey(spec: string): string {
 	const parts = spec.split('+');

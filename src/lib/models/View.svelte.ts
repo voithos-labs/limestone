@@ -68,14 +68,7 @@ import { wallClockToMs } from '$lib/views/dateFormat';
  * faces: table, list, kanban, calendar, pinned doc
  *
  */
-export type ViewFaceType =
-	| 'table'
-	| 'list'
-	| 'grid'
-	| 'kanban'
-	| 'calendar'
-	| 'pinned'
-	| 'journal';
+export type ViewFaceType = 'table' | 'list' | 'grid' | 'kanban' | 'calendar' | 'pinned' | 'journal';
 
 interface ViewFaceJSON {
 	id: string;
