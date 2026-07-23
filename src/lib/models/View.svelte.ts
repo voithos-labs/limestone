@@ -376,14 +376,21 @@ interface CompiledFilter {
 	params: unknown[];
 }
 
-const UNSAFE_SEG = /["'.\\\n\r\t]/;
+const UNSAFE_IDENT = /["'.\\]|\p{Cc}/u;
+
+function isValidName(s: string): boolean {
+	return s !== '' && !UNSAFE_IDENT.test(s);
+}
+
 function pathSeg(s: string, kind: string): string {
-	if (!s || UNSAFE_SEG.test(s)) throw new Error(`Unsafe ${kind}: ${s}`);
+	if (!isValidName(s)) throw new Error(`Unsafe ${kind}: ${s}`);
 	return s;
 }
+
 export function sanitizeName(raw: string): string {
 	return raw
 		.replace(/["'.\\]/g, '')
+		.replace(/\p{Cc}/gu, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();
 }
@@ -1072,7 +1079,7 @@ class View {
 	/** Rename the view slug, moving every stored `views.<old>.*` value to the new namespace */
 	async renameSlug(newSlug: string): Promise<void> {
 		const oldSlug = this.slug;
-		if (!newSlug || newSlug === oldSlug) return;
+		if (!isValidName(newSlug) || newSlug === oldSlug) return;
 		if (await isViewSlugTaken(newSlug, this.id)) return;
 		const sources = await listSources();
 		const results: BulkResult[] = [];
@@ -1092,7 +1099,7 @@ class View {
 	/** Rename a stateful field, moving its stored values to the new key, then update the model */
 	async renameField(field: ViewField, newName: string): Promise<void> {
 		const oldName = field.name;
-		if (!newName || newName === oldName) return;
+		if (!isValidName(newName) || newName === oldName) return;
 		this.fields = this.fields.map((f) => (f.id === field.id ? { ...f, name: newName } : f));
 		const sources = await listSources();
 		const results: BulkResult[] = [];
