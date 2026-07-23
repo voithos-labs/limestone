@@ -5,9 +5,23 @@ import DocHandle from '$lib/models/DocHandle';
 export interface Action {
 	id: string;
 	title: string;
+	category: string;
 	defaultKeys?: string[];
 	run(session: Session): void | Promise<void>;
 }
+
+export interface ShortcutCategory {
+	id: string;
+	label: string;
+}
+
+export const SHORTCUT_CATEGORIES: ShortcutCategory[] = [
+	{ id: 'global', label: 'Global' },
+	{ id: 'tabs', label: 'Tabs' },
+	{ id: 'documents', label: 'Documents' },
+	{ id: 'navigation', label: 'Navigation' },
+	{ id: 'views', label: 'Views' }
+];
 
 const isMac = navigator.userAgent.includes('Mac');
 
@@ -62,25 +76,40 @@ const PC_LABELS: Record<string, string> = {
 	meta: 'Win'
 };
 
-export function formatKey(spec: string): string {
+const KEY_SYMBOLS: Record<string, string> = {
+	arrowup: '↑',
+	arrowdown: '↓',
+	arrowleft: '←',
+	arrowright: '→',
+	enter: '↵',
+	space: 'Space',
+	escape: 'Esc',
+	backspace: '⌫',
+	delete: 'Del',
+	tab: '⇥'
+};
+
+export function keyTokens(spec: string): string[] {
 	const parts = spec.split('+');
 	const key = parts.pop()!;
-	const keyLabel = key.length === 1 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1);
-	return isMac
-		? parts.map((m) => MAC_SYMBOLS[m] ?? m).join('') + keyLabel
-		: [...parts.map((m) => PC_LABELS[m] ?? m), keyLabel].join('+');
+	const mods = parts.map((m) => (isMac ? (MAC_SYMBOLS[m] ?? m) : (PC_LABELS[m] ?? m)));
+	const keyLabel =
+		KEY_SYMBOLS[key] ?? (key.length === 1 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1));
+	return [...mods, keyLabel];
 }
 
 export const actions: Action[] = [
 	{
 		id: 'tab.new',
 		title: 'New tab',
+		category: 'tabs',
 		defaultKeys: ['ctrl+space', 'mod+t'],
 		run: (session) => session.editors[0].openNewTab()
 	},
 	{
 		id: 'doc.new',
 		title: 'New document',
+		category: 'documents',
 		defaultKeys: ['mod+n'],
 		run: async (session) => {
 			const doc = await DocHandle.createDraft();
