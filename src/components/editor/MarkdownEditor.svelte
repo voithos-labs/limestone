@@ -45,7 +45,7 @@
 				saveTimer = null;
 			}
 			await handle.delete();
-			editor?.closeTab(tab.id);
+			editor?.closeTab(tab.id, false);
 		} catch (e) {
 			console.error('delete failed', e);
 		}

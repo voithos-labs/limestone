@@ -343,7 +343,7 @@ class EditorState {
 	replaceTab(oldId: string, tab: TabState) {
 		const existing = this.tabs.find((t) => t.id === tab.id && t.id !== oldId);
 		if (existing) {
-			this.closeTab(oldId);
+			this.closeTab(oldId, false);
 			this.focusTab({ kind: 'tab', id: existing.id });
 			return;
 		}
@@ -362,12 +362,14 @@ class EditorState {
 		}
 	}
 
-	closeTab(id: string) {
+	closeTab(id: string, remember = true) {
 		const idx = this.tabs.findIndex((v) => v.id === id);
 		if (idx === -1) return;
 
-		this.closedTabs.push({ tab: this.tabs[idx], index: idx });
-		if (this.closedTabs.length > 25) this.closedTabs.shift();
+		if (remember) {
+			this.closedTabs.push({ tab: this.tabs[idx], index: idx });
+			if (this.closedTabs.length > 25) this.closedTabs.shift();
+		}
 
 		this.tabs.splice(idx, 1);
 		this.tabAccessOrderById = this.tabAccessOrderById.filter((v) => v != id);
