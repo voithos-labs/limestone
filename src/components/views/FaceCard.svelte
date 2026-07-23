@@ -9,7 +9,7 @@
 		fieldLabel
 	} from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
-	import { SNIPPET_MARK_START, SNIPPET_MARK_END } from '$lib/services/search';
+	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
 	import CellValue from './CellValue.svelte';
 
 	let {
@@ -36,29 +36,8 @@
 		onOpen?: () => void;
 	} = $props();
 
-	function escapeHtml(s: string): string {
-		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-	}
-
-	// Title highlight
-	function highlightTitle(title: string, indices: number[]): string {
-		if (indices.length === 0) return escapeHtml(title);
-		const set = new Set(indices);
-		return [...title]
-			.map((ch, i) => (set.has(i) ? `<mark>${escapeHtml(ch)}</mark>` : escapeHtml(ch)))
-			.join('');
-	}
-
-	// Construct FTS markers
-	function renderSnippet(raw: string): string {
-		return escapeHtml(raw)
-			.replaceAll(SNIPPET_MARK_START, '<mark>')
-			.replaceAll(SNIPPET_MARK_END, '</mark>')
-			.replace(/<\/mark>(\s+)<mark>/g, '$1');
-	}
-
 	const titleHtml = $derived(highlightTitle(row.title || 'untitled', matchIndices));
-	const previewHtml = $derived(snippet.trim() ? renderSnippet(snippet) : '');
+	const previewHtml = $derived(snippet.trim() ? highlightSnippet(snippet) : '');
 
 	let imgOk = $state(true);
 	let imgLoaded = $state(false);

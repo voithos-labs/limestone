@@ -7,6 +7,7 @@
 	import Group from '$lib/models/Group';
 	import View from '$lib/models/View.svelte';
 	import { searchDocuments } from '$lib/services/search';
+	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
 	import { Search, Folder, Folders, Hash, X, TextAlignStart, Box } from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';
 
@@ -149,26 +150,10 @@
 		inputEl?.focus();
 	}
 
-	function highlightTitle(title: string, indices: number[]): string {
-		if (!indices.length) return title;
-		const chars = [...title];
-		const set = new Set(indices);
-		return chars.map((ch, i) => (set.has(i) ? `<mark>${ch}</mark>` : ch)).join('');
-	}
-
 	function parentPath(relPath: string | null): string | null {
 		if (!relPath) return null;
 		const dir = relPath.split('/').slice(0, -1).join('/');
 		return dir || null;
-	}
-
-	function highlightSnippet(snippet: string): string {
-		return snippet
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replaceAll('\u0001', '<mark>')
-			.replaceAll('\u0002', '</mark>');
 	}
 
 	onMount(() => {

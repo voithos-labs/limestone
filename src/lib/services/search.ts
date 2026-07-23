@@ -1,4 +1,5 @@
 import { select } from '$lib/services/db';
+import { SNIPPET_MARK_START, SNIPPET_MARK_END } from '$lib/util/highlight';
 import type { SearchResult } from '$lib/types/SearchResult';
 
 // Ranking constants (fml I spent 4 hours playing with this shiot)
@@ -15,9 +16,6 @@ const RECENCY_SCALE_DAYS = 7;
 const RECENCY_DEFAULT_DAYS = 365;
 const CONTAINER_PREFIX_MIN_CHARS = 3;
 const CONTAINER_MAX_RESULTS = 5;
-
-export const SNIPPET_MARK_START = String.fromCharCode(1);
-export const SNIPPET_MARK_END = String.fromCharCode(2);
 
 // compiled sql filter for tyhe cool and the hip
 export interface SearchScope {
