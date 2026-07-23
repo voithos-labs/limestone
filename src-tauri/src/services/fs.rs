@@ -1,8 +1,20 @@
 use atomicwrites::{AtomicFile, OverwriteBehavior::AllowOverwrite};
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Component, Path};
 use uuid::Uuid;
+
+pub fn validate_file_name(name: &str) -> io::Result<()> {
+    let mut parts = Path::new(name).components();
+    let single = matches!(parts.next(), Some(Component::Normal(_))) && parts.next().is_none();
+    if !single || name.contains(['/', '\\']) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid file name: {name}"),
+        ));
+    }
+    Ok(())
+}
 
 /// .tmp atomic write, big safe
 pub fn atomic_write(path: &Path, content: &[u8]) -> io::Result<()> {
@@ -37,5 +49,42 @@ pub fn move_file(src: &Path, dest: &Path) -> io::Result<()> {
             fs::copy(src, dest)?;
             fs::remove_file(src)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_plain_names() {
+        for name in ["note.md", "a b.md", ".hidden.md", "..leading.md", "n..md"] {
+            assert!(validate_file_name(name).is_ok(), "{name}");
+        }
+    }
+
+    #[test]
+    fn rejects_traversal_and_separators() {
+        for name in [
+            "",
+            ".",
+            "..",
+            "../evil.md",
+            "..",
+            "a/b.md",
+            "a\\b.md",
+            "/etc/passwd",
+            "\\\\server\\share\\x.md",
+            "./x.md",
+            "sub/../../x.md",
+        ] {
+            assert!(validate_file_name(name).is_err(), "{name:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_absolute_windows_path() {
+        assert!(validate_file_name("C:/Windows/x.md").is_err());
+        assert!(validate_file_name("C:\\Windows\\x.md").is_err());
     }
 }

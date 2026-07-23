@@ -1,5 +1,5 @@
 use crate::commands::source_commands::source_uses_frontmatter;
-use crate::services::fs::{atomic_write, move_file};
+use crate::services::fs::{atomic_write, move_file, validate_file_name};
 use crate::services::{
     cleanup_orphan_folder_groups, fm_properties, frontmatter, index_document, sync_folders,
     sync_tags,
@@ -179,6 +179,8 @@ pub async fn rename_document(
     rel_path: String,
     new_name: String,
 ) -> Result<String, String> {
+    validate_file_name(&new_name).map_err(|e| e.to_string())?;
+
     let source = std::path::Path::new(&source_path);
     let old_full = source.join(&rel_path);
     let new_rel = std::path::Path::new(&rel_path)
