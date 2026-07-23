@@ -199,6 +199,7 @@
 
 	function newView() {
 		const v = View.create('New view');
+		v.temporary = true;
 		v.state.filters_collapsed = true;
 		editor.openView(v);
 	}

@@ -24,7 +24,9 @@
 
 	function createNewView() {
 		actionError = '';
-		editor.replaceTab(tab.id, TabState.forView(View.create('New view')));
+		const v = View.create('New view');
+		v.temporary = true;
+		editor.replaceTab(tab.id, TabState.forView(v));
 	}
 </script>
 
