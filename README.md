@@ -18,3 +18,7 @@ Format
 ```bash
 npm run format
 ```
+```bash
+cd src-tauri
+cargo fmt
+```
