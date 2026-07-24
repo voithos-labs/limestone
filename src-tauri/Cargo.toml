@@ -36,3 +36,7 @@ serde_yml = "0.0.13"
 globset = "0.4.18"
 tauri-plugin-store = "2.4.2"
 
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+

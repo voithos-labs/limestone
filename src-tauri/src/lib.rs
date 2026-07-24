@@ -91,6 +91,13 @@ pub fn run() {
                 .unwrap()
         })
         .setup(move |app| {
+            #[cfg(desktop)]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.handle().plugin(tauri_plugin_process::init())?;
+            }
+
             // ── Blocking Shi ─────────────────────────────────────────────────────────
 
             let global_data_path = app.path().app_data_dir()?;

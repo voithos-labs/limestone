@@ -24,6 +24,7 @@
 	import SourceDialog from '../SourceDialog.svelte';
 	import SourceMenu from '../SourceMenu.svelte';
 	import Toggle from '../Toggle.svelte';
+	import { updater } from '$lib/services/updater.svelte';
 	import Menu from '../views/Menu.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import type { MenuEntry, MenuItem } from '$lib/views/menuTypes';
@@ -56,7 +57,9 @@
 		AppWindow,
 		FileText,
 		Compass,
-		Eye
+		Eye,
+		ArrowUp,
+		RotateCw
 	} from '@lucide/svelte';
 
 	let { viewTab, session }: { viewTab: ViewTab; session: Session } = $props();
@@ -138,6 +141,25 @@
 	// ── General tab ────────────────────────────────────────────────────────────
 	let appInfo: AppInfo | null = $state(null);
 	let keyCopied = $state(false);
+
+	const updateStatus = $derived.by(() => {
+		switch (updater.phase) {
+			case 'checking':
+				return 'Checking for updates…';
+			case 'up-to-date':
+				return "You're on the latest version.";
+			case 'available':
+				return `Limestone ${updater.version} is ready to install.`;
+			case 'downloading':
+				return `Downloading… ${Math.round(updater.progress * 100)}%`;
+			case 'installing':
+				return 'Installing. Limestone will restart.';
+			case 'error':
+				return updater.error || 'Update check failed.';
+			default:
+				return 'Check whether a newer version is available.';
+		}
+	});
 
 	async function loadGeneral() {
 		try {
@@ -685,6 +707,64 @@
 						<div class="info-list">
 							<div class="info-row">
 								<div class="item-info">
+									<span class="item-label">Version</span>
+									<p class="item-desc">Installed application version.</p>
+								</div>
+								<div class="info-value">
+									<code class="info-mono">{appInfo?.version ?? '…'}</code>
+								</div>
+							</div>
+							<div class="info-row">
+								<div class="item-info">
+									<span class="item-label">Updates</span>
+									<p class="item-desc">{updateStatus}</p>
+									{#if updater.phase === 'downloading'}
+										<div class="update-progress">
+											<div
+												class="update-progress-bar"
+												style="width: {Math.round(updater.progress * 100)}%"
+											></div>
+										</div>
+									{/if}
+								</div>
+								<div class="info-value">
+									{#if updater.phase === 'available'}
+										<button class="update-btn primary" onclick={() => updater.install()}>
+											<ArrowUp size={13} strokeWidth={2.25} />
+											Install {updater.version}
+										</button>
+									{:else if updater.phase === 'downloading' || updater.phase === 'installing'}
+										<button class="update-btn" disabled>
+											{updater.phase === 'installing' ? 'Installing…' : 'Downloading…'}
+										</button>
+									{:else}
+										<button
+											class="update-btn"
+											disabled={updater.busy}
+											onclick={() => updater.check()}
+										>
+											<RotateCw size={13} strokeWidth={2.25} />
+											Check for updates
+										</button>
+									{/if}
+								</div>
+							</div>
+							<div class="info-row">
+								<div class="item-info">
+									<span class="item-label">Automatic updates</span>
+									<p class="item-desc">Download and install new versions on launch.</p>
+								</div>
+								<div class="info-value">
+									<Toggle
+										bind:checked={
+											() => settings.get<boolean>('updates.auto_install') ?? false,
+											(v) => settings.set('updates.auto_install', v)
+										}
+									/>
+								</div>
+							</div>
+							<div class="info-row">
+								<div class="item-info">
 									<span class="item-label">Device key</span>
 									<p class="item-desc">Local identifier for this device.</p>
 								</div>
@@ -697,15 +777,6 @@
 											<Copy size={13} />
 										{/if}
 									</button>
-								</div>
-							</div>
-							<div class="info-row">
-								<div class="item-info">
-									<span class="item-label">Version</span>
-									<p class="item-desc">Installed application version.</p>
-								</div>
-								<div class="info-value">
-									<code class="info-mono">{appInfo?.version ?? '…'}</code>
 								</div>
 							</div>
 						</div>
@@ -1243,6 +1314,52 @@
 	.copy-btn:hover {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
+	}
+
+	.update-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
+		padding: 5px 10px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-ui);
+		background: transparent;
+		color: var(--color-text-primary);
+		font-family: var(--font-ui);
+		font-size: 12px;
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	.update-btn:hover:not(:disabled) {
+		background: var(--chip-bg);
+	}
+
+	.update-btn:disabled {
+		opacity: 0.6;
+		cursor: default;
+	}
+
+	.update-btn.primary {
+		border-color: var(--color-accent);
+		background: var(--color-accent);
+		color: var(--color-accent-contrast);
+	}
+
+	.update-progress {
+		margin-top: 8px;
+		width: 180px;
+		height: 4px;
+		border-radius: 2px;
+		background: var(--color-border);
+		overflow: hidden;
+	}
+
+	.update-progress-bar {
+		height: 100%;
+		background: var(--color-accent);
+		transition: width 0.12s linear;
 	}
 
 	.settings-list {

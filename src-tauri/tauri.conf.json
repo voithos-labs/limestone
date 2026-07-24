@@ -31,6 +31,7 @@
 	},
 	"bundle": {
 		"active": true,
+		"createUpdaterArtifacts": true,
 		"targets": "all",
 		"publisher": "Voithos Labs",
 		"copyright": "© 2026 Voithos Labs",
@@ -48,6 +49,17 @@
 				"sidebarImage": "installer/sidebar.bmp",
 				"installerIcon": "icons/icon.ico",
 				"installMode": "currentUser"
+			}
+		}
+	},
+	"plugins": {
+		"updater": {
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEzQzZENzRBODMyNjI3OTUKUldTVkp5YURTdGZHRTBNaE1oOW1XdGIrVGE3Y1o2dGNLcVZTb2RiWldPRURZYnpienV2dDd1Ui8K",
+			"endpoints": [
+				"https://github.com/voithos-labs/limestone/releases/latest/download/latest.json"
+			],
+			"windows": {
+				"installMode": "passive"
 			}
 		}
 	}

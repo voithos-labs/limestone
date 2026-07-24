@@ -13,11 +13,22 @@
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import { actionForKey, keyCapture } from '$lib/actions';
+	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
 
 	let session = $state<Session>();
 	let tab: TabState | undefined = $state();
 
 	Session.init().then((s) => (session = s));
+
+	let updateChecked = false;
+	$effect(() => {
+		if (!session || updateChecked) return;
+		updateChecked = true;
+		void notePostUpdate();
+		const auto = session.settings.get<boolean>('updates.auto_install') ?? false;
+		const s = session;
+		void runStartupUpdateCheck(auto, () => s.editors[0]?.focusTab({ kind: 'settings' }));
+	});
 
 	$effect(() => {
 		tab = session?.editors[0]?.focusedTab;
