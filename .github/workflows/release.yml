@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 env:
-  SIGNING_CLI_VERSION: 0.5.3
+  SIGNING_CLI_VERSION: 0.11.0
 
 jobs:
   windows:
@@ -45,12 +45,12 @@ jobs:
         id: signing-cli
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin/trusted-signing-cli.exe
-          key: trusted-signing-cli-${{ env.SIGNING_CLI_VERSION }}
+          path: ~/.cargo/bin/artifact-signing-cli.exe
+          key: artifact-signing-cli-${{ env.SIGNING_CLI_VERSION }}
 
       - name: Install signing CLI
         if: steps.signing-cli.outputs.cache-hit != 'true'
-        run: cargo install trusted-signing-cli --version ${{ env.SIGNING_CLI_VERSION }} --locked
+        run: cargo install artifact-signing-cli --version ${{ env.SIGNING_CLI_VERSION }} --locked
 
       - uses: tauri-apps/tauri-action@v0
         env:
