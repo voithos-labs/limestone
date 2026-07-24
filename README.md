@@ -1,8 +1,11 @@
-# LIMESTONE (V4 (fml))
+# <img width="3840" height="1020" alt="image" src="https://github.com/user-attachments/assets/e64a6afd-2b98-4d51-8e6c-654694027855" />
 
-<img width="1025" height="829" alt="image" src="https://github.com/user-attachments/assets/b7628f4a-ec04-498d-a884-506dcecb0cbd" />
+Note taking etc., built for people who think clearly when their tools get out of the way.
 
-## Dev Commands
+<img width="1019" height="691" alt="image" src="https://github.com/user-attachments/assets/254cff31-24d8-49ac-b3a2-16051cc4634e" />
+
+
+## Development
 
 Run dev app ( you may need to install deps first, e.g. `npm i` )
 
@@ -15,13 +18,3 @@ Format
 ```bash
 npm run format
 ```
-
-## Assorted diagrams of little or no meaning
-
-<img width="5280" height="3584" alt="image" src="https://github.com/user-attachments/assets/db91b6b1-b27a-41fc-9596-e909cd96e91f" />
-<img width="3456" height="2816" alt="image" src="https://github.com/user-attachments/assets/03eeed74-87c8-472c-87d2-ed9c927202bd" />
-<img width="6336" height="3360" alt="image" src="https://github.com/user-attachments/assets/5e0326b0-af55-4c45-bb18-5b82fc8452d0" />
-
-## Tools
-
-I use https://plugins.jetbrains.com/plugin/24705-code-divider for sections
