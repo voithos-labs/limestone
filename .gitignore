@@ -9,3 +9,6 @@ node_modules
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .idea/
+
+# Local design source assets (installer BMPs are generated from these, committed separately)
+/raw-assets/

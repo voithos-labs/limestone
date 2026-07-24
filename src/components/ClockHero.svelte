@@ -37,7 +37,7 @@
 	<div class="time">{timeStr}</div>
 	<div class="meta">
 		<div class="date">{dateStr}</div>
-		<div class="brand">{ampm}<span class="brand-sep">·</span>limestone v{version || '0.1.0'}</div>
+		<div class="brand">{ampm}<span class="brand-sep">·</span>Limestone v{version || '0.1.0'}</div>
 	</div>
 </div>
 

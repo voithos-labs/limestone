@@ -12,7 +12,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { exists, readTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '$lib/services/db';

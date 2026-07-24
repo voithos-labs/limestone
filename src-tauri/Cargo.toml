@@ -1,8 +1,8 @@
 [package]
 name = "limestone"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Built for people who think clearly when their tools get out of the way."
+authors = ["Voithos Labs"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
