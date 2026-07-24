@@ -1,0 +1,64 @@
+name: release
+
+# I cannot see what flowers are at my feet,
+#   Nor what soft incense hangs upon the boughs,
+# But, in embalmed darkness, guess each sweet
+#   Wherewith the seasonable month endows
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+env:
+  SIGNING_CLI_VERSION: 0.5.3
+
+jobs:
+  windows:
+    name: windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # thank the lord, as I am forgetful
+      - name: Set version from tag
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+
+      - run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Cache signing CLI
+        id: signing-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/trusted-signing-cli.exe
+          key: trusted-signing-cli-${{ env.SIGNING_CLI_VERSION }}
+
+      - name: Install signing CLI
+        if: steps.signing-cli.outputs.cache-hit != 'true'
+        run: cargo install trusted-signing-cli --version ${{ env.SIGNING_CLI_VERSION }} --locked
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: limestone ${{ github.ref_name }}
+          releaseDraft: true
+          args: --bundles nsis --config src-tauri/tauri.signing.conf.json
+
