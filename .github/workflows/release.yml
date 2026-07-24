@@ -21,9 +21,9 @@ jobs:
     name: windows
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -43,7 +43,7 @@ jobs:
 
       - name: Cache signing CLI
         id: signing-cli
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/artifact-signing-cli.exe
           key: artifact-signing-cli-${{ env.SIGNING_CLI_VERSION }}
@@ -52,7 +52,7 @@ jobs:
         if: steps.signing-cli.outputs.cache-hit != 'true'
         run: cargo install artifact-signing-cli --version ${{ env.SIGNING_CLI_VERSION }} --locked
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
