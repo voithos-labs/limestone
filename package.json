@@ -35,7 +35,7 @@
 		"codemirror": "^6.0.2",
 		"js-yaml": "^5.2.1",
 		"unicode-emoji-json": "^0.9.0",
-		"uuid": "^13.0.0"
+		"uuid": "^14.0.1"
 	},
 	"devDependencies": {
 		"@iconify/utils": "^3.1.3",
