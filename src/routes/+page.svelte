@@ -27,7 +27,12 @@
 		void notePostUpdate();
 		const auto = session.settings.get<boolean>('updates.auto_install') ?? false;
 		const s = session;
-		void runStartupUpdateCheck(auto, () => s.editors[0]?.focusTab({ kind: 'settings' }));
+		void runStartupUpdateCheck(auto, () => {
+			const vt = s.getViewTab('settings');
+			if (!vt.state) vt.state = {};
+			vt.state.activeSection = 'general';
+			s.editors[0]?.focusTab({ kind: 'settings' });
+		});
 	});
 
 	$effect(() => {
