@@ -27,7 +27,6 @@ updates:
         dependency-type: "development"
         update-types: ["patch", "minor"]
 
-  # build env has access to prod secrets (bad)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule: { interval: "weekly" }
