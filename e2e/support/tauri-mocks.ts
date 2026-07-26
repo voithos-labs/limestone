@@ -210,21 +210,54 @@ function installMockInternals(docs: SeededDocs): void {
 		return current ?? null;
 	}
 
-	// ── IPC ────────────────────────────────────────────
+	// ── Callbacks and events ───────────────────────────
 
-	let nextEventId = 1;
+	const callbacks = new Map<number, (data: unknown) => void>();
+	const listeners: Record<string, number[]> = {};
+
+	function registerCallback(callback: (data: unknown) => void, once = false): number {
+		const id = window.crypto.getRandomValues(new Uint32Array(1))[0];
+		callbacks.set(id, (data) => {
+			if (once) callbacks.delete(id);
+			callback?.(data);
+		});
+		return id;
+	}
+
+	// The listen id must be the callback id the app registered, or unlisten cannot
+	// find it and an emit cannot reach the handler.
+	function runEventCommand(op: string, args: Record<string, any>): unknown {
+		switch (op) {
+			case 'listen':
+				(listeners[args.event] ??= []).push(args.handler);
+				return args.handler;
+			case 'emit': {
+				for (const id of listeners[args.event] ?? []) callbacks.get(id)?.(args);
+				return null;
+			}
+			case 'unlisten':
+				return null;
+			default:
+				return unhandled(`plugin:event|${op}`);
+		}
+	}
+
+	function unregisterListener(event: string, id: number): void {
+		listeners[event] = (listeners[event] ?? []).filter((each) => each !== id);
+		callbacks.delete(id);
+	}
+
+	// ── IPC ────────────────────────────────────────────
 
 	async function invoke(cmd: string, args: Record<string, any> = {}): Promise<unknown> {
 		const STORE_PREFIX = 'plugin:store|';
 		if (cmd.startsWith(STORE_PREFIX)) return runStoreCommand(cmd.slice(STORE_PREFIX.length), args);
+		const EVENT_PREFIX = 'plugin:event|';
+		if (cmd.startsWith(EVENT_PREFIX)) return runEventCommand(cmd.slice(EVENT_PREFIX.length), args);
 
 		switch (cmd) {
 			case 'plugin:app|version':
 				return APP_VERSION;
-			case 'plugin:event|listen':
-				return nextEventId++;
-			case 'plugin:event|unlisten':
-				return null;
 			case 'plugin:updater|check':
 				return null;
 			case 'plugin:fs|read_text_file': {
@@ -266,17 +299,6 @@ function installMockInternals(docs: SeededDocs): void {
 
 	// ── Internals (mirrors @tauri-apps/api/mocks) ──────
 
-	const callbacks = new Map<number, (data: unknown) => void>();
-
-	function registerCallback(callback: (data: unknown) => void, once = false): number {
-		const id = window.crypto.getRandomValues(new Uint32Array(1))[0];
-		callbacks.set(id, (data) => {
-			if (once) callbacks.delete(id);
-			callback?.(data);
-		});
-		return id;
-	}
-
 	const scope = window as MockWindow;
 	scope.__TAURI_INTERNALS__ = {
 		...scope.__TAURI_INTERNALS__,
@@ -292,8 +314,6 @@ function installMockInternals(docs: SeededDocs): void {
 		convertFileSrc: (filePath: string, protocol = 'asset') =>
 			`http://${protocol}.localhost/${encodeURIComponent(filePath)}`
 	};
-	scope.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
-		unregisterListener: (_event: string, id: number) => callbacks.delete(id)
-	};
+	scope.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener };
 	scope.__mockState = state;
 }
