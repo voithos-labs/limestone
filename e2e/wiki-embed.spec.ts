@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { scanWikiEmbeds } from '../src/components/editor/wiki-embed-scan';
+import { recognizeWikiEmbed } from '../src/components/editor/wiki-embed-scan';
 import { bootApp } from './support/app';
 import { expect, test } from './support/test';
 
@@ -7,42 +7,74 @@ import { expect, test } from './support/test';
 // types) out of the e2e type-check program, which knows neither Svelte nor the alias.
 const HARNESS_URL = '/src/components/editor/wiki-embed-harness.ts';
 
-interface HarnessOptions {
-	source: string;
-	resolvable?: string[];
+/** The fields of an inline node these scenarios turn on. */
+interface InlineSummary {
+	kind: string;
+	start: number;
+	end: number;
+	alt?: string;
+	url?: string;
+	width?: number;
 }
-
-/** Boots the app, then mounts a bare editor on the page for the plugin to decorate. */
-async function mountEditor(page: Page, options: HarnessOptions): Promise<string[]> {
-	const warnings: string[] = [];
-	page.on('console', (message) => {
-		if (message.type() === 'warning') warnings.push(message.text());
-	});
-	await bootApp(page);
-	await page.evaluate(
-		async ({ url, options }) => {
-			const harness = await import(url);
-			harness.mountHarnessEditor(options);
-		},
-		{ url: HARNESS_URL, options }
-	);
-	await expect(page.locator('#wiki-embed-harness .editor')).toBeVisible();
-	return warnings;
-}
-
-const embeds = (page: Page) => page.locator('#wiki-embed-harness .ls-wiki-embed');
-const editor = (page: Page) => page.locator('#wiki-embed-harness .editor');
-const blocks = (page: Page) => editor(page).locator('.text-editable-block');
 
 /**
- * A block's text exactly as rendered — an assertion the editor's own chrome cannot pad,
- * and which `toHaveText` would whitespace-normalize past.
+ * Runs `body` in the page, once more if Vite reloaded under it. The first spec to import
+ * the harness makes Vite discover the editor's dependency tree, and it reloads the page
+ * when it finishes pre-bundling — a destroyed execution context there is that reload, not
+ * a failure. Only the first browser spec of a cold-cache run ever sees it, which is every
+ * CI run.
  */
-function blockText(page: Page, index = 0): Promise<string> {
-	return blocks(page)
-		.nth(index)
-		.evaluate((el) => el.textContent ?? '');
+async function throughViteReload<T>(page: Page, run: () => Promise<T>): Promise<T> {
+	try {
+		return await run();
+	} catch (error) {
+		if (!String(error).includes('Execution context was destroyed')) throw error;
+		await page.waitForLoadState();
+		return await run();
+	}
 }
+
+/** Inline nodes of the document's block at `index`, parsed with the plugins installed. */
+async function inlineNodes(page: Page, source: string, index = 0): Promise<InlineSummary[]> {
+	await bootApp(page);
+	return throughViteReload(page, () =>
+		page.evaluate(
+			async ({ harnessUrl, source, index }) => {
+				const harness = await import(harnessUrl);
+				return harness.inlineNodesAt(source, index).map((node: Record<string, unknown>) => ({
+					kind: node.kind,
+					start: node.start,
+					end: node.end,
+					...(node.alt !== undefined ? { alt: node.alt } : {}),
+					...(node.url !== undefined ? { url: node.url } : {}),
+					...(node.width !== undefined ? { width: node.width } : {})
+				}));
+			},
+			{ harnessUrl: HARNESS_URL, source, index }
+		)
+	);
+}
+
+async function imageNodes(page: Page, source: string, index = 0): Promise<InlineSummary[]> {
+	return (await inlineNodes(page, source, index)).filter((node) => node.kind === 'image');
+}
+
+async function mountEditor(page: Page, source: string): Promise<void> {
+	await bootApp(page);
+	await throughViteReload(page, () =>
+		page.evaluate(
+			async ({ harnessUrl, source }) => {
+				const harness = await import(harnessUrl);
+				harness.mountHarnessEditor(source);
+			},
+			{ harnessUrl: HARNESS_URL, source }
+		)
+	);
+	await expect(page.locator('#wiki-embed-harness .editor')).toBeVisible();
+}
+
+const images = (page: Page) => page.locator('#wiki-embed-harness [data-image-widget]');
+const editor = (page: Page) => page.locator('#wiki-embed-harness .editor');
 
 function editedSource(page: Page): Promise<string> {
 	return page.evaluate(() => (window as unknown as HarnessWindow).__wikiEmbedSource());
@@ -55,20 +87,26 @@ interface HarnessWindow {
 // ── The recognizer ──────────────────────────────────────────────────────────
 
 test('claims an embed with its target and size modifier', () => {
-	expect(scanWikiEmbeds('a ![[cat.png|300]] b')).toEqual([
-		{ start: 2, end: 18, target: 'cat.png', width: 300 }
-	]);
-});
-
-test('claims every embed in a block, each over its own bytes', () => {
-	expect(scanWikiEmbeds('![[a.png]] and ![[b.jpg]]')).toEqual([
-		{ start: 0, end: 10, target: 'a.png' },
-		{ start: 15, end: 25, target: 'b.jpg' }
-	]);
+	const raw = 'a ![[cat.png|300]] b';
+	expect(recognizeWikiEmbed(raw, 2, raw.length)).toEqual({
+		start: 2,
+		end: 18,
+		target: 'cat.png',
+		width: 300
+	});
 });
 
 test('ignores a size modifier that is not a pixel width', () => {
-	expect(scanWikiEmbeds('![[cat.png|abc]]')).toEqual([{ start: 0, end: 16, target: 'cat.png' }]);
+	const raw = '![[cat.png|abc]]';
+	expect(recognizeWikiEmbed(raw, 0, raw.length)).toEqual({
+		start: 0,
+		end: 16,
+		target: 'cat.png'
+	});
+});
+
+test('declines an embed whose close lies past the scan window', () => {
+	expect(recognizeWikiEmbed('![[cat.png]] tail', 0, 8)).toBeNull();
 });
 
 const declined = [
@@ -76,101 +114,111 @@ const declined = [
 	['an empty target', '![[]]'],
 	['a size modifier with no target', '![[|300]]'],
 	['an embed broken by a line ending', '![[cat\n.png]]'],
-	['an unterminated embed', 'text ![[cat.png']
+	['an unterminated embed', '![[cat.png'],
+	['an opener the embed after it closes', '![[cat.png and ![[dog.png]]'],
+	['bytes a built-in image tail claims', '![[a.png]](u)']
 ] as const;
 
 for (const [what, raw] of declined) {
-	test(`leaves ${what} as literal text`, () => {
-		expect(scanWikiEmbeds(raw)).toEqual([]);
+	test(`declines ${what}`, () => {
+		expect(recognizeWikiEmbed(raw, 0, raw.length)).toBeNull();
 	});
 }
 
-test('lets a nested opener win over the unterminated one before it', () => {
-	expect(scanWikiEmbeds('![[cat.png and ![[dog.png]]')).toEqual([
-		{ start: 15, end: 27, target: 'dog.png' }
+// ── Parsed with the plugin installed ────────────────────────────────────────
+
+test('parses an embed as a built-in image node', async ({ page }) => {
+	expect(await inlineNodes(page, '![[cat.png]]')).toEqual([
+		{ kind: 'image', start: 0, end: 12, alt: 'cat.png', url: 'cat.png' }
 	]);
 });
 
-// ── The rendered decoration ─────────────────────────────────────────────────
-
-test('renders an embed as an image resolved by the host', async ({ page }) => {
-	await mountEditor(page, { source: 'Here ![[cat.png]] sits.', resolvable: ['cat.png'] });
-
-	await expect(embeds(page).locator('img')).toHaveAttribute('src', /#cat\.png$/);
-	expect(await blockText(page)).toBe('Here  sits.');
+test("carries the size modifier as the node's width", async ({ page }) => {
+	expect(await imageNodes(page, '![[cat.png|300]]')).toEqual([
+		{ kind: 'image', start: 0, end: 16, alt: 'cat.png', url: 'cat.png', width: 300 }
+	]);
 });
 
-test('renders the size modifier as the image width', async ({ page }) => {
-	await mountEditor(page, { source: '![[cat.png|300]]', resolvable: ['cat.png'] });
-
-	await expect(embeds(page).locator('img')).toHaveAttribute('width', '300');
+// The grammars overlap: both of these are legal built-in images whose alt text happens
+// to be bracketed. The plugin's rung is consulted first, so a recognizer that failed to
+// decline would swallow them — silently, since the bytes still serialize.
+test('leaves a bracketed image alt to the built-in scanner', async ({ page }) => {
+	expect(await imageNodes(page, '![[a]](u)')).toEqual([
+		{ kind: 'image', start: 0, end: 9, alt: '[a]', url: 'u' }
+	]);
 });
 
-test('covers the embed bytes a heading marker has already shifted', async ({ page }) => {
-	await mountEditor(page, { source: '## Look ![[cat.png]]', resolvable: ['cat.png'] });
-
-	// The island's span is the offsets the recognizer reported. `## ` counts: these are
-	// offsets into the block's own source, markers and all.
-	await expect(embeds(page)).toHaveAttribute('data-source-start', '8');
-	await expect(embeds(page)).toHaveAttribute('data-source-end', '20');
-	expect(await blockText(page)).toBe('## Look ');
+test('leaves one to the built-in scanner even when it names an image', async ({ page }) => {
+	expect(await imageNodes(page, '![[a.png]](u)')).toEqual([
+		{ kind: 'image', start: 0, end: 13, alt: '[a.png]', url: 'u' }
+	]);
 });
 
-test('leaves a target the host declines as literal text', async ({ page }) => {
-	await mountEditor(page, { source: 'Here ![[cat.png]] sits.', resolvable: [] });
-
-	await expect(embeds(page)).toHaveCount(0);
-	expect(await blockText(page)).toBe('Here ![[cat.png]] sits.');
+test('parses a GFM image exactly as it did before', async ({ page }) => {
+	expect(await imageNodes(page, '![alt](cat.png)')).toEqual([
+		{ kind: 'image', start: 0, end: 15, alt: 'alt', url: 'cat.png' }
+	]);
 });
 
-test('leaves an embed inside a code fence as literal text', async ({ page }) => {
-	await mountEditor(page, {
-		source: '```\n![[cat.png]]\n```',
-		resolvable: ['cat.png']
-	});
+test('leaves a non-image target as text', async ({ page }) => {
+	expect(await imageNodes(page, '![[notes.md]]')).toEqual([]);
+});
 
-	await expect(embeds(page)).toHaveCount(0);
-	await expect(editor(page)).toContainText('![[cat.png]]');
+test('parses every embed in a block over its own bytes', async ({ page }) => {
+	expect(await imageNodes(page, '![[a.png]] and ![[b.jpg]]')).toEqual([
+		{ kind: 'image', start: 0, end: 10, alt: 'a.png', url: 'a.png' },
+		{ kind: 'image', start: 15, end: 25, alt: 'b.jpg', url: 'b.jpg' }
+	]);
+});
+
+test("counts a heading's marker in the offsets it reports", async ({ page }) => {
+	expect(await imageNodes(page, '## Look ![[cat.png]]')).toEqual([
+		{ kind: 'image', start: 8, end: 20, alt: 'cat.png', url: 'cat.png' }
+	]);
 });
 
 test('leaves the inline constructs beside it standing', async ({ page }) => {
-	await mountEditor(page, { source: 'text **bold** ![[cat.png]] more', resolvable: ['cat.png'] });
-
-	await expect(blocks(page).locator('strong')).toHaveText('bold');
-	expect(await blockText(page)).toBe('text **bold**  more');
+	const kinds = (await inlineNodes(page, 'text **bold** ![[cat.png]] more')).map((n) => n.kind);
+	expect(kinds).toEqual(['text', 'strong', 'text', 'image', 'text']);
 });
 
-test('follows the embed when an edit before it moves the bytes', async ({ page }) => {
-	await mountEditor(page, { source: 'ab ![[cat.png]]', resolvable: ['cat.png'] });
+// ── Rendered by the editor ──────────────────────────────────────────────────
 
-	await blocks(page).first().click();
-	await page.keyboard.press('Home');
-	await page.keyboard.type('X');
+test("renders an embed through the editor's own image widget", async ({ page }) => {
+	await mountEditor(page, 'Here ![[cat.png]] sits.');
 
-	await expect.poll(() => editedSource(page)).toContain('Xab ![[cat.png]]');
-	await expect(embeds(page)).toHaveAttribute('data-source-start', '4');
+	await expect(images(page).locator('img')).toHaveAttribute('src', /#cat\.png$/);
+	await expect(images(page)).toHaveAttribute('data-source-start', '5');
+	await expect(images(page)).toHaveAttribute('data-source-end', '17');
 });
 
-test("claims none of a GFM image's bytes", async ({ page }) => {
-	await mountEditor(page, { source: '![alt](cat.png)', resolvable: ['cat.png'] });
+test('leaves an embed inside a code fence as literal text', async ({ page }) => {
+	await mountEditor(page, '```\n![[cat.png]]\n```');
 
-	await expect(embeds(page)).toHaveCount(0);
-	await expect(page.locator('#wiki-embed-harness .md-image-widget')).toHaveCount(1);
+	await expect(images(page)).toHaveCount(0);
+	await expect(editor(page)).toContainText('![[cat.png]]');
+});
+
+// A table cell is the one place the editor renders images as alt text instead of widgets,
+// and that fallback reconstructs the source from the alt's LENGTH — which for an embed is
+// the wrong text, though never the wrong number of characters. So the bytes are what this
+// pins; the display is a recorded delta.
+test('keeps an embed in a table cell byte-for-byte', async ({ page }) => {
+	const source = '| a |\n| --- |\n| ![[cat.png]] |\n';
+	await mountEditor(page, source);
+
+	expect(await editedSource(page)).toBe(source);
+	await expect(images(page)).toHaveCount(0);
 });
 
 test('keeps the embed bytes through an edit elsewhere', async ({ page }) => {
-	const warnings = await mountEditor(page, {
-		source: 'Notes\n\n![[cat.png]]\n',
-		resolvable: ['cat.png']
-	});
+	await mountEditor(page, 'Notes\n\n![[cat.png]]\n');
 
-	await blocks(page).first().click();
+	await editor(page).locator('.text-editable-block').first().click();
 	await page.keyboard.press('End');
 	await page.keyboard.type(' typed');
 
 	await expect.poll(() => editedSource(page)).toContain('Notes typed');
 	expect(await editedSource(page)).toContain('![[cat.png]]');
-	// The editor complains here when an island's span is not the bytes it displaced.
-	expect(warnings.filter((warning) => warning.includes('decoration'))).toEqual([]);
-	await expect(embeds(page)).toHaveCount(1);
+	await expect(images(page)).toHaveCount(1);
 });
