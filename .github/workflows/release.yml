@@ -45,16 +45,13 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Cache signing CLI
-        id: signing-cli
-        uses: actions/cache@v6
-        with:
-          path: ~/.cargo/bin/artifact-signing-cli.exe
-          key: artifact-signing-cli-${{ env.SIGNING_CLI_VERSION }}
-
       - name: Install signing CLI
-        if: steps.signing-cli.outputs.cache-hit != 'true'
-        run: cargo install artifact-signing-cli --version ${{ env.SIGNING_CLI_VERSION }} --locked
+        shell: bash
+        run: |
+          curl -sSLf \
+            -o "$HOME/.cargo/bin/artifact-signing-cli.exe" \
+            "https://github.com/Levminer/artifact-signing-cli/releases/download/${SIGNING_CLI_VERSION}/artifact-signing-cli.exe"
+          artifact-signing-cli --version
 
       - uses: tauri-apps/tauri-action@v1
         env:

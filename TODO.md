@@ -6,7 +6,7 @@ for lunch
 
 **Plumbing**
 
-- [ ] graceful updates (needs testing)
+- [x] graceful updates (needs testing) :: seems functional enough, tested once
 - [ ] in-body tag indexing
 - [ ] in-body internal wikilink indexing (or passive, just needs to cover doc renames)
 - [ ] filesystem watcher (see figjam plan)
