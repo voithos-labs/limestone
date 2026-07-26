@@ -93,3 +93,10 @@ Recorded here so Task 6 pins the behavior that shipped, not the behavior that wa
   `![[…]]` text while the caret was inside it; aragonite renders its own images as
   widgets in every presentation mode, and the embed now follows that rule. Editing a
   target means deleting the embed and retyping it.
+
+And one divergence from the editor rather than from the old one:
+
+- Inside a table cell an embed still renders as an image, where a GFM image in that same
+  cell renders as its alt text — the editor turns image widgets off for cells and the
+  plugin does not follow it there. Keeping a note's tables looking the way they did won
+  over matching the editor's own rule.
