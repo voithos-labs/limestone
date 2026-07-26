@@ -10,6 +10,7 @@ dist/
 
 # Tauri
 src-tauri/target/
+src-tauri/gen/schemas/
 
 # Generated
 THIRD-PARTY-NOTICES.txt

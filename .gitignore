@@ -10,5 +10,9 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .idea/
 
+# Playwright
+/test-results/
+/playwright-report/
+
 # Local design source assets (installer BMPs are generated from these, committed separately)
 /raw-assets/
