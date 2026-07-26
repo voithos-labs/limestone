@@ -40,7 +40,8 @@
 
 	/* aragonite declares its own default at `.editor`, which shadows any value
 	   inherited from a host wrapper — so the wrapper's zoom has to be pulled in
-	   explicitly, under a limestone-owned name. */
+	   explicitly, under a limestone-owned name. Set it WITH a unit: unitless makes
+	   the font-size declaration it feeds invalid, and zoom silently does nothing. */
 	--editor-font-size: var(--ls-zoom, 16px);
 }
 
