@@ -604,14 +604,23 @@ mod tests {
 
     #[test]
     fn ident_accepts_ordinary_names() {
-        for s in ["due", "Due Date", "status/state", "priority-1", "café", "a_b"] {
+        for s in [
+            "due",
+            "Due Date",
+            "status/state",
+            "priority-1",
+            "café",
+            "a_b",
+        ] {
             assert!(validate_ident(s, "field name").is_ok(), "{s:?}");
         }
     }
 
     #[test]
     fn ident_rejects_json_path_and_control_chars() {
-        for s in ["", "a.b", "a\"b", "a'b", "a\\b", "a\nb", "a\tb", "a\u{1}b", "a\u{7f}b"] {
+        for s in [
+            "", "a.b", "a\"b", "a'b", "a\\b", "a\nb", "a\tb", "a\u{1}b", "a\u{7f}b",
+        ] {
             assert!(validate_ident(s, "field name").is_err(), "{s:?}");
         }
     }
