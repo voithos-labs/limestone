@@ -51,6 +51,6 @@
 		"svelte-check": "^4.0.0",
 		"typescript": "~5.6.2",
 		"unplugin-icons": "^23.0.1",
-		"vite": "^6.0.3"
+		"vite": "^8.1.5"
 	}
 }
