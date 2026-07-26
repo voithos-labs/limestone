@@ -30,7 +30,7 @@
 
 	let notices: Notices | null = $state(null);
 	let loadError = $state('');
-	let query = $state(untrack(() => tab?.state?.query ?? ''));
+	let query: string = $state(untrack(() => tab?.state?.query ?? ''));
 	let expanded: string | null = $state(null);
 	let bodyEl: HTMLElement | null = $state(null);
 

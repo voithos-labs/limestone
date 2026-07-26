@@ -4,6 +4,7 @@ all-features = false
 [licenses]
 version = 2
 confidence-threshold = 0.9
+private = { ignore = true }
 allow = [
 	"0BSD",
 	"Apache-2.0",
@@ -18,7 +19,6 @@ allow = [
 	"MIT-0",
 	"MPL-2.0",
 	"Unicode-3.0",
-	"Unicode-DFS-2016",
 	"Unlicense",
 	"Zlib",
 ]
