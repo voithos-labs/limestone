@@ -48,13 +48,15 @@ export type FocusTarget = { kind: 'tab'; id: string } | { kind: 'settings' } | {
 export type TabContent =
 	| { type: 'markdown'; handle: DocHandle }
 	| { type: 'view'; view: View }
-	| { type: 'new'; id: string };
+	| { type: 'new'; id: string }
+	| { type: 'licenses'; id: string };
 
 export type TabJSON =
 	| { type: 'markdown'; handleId: string; state: Record<string, any>; pinned?: boolean }
 	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any>; pinned?: boolean }
 	| { type: 'view-ref'; viewId: string; state: Record<string, any>; pinned?: boolean }
-	| { type: 'new'; id: string; state: Record<string, any>; pinned?: boolean };
+	| { type: 'new'; id: string; state: Record<string, any>; pinned?: boolean }
+	| { type: 'licenses'; id: string; state: Record<string, any>; pinned?: boolean };
 // 'view' inlines the full JSON
 
 export class TabState {
@@ -79,6 +81,7 @@ export class TabState {
 			case 'view':
 				return this.content.view.id;
 			case 'new':
+			case 'licenses':
 				return this.content.id;
 		}
 	}
@@ -91,6 +94,8 @@ export class TabState {
 				return this.content.view.slug;
 			case 'new':
 				return 'new tab';
+			case 'licenses':
+				return 'Licenses';
 		}
 	}
 
@@ -108,9 +113,9 @@ export class TabState {
 				pinned: this.pinned
 			};
 		}
-		if (this.content.type === 'new') {
+		if (this.content.type === 'new' || this.content.type === 'licenses') {
 			return {
-				type: 'new',
+				type: this.content.type,
 				id: this.content.id,
 				state: this.state,
 				pinned: this.pinned
@@ -144,6 +149,10 @@ export class TabState {
 		return new TabState({ type: 'new', id: uuidv4() });
 	}
 
+	static forLicenses(): TabState {
+		return new TabState({ type: 'licenses', id: 'licenses' });
+	}
+
 	static async loadFromJSON(json: TabJSON): Promise<TabState> {
 		if (json.type === 'markdown') {
 			const handle = await DocHandle.fromID(json.handleId);
@@ -159,8 +168,8 @@ export class TabState {
 			const view = new View(saved);
 			return new TabState({ type: 'view', view }, json.state ?? {}, json.pinned ?? false);
 		}
-		if (json.type === 'new') {
-			return new TabState({ type: 'new', id: json.id }, json.state ?? {}, json.pinned ?? false);
+		if (json.type === 'new' || json.type === 'licenses') {
+			return new TabState({ type: json.type, id: json.id }, json.state ?? {}, json.pinned ?? false);
 		}
 		throw new Error(`Unknown tab type: ${(json as { type: string }).type}`);
 	}
@@ -317,6 +326,11 @@ class EditorState {
 		const tab = TabState.forNew();
 		this.openTab(tab);
 		this.focusTab({ kind: 'tab', id: tab.id });
+	}
+
+	openLicenses() {
+		this.openTab(TabState.forLicenses());
+		this.focusTab({ kind: 'tab', id: 'licenses' });
 	}
 
 	navTargets(): FocusTarget[] {

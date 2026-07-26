@@ -42,3 +42,14 @@ jobs:
           workspaces: src-tauri
 
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  licenses:
+    name: licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: src-tauri/Cargo.toml
+          command: check licenses bans sources

@@ -45,6 +45,17 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # does not catch shit
+      - name: Generate third-party notices
+        run: npm run notices
+
+      - name: Cache signing CLI
+        id: signing-cli
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/artifact-signing-cli.exe
+          key: artifact-signing-cli-${{ env.SIGNING_CLI_VERSION }}
+
       - name: Install signing CLI
         shell: bash
         run: |
