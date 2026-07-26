@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// The repo has no @types/node, and this is the only node global the config needs.
+declare const process: { env: Record<string, string | undefined> };
+
 // Vite is pinned to 1420 with strictPort, so the dev server and baseURL cannot drift.
 const BASE_URL = 'http://localhost:1420';
 
@@ -15,7 +18,9 @@ export default defineConfig({
 	webServer: {
 		command: 'npm run dev',
 		url: BASE_URL,
-		reuseExistingServer: true,
+		// Locally a running dev server is the one you are iterating on; in CI a stray
+		// server would silently become the system under test.
+		reuseExistingServer: !process.env.CI,
 		timeout: 120_000
 	}
 });

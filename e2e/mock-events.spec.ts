@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
 import { bootApp } from './support/app';
+import { expect, test } from './support/test';
 
 type EventInternals = {
 	__TAURI_INTERNALS__: {

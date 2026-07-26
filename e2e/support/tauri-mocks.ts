@@ -14,8 +14,19 @@ import type { Page } from '@playwright/test';
 /** Markdown bodies keyed by source-relative path, e.g. `notes/hello.md`. */
 export type SeededDocs = Record<string, string>;
 
+/** Everything `write_document` was called with, not just the path and body. */
+export interface DocumentWrite {
+	path: string;
+	content: string;
+	sourceId: string;
+	updatedAt: number;
+	create: boolean;
+}
+
 export interface MockState {
-	writes: { path: string; content: string }[];
+	writes: DocumentWrite[];
+	/** Every command in the order it was invoked, so a spec can assert ordering. */
+	calls: string[];
 	/** Commands with no handler. Non-empty means the mock layer needs extending. */
 	unhandledCommands: string[];
 }
@@ -41,6 +52,7 @@ export async function getMockState(page: Page): Promise<MockState> {
 		if (!state) throw new Error('Tauri mocks were not installed on this page');
 		return {
 			writes: state.writes.map((write) => ({ ...write })),
+			calls: [...state.calls],
 			unhandledCommands: [...state.unhandledCommands]
 		};
 	});
@@ -68,7 +80,7 @@ function installMockInternals(docs: SeededDocs): void {
 	const APP_VERSION = '0.0.0-mock';
 
 	const files: Record<string, string> = { ...docs };
-	const state: MockState = { writes: [], unhandledCommands: [] };
+	const state: MockState = { writes: [], calls: [], unhandledCommands: [] };
 
 	const settings = {
 		appearance: {
@@ -224,6 +236,15 @@ function installMockInternals(docs: SeededDocs): void {
 		return id;
 	}
 
+	function runCallback(id: number, data: unknown): void {
+		const callback = callbacks.get(id);
+		if (!callback) {
+			console.warn(`[tauri-mock] no callback registered for id ${id}`);
+			return;
+		}
+		callback(data);
+	}
+
 	// The listen id must be the callback id the app registered, or unlisten cannot
 	// find it and an emit cannot reach the handler.
 	function runEventCommand(op: string, args: Record<string, any>): unknown {
@@ -232,7 +253,7 @@ function installMockInternals(docs: SeededDocs): void {
 				(listeners[args.event] ??= []).push(args.handler);
 				return args.handler;
 			case 'emit': {
-				for (const id of listeners[args.event] ?? []) callbacks.get(id)?.(args);
+				for (const id of listeners[args.event] ?? []) runCallback(id, args);
 				return null;
 			}
 			case 'unlisten':
@@ -250,6 +271,8 @@ function installMockInternals(docs: SeededDocs): void {
 	// ── IPC ────────────────────────────────────────────
 
 	async function invoke(cmd: string, args: Record<string, any> = {}): Promise<unknown> {
+		state.calls.push(cmd);
+
 		const STORE_PREFIX = 'plugin:store|';
 		if (cmd.startsWith(STORE_PREFIX)) return runStoreCommand(cmd.slice(STORE_PREFIX.length), args);
 		const EVENT_PREFIX = 'plugin:event|';
@@ -268,10 +291,21 @@ function installMockInternals(docs: SeededDocs): void {
 			}
 			case 'plugin:fs|exists':
 				return relPathOf(args.path) in files;
-			case 'write_document':
+			case 'write_document': {
+				// The Rust command refuses to overwrite when the caller asked to create.
+				if (args.create && args.relPath in files) {
+					throw new Error(`"${args.relPath}" already exists`);
+				}
 				files[args.relPath] = args.contents;
-				state.writes.push({ path: args.relPath, content: args.contents });
+				state.writes.push({
+					path: args.relPath,
+					content: args.contents,
+					sourceId: args.sourceId,
+					updatedAt: args.updatedAt,
+					create: args.create ?? false
+				});
 				return null;
+			}
 			case 'sql_select':
 				return runSelect(args.query, args.params ?? []);
 			case 'sql_execute':
@@ -289,10 +323,19 @@ function installMockInternals(docs: SeededDocs): void {
 				return clone(SOURCE);
 			case 'get_default_source_id':
 				return SOURCE.id;
-		}
 
-		// Window chrome is inert in a browser: maximize, drag, zoom and close all no-op.
-		if (cmd.startsWith('plugin:window|') || cmd.startsWith('plugin:webview|')) return null;
+			// Window chrome has no effect in a browser, but the calls are recorded above,
+			// so a spec can still assert that closing destroyed the window.
+			case 'plugin:window|is_maximized':
+				return false;
+			case 'plugin:window|minimize':
+			case 'plugin:window|toggle_maximize':
+			case 'plugin:window|start_dragging':
+			case 'plugin:window|close':
+			case 'plugin:window|destroy':
+			case 'plugin:webview|set_webview_zoom':
+				return null;
+		}
 
 		return unhandled(cmd);
 	}
