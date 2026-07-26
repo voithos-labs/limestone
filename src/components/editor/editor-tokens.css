@@ -1,0 +1,53 @@
+/**
+ * Bridge: limestone's theme variables → aragonite's editor tokens, declared at
+ * `.editor` scope. Must load AFTER `aragonite/styles/editor-theme.css` — the two
+ * carry equal specificity, so source order is what lets this file win over
+ * aragonite's `[data-editor-theme='light']` block.
+ *
+ * `inherit` wherever limestone declares a token of the same name at `:root`; a
+ * `var()` self-reference would be a cycle. Mapped by reference where the names
+ * differ. Tokens limestone only has once `applyTheme` has run (`--color-error`,
+ * every `--syntax-*`) resolve to the guaranteed-invalid value until then —
+ * harmless, because aragonite's reads all carry inline fallbacks and the session
+ * applies a theme before an editor can mount. Hardcoding fallbacks here would
+ * bake one mode's palette into a mode-agnostic file.
+ */
+.editor {
+	--color-bg: var(--color-surface);
+	--color-text: var(--color-text-secondary);
+	--color-danger: var(--color-error);
+	--color-border: inherit;
+	--color-text-primary: inherit;
+	--color-ui-dulled: inherit;
+	--color-ui-muted: inherit;
+	--color-accent: inherit;
+	--syntax-heading: inherit;
+	--syntax-emphasis: inherit;
+	--syntax-link: inherit;
+	--syntax-url: inherit;
+	--syntax-quote: inherit;
+	--syntax-code: inherit;
+	--syntax-comment: inherit;
+	--syntax-list: inherit;
+	--syntax-separator: inherit;
+	--syntax-task: inherit;
+	--syntax-task-done: inherit;
+
+	/* aragonite declares its own default at `.editor`, which shadows any value
+	   inherited from a host wrapper — so the wrapper's zoom has to be pulled in
+	   explicitly, under a limestone-owned name. */
+	--editor-font-size: var(--ls-zoom, 16px);
+}
+
+/* aragonite's light/dark defaults stand for the tokens limestone has no semantic
+   twin for: --color-bg-secondary/-elevated/-muted, --color-text-muted,
+   --color-ui-faint, --code-tok-*, and the selection/search overlays.
+   --font-editor holds an identical value on both sides — deliberately unbridged. */
+
+/* The editor root fills its pane; the content column is what carries the app's
+   page width, the way every other page surface does. */
+.editor > .block-list {
+	max-width: var(--page-max-width, 1200px);
+	margin: 0 auto;
+	width: 100%;
+}
