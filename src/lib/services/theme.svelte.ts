@@ -159,8 +159,14 @@ export function resolveAccent(
  * Reactive mirror of `root.dataset.themeType`, for consumers that need the mode
  * as a value rather than a CSS selector — the embedded editor keys its own
  * light/dark attribute off this.
+ *
+ * Seeded light rather than from `DEFAULT_THEME`: nothing writes the attribute
+ * before `applyTheme` does, and an attribute-less document renders app.css's
+ * `:root` block, which is the light palette. That window closes before anything
+ * can read this — `Session.create` awaits `applyCurrentTheme()` — so the seed only
+ * matters to a future caller that runs earlier.
  */
-let themeType = $state<'dark' | 'light'>(DEFAULT_THEME.type);
+let themeType = $state<'dark' | 'light'>('light');
 
 export function currentThemeType(): 'dark' | 'light' {
 	return themeType;

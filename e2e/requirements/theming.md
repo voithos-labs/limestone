@@ -32,7 +32,9 @@ screenshot pixel, is the observable the bridge actually controls.
 - Switching between two themes of the same mode: token values change while
   `data-editor-theme` stays put.
 - Zooming with Ctrl+= / Ctrl+-: `--editor-font-size` tracks `--ls-zoom` and the rendered
-  text scales with it.
+  text scales with it. Requires the adapter to carry the zoom chords over from the
+  CodeMirror editor and to set `--ls-zoom` (with a unit) on its wrapper — Task 4. Until
+  that lands, this scenario is deferred rather than failing.
 
 ## Edge cases
 

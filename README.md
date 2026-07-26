@@ -13,10 +13,30 @@ Good entry point to explore the code base is Session ([see file](https://github.
 
 ---
 
-Run dev app ( you may need to install deps first, e.g. `npm i` )
+The editor comes from a sibling [aragonite](https://github.com/voithos-labs/aragonite)
+checkout rather than the registry, so clone and build it first — `npm i` here fails
+without it.
+
+```bash
+git clone https://github.com/voithos-labs/aragonite.git ../aragonite
+cd ../aragonite
+npm i && npm run package
+cd ../limestone
+npm i
+```
+
+Run dev app
 
 ```bash
 npm run tauri dev
+```
+
+Pick up a rebuilt aragonite. Plain `npm install` will not notice it — the version string
+is unchanged, so npm has nothing to compare. Restart any running dev server afterwards;
+Vite does not watch `node_modules`.
+
+```bash
+npm run editor:sync
 ```
 
 Format
