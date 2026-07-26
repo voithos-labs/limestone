@@ -8,7 +8,7 @@ name: release
 
 on:
   push:
-    tags: [ 'v*' ]
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -77,4 +77,3 @@ jobs:
           releaseName: Limestone ${{ github.ref_name }}
           releaseDraft: true
           args: --bundles nsis --config src-tauri/tauri.signing.conf.json
-
