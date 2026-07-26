@@ -5,8 +5,13 @@
  * aragonite's `[data-editor-theme='light']` block.
  *
  * `inherit` wherever limestone declares a token of the same name at `:root`; a
- * `var()` self-reference would be a cycle. Mapped by reference where the names
- * differ. Tokens limestone only has once `applyTheme` has run (`--color-error`,
+ * `var()` self-reference would be a cycle. That takes the PARENT element's value,
+ * so no ancestor of the editor may carry `.aragonite-editor-theme` — aragonite
+ * declares these same names there, and every `inherit` below would quietly pick up
+ * its defaults instead of limestone's.
+ *
+ * Mapped by reference where the names differ. Tokens limestone only has once
+ * `applyTheme` has run (`--color-error`,
  * every `--syntax-*`) resolve to the guaranteed-invalid value until then —
  * harmless, because aragonite's reads all carry inline fallbacks and the session
  * applies a theme before an editor can mount. Hardcoding fallbacks here would

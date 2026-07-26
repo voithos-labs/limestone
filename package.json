@@ -10,6 +10,7 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit -p ./e2e/tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "playwright test",
+		"editor:sync": "node -e \"require('fs').rmSync('node_modules/aragonite',{recursive:true,force:true})\" && npm install",
 		"tauri": "tauri",
 		"notices": "node scripts/gen-notices.mjs",
 		"format": "prettier --write .",
