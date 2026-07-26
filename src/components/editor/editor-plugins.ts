@@ -8,11 +8,11 @@ import { mermaidPlugin } from 'aragonite/plugins/mermaid';
 import { mermaidRenderer } from 'aragonite/plugins/mermaid/renderer';
 import { tocPlugin } from 'aragonite/plugins/toc';
 import { highlightOccurrencesPlugin } from 'aragonite/plugins/highlight-occurrences';
-import { wikiEmbedPlugin, type WikiEmbedOptions } from './wiki-embed-plugin';
+import { wikiEmbedPlugin } from './wiki-embed-plugin';
 import type { EditorPluginEntry } from 'aragonite';
 
 /**
- * The plugin units every limestone editor mounts with. Built once at module scope, not
+ * The plugin roster every limestone editor mounts with. Built once at module scope, not
  * per mount: aragonite installs plugin definitions process-globally and dev-warns when
  * a remount hands it a fresh object under a name already installed.
  *
@@ -20,7 +20,7 @@ import type { EditorPluginEntry } from 'aragonite';
  * importing the two renderer subpaths is what opts limestone into `katex` and
  * `mermaid`.
  */
-const BUNDLED_PLUGINS = [
+export const EDITOR_PLUGINS: readonly EditorPluginEntry[] = [
 	admonitionsPlugin(),
 	detailsPlugin(),
 	emojiPlugin(),
@@ -28,16 +28,6 @@ const BUNDLED_PLUGINS = [
 	latexPlugin({ renderer: katexRenderer }),
 	mermaidPlugin({ renderer: mermaidRenderer }),
 	tocPlugin(),
-	highlightOccurrencesPlugin()
+	highlightOccurrencesPlugin(),
+	wikiEmbedPlugin()
 ];
-
-const WIKI_EMBED = wikiEmbedPlugin();
-
-/**
- * The `plugins` prop for one editor: a fresh array per mount over those same units.
- * Installation is process-global and happens once; the wiki-embed resolver is not —
- * an embed resolves against the assets of the document's own source.
- */
-export function editorPlugins(wikiEmbed: WikiEmbedOptions): readonly EditorPluginEntry[] {
-	return [...BUNDLED_PLUGINS, { plugin: WIKI_EMBED, options: wikiEmbed }];
-}
