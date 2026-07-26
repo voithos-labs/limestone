@@ -9,7 +9,7 @@ Note taking etc., built for people who think clearly when their tools get out of
 
 ## Development
 
-Good entry point to explore the code bases is Session ([see file](https://github.com/voithos-labs/limestone/blob/main/src/lib/models/Session.svelte.ts)), as well as `src/lib/models` ([see folder](https://github.com/voithos-labs/limestone/tree/main/src/lib/models)).
+Good entry point to explore the code base is Session ([see file](https://github.com/voithos-labs/limestone/blob/main/src/lib/models/Session.svelte.ts)), as well as `src/lib/models` ([see folder](https://github.com/voithos-labs/limestone/tree/main/src/lib/models)).
 
 ---
 
@@ -33,8 +33,9 @@ cargo fmt
 ## License
 
 Source-available under the [Functional Source License 1.1](LICENSE.md) with an
-Apache 2.0 future license (`FSL-1.1-ALv2`). Use it for anything except building
-a competing product. Each version turns Apache 2.0 two years after release.
+Apache 2.0 future license (`FSL-1.1-ALv2`).
 
 The Limestone and Voithos Labs names, logo, and icons are **not** covered by that
 license. See [TRADEMARKS.md](TRADEMARKS.md) before forking or redistributing.
+
+Peace be with you
