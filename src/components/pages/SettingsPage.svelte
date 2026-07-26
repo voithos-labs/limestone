@@ -59,7 +59,8 @@
 		Compass,
 		Eye,
 		ArrowUp,
-		RotateCw
+		RotateCw,
+		Scale
 	} from '@lucide/svelte';
 
 	let { viewTab, session }: { viewTab: ViewTab; session: Session } = $props();
@@ -77,6 +78,9 @@
 	let customKeys: string[] = $state([]);
 	let resetDialogOpen = $state(false);
 	let resetBusy = $state(false);
+	function openNotices() {
+		session.editors[0]?.openLicenses();
+	}
 
 	let activeCategory = $derived(SETTINGS_REGISTRY.find((c) => c.id === activeSection));
 
@@ -761,6 +765,18 @@
 											(v) => settings.set('updates.auto_install', v)
 										}
 									/>
+								</div>
+							</div>
+							<div class="info-row">
+								<div class="item-info">
+									<span class="item-label">Open source licenses</span>
+									<p class="item-desc">Third-party components included in Limestone.</p>
+								</div>
+								<div class="info-value">
+									<button class="update-btn" onclick={openNotices}>
+										<Scale size={13} strokeWidth={2.25} />
+										View licenses
+									</button>
 								</div>
 							</div>
 							<div class="info-row">

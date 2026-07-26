@@ -10,3 +10,7 @@ dist/
 
 # Tauri
 src-tauri/target/
+
+# Generated
+THIRD-PARTY-NOTICES.txt
+static/third-party-notices.json

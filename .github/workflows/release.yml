@@ -45,6 +45,10 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # what ships must match what is actually linked
+      - name: Generate third-party notices
+        run: npm run notices
+
       - name: Cache signing CLI
         id: signing-cli
         uses: actions/cache@v6
