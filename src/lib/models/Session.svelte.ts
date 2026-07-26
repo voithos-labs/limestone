@@ -18,7 +18,7 @@ import {
 	BUILTIN_THEMES,
 	DEFAULT_THEME,
 	type Theme
-} from '$lib/services/theme';
+} from '$lib/services/theme.svelte';
 
 export interface ViewTab {
 	kind: string;

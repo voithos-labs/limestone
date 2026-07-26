@@ -10,7 +10,7 @@
 		type SettingCategory,
 		type SettingDef
 	} from '$lib/models/Settings.svelte';
-	import { ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent } from '$lib/services/theme';
+	import { ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent } from '$lib/services/theme.svelte';
 	import {
 		getDefaultSourceId,
 		listSources,

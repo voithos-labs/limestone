@@ -1,5 +1,7 @@
 const DEFAULT_FONT = 'Inter, system-ui, sans-serif';
 
+// ── Themes ──────────────────────────────────────────────────────────────────────────
+
 export interface Theme {
 	name: string;
 	type: 'dark' | 'light';
@@ -92,6 +94,8 @@ export const BUILTIN_THEMES: Record<string, Theme> = {
 	'soft-light': SOFT_LIGHT
 };
 
+// ── Accents ─────────────────────────────────────────────────────────────────────────
+
 export interface AccentPreset {
 	name: string;
 	light: string;
@@ -149,6 +153,19 @@ export function resolveAccent(
 	return null;
 }
 
+// ── Applying to the document ────────────────────────────────────────────────────────
+
+/**
+ * Reactive mirror of `root.dataset.themeType`, for consumers that need the mode
+ * as a value rather than a CSS selector — the embedded editor keys its own
+ * light/dark attribute off this.
+ */
+let themeType = $state<'dark' | 'light'>(DEFAULT_THEME.type);
+
+export function currentThemeType(): 'dark' | 'light' {
+	return themeType;
+}
+
 export function applyAccent(setting: string | null, type: 'dark' | 'light') {
 	if (!setting || setting === 'default') return;
 	const resolved = resolveAccent(setting, type);
@@ -173,6 +190,7 @@ export function applyTheme(theme: Theme) {
 	);
 	root.style.setProperty('--font-ui', theme.fontFamily ?? DEFAULT_FONT);
 	root.dataset.themeType = theme.type;
+	themeType = theme.type;
 	root.style.background = theme.variables['color-backdrop'] ?? '';
 	document.body.style.background = '';
 }
