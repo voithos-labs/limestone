@@ -152,7 +152,7 @@
 		const el = wrapperEl?.querySelector<HTMLElement>('.editor') ?? null;
 		scrollEl = el;
 		const onScroll = () => {
-			if (restored && el) tab.state.scrollTop = el.scrollTop;
+			if (restored && el) tab.state.scrollTop = el.scrollTop - headerHeight();
 		};
 		el?.addEventListener('scroll', onScroll, { passive: true });
 
@@ -165,6 +165,23 @@
 			el?.removeEventListener('scroll', onScroll);
 		};
 	});
+
+	/**
+	 * Where the document's blocks begin inside the scroller — the height of the header the
+	 * editor renders above them. Scroll positions are persisted relative to it, never as a raw
+	 * `scrollTop`: the header can be shorter when a document is reopened than it was when the
+	 * reader left (its properties panel loads asynchronously), and the editor compensates for
+	 * that growth with a relative scroll write of its own. A raw offset would be corrected twice
+	 * over — once by this restore, once by that compensation — and land the reader the header's
+	 * growth below where they were.
+	 */
+	function headerHeight(): number {
+		const list = scrollEl?.querySelector('.block-list');
+		if (!list || !scrollEl) return 0;
+		return (
+			list.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop
+		);
+	}
 
 	/** A persisted selection, or null when the tab carries none this editor can place. */
 	function rememberedSelection(): EditorSelection | null {
@@ -191,7 +208,7 @@
 		// root focus is only the fallback for a document with no placeable first block.
 		else if (!flow && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
 		if (typeof tab.state.scrollTop === 'number' && scrollEl) {
-			scrollEl.scrollTop = tab.state.scrollTop;
+			scrollEl.scrollTop = tab.state.scrollTop + headerHeight();
 		}
 		// Only now: a restore emits selectionChange more than once, and the first of the
 		// burst can carry the pre-restore value.
