@@ -20,8 +20,21 @@ shares, and the reader's own zoom. Colour is the other half of that bridge and l
   the document is laid out to.
 - Zooming with Mod+= / Mod+-: the editor's font-size token follows, and the document's text is
   rendered at it. Zoom is per tab rather than a setting, so it is the tab's to remember.
+- The chord needs no click to wake it: a document that has just opened already holds the caret, and
+  zooming works straight away. The chord is handled on the wrapper around the editor, so this is
+  the one thing that decides whether a reader who has not touched the document can zoom it.
 
 ## Accepted
+
+- Zoom belongs to the document editor and to nothing else: on the library page, in a view tab, or
+  in a journal entry nobody has clicked into yet — flow mode deliberately places no caret — Mod+=
+  does nothing at all. The app's own scale lives in settings (`appearance.ui_scale_percent`) and
+  has no chord.
+- In the packaged Windows app the browser claims Mod+= and Mod+- before the page does: WebView2
+  lists Ctrl+Plus / Ctrl+Minus among its browser accelerator keys, which are handled ahead of the
+  web content, and Tauri leaves that handling on while turning WebView2's own zoom off
+  (`zoomHotkeysEnabled` defaults to false). Nothing in this suite can see that — Playwright
+  dispatches straight into the page — so the zoom scenarios above pin the app's half only.
 
 - With the document at the top, the open find bar covers the hero's metadata row — the properties
   chip, the updated date, the kebab. aragonite sticks its search anchor to the top of the
