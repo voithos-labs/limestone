@@ -6,6 +6,7 @@
 	// Loaded after aragonite's own palette, which is what lets the bridge win over it.
 	import './editor-tokens.css';
 	import { EDITOR_PLUGINS } from './editor-plugins';
+	import { isImageTarget } from './image-targets';
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { importSourceAssetBytes } from '$lib/services/assets';
@@ -263,7 +264,6 @@
 
 	// ── Services the editor delegates to the app ────────────────────────────────────────
 
-	const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
 	const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 	function resolveImageUrl(target: string): string {
@@ -271,8 +271,7 @@
 		// rebasing it would mangle a URL limestone does not own (`appasset:`) into a path.
 		if (!handle || HAS_SCHEME.test(target)) return target;
 		const clean = target.replace(/\\/g, '/').replace(/^\.?\//, '');
-		const ext = clean.split('.').pop()?.toLowerCase() ?? '';
-		if (!IMAGE_EXTS.has(ext)) return target;
+		if (!isImageTarget(clean)) return target;
 		const loc = handle.source.asset_location.replace(/^\/+|\/+$/g, '');
 		const rel = clean.includes('/') || !loc ? clean : `${loc}/${clean}`;
 		return convertFileSrc(`${handle.source.path}/${rel}`);

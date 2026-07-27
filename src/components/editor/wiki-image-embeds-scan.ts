@@ -4,6 +4,8 @@
  * what turns a recognized span into an inline image node.
  */
 
+import { isImageTarget } from './image-targets';
+
 /** One embed's span within the raw it was recognized in. */
 export interface WikiImageEmbed {
 	/** Offset of the `!`. */
@@ -15,10 +17,6 @@ export interface WikiImageEmbed {
 	/** Display width in pixels, from a numeric `|size` modifier. */
 	width?: number;
 }
-
-// The extensions the previous editor embedded. A target outside the set stays literal
-// text, which is what keeps `![[some-note.md]]` — an Obsidian note link — readable.
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
 
 /** The bytes an embed opens with: the scanner's prefix, and the plugin's rung and rewrite gate. */
 export const OPEN = '![[';
@@ -56,7 +54,7 @@ export function recognizeWikiImageEmbed(
 	const inner = raw.slice(innerStart, innerEnd);
 	const bar = inner.indexOf('|');
 	const target = (bar < 0 ? inner : inner.slice(0, bar)).trim();
-	if (!isImagePath(target)) return null;
+	if (!isImageTarget(target)) return null;
 	const width = bar < 0 ? undefined : parseWidth(inner.slice(bar + 1).trim());
 	return {
 		start: pos,
@@ -82,12 +80,6 @@ function findClose(raw: string, from: number, end: number): number {
 		}
 	}
 	return -1;
-}
-
-function isImagePath(target: string): boolean {
-	const dot = target.lastIndexOf('.');
-	if (dot < 1) return false;
-	return IMAGE_EXTS.has(target.slice(dot + 1).toLowerCase());
 }
 
 /** A size modifier is a plain pixel width; Obsidian's `w x h` form is not supported. */
