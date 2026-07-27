@@ -23,7 +23,7 @@ export interface BootReport {
  * hide this one host — a broken app fetch to anywhere else still fails the assertion.
  */
 function isMockedAssetFetch(message: ConsoleMessage): boolean {
-	return message.location().url.includes(ASSET_HOST);
+	return URL.parse(message.location().url)?.hostname === ASSET_HOST;
 }
 
 /** Loads the app against a fake Tauri backend and waits for its shell to render. */
