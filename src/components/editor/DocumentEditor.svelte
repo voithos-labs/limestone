@@ -237,12 +237,18 @@
 		// a tree of blocks, and `scrollTop`, an offset into a scroller that held the document
 		// header outside it. Honouring that one would land the reader a header's height too low,
 		// so the position this editor persists carries a name of its own.
-		if (selection) await instance?.setSelection(selection);
+		//
+		// One ladder for both entries, because a remembered selection can fail: it addresses a
+		// block by path, and a file that shrank outside the app between sessions no longer has
+		// that block. `setSelection` reports that by returning false rather than throwing, so a
+		// restore that ignored the result would leave a reopened document with no caret at all.
+		//
 		// An opened document has to be typable without a click. Focusing the editor root would
 		// not do it — the root carries `tabindex="-1"` for parking focus and establishes no
 		// caret, so keystrokes would reach nothing. Placing one is what makes it usable; the
 		// root focus is only the fallback for a document with no placeable first block.
-		else if (!flow && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
+		const placed = selection ? await instance?.setSelection(selection) : false;
+		if (!placed && !flow && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
 		if (typeof tab.state.scrollTopBlocks === 'number' && scrollEl) {
 			blocksTop = measureBlocksTop();
 			scrollEl.scrollTop = tab.state.scrollTopBlocks + blocksTop;
