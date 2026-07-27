@@ -20,3 +20,11 @@ shares, and the reader's own zoom. Colour is the other half of that bridge and l
   the document is laid out to.
 - Zooming with Mod+= / Mod+-: the editor's font-size token follows, and the document's text is
   rendered at it. Zoom is per tab rather than a setting, so it is the tab's to remember.
+
+## Accepted
+
+- With the document at the top, the open find bar covers the hero's metadata row — the properties
+  chip, the updated date, the kebab. aragonite sticks its search anchor to the top of the
+  scrollport and the app renders the hero into that same scrollport. Transient, and the alternative
+  is worse: offsetting the anchor by the header's height unsticks it from the scrollport, which is
+  what makes it findable mid-document.

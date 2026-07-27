@@ -33,3 +33,10 @@ a collapsed marker stays in `textContent`, so only `innerText` says what the rea
 
 - The editor's own chords do not fire while a text field in the chrome has focus. Renaming a
   document is typing, and `Ctrl+E` in the title field belongs to the field, not to the editor.
+
+## Accepted
+
+- A task item keeps its literal `[ ]` / `[x]` glyphs in every mode, reading included, rather than
+  swapping them for a checkbox control. They are not inert text — aragonite wraps the glyphs in a
+  `role="checkbox"` span carrying `aria-checked`, and clicking one in an editing mode toggles it —
+  but a reader expecting a real box will not find one.

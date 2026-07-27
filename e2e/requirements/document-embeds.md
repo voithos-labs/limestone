@@ -43,6 +43,14 @@ carries the reasoning, these two scenarios pin its halves.
   asserted from what the editor reports, because bytes alone cannot tell a declined edit from one
   that was quietly ignored and dropped by the commit's equality guard.
 
+## Accepted
+
+- An embed whose image fails to load leaves a 0×0 gap where it sits until something re-renders
+  that block; only from the next render on does aragonite's "⚠ image failed to load" placeholder
+  appear, and it then stays in every mode. The failure is cached the moment the load fails, but
+  the widget already in the DOM is not redecorated — so the placeholder is a render behind, not a
+  mode-gated one. A reader who opens a note with a missing image sees nothing until they touch it.
+
 ## Deferred
 
 - An embed whose target the app cannot resolve: the app mints an asset URL for any image
