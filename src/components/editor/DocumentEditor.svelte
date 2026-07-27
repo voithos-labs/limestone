@@ -138,18 +138,18 @@
 	}
 
 	function setMode(next: PresentationMode) {
-		// Every route into reading records the mode it left — chord, toggle button, alike — so
-		// Mod+E hands the reader back a mode they chose. On the tab, not in a local, or the memory
-		// dies with the component: leaving the document and returning is a remount.
-		if (next === 'reading' && mode !== 'reading') tab.state.modeBeforeReading = mode;
 		mode = next;
 		tab.state.presentationMode = next;
 	}
 
-	function toggleReading() {
-		if (mode !== 'reading') return setMode('reading');
-		const remembered = tab.state.modeBeforeReading;
-		setMode(isOfferedMode(remembered) && remembered !== 'reading' ? remembered : 'preview-inline');
+	/**
+	 * One step along the modes in the order the toggle offers them, wrapping at the end. Read
+	 * from the mode the reader is in rather than from a remembered one, so the chord and the
+	 * toggle buttons compose: whichever set the mode, the next step follows from it.
+	 */
+	function cycleMode() {
+		const from = MODES.findIndex((m) => m.value === mode);
+		setMode(MODES[(from + 1) % MODES.length].value);
 	}
 
 	// ── Wire-up: events, scroll tracking, and the restore of where you left off ─────────
@@ -318,10 +318,11 @@
 			setZoom(zoom - 1);
 		} else if (e.key.toLowerCase() === 'e' && !e.shiftKey && !e.altKey) {
 			e.preventDefault();
-			toggleReading();
+			cycleMode();
 			// Reading mode is read-only, so the block holding focus releases it to <body> and this
-			// wrapper-scoped handler would never see the chord that returns. Claimed back after the
-			// mode's own re-render, which is what drops it; the root needs no caret to route keys.
+			// wrapper-scoped handler would never see the chord that steps out of it again. Claimed
+			// back after the mode's own re-render, which is what drops it; the root needs no caret
+			// to route keys.
 			void tick().then(() => scrollEl?.focus());
 		}
 	}

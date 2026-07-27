@@ -72,7 +72,7 @@ test('a tab that remembers a mode keeps it over the setting', async ({ page }) =
 	expect(await mode(page)).toBe('reading');
 });
 
-test('Mod+E round-trips into reading mode and back', async ({ page }) => {
+test('Mod+E steps through the three modes and comes back round', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
 	const editor = page.locator('.editor');
 	await expect(editor).toBeVisible();
@@ -83,52 +83,42 @@ test('Mod+E round-trips into reading mode and back', async ({ page }) => {
 	expect(await mode(page)).toBe('reading');
 
 	await page.keyboard.press('Control+e');
+	expect(await mode(page)).toBe('source');
+
+	await page.keyboard.press('Control+e');
 	expect(await mode(page)).toBe('preview-inline');
 });
 
-test('Mod+E returns to the editing mode the reader was in', async ({ page }) => {
+test('the step follows the mode the reader is in, however they got there', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
-	const editor = page.locator('.editor');
-	await expect(editor).toBeVisible();
-	await page.locator('.mode-toggle button', { hasText: 'Source' }).click();
-	expect(await mode(page)).toBe('source');
-
-	await page.keyboard.press('Control+e');
+	await expect(page.locator('.editor')).toBeVisible();
+	// Reading mode reached by the button, not the chord: the step out of it is the same one
+	// either way, where a chord that undid its own last trip would go back to live preview.
+	await page.locator('.mode-toggle button', { hasText: 'Reading' }).click();
 	expect(await mode(page)).toBe('reading');
 
 	await page.keyboard.press('Control+e');
+
 	expect(await mode(page)).toBe('source');
 });
 
-test('the mode Mod+E returns to survives leaving the document and coming back', async ({
+test('a tab keeps its mode over leaving the document, and the cycle goes on from it', async ({
 	page
 }) => {
 	await bootApp(page, { docs: DOCS });
 	await expect(page.locator('.editor')).toBeVisible();
 	await page.locator('.mode-toggle button', { hasText: 'Source' }).click();
 	await page.keyboard.press('Control+e');
-	expect(await mode(page)).toBe('reading');
+	expect(await mode(page)).toBe('preview-inline');
 
 	await page.keyboard.press('Control+l');
 	await expect(page.locator('.library-page')).toBeVisible();
 	await page.locator('.tab', { hasText: 'hello' }).first().click();
 	await expect(page.locator('.editor')).toBeVisible();
-	expect(await mode(page)).toBe('reading');
+	expect(await mode(page)).toBe('preview-inline');
 
 	await page.keyboard.press('Control+e');
-	expect(await mode(page)).toBe('source');
-});
-
-test('entering reading mode from the toggle is remembered too', async ({ page }) => {
-	await bootApp(page, { docs: DOCS });
-	await expect(page.locator('.editor')).toBeVisible();
-	await page.locator('.mode-toggle button', { hasText: 'Source' }).click();
-
-	await page.locator('.mode-toggle button', { hasText: 'Reading' }).click();
 	expect(await mode(page)).toBe('reading');
-
-	await page.keyboard.press('Control+e');
-	expect(await mode(page)).toBe('source');
 });
 
 test('Mod+E keeps the reader where they were reading', async ({ page }) => {
@@ -151,7 +141,7 @@ test('Mod+E keeps the reader where they were reading', async ({ page }) => {
 	expect(await editor.evaluate((el) => el.scrollTop)).toBe(900);
 
 	await page.keyboard.press('Control+e');
-	expect(await mode(page)).toBe('preview-inline');
+	expect(await mode(page)).toBe('source');
 	expect(await editor.evaluate((el) => el.scrollTop)).toBe(900);
 });
 

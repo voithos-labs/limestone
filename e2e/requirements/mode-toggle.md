@@ -22,12 +22,14 @@ a collapsed marker stays in `textContent`, so only `innerText` says what the rea
 
 ## User interactions
 
-- Mod+E enters reading mode, and pressing it again leaves. Reading mode is the only mode control a
-  journal entry has, so a one-way trip would strand the reader there.
-- Leaving reading mode returns the reader to the editing mode they were in, not to a fixed one — a
-  reader who chose source mode gets source mode back.
-- That return holds however reading mode was entered (the chord or the toggle button) and however
-  long ago: leaving the document and coming back does not forget it.
+- Mod+E steps one mode along, in the order the toggle offers them — source, live preview, reading —
+  and wraps, so three presses land back where they started. Reading mode is the only mode control a
+  journal entry has, so a step that could not come back round would strand the reader there.
+- The step follows the mode the reader is in, not the one they came from: reading mode entered by
+  clicking the toggle steps on to source, exactly as it does when the chord put them there. The
+  cycle keeps no memory, which is what lets the chord and the buttons be used interchangeably.
+- A tab keeps its mode however long ago it was set — leaving the document and coming back does not
+  forget it — and the next Mod+E goes on from there.
 - Changing the mode changes only the mode. A reader deep in a long entry stays exactly where they
   were reading, both ways through the trip — a mode toggle that lost their place would be worse
   than no toggle on an entry long enough to need one.
