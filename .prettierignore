@@ -15,3 +15,7 @@ src-tauri/gen/schemas/
 # Generated
 THIRD-PARTY-NOTICES.txt
 static/third-party-notices.json
+
+# Agent process scratch (gitignored via .git/info/exclude; prettier must skip it too)
+.superpowers/
+docs/superpowers/
