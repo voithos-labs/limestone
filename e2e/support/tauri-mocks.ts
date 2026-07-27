@@ -31,6 +31,17 @@ export interface MockOptions {
 	 * name — seeding one `appearance` field drops the rest of the group, so seed the group whole.
 	 */
 	settings: Settings;
+	/**
+	 * Per-document tab state, keyed by the path the doc was seeded under: what a previous
+	 * session left in `state.json` for that tab — caret, scroll, zoom, panel state.
+	 */
+	tabState: Record<string, Record<string, unknown>>;
+	/**
+	 * Property names a saved view contributes to every seeded document. With any, the document
+	 * header grows a properties panel, which loads asynchronously — the shape a spec needs to
+	 * exercise a header that settles after the editor's first paint.
+	 */
+	propertyFields: string[];
 }
 
 /** The backend's settings tree, shaped only as far as a spec needs to address it. */
@@ -84,7 +95,13 @@ export async function getMockState(page: Page): Promise<MockState> {
 
 // Playwright serializes this function, so it can only reach its own body and
 // erased type annotations — never anything else in module scope.
-function installMockInternals({ docs, frontmatter, settings: overrides }: MockOptions): void {
+function installMockInternals({
+	docs,
+	frontmatter,
+	settings: overrides,
+	tabState,
+	propertyFields
+}: MockOptions): void {
 	const SOURCE = {
 		id: 'mock-source',
 		title: 'Mock source',
@@ -102,7 +119,18 @@ function installMockInternals({ docs, frontmatter, settings: overrides }: MockOp
 	const files: Record<string, string> = { ...docs };
 	const state: MockState = { writes: [], calls: [], unhandledCommands: [] };
 
-	const defaults = {
+	function clone<T>(value: T): T {
+		return JSON.parse(JSON.stringify(value)) as T;
+	}
+
+	function deepFreeze<T>(value: T): T {
+		if (value && typeof value === 'object') Object.values(value).forEach(deepFreeze);
+		return Object.freeze(value);
+	}
+
+	// Frozen: a setting write that reached this branch would leave `isModified` reading false
+	// for a value the reader just changed, and the app would never show it as modified.
+	const defaults = deepFreeze({
 		appearance: {
 			compact_tabs: false,
 			collapse_pinned_tabs: false,
@@ -113,15 +141,11 @@ function installMockInternals({ docs, frontmatter, settings: overrides }: MockOp
 			max_page_width: 900
 		},
 		updates: { auto_install: false }
-	};
-
-	function clone<T>(value: T): T {
-		return JSON.parse(JSON.stringify(value)) as T;
-	}
+	});
 
 	// Seeded overrides reach the values alone, never the defaults, so what a spec seeds reads
 	// back as modified — the shape the app sees once the reader has changed a setting.
-	const settings: Settings = { ...clone(defaults), ...overrides };
+	const values: Settings = { ...clone(defaults), ...overrides };
 
 	function unhandled(cmd: string): null {
 		if (!state.unhandledCommands.includes(cmd)) state.unhandledCommands.push(cmd);
@@ -157,12 +181,14 @@ function installMockInternals({ docs, frontmatter, settings: overrides }: MockOp
 		};
 	}
 
-	// Only the document-by-id join is answered. Every other query reads as an empty
+	// Two queries are answered: the document-by-id join, and a view's membership lookup —
+	// every seeded document belongs to the seeded view. Anything else reads as an empty
 	// table, which is what the app shows for a library with no indexed content.
 	function runSelect(query: string, params: unknown[]): unknown[] {
-		if (!query.includes('FROM documents d JOIN sources s')) return [];
-		const id = params[0];
-		return typeof id === 'string' && id in files ? [documentRow(id)] : [];
+		if (!query.includes('FROM documents d')) return [];
+		const seeded = params.filter((p): p is string => typeof p === 'string' && p in files);
+		if (query.includes('JOIN sources s')) return seeded.slice(0, 1).map(documentRow);
+		return seeded.map(documentRow);
 	}
 
 	// ── Stores ─────────────────────────────────────────
@@ -170,7 +196,7 @@ function installMockInternals({ docs, frontmatter, settings: overrides }: MockOp
 	const restoredTabs = Object.keys(files).map((relPath) => ({
 		type: 'markdown',
 		handleId: relPath,
-		state: {},
+		state: tabState[relPath] ?? {},
 		pinned: false
 	}));
 	const restoredEditors: Record<string, unknown>[] = [];
@@ -184,11 +210,25 @@ function installMockInternals({ docs, frontmatter, settings: overrides }: MockOp
 		});
 	}
 
+	// One saved view every seeded document belongs to, so the header's properties panel has
+	// fields to render. Its own membership query is answered by `runSelect`.
+	const propsView = {
+		id: 'mock-view',
+		slug: 'notes',
+		created_at: '2026-01-01T00:00:00.000Z',
+		updated_at: '2026-01-01T00:00:00.000Z',
+		fields: propertyFields.map((name, i) => ({ id: `field-${i}`, name, type: 'text', config: {} })),
+		filter: { op: 'and', children: [] },
+		faces: [],
+		state: {}
+	};
+
 	const stores: Record<string, Record<string, unknown>> = {
 		// `version` must match the app's APP_STATE_VERSION: on a mismatch the session
 		// wipes the store, taking the seeded tabs with it.
 		'state.json': { version: 1, activeTheme: 'default-dark', editors: restoredEditors },
-		'themes.json': {}
+		'themes.json': {},
+		'views.json': { version: 1, views: propertyFields.length > 0 ? [propsView] : [] }
 	};
 	const storePaths: string[] = [];
 
@@ -239,12 +279,23 @@ function installMockInternals({ docs, frontmatter, settings: overrides }: MockOp
 	// ── Settings ───────────────────────────────────────
 
 	function settingAt(key: string): unknown {
-		let current: unknown = settings;
+		let current: unknown = values;
 		for (const segment of key.split('.')) {
 			if (current === null || typeof current !== 'object') return null;
 			current = (current as Record<string, unknown>)[segment];
 		}
 		return current ?? null;
+	}
+
+	function writeSetting(key: string, value: unknown): void {
+		const segments = key.split('.');
+		let branch = values as Record<string, unknown>;
+		for (const segment of segments.slice(0, -1)) {
+			const next = branch[segment];
+			if (next === null || typeof next !== 'object') branch[segment] = {};
+			branch = branch[segment] as Record<string, unknown>;
+		}
+		branch[segments[segments.length - 1]] = value;
 	}
 
 	// ── Callbacks and events ───────────────────────────
@@ -337,8 +388,11 @@ function installMockInternals({ docs, frontmatter, settings: overrides }: MockOp
 				return { rows_affected: 0, last_insert_rowid: 0 };
 			case 'get_setting':
 				return settingAt(args.key);
+			case 'set_setting_global':
+				writeSetting(args.key, args.value);
+				return null;
 			case 'get_all_settings':
-				return clone(settings);
+				return clone(values);
 			case 'get_default_settings':
 				return clone(defaults);
 			case 'get_app_info':

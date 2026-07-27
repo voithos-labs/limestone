@@ -13,6 +13,10 @@ export interface BootOptions {
 	 * replaces the whole top-level branch of that name rather than merging into it.
 	 */
 	settings?: Settings;
+	/** What a previous session left on each doc's tab — caret, scroll, zoom — keyed by doc path. */
+	tabState?: Record<string, Record<string, unknown>>;
+	/** Property names a saved view gives every seeded doc, which grows the document header. */
+	propertyFields?: string[];
 }
 
 /** What the page complained about while booting, so a spec can assert it came up clean. */
@@ -44,7 +48,9 @@ export async function bootApp(page: Page, opts: BootOptions = {}): Promise<BootR
 	await installTauriMocks(page, {
 		docs: opts.docs ?? {},
 		frontmatter: opts.frontmatter ?? false,
-		settings: opts.settings ?? {}
+		settings: opts.settings ?? {},
+		tabState: opts.tabState ?? {},
+		propertyFields: opts.propertyFields ?? []
 	});
 	await page.goto('/');
 	await page.locator('.content-area').waitFor();
