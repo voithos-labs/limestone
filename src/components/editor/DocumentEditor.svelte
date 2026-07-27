@@ -165,13 +165,16 @@
 	 */
 	let blocksTop = 0;
 
-	function measureBlocksTop(): number {
+	// The scroller is a parameter rather than a read of `scrollEl`, so the wire-up effect below —
+	// which assigns that state and measures in the same pass — does not end up depending on what
+	// it just wrote, and running itself a second time against its own half-torn-down listeners.
+	function measureBlocksTop(scroller: HTMLElement | null): number {
 		// The editor's own top-level list, addressed as aragonite addresses it: a nested list or
 		// table block carries `.block-list` too, and one of those measures a block, not the header.
-		const list = scrollEl?.querySelector(':scope > .block-list');
-		if (!list || !scrollEl) return 0;
+		const list = scroller?.querySelector(':scope > .block-list');
+		if (!list || !scroller) return 0;
 		return (
-			list.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop
+			list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop
 		);
 	}
 
@@ -194,14 +197,14 @@
 
 		const el = wrapperEl?.querySelector<HTMLElement>('.editor') ?? null;
 		scrollEl = el;
-		blocksTop = measureBlocksTop();
+		blocksTop = measureBlocksTop(el);
 		const onScroll = () => {
 			if (restored && el) tab.state.scrollTopBlocks = el.scrollTop - blocksTop;
 		};
 		el?.addEventListener('scroll', onScroll, { passive: true });
 		// The header's own height is the only term that offset depends on, so it is re-measured
 		// when the header resizes rather than on every scroll event of a long document.
-		const headerResize = new ResizeObserver(() => (blocksTop = measureBlocksTop()));
+		const headerResize = new ResizeObserver(() => (blocksTop = measureBlocksTop(el)));
 		const headerEl = el?.querySelector(':scope > .editor-header');
 		if (headerEl) headerResize.observe(headerEl);
 
@@ -250,7 +253,7 @@
 		const placed = selection ? await instance?.setSelection(selection) : false;
 		if (!placed && !flow && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
 		if (typeof tab.state.scrollTopBlocks === 'number' && scrollEl) {
-			blocksTop = measureBlocksTop();
+			blocksTop = measureBlocksTop(scrollEl);
 			scrollEl.scrollTop = tab.state.scrollTopBlocks + blocksTop;
 		}
 		// Only now: a restore emits selectionChange more than once, and the first of the
