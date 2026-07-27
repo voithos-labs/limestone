@@ -1,5 +1,5 @@
 import type { ConsoleMessage, Page } from '@playwright/test';
-import { ASSET_HOST, installTauriMocks, type SeededDocs } from './tauri-mocks';
+import { ASSET_HOST, installTauriMocks, type SeededDocs, type Settings } from './tauri-mocks';
 
 export { getMockState } from './tauri-mocks';
 
@@ -8,6 +8,8 @@ export interface BootOptions {
 	docs?: SeededDocs;
 	/** Give the seeded source YAML frontmatter, so saves round-trip document metadata. */
 	frontmatter?: boolean;
+	/** Settings the reader changed, e.g. `{ shortcuts: { 'nav.settings': ['mod+b'] } }`. */
+	settings?: Settings;
 }
 
 /** What the page complained about while booting, so a spec can assert it came up clean. */
@@ -38,7 +40,8 @@ export async function bootApp(page: Page, opts: BootOptions = {}): Promise<BootR
 
 	await installTauriMocks(page, {
 		docs: opts.docs ?? {},
-		frontmatter: opts.frontmatter ?? false
+		frontmatter: opts.frontmatter ?? false,
+		settings: opts.settings ?? {}
 	});
 	await page.goto('/');
 	await page.locator('.content-area').waitFor();

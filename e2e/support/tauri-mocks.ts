@@ -26,7 +26,12 @@ export interface MockOptions {
 	 * frontmatter keys, never on the whole file.
 	 */
 	frontmatter: boolean;
+	/** Top-level setting values the reader changed, layered over the backend's defaults. */
+	settings: Settings;
 }
+
+/** The backend's settings tree, shaped only as far as a spec needs to address it. */
+export type Settings = Record<string, unknown>;
 
 /** Everything `write_document` was called with, not just the path and body. */
 export interface DocumentWrite {
@@ -76,7 +81,7 @@ export async function getMockState(page: Page): Promise<MockState> {
 
 // Playwright serializes this function, so it can only reach its own body and
 // erased type annotations — never anything else in module scope.
-function installMockInternals({ docs, frontmatter }: MockOptions): void {
+function installMockInternals({ docs, frontmatter, settings: overrides }: MockOptions): void {
 	const SOURCE = {
 		id: 'mock-source',
 		title: 'Mock source',
@@ -94,7 +99,7 @@ function installMockInternals({ docs, frontmatter }: MockOptions): void {
 	const files: Record<string, string> = { ...docs };
 	const state: MockState = { writes: [], calls: [], unhandledCommands: [] };
 
-	const settings = {
+	const defaults = {
 		appearance: {
 			compact_tabs: false,
 			collapse_pinned_tabs: false,
@@ -110,6 +115,10 @@ function installMockInternals({ docs, frontmatter }: MockOptions): void {
 	function clone<T>(value: T): T {
 		return JSON.parse(JSON.stringify(value)) as T;
 	}
+
+	// Seeded overrides reach the values alone, never the defaults, so what a spec seeds reads
+	// back as modified — the shape the app sees once the reader has changed a setting.
+	const settings: Settings = { ...clone(defaults), ...overrides };
 
 	function unhandled(cmd: string): null {
 		if (!state.unhandledCommands.includes(cmd)) state.unhandledCommands.push(cmd);
@@ -326,8 +335,9 @@ function installMockInternals({ docs, frontmatter }: MockOptions): void {
 			case 'get_setting':
 				return settingAt(args.key);
 			case 'get_all_settings':
-			case 'get_default_settings':
 				return clone(settings);
+			case 'get_default_settings':
+				return clone(defaults);
 			case 'get_app_info':
 				return { device_key: 'mock-device', version: APP_VERSION };
 			case 'get_sources':
