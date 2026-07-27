@@ -159,7 +159,9 @@ export const actions: Action[] = [
 		id: 'nav.settings',
 		title: 'Open settings',
 		category: 'navigation',
-		defaultKeys: ['mod+i'],
+		// Not Mod+I: the editor binds it to italic, and a chord the editor claims never reaches
+		// this handler while a document has focus. Mod+, is taken by tab.prev off Windows' Ctrl.
+		defaultKeys: ['mod+shift+i'],
 		run: (session) => session.editors[0].focusTab({ kind: 'settings' })
 	}
 ];

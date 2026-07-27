@@ -13,7 +13,8 @@
 	import DocumentEditor from '../components/editor/DocumentEditor.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
-	import { actionForKey, keyCapture } from '$lib/actions';
+	import { actionForKey, keyCapture, specFromEvent } from '$lib/actions';
+	import { inEditorContent, isEditorReservedChord } from '$lib/editor-chords';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
 
 	let session = $state<Session>();
@@ -84,6 +85,10 @@
 
 	function onKeydown(e: KeyboardEvent) {
 		if (!session || e.repeat || e.defaultPrevented || keyCapture.active) return;
+		// Ahead of the lookup, not after it: a chord the editor claims is the editor's even when
+		// the reader has bound an app action to it, and this handler captures — whatever it takes
+		// never reaches the document.
+		if (inEditorContent(e) && isEditorReservedChord(specFromEvent(e))) return;
 		const action = actionForKey(e, session.settings);
 		if (!action) return;
 		e.preventDefault();
