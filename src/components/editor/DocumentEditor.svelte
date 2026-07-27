@@ -165,15 +165,24 @@
 			: null;
 	}
 
+	const DOCUMENT_START: EditorSelection = {
+		anchor: { path: [0], offset: 0 },
+		focus: { path: [0], offset: 0 }
+	};
+
 	async function restore() {
 		const selection = rememberedSelection();
 		// A legacy numeric `tab.state.cursorPos` addresses CodeMirror's flat offset space
 		// and has no meaning against a tree of blocks, so it is deliberately ignored.
 		if (selection) await instance?.setSelection(selection);
+		// An opened document has to be typable without a click. Focusing the editor root would
+		// not do it — the root carries `tabindex="-1"` for parking focus and establishes no
+		// caret, so keystrokes would reach nothing. Placing one is what makes it usable; the
+		// root focus is only the fallback for a document with no placeable first block.
+		else if (!flow && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
 		if (typeof tab.state.scrollTop === 'number' && scrollEl) {
 			scrollEl.scrollTop = tab.state.scrollTop;
 		}
-		if (!flow && !selection) scrollEl?.focus();
 		// Only now: a restore emits selectionChange more than once, and the first of the
 		// burst can carry the pre-restore value.
 		restored = true;
