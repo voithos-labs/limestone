@@ -8,7 +8,6 @@ const BASE_URL = 'http://localhost:1420';
 
 export default defineConfig({
 	testDir: './e2e',
-	globalSetup: './e2e/support/global-setup.ts',
 	timeout: 30_000,
 	reporter: 'list',
 	use: {
