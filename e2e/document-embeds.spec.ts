@@ -5,6 +5,13 @@ import { expect, test } from './support/test';
 const NOTE = 'notes/pic.md';
 const OTHER = 'notes/other.md';
 
+// The repo has no @types/node, and decoding the fixture is the only node global this spec needs.
+// `route.fulfill` wants the bytes as a Buffer, which is why the string is not passed through.
+interface Buffer {
+	byteLength: number;
+}
+declare const Buffer: { from(data: string, encoding: string): Buffer };
+
 /** A 4x4 PNG, so an embed renders at a natural size a sized one can be told apart from. */
 const PNG_BASE64 =
 	'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR42mP8z8BQz0AEYBxVSF+FABJADveWkH6oAAAAAElFTkSuQmCC';
