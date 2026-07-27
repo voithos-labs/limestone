@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { Editor } from 'aragonite';
 	import type { EditorInstance, EditorSelection, PastedImage, PresentationMode } from 'aragonite';
 	import 'aragonite/styles/editor-theme.css';
@@ -123,6 +123,15 @@
 		tab.state.presentationMode = next;
 	}
 
+	// Where Mod+E returns to, so a reader in source mode is not dropped into live preview.
+	let modeBeforeReading: PresentationMode = 'preview-inline';
+
+	function toggleReading() {
+		if (mode === 'reading') return setMode(modeBeforeReading);
+		modeBeforeReading = mode;
+		setMode('reading');
+	}
+
 	// ── Wire-up: events, scroll tracking, and the restore of where you left off ─────────
 
 	let restored = false;
@@ -242,7 +251,11 @@
 			setZoom(zoom - 1);
 		} else if (e.key.toLowerCase() === 'e' && !e.shiftKey && !e.altKey) {
 			e.preventDefault();
-			setMode(mode === 'reading' ? 'preview-inline' : 'reading');
+			toggleReading();
+			// Reading mode is read-only, so the block holding focus releases it to <body> and this
+			// wrapper-scoped handler would never see the chord that returns. Claimed back after the
+			// mode's own re-render, which is what drops it; the root needs no caret to route keys.
+			void tick().then(() => scrollEl?.focus());
 		}
 	}
 
