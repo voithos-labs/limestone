@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { bootApp, getMockState } from './support/app';
 import { expect, test } from './support/test';
 
@@ -5,8 +6,22 @@ const NOTE_PATH = 'notes/hello.md';
 const MASK = 'updated_at: <stamped>';
 
 /** The body the editor last wrote, waited out past the save debounce. */
-async function lastWrite(page: import('@playwright/test').Page): Promise<string> {
+async function lastWrite(page: Page): Promise<string> {
 	return (await getMockState(page)).writes.at(-1)?.content ?? '';
+}
+
+/** Asks the window to close, as the title bar's button and the OS both do. */
+async function requestClose(page: Page) {
+	await page.evaluate(() =>
+		(
+			window as unknown as {
+				__TAURI_INTERNALS__: { invoke(cmd: string, args: unknown): Promise<unknown> };
+			}
+		).__TAURI_INTERNALS__.invoke('plugin:event|emit', {
+			event: 'tauri://close-requested',
+			payload: {}
+		})
+	);
 }
 
 test('typing into a freshly opened document needs no click first', async ({ page }) => {
@@ -26,6 +41,65 @@ test('an empty document is typable on open', async ({ page }) => {
 	await page.keyboard.type('First words.');
 
 	await expect.poll(() => lastWrite(page)).toContain('First words.');
+});
+
+test('a burst of typing settles on one document, not one save per key', async ({ page }) => {
+	await bootApp(page, { docs: { [NOTE_PATH]: 'Body text here.\n' } });
+	const typed = 'Every one of these keystrokes.';
+	await page.locator('.editor .text-editable-block').click();
+	await page.keyboard.press('End');
+
+	await page.keyboard.type(typed);
+
+	await expect.poll(() => lastWrite(page)).toBe(`Body text here.${typed}\n`);
+	// The editor commits its first character at once and the rest on a debounce of its own, so a
+	// burst crosses more than one save window — but nothing near one per key.
+	const { writes } = await getMockState(page);
+	expect(writes.length).toBeGreaterThan(0);
+	expect(writes.length).toBeLessThan(typed.length / 4);
+});
+
+test('closing the window writes the edit no save window has reached yet', async ({ page }) => {
+	await bootApp(page, { docs: { [NOTE_PATH]: 'Body text here.\n' } });
+	await page.locator('.editor .text-editable-block').click();
+	await page.keyboard.press('End');
+	await page.keyboard.type(' Unsaved.');
+
+	await requestClose(page);
+
+	// The window is destroyed only once the flush has resolved, so reading the tally the moment
+	// it is destroyed is what tells a flushed edit from one a debounce got to anyway.
+	await expect
+		.poll(async () => (await getMockState(page)).calls)
+		.toContain('plugin:window|destroy');
+	const { writes, calls } = await getMockState(page);
+	expect(writes.at(-1)?.content).toBe('Body text here. Unsaved.\n');
+	expect(calls.lastIndexOf('write_document')).toBeLessThan(calls.indexOf('plugin:window|destroy'));
+});
+
+test('closing a window nobody typed in writes nothing', async ({ page }) => {
+	await bootApp(page, { docs: { [NOTE_PATH]: 'Body text here.\n' } });
+	await expect(page.locator('.editor')).toBeVisible();
+
+	await requestClose(page);
+
+	await expect
+		.poll(async () => (await getMockState(page)).calls)
+		.toContain('plugin:window|destroy');
+	expect((await getMockState(page)).writes).toEqual([]);
+});
+
+test('leaving the tab writes the edit too', async ({ page }) => {
+	await bootApp(page, { docs: { [NOTE_PATH]: 'Body text here.\n' } });
+	await page.locator('.editor .text-editable-block').click();
+	await page.keyboard.press('End');
+	await page.keyboard.type(' Unsaved.');
+
+	// Leaving destroys the editor, which is the other way an edit can be stranded mid-debounce.
+	await page.keyboard.press('Control+l');
+	await expect(page.locator('.library-page')).toBeVisible();
+
+	expect((await getMockState(page)).writes.at(-1)?.content).toBe('Body text here. Unsaved.\n');
 });
 
 test('a save keeps the document frontmatter it never edited', async ({ page }) => {

@@ -50,18 +50,28 @@
 
 	const SAVE_DEBOUNCE_MS = 250;
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
-	// Captured when the edit lands, not read back at flush time: a flush can outlive the
-	// editor instance (window close, tab teardown), and a saved body must not depend on it.
+	// Captured when the edit lands, so a flush that outlives the editor instance (window close,
+	// tab teardown) still has a body to write.
 	let pendingSource: string | null = null;
+	// The body as the editor itself serializes it, last written or as it was handed over. What a
+	// flush compares against, so an untouched document is never rewritten — not even when the
+	// editor's serialization of it differs from the bytes on disk.
+	let savedBody: string | null = null;
+	// A deleted document must not be resurrected by the flush its own teardown triggers.
+	let deleted = false;
 
 	function flushSave() {
 		if (saveTimer) {
 			clearTimeout(saveTimer);
 			saveTimer = null;
 		}
-		if (pendingSource === null) return;
-		const body = pendingSource;
+		// The editor's model is current the moment a key lands, but its `edit` event is debounced
+		// for undo batching — so the last event's snapshot can be a whole burst behind, and a
+		// reader who types and immediately quits would lose it.
+		const body = deleted ? null : (instance?.getSource() ?? pendingSource);
 		pendingSource = null;
+		if (body === null || body === savedBody) return;
+		savedBody = body;
 		return handle?.saveContent(body).catch((e) => console.error('saveContent failed', e));
 	}
 
@@ -140,6 +150,9 @@
 	$effect(() => {
 		if (!instance || !loaded) return;
 		restored = false;
+		// Untracked: serializing reads the document, and a dependency on it would re-run this
+		// whole wire-up — listeners, restore and all — on every keystroke.
+		savedBody = untrack(() => instance?.getSource() ?? null);
 		const events = instance.getEvents();
 		const offEdit = events.on('edit', scheduleSave);
 		const offSelection = events.on('selectionChange', (selection) => {
@@ -290,6 +303,7 @@
 		pendingSource = null;
 		try {
 			await handle.delete();
+			deleted = true;
 			editor?.closeTab(tab.id, false);
 		} catch (e) {
 			console.error('delete failed', e);

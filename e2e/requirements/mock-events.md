@@ -14,7 +14,7 @@ app-facing spec — nothing on the boot path emits.
   with it and an emit can find the handler.
 - After unlisten, a further emit for the same event name is not delivered.
 
-## Deferred
+## Covered elsewhere
 
-- Driving the app through an emitted `tauri://close-requested`: covered by the spec for the
-  task that ports close handling to the new editor (aragonite integration, Task 5).
+- Driving the app through an emitted `tauri://close-requested`: `editor-save.md`, where the
+  close matters — an edit still inside the save debounce has to reach the file.
