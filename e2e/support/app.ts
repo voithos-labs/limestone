@@ -4,8 +4,10 @@ import { installTauriMocks, type SeededDocs } from './tauri-mocks';
 export { getMockState } from './tauri-mocks';
 
 export interface BootOptions {
-	/** Markdown bodies keyed by source-relative path. Each opens as a tab, the first focused. */
+	/** Raw file contents keyed by source-relative path. Each opens as a tab, the first focused. */
 	docs?: SeededDocs;
+	/** Give the seeded source YAML frontmatter, so saves round-trip document metadata. */
+	frontmatter?: boolean;
 }
 
 /** What the page complained about while booting, so a spec can assert it came up clean. */
@@ -35,7 +37,10 @@ export async function bootApp(page: Page, opts: BootOptions = {}): Promise<BootR
 	});
 	page.on('pageerror', (error) => report.pageErrors.push(error.message));
 
-	await installTauriMocks(page, opts.docs ?? {});
+	await installTauriMocks(page, {
+		docs: opts.docs ?? {},
+		frontmatter: opts.frontmatter ?? false
+	});
 	await page.goto('/');
 	await page.locator('.content-area').waitFor();
 	return report;

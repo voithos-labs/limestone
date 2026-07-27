@@ -11,8 +11,19 @@ import type { Page } from '@playwright/test';
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-/** Markdown bodies keyed by source-relative path, e.g. `notes/hello.md`. */
+/** Raw file contents keyed by source-relative path, e.g. `notes/hello.md`. */
 export type SeededDocs = Record<string, string>;
+
+export interface MockOptions {
+	docs: SeededDocs;
+	/**
+	 * Whether the seeded source keeps document metadata in YAML frontmatter. Off by default:
+	 * with it on, every save stamps a fresh `updated_at`, so the recorded write content differs
+	 * from the editor body and from run to run. A spec that turns it on asserts on the stable
+	 * frontmatter keys, never on the whole file.
+	 */
+	frontmatter: boolean;
+}
 
 /** Everything `write_document` was called with, not just the path and body. */
 export interface DocumentWrite {
@@ -42,8 +53,8 @@ type MockWindow = typeof globalThis & {
  * the fake filesystem and in the restored session, so each opens as a tab, the
  * first one focused.
  */
-export async function installTauriMocks(page: Page, docs: SeededDocs): Promise<void> {
-	await page.addInitScript(installMockInternals, docs);
+export async function installTauriMocks(page: Page, options: MockOptions): Promise<void> {
+	await page.addInitScript(installMockInternals, options);
 }
 
 export async function getMockState(page: Page): Promise<MockState> {
@@ -62,16 +73,14 @@ export async function getMockState(page: Page): Promise<MockState> {
 
 // Playwright serializes this function, so it can only reach its own body and
 // erased type annotations — never anything else in module scope.
-function installMockInternals(docs: SeededDocs): void {
+function installMockInternals({ docs, frontmatter }: MockOptions): void {
 	const SOURCE = {
 		id: 'mock-source',
 		title: 'Mock source',
 		path: '/mock-source',
 		created_at: '2026-01-01T00:00:00Z',
 		accessed_at: '2026-01-01T00:00:00Z',
-		// Frontmatter would stamp a fresh `updated_at` into every save, making the
-		// recorded write content differ from the editor body and from run to run.
-		use_frontmatter: false,
+		use_frontmatter: frontmatter,
 		note_location: '',
 		asset_location: 'assets',
 		ignore: [] as string[]
