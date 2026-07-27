@@ -4,6 +4,7 @@
 		"accent": "default",
 		"compact_tabs": false,
 		"compact_doc_header": true,
+		"default_editor_mode": "preview-inline",
 		"collapse_pinned_tabs": true,
 		"editor_font_size": 14,
 		"ui_scale_percent": 100,

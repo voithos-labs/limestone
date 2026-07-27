@@ -7,7 +7,7 @@ export interface Settings {
 	[key: string]: SettingValue;
 }
 
-export type SettingType = 'boolean' | 'number';
+export type SettingType = 'boolean' | 'number' | 'string';
 export type SettingControl = 'toggle' | 'stepper' | 'select';
 
 export interface SettingOption {
@@ -60,6 +60,18 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				control: 'toggle',
 				label: 'Compact Document Header',
 				description: 'Sit a document’s folder, tags, and date inline with its title when they fit.'
+			},
+			{
+				key: 'appearance.default_editor_mode',
+				type: 'string',
+				control: 'select',
+				label: 'Default Editor Mode',
+				description: 'How a document presents when it is opened for the first time.',
+				options: [
+					{ value: 'source', label: 'Source' },
+					{ value: 'preview-inline', label: 'Live preview' },
+					{ value: 'reading', label: 'Reading' }
+				]
 			},
 			{
 				key: 'appearance.editor_font_size',

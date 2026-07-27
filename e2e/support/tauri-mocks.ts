@@ -87,6 +87,7 @@ function installMockInternals(docs: SeededDocs): void {
 			compact_tabs: false,
 			collapse_pinned_tabs: false,
 			compact_doc_header: true,
+			default_editor_mode: 'preview-inline',
 			editor_font_size: 16,
 			ui_scale_percent: 100,
 			max_page_width: 900
