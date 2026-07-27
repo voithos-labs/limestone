@@ -3,7 +3,8 @@
 Covers `tab-state.spec.ts`. Leaving a document tab destroys its editor; coming back mounts a new
 one. Everything a reader would expect to survive that — caret, scroll, zoom, the panels they
 opened — lives on the tab in `state.json`, and the new editor is handed it on mount. What the tab
-refuses to remember, because a previous editor wrote it, is `legacy-tab-state.md`'s.
+refuses to remember — a previous editor's keys, or this editor's own state gone stale against
+the document — is `stale-tab-state.md`'s.
 
 ## User interactions
 
