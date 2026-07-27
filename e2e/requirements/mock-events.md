@@ -10,8 +10,10 @@ app-facing spec — nothing on the boot path emits.
 
 ## Edge cases
 
-- The id `listen` resolves to is the callback id it was handed, so the app can unlisten
-  with it and an emit can find the handler.
+- The id `listen` resolves to is the id `unlisten` accepts back, whatever that id is. The real
+  backend mints a counter independent of the handler and the mock hands the handler back, so
+  what the app depends on is the round trip, not the value — pinning the value would pin the
+  mock's own convenience and stand in the way of making it faithful.
 - After unlisten, a further emit for the same event name is not delivered.
 
 ## Covered elsewhere

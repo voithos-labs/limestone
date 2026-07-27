@@ -9,9 +9,11 @@ type EventInternals = {
 	__TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: (event: string, id: number) => void };
 };
 
-// Guards the contract the app's `listen()` depends on: the id `listen` resolves to is the
-// callback id, so an emit reaches the handler and unlisten can find it again. A counter id
-// looks fine until something emits — which is how Task 5 will drive window close.
+// Guards what the app's `listen()` actually depends on: an emit reaches the handler, and the id
+// `listen` resolved to is the id `unlisten` accepts back. Nothing here says what that id IS —
+// the real backend mints an independent counter, and the mock happens to hand back the handler
+// it was given, so an assertion on the two being equal would pin the mock's convenience and
+// block making it faithful. This channel carries the window-close drive in `editor-save.md`.
 test('a listener registered through the IPC channel receives emits until unlistened', async ({
 	page
 }) => {
@@ -32,9 +34,8 @@ test('a listener registered through the IPC channel receives emits until unliste
 		eventInternals.unregisterListener('probe', listenId as number);
 		await internals.invoke('plugin:event|emit', { event: 'probe', payload: 'second' });
 
-		return { listenId, callbackId, payloads: received.map((data) => (data as any).payload) };
+		return { payloads: received.map((data) => (data as any).payload) };
 	});
 
-	expect(delivery.listenId).toBe(delivery.callbackId);
 	expect(delivery.payloads).toEqual(['first']);
 });

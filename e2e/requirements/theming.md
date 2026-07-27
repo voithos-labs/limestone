@@ -52,3 +52,7 @@ screenshot pixel, is the observable the bridge actually controls.
 - Tokens limestone deliberately does not bridge — aragonite's code-token palette and its
   selection/search overlays — keep aragonite's light/dark defaults and are covered by
   aragonite's own suite, not here.
+- Mermaid diagrams draw their own light palette in every theme, so a diagram in a dark
+  document is a bright rectangle. The theme mermaid initialises with is plausibly
+  limestone's to choose — the renderer is injected here — but no seam for it exists yet on
+  either side, so nothing pins it.

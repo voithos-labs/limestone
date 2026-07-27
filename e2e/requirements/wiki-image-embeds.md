@@ -54,9 +54,11 @@ hence they are pinned as hard as the happy paths.
   ignored rather than treated as a target.
 - An embed whose closing `]]` lies outside the scanner's window is declined rather than
   claimed past it.
-- A target that resolves to nothing renders as the editor's broken-image treatment, the
-  same as a GFM image pointing at a missing file. The plugin has no resolver of its own to
-  decline with, so nothing falls back to literal text.
+- A target that resolves to nothing is still an image node, not literal text: the plugin has
+  no resolver of its own to decline with, so the gate is the extension alone. What the reader
+  is shown for one is measured behavior rather than this file's to state — see
+  `document-embeds.md` § Accepted, which records a 0×0 gap rather than the broken-image
+  placeholder this bullet claimed before it was measured.
 
 ## User interactions
 
