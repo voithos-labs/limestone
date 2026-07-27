@@ -3,6 +3,23 @@
 Covers `mode-toggle.spec.ts`. The mode is per tab; `data-presentation` on `.editor` reports the
 effective one, and is absent in source mode.
 
+What each mode does with a document's markers is asserted against rendered text, not the DOM's:
+a collapsed marker stays in `textContent`, so only `innerText` says what the reader sees.
+
+## Happy paths
+
+- A document opens in live preview: markers are out of the way except in the block holding the
+  caret, which shows its own so the reader can edit them.
+- Source mode shows every marker the file is written with.
+- Reading mode shows none of them and takes no typing — it is the one mode where the document is
+  inert.
+
+## Modes a document opens in
+
+- A fresh document opens in the mode the reader chose as their default.
+- A tab that already remembers a mode keeps it: the setting seeds a document that has no memory,
+  it does not overrule one that does.
+
 ## User interactions
 
 - Mod+E enters reading mode, and pressing it again leaves. Reading mode is the only mode control a

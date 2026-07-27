@@ -1,12 +1,76 @@
-import { bootApp } from './support/app';
+import type { Page } from '@playwright/test';
+import { bootApp, getMockState } from './support/app';
 import { expect, test } from './support/test';
 
-const DOCS = { 'notes/hello.md': '# Hello\n\nBody text here.\n' };
+const NOTE = 'notes/hello.md';
+const DOCS = { [NOTE]: '# Hello\n\nBody text here.\n' };
 
 /** Source mode is reported by the attribute's absence, every other mode by its value. */
-async function mode(page: import('@playwright/test').Page): Promise<string> {
+async function mode(page: Page): Promise<string> {
 	return (await page.locator('.editor').getAttribute('data-presentation')) ?? 'source';
 }
+
+/** The whole appearance branch, since seeding one key replaces the group. */
+const opensIn = (value: string) => ({
+	appearance: { default_editor_mode: value, editor_font_size: 16, max_page_width: 900 }
+});
+
+test('a document opens in live preview, showing markers only under the caret', async ({ page }) => {
+	await bootApp(page, { docs: DOCS });
+	const editor = page.locator('.editor');
+	await expect(editor).toBeVisible();
+	expect(await mode(page)).toBe('preview-inline');
+
+	// Rendered text throughout, not the DOM's: a collapsed marker is still in `textContent`.
+	// Opening places the caret in the first block, and live preview reveals the block it is in.
+	await expect(editor).toContainText('# Hello', { useInnerText: true });
+
+	await editor.locator('.text-editable-block', { hasText: 'Body text here.' }).click();
+
+	await expect(editor).not.toContainText('# Hello', { useInnerText: true });
+	await expect(editor).toContainText('Hello', { useInnerText: true });
+});
+
+test('source mode shows the markers the document is written with', async ({ page }) => {
+	await bootApp(page, { docs: DOCS });
+	await expect(page.locator('.editor')).toBeVisible();
+
+	await page.locator('.mode-toggle button', { hasText: 'Source' }).click();
+
+	await expect(page.locator('.editor')).toContainText('# Hello', { useInnerText: true });
+});
+
+test('reading mode hides the markers and takes no typing', async ({ page }) => {
+	await bootApp(page, { docs: DOCS });
+	const editor = page.locator('.editor');
+	await editor.locator('.text-editable-block', { hasText: 'Body text here.' }).click();
+
+	await page.locator('.mode-toggle button', { hasText: 'Reading' }).click();
+	await page.keyboard.type('Not here.');
+
+	await expect(editor).not.toContainText('Not here.');
+	await expect(editor).not.toContainText('# Hello', { useInnerText: true });
+	expect((await getMockState(page)).writes).toEqual([]);
+});
+
+test('a fresh document opens in the mode the reader set as their default', async ({ page }) => {
+	await bootApp(page, { docs: DOCS, settings: opensIn('source') });
+	await expect(page.locator('.editor')).toBeVisible();
+
+	await expect.poll(() => mode(page)).toBe('source');
+	await expect(page.locator('.editor')).toContainText('# Hello', { useInnerText: true });
+});
+
+test('a tab that remembers a mode keeps it over the setting', async ({ page }) => {
+	await bootApp(page, {
+		docs: DOCS,
+		settings: opensIn('source'),
+		tabState: { [NOTE]: { presentationMode: 'reading' } }
+	});
+	await expect(page.locator('.editor')).toBeVisible();
+
+	expect(await mode(page)).toBe('reading');
+});
 
 test('Mod+E round-trips into reading mode and back', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
