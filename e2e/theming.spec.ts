@@ -1,8 +1,10 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { bootApp } from './support/app';
 import { expect, test } from './support/test';
 
 const DOCS = { 'notes/hello.md': '# Hello\n\nBody text here.\n' };
+/** Seeded under the same path, so `chooseTheme` finds the tab by the name it knows. */
+const RULE_DOC = { 'notes/hello.md': 'Above the rule.\n\n---\n\nBelow the rule.\n' };
 
 /** Custom properties as the editor resolves them, beside the values the app declares at its root. */
 async function tokens(page: Page, names: string[]): Promise<Record<string, [string, string]>> {
@@ -19,6 +21,36 @@ async function tokens(page: Page, names: string[]): Promise<Record<string, [stri
 }
 
 const token = async (page: Page, name: string) => (await tokens(page, [name]))[name][0];
+
+/**
+ * Colours as the browser resolves them, painted inside the editor so editor-scoped tokens
+ * apply. A raw token (`#d0d0d0`) cannot be compared against a computed `border-top-color`
+ * (`rgb(208, 208, 208)`) without going through a paint.
+ */
+async function resolvedColors(page: Page, expressions: string[]): Promise<string[]> {
+	return page.locator('.editor').evaluate((editor, expressions) => {
+		const probe = document.createElement('span');
+		editor.append(probe);
+		const colors = expressions.map((expression) => {
+			probe.style.color = expression;
+			return getComputedStyle(probe).color;
+		});
+		probe.remove();
+		return colors;
+	}, expressions);
+}
+
+async function expectRuleTakesTheBorder(page: Page, rule: Locator, mode: string) {
+	const [border, separator] = await resolvedColors(page, [
+		'var(--color-border)',
+		'var(--syntax-separator)'
+	]);
+	expect(separator, `${mode}: the two colours are told apart`).not.toBe(border);
+	await expect(rule, `${mode}: the rule paints the app’s border`).toHaveCSS(
+		'border-top-color',
+		border
+	);
+}
 
 interface FirstPaintWindow {
 	__firstPaint?: [string, string];
@@ -109,6 +141,16 @@ test('a light theme flips the mode the editor keys its own defaults on', async (
 	const surface = await tokens(page, ['--color-bg', '--color-surface']);
 	expect(surface['--color-bg'][0]).not.toBe(dark);
 	expect(surface['--color-bg'][0]).toBe(surface['--color-surface'][1]);
+});
+
+test('the thematic break paints the app’s border, not the syntax palette', async ({ page }) => {
+	await bootApp(page, { docs: RULE_DOC });
+	const rule = page.locator('.thematic-break-block > hr');
+	await expect(rule).toBeVisible();
+
+	await expectRuleTakesTheBorder(page, rule, 'dark');
+	await chooseTheme(page, 'default-light');
+	await expectRuleTakesTheBorder(page, rule, 'light');
 });
 
 test('a palette missing a bridged variable leaves the token unset, not the editor’s own', async ({

@@ -50,6 +50,14 @@
    --color-ui-faint, --code-tok-*, and the selection/search overlays.
    --font-editor holds an identical value on both sides — deliberately unbridged. */
 
+/* aragonite paints the thematic break with --syntax-separator, a colour limestone
+   chose to tint `---` glyphs inside a line of text; on a full-width 2px rule the
+   same value is the loudest thing on the page. Targeted at the rule rather than
+   remapped at the token, so the syntax palette keeps its meaning. */
+.editor .thematic-break-block[role='separator'] > hr {
+	border-top-color: var(--color-border);
+}
+
 /* The editor root fills its pane; the content column is what carries the app's
    page width, the way every other page surface does. Its horizontal inset matches
    `DocumentHero`'s, so the document title and the first block share a left edge. */

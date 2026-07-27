@@ -18,6 +18,12 @@ screenshot pixel, is the observable the bridge actually controls.
   values rather than to aragonite's shipped defaults.
 - Markdown syntax tokens on the editor resolve to the app's `--syntax-*` palette for the
   active mode.
+- A thematic break's rule paints the app's border colour, in both modes. aragonite colours
+  it from `--syntax-separator`, a value limestone picked to tint `---` glyphs inside a line
+  of text; the same value across a full-width rule is the loudest thing on the page. The
+  rule is retargeted rather than the token remapped, so the syntax palette keeps its
+  meaning — asserted as a computed `border-top-color`, since a raw token and a painted
+  colour are not comparable strings.
 
 ## User interactions
 
