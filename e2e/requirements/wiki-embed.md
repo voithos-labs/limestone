@@ -52,20 +52,16 @@ hence they are pinned as hard as the happy paths.
   claimed past it.
 - A target that resolves to nothing renders as the editor's broken-image treatment, the
   same as a GFM image pointing at a missing file. The plugin has no resolver of its own to
-  decline with, so nothing falls back to literal text. Deferred: the resolver a real
-  document gets arrives with Task 4.
+  decline with, so nothing falls back to literal text.
 
 ## User interactions
 
 - Typing elsewhere in a document that contains an embed: `getSource()` still holds the
   literal `![[cat.png]]` bytes.
 - An embed inside a table cell keeps its bytes exactly, through a mount and a read back.
-- Arrowing onto an embed selects it whole, and a further press deletes it — the editor's
-  image behavior, which the previous editor emulated with its own key handlers.
-- Selecting a range that spans an embed and copying it: the clipboard carries the literal
-  `![[cat.png]]` bytes.
-- Pasting an image into the editor inserts `![[…]]` (the import hook's format) and it
-  renders immediately, with no reload.
+
+Selecting, deleting, copying and pasting an embed are the app's to answer, not the
+plugin's; they are `document-embeds.md`'s.
 
 ## Verifiable now vs deferred
 
@@ -81,11 +77,11 @@ prefers the parse layer wherever a scenario is decidable there:
   overlap fixtures resolving to built-in images.
 - **Pinned now, against a mounted editor:** the image widget and its resolved URL, the
   code fence, a table cell's bytes, and round-trip after an edit elsewhere.
-- **Deferred to Task 6:** everything that needs the app around the editor — caret,
-  select-then-delete, and copy through the real document view; paste-image; a target the
-  app's resolver cannot answer; and an embed's interaction with the app's own
-  save/restore. Whatever Task 4 decides about the editing delta below belongs here too:
-  the deltas are what Task 6 pins, not the parity they replaced.
+- **Pinned against the running app, in `document-embeds.md`:** everything that needs the
+  app around the editor — caret, select-then-delete, and copy through the real document
+  view; paste-image; the host's resolved URL; and an embed's survival of the app's own
+  save and reopen. The editing delta below is pinned there too: the deltas are what that
+  spec records, not the parity they replaced.
 
 One scenario is pinned but not enforced by this plugin: an embed inside a code fence stays
 literal because a code block has no inline content for the scanner to run over. The

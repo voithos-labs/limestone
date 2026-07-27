@@ -56,8 +56,18 @@ export interface DocumentWrite {
 	create: boolean;
 }
 
+/** An image the reader pasted, as it reached the source's asset importer. */
+export interface AssetImport {
+	sourceId: string;
+	ext: string;
+	byteLength: number;
+	/** The path handed back, which the editor writes into the document as an embed. */
+	relPath: string;
+}
+
 export interface MockState {
 	writes: DocumentWrite[];
+	assetImports: AssetImport[];
 	/** Every command in the order it was invoked, so a spec can assert ordering. */
 	calls: string[];
 	/** Commands with no handler. Non-empty means the mock layer needs extending. */
@@ -85,6 +95,7 @@ export async function getMockState(page: Page): Promise<MockState> {
 		if (!state) throw new Error('Tauri mocks were not installed on this page');
 		return {
 			writes: state.writes.map((write) => ({ ...write })),
+			assetImports: state.assetImports.map((each) => ({ ...each })),
 			calls: [...state.calls],
 			unhandledCommands: [...state.unhandledCommands]
 		};
@@ -117,7 +128,7 @@ function installMockInternals({
 	const APP_VERSION = '0.0.0-mock';
 
 	const files: Record<string, string> = { ...docs };
-	const state: MockState = { writes: [], calls: [], unhandledCommands: [] };
+	const state: MockState = { writes: [], assetImports: [], calls: [], unhandledCommands: [] };
 
 	function clone<T>(value: T): T {
 		return JSON.parse(JSON.stringify(value)) as T;
@@ -381,6 +392,18 @@ function installMockInternals({
 					create: args.create ?? false
 				});
 				return null;
+			}
+			case 'import_source_asset_bytes': {
+				// As the Rust command does: the bytes land in the source's asset folder under a
+				// generated name, and the path comes back relative to the source.
+				const relPath = `${SOURCE.asset_location}/Pasted image ${state.assetImports.length + 1}.${args.ext}`;
+				state.assetImports.push({
+					sourceId: args.sourceId,
+					ext: args.ext,
+					byteLength: atob(args.data).length,
+					relPath
+				});
+				return relPath;
 			}
 			case 'sql_select':
 				return runSelect(args.query, args.params ?? []);
