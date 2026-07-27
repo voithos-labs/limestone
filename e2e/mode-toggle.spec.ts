@@ -131,6 +131,30 @@ test('entering reading mode from the toggle is remembered too', async ({ page })
 	expect(await mode(page)).toBe('source');
 });
 
+test('Mod+E keeps the reader where they were reading', async ({ page }) => {
+	const long = Array.from({ length: 80 }, (_, i) => `Paragraph number ${i + 1}.`).join('\n\n');
+	await bootApp(page, { docs: { [NOTE]: `${long}\n` } });
+	const editor = page.locator('.editor');
+	await expect(editor).toContainText('Paragraph number 1');
+
+	await editor.locator('.text-editable-block').nth(2).click();
+	await editor.evaluate((el) => (el.scrollTop = 900));
+	await expect.poll(() => editor.evaluate((el) => el.scrollTop)).toBe(900);
+
+	// Driven by the chord, which is the journal's only mode control and the one route that
+	// touches nothing but the mode. Clicking the toggle cannot stand in for it: on a document
+	// scrolled this far the toggle is off-screen in the header, so Playwright scrolls it into
+	// view before it can click — a reset the app never performed, and the reading that made
+	// this look like a defect in the first place.
+	await page.keyboard.press('Control+e');
+	expect(await mode(page)).toBe('reading');
+	expect(await editor.evaluate((el) => el.scrollTop)).toBe(900);
+
+	await page.keyboard.press('Control+e');
+	expect(await mode(page)).toBe('preview-inline');
+	expect(await editor.evaluate((el) => el.scrollTop)).toBe(900);
+});
+
 test('renaming a document does not flip the mode', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
 	await expect(page.locator('.editor')).toBeVisible();

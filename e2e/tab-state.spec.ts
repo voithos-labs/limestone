@@ -148,6 +148,65 @@ test('a header that settles after the editor leaves the reader where they were',
 	expect(await caret(page)).toEqual(left);
 });
 
+/**
+ * A block whose height settles after the editor has painted — the diagram is the loudest of
+ * them, and display math and a resolving image behave the same. Its late measure pass is what
+ * used to re-assert the caret's block at the top of the scroller and throw away everything the
+ * restore had just done.
+ *
+ * Which side of the fold it sits on decides what the scenario can assert. Growth ABOVE the
+ * reader legitimately moves `scrollTop` — the editor holds the block under their eyes still,
+ * which is worth more than the number — so the remembered-position scenario puts the diagram
+ * at the end, below a reader who is 600px in, where the honest movement is none. The
+ * opens-at-the-top scenario puts it first, which is where a reader meets one in a journal
+ * entry and where the reported symptom landed.
+ */
+const DIAGRAM = '```mermaid\ngraph TD\n  A[Start] --> B[Finish]\n```';
+const DIAGRAM_LAST = `${LONG}\n\n${DIAGRAM}\n`;
+const DIAGRAM_FIRST = `${DIAGRAM}\n\n${LONG}\n`;
+
+/** Where the document's blocks begin inside the scroller — the origin the tab's position is
+ *  persisted against, measured the way the editor measures it. */
+const blocksTop = (page: Page) =>
+	page.locator('.editor').evaluate((el) => {
+		const list = el.querySelector(':scope > .block-list')!;
+		return list.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+	});
+
+/** Resolves once the diagram has actually rendered, so the late growth the pin needs has happened. */
+async function waitForDiagram(page: Page) {
+	await expect(page.locator('.editor .mermaid-block')).toBeVisible();
+	await expect
+		.poll(() =>
+			page.locator('.editor .mermaid-block').evaluate((el) => el.getBoundingClientRect().height)
+		)
+		.toBeGreaterThan(60);
+}
+
+test('a diagram that renders late leaves the remembered scroll where it was', async ({ page }) => {
+	await bootApp(page, {
+		docs: { [NOTE]: DIAGRAM_LAST, [OTHER]: DOCS[OTHER] },
+		tabState: { [NOTE]: { scrollTopBlocks: 600 } }
+	});
+	await expect(page.locator('.editor')).toBeVisible();
+
+	await waitForDiagram(page);
+
+	expect(Math.abs((await scrollTop(page)) - (await blocksTop(page)) - 600)).toBeLessThanOrEqual(2);
+});
+
+test('a document with a diagram opens showing its own title', async ({ page }) => {
+	await bootApp(page, { docs: { [NOTE]: DIAGRAM_FIRST, [OTHER]: DOCS[OTHER] } });
+	await expect(page.locator('.editor')).toBeVisible();
+
+	await waitForDiagram(page);
+
+	// A document with nothing remembered opens at the top. The caret goes in the first block,
+	// which is not a reason to scroll the reader past the header it sits under.
+	expect(await scrollTop(page)).toBe(0);
+	await expect(page.locator('.editor .title-input')).toBeInViewport();
+});
+
 test('a properties panel the reader opened is still open on return', async ({ page }) => {
 	await bootApp(page, { docs: DOCS, frontmatter: true, propertyFields: ['status'] });
 	await expect(page.locator('.props-chip')).toBeVisible();

@@ -30,3 +30,19 @@ refuses to remember, because a previous editor wrote it, is `legacy-tab-state.md
   by recording that no panel was inside the editor when it entered the DOM and that a material one
   is there afterwards; a fixture whose panel loaded first would otherwise pass while pinning
   nothing.
+
+- **A block whose own height settles after the editor has painted.** A diagram renders after mount,
+  and so do display math and an image that resolves. The measure pass that follows must leave the
+  restore alone: a document with a remembered position keeps it, and one with none opens showing
+  its own title rather than scrolled past it to the block the caret was placed in.
+
+  Where the diagram sits decides what each scenario can assert. Below the reader, nothing above
+  them moved, so their position is untouched to the pixel. Above them, the editor deliberately
+  moves `scrollTop` to hold the block under their eyes still — the right behaviour, and not a
+  number a scenario can pin — so the remembered-position case puts the diagram at the end and the
+  opens-at-the-top case puts it first.
+
+  This is aragonite's contract, restored in `setSelection`: revealing the caret's block moves the
+  viewport while it runs and hands it back when it resolves. Until it did, the reveal kept a pin on
+  the caret's block that outlived the call, and the diagram's measure pass re-asserted it over the
+  scroll this restore had written a moment earlier.
