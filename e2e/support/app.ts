@@ -8,7 +8,10 @@ export interface BootOptions {
 	docs?: SeededDocs;
 	/** Give the seeded source YAML frontmatter, so saves round-trip document metadata. */
 	frontmatter?: boolean;
-	/** Settings the reader changed, e.g. `{ shortcuts: { 'nav.settings': ['mod+b'] } }`. */
+	/**
+	 * Settings the reader changed, e.g. `{ shortcuts: { 'nav.settings': ['mod+b'] } }`. Each key
+	 * replaces the whole top-level branch of that name rather than merging into it.
+	 */
 	settings?: Settings;
 }
 

@@ -26,7 +26,10 @@ export interface MockOptions {
 	 * frontmatter keys, never on the whole file.
 	 */
 	frontmatter: boolean;
-	/** Top-level setting values the reader changed, layered over the backend's defaults. */
+	/**
+	 * Setting values the reader changed. Each key REPLACES the whole top-level branch of that
+	 * name — seeding one `appearance` field drops the rest of the group, so seed the group whole.
+	 */
 	settings: Settings;
 }
 
