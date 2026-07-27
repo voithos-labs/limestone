@@ -21,6 +21,10 @@
 	--color-bg: var(--color-surface);
 	--color-text: var(--color-text-secondary);
 	--color-danger: var(--color-error);
+	/* The wash aragonite's table menu hovers with. Its own value is one blue for both
+	   modes, so it neither follows the reader's theme nor sits beside limestone's green;
+	   the app's menu hover is the same affordance and does both. */
+	--color-ui-faint: var(--menu-item-hover);
 	--color-border: inherit;
 	--color-text-primary: inherit;
 	--color-ui-dulled: inherit;
@@ -47,7 +51,7 @@
 
 /* aragonite's light/dark defaults stand for the tokens limestone has no semantic
    twin for: --color-bg-secondary/-elevated/-muted, --color-text-muted,
-   --color-ui-faint, --code-tok-*, and the selection/search overlays.
+   --code-tok-*, and the selection/search overlays.
    --font-editor holds an identical value on both sides — deliberately unbridged. */
 
 /* aragonite paints the thematic break with --syntax-separator, a colour limestone

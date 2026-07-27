@@ -153,6 +153,25 @@ test('the thematic break paints the app’s border, not the syntax palette', asy
 	await expectRuleTakesTheBorder(page, rule, 'light');
 });
 
+test('the editor’s faint wash takes the app’s menu hover, and follows the mode', async ({
+	page
+}) => {
+	await bootApp(page, { docs: DOCS });
+	await expect(page.locator('.editor')).toBeVisible();
+	const names = ['--color-ui-faint', '--menu-item-hover'];
+
+	const dark = await tokens(page, names);
+	expect(dark['--color-ui-faint'][0], 'dark').toBe(dark['--menu-item-hover'][1]);
+
+	await chooseTheme(page, 'default-light');
+
+	const light = await tokens(page, names);
+	expect(light['--color-ui-faint'][0], 'light').toBe(light['--menu-item-hover'][1]);
+	expect(light['--color-ui-faint'][0], 'the wash follows the mode').not.toBe(
+		dark['--color-ui-faint'][0]
+	);
+});
+
 test('a palette missing a bridged variable leaves the token unset, not the editor’s own', async ({
 	page
 }) => {

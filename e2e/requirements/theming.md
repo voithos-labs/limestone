@@ -24,6 +24,9 @@ screenshot pixel, is the observable the bridge actually controls.
   rule is retargeted rather than the token remapped, so the syntax palette keeps its
   meaning — asserted as a computed `border-top-color`, since a raw token and a painted
   colour are not comparable strings.
+- The wash aragonite's table menu hovers with takes the app's own menu hover, so it follows
+  the reader's mode and sits beside limestone's accent. aragonite ships one blue for both
+  modes, which is the one chrome token of its own that a light theme does not change.
 
 ## User interactions
 
