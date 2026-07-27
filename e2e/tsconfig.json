@@ -9,7 +9,8 @@
 		"noEmit": true,
 		"isolatedModules": true,
 		"verbatimModuleSyntax": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		"resolveJsonModule": true
 	},
 	"include": ["**/*.ts", "../playwright.config.ts"]
 }

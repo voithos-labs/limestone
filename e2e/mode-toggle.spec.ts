@@ -157,14 +157,13 @@ test('Mod+E keeps the reader where they were reading', async ({ page }) => {
 
 test('renaming a document does not flip the mode', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
-	await expect(page.locator('.editor')).toBeVisible();
+	const fontSize = () => page.locator('.editor').evaluate((el) => getComputedStyle(el).fontSize);
+	await expect.poll(fontSize).toBe('14px');
 
 	await page.locator('.title-input').click();
 	await page.keyboard.press('Control+e');
 	await page.keyboard.press('Control+Equal');
 
 	expect(await mode(page)).toBe('preview-inline');
-	expect(await page.locator('.editor').evaluate((el) => getComputedStyle(el).fontSize)).toBe(
-		'16px'
-	);
+	expect(await fontSize()).toBe('14px');
 });

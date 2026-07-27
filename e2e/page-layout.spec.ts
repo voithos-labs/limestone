@@ -49,7 +49,7 @@ test('the document sits in the app’s page column, at the app’s width', async
 	await expect(page.locator('.editor > .block-list')).toBeVisible();
 
 	const seeded = await columnOf(page);
-	expect(seeded.width).toBe(900);
+	expect(seeded.width).toBe(1000);
 	expect(Math.abs(seeded.centerOffset)).toBeLessThanOrEqual(1);
 
 	await setPageWidth(page, 700);
@@ -79,13 +79,16 @@ test('zooming scales the document’s own text', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
 	const paragraph = page.locator('.editor .text-editable-block', { hasText: 'Body text here.' });
 	await paragraph.click();
+	// The reader's own font size, read from settings — and not the adapter's hardcoded fallback,
+	// which is a different number on purpose, so this assertion can tell the two apart.
+	await expect.poll(() => fontToken(page)).toBe('14px');
 
 	await page.keyboard.press('Control+Equal');
 	await page.keyboard.press('Control+Equal');
 
-	expect(await fontToken(page)).toBe('18px');
-	await expect.poll(() => paragraph.evaluate((el) => getComputedStyle(el).fontSize)).toBe('18px');
+	expect(await fontToken(page)).toBe('16px');
+	await expect.poll(() => paragraph.evaluate((el) => getComputedStyle(el).fontSize)).toBe('16px');
 
 	await page.keyboard.press('Control+Minus');
-	await expect.poll(() => paragraph.evaluate((el) => getComputedStyle(el).fontSize)).toBe('17px');
+	await expect.poll(() => paragraph.evaluate((el) => getComputedStyle(el).fontSize)).toBe('15px');
 });

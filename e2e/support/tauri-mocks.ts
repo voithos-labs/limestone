@@ -8,6 +8,10 @@
  */
 
 import type { Page } from '@playwright/test';
+// The backend's own defaults, not a copy of them: a hand-written parallel set drifts, and the
+// suite then encodes the drift as expectations — a spec asserting a font size the shipped app
+// never starts at cannot tell a setting that was read from one that silently fell back.
+import SHIPPED_DEFAULTS from '../../src-tauri/defaults/default_settings.json' with { type: 'json' };
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -86,7 +90,7 @@ type MockWindow = typeof globalThis & {
  * first one focused.
  */
 export async function installTauriMocks(page: Page, options: MockOptions): Promise<void> {
-	await page.addInitScript(installMockInternals, options);
+	await page.addInitScript(installMockInternals, { ...options, defaults: SHIPPED_DEFAULTS });
 }
 
 export async function getMockState(page: Page): Promise<MockState> {
@@ -111,8 +115,9 @@ function installMockInternals({
 	frontmatter,
 	settings: overrides,
 	tabState,
-	propertyFields
-}: MockOptions): void {
+	propertyFields,
+	defaults: shippedDefaults
+}: MockOptions & { defaults: Settings }): void {
 	const SOURCE = {
 		id: 'mock-source',
 		title: 'Mock source',
@@ -141,18 +146,7 @@ function installMockInternals({
 
 	// Frozen: a setting write that reached this branch would leave `isModified` reading false
 	// for a value the reader just changed, and the app would never show it as modified.
-	const defaults = deepFreeze({
-		appearance: {
-			compact_tabs: false,
-			collapse_pinned_tabs: false,
-			compact_doc_header: true,
-			default_editor_mode: 'preview-inline',
-			editor_font_size: 16,
-			ui_scale_percent: 100,
-			max_page_width: 900
-		},
-		updates: { auto_install: false }
-	});
+	const defaults = deepFreeze(shippedDefaults);
 
 	// Seeded overrides reach the values alone, never the defaults, so what a spec seeds reads
 	// back as modified — the shape the app sees once the reader has changed a setting.

@@ -71,15 +71,18 @@ test('the scroll position comes back with it', async ({ page }) => {
 test('the zoom the reader set is the tab’s, and survives leaving it', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
 	await page.locator('.editor .text-editable-block').first().click();
+	// Settled on the reader's configured size before zooming, so what follows measures the zoom
+	// rather than a race with the setting that seeds it.
+	await expect.poll(() => fontSize(page)).toBe('14px');
 
 	await page.keyboard.press('Control+Equal');
 	await page.keyboard.press('Control+Equal');
-	await expect.poll(() => fontSize(page)).toBe('18px');
+	await expect.poll(() => fontSize(page)).toBe('16px');
 
 	await focusTab(page, 'other');
-	expect(await fontSize(page)).toBe('16px');
+	await expect.poll(() => fontSize(page)).toBe('14px');
 	await focusTab(page, 'hello');
-	expect(await fontSize(page)).toBe('18px');
+	expect(await fontSize(page)).toBe('16px');
 });
 
 interface SettleWindow {
