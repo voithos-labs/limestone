@@ -105,6 +105,27 @@ test('closing the tab writes the edit too, on the way out', async ({ page }) => 
 	expect(boot.consoleErrors).toEqual([]);
 });
 
+test('deleting a document nobody saved yet does not write it back', async ({ page }) => {
+	const boot = await bootApp(page, { docs: { [NOTE_PATH]: 'Body text here.\n' } });
+	await page.locator('.editor .text-editable-block').click();
+	await page.keyboard.press('End');
+	await page.keyboard.type(' Doomed.');
+
+	// Deleting closes the tab, and the teardown that follows is a flush like any other — the one
+	// that must not put the file back.
+	await page.locator('.kebab').click();
+	await page.locator('.menu-item', { hasText: 'Delete' }).click();
+	await page.locator('.menu-item', { hasText: 'Confirm delete' }).click();
+	await expect(page.locator('.library-page')).toBeVisible();
+
+	const { calls, writes } = await getMockState(page);
+	expect(calls).toContain('delete_document');
+	expect(calls.lastIndexOf('write_document')).toBeLessThan(calls.indexOf('delete_document'));
+	expect(writes.at(-1)?.content ?? '').not.toContain('Doomed.');
+	expect(boot.pageErrors).toEqual([]);
+	expect(boot.consoleErrors).toEqual([]);
+});
+
 test('a save keeps the document frontmatter it never edited', async ({ page }) => {
 	const seeded = `---\nid: ${NOTE_PATH}\ntags: []\ncreated_at: 2026-01-01T00:00:00.000Z\nupdated_at: 2026-01-01T00:00:00.000Z\nstatus: draft\n---\nBody text here.\n`;
 	await bootApp(page, { docs: { [NOTE_PATH]: seeded }, frontmatter: true });

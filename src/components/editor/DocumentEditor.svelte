@@ -71,8 +71,14 @@
 		const body = deleted ? null : (instance?.getSource() ?? pendingSource);
 		pendingSource = null;
 		if (body === null || body === savedBody) return;
-		savedBody = body;
-		return handle?.saveContent(body).catch((e) => console.error('saveContent failed', e));
+		// Advanced only once the write lands: a baseline moved on the way out would call a failed
+		// save saved, and the retry behind it would be skipped as a no-op.
+		return handle
+			?.saveContent(body)
+			.then(() => {
+				savedBody = body;
+			})
+			.catch((e) => console.error('saveContent failed', e));
 	}
 
 	const unregisterFlush = registerFlush(flushSave);
@@ -164,10 +170,16 @@
 
 		const el = wrapperEl?.querySelector<HTMLElement>('.editor') ?? null;
 		scrollEl = el;
+		blocksTop = measureBlocksTop();
 		const onScroll = () => {
-			if (restored && el) tab.state.scrollTop = el.scrollTop - headerHeight();
+			if (restored && el) tab.state.scrollTopBlocks = el.scrollTop - blocksTop;
 		};
 		el?.addEventListener('scroll', onScroll, { passive: true });
+		// The header's own height is the only term that offset depends on, so it is re-measured
+		// when the header resizes rather than on every scroll event of a long document.
+		const headerResize = new ResizeObserver(() => (blocksTop = measureBlocksTop()));
+		const headerEl = el?.querySelector(':scope > .editor-header');
+		if (headerEl) headerResize.observe(headerEl);
 
 		untrack(() => void restore());
 
@@ -175,21 +187,27 @@
 			offEdit();
 			offSelection();
 			offError();
+			headerResize.disconnect();
 			el?.removeEventListener('scroll', onScroll);
 		};
 	});
 
 	/**
-	 * Where the document's blocks begin inside the scroller — the height of the header the
-	 * editor renders above them. Scroll positions are persisted relative to it, never as a raw
-	 * `scrollTop`: the header can be shorter when a document is reopened than it was when the
-	 * reader left (its properties panel loads asynchronously), and the editor compensates for
-	 * that growth with a relative scroll write of its own. A raw offset would be corrected twice
-	 * over — once by this restore, once by that compensation — and land the reader the header's
-	 * growth below where they were.
+	 * Where the document's blocks begin inside the scroller — the height of the header the editor
+	 * renders above them, cached because the scroll listener reads it on every event.
+	 *
+	 * Scroll positions are persisted relative to it, never as a raw `scrollTop`: the header can be
+	 * shorter when a document is reopened than it was when the reader left (its properties panel
+	 * loads asynchronously), and the editor compensates for that growth with a relative scroll
+	 * write of its own. A raw offset would be corrected twice over — once by this restore, once by
+	 * that compensation — and land the reader the header's growth below where they were.
 	 */
-	function headerHeight(): number {
-		const list = scrollEl?.querySelector('.block-list');
+	let blocksTop = 0;
+
+	function measureBlocksTop(): number {
+		// The editor's own top-level list, addressed as aragonite addresses it: a nested list or
+		// table block carries `.block-list` too, and one of those measures a block, not the header.
+		const list = scrollEl?.querySelector(':scope > .block-list');
 		if (!list || !scrollEl) return 0;
 		return (
 			list.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop
@@ -212,16 +230,20 @@
 
 	async function restore() {
 		const selection = rememberedSelection();
-		// A legacy numeric `tab.state.cursorPos` addresses CodeMirror's flat offset space
-		// and has no meaning against a tree of blocks, so it is deliberately ignored.
+		// Two keys the previous editor left on a tab are deliberately ignored, both because they
+		// address a space this editor does not have: `cursorPos`, a flat character offset against
+		// a tree of blocks, and `scrollTop`, an offset into a scroller that held the document
+		// header outside it. Honouring that one would land the reader a header's height too low,
+		// so the position this editor persists carries a name of its own.
 		if (selection) await instance?.setSelection(selection);
 		// An opened document has to be typable without a click. Focusing the editor root would
 		// not do it — the root carries `tabindex="-1"` for parking focus and establishes no
 		// caret, so keystrokes would reach nothing. Placing one is what makes it usable; the
 		// root focus is only the fallback for a document with no placeable first block.
 		else if (!flow && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
-		if (typeof tab.state.scrollTop === 'number' && scrollEl) {
-			scrollEl.scrollTop = tab.state.scrollTop + headerHeight();
+		if (typeof tab.state.scrollTopBlocks === 'number' && scrollEl) {
+			blocksTop = measureBlocksTop();
+			scrollEl.scrollTop = tab.state.scrollTopBlocks + blocksTop;
 		}
 		// Only now: a restore emits selectionChange more than once, and the first of the
 		// burst can carry the pre-restore value.
@@ -301,11 +323,14 @@
 			saveTimer = null;
 		}
 		pendingSource = null;
+		// Before the delete, not after it: a flush landing while the delete is in flight reads the
+		// editor's live source, and would write back the file the backend has just removed.
+		deleted = true;
 		try {
 			await handle.delete();
-			deleted = true;
 			editor?.closeTab(tab.id, false);
 		} catch (e) {
+			deleted = false;
 			console.error('delete failed', e);
 		}
 	}

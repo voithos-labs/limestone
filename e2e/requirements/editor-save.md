@@ -22,6 +22,9 @@ document-write command.
 - Closing a window nobody typed in writes nothing. Flushing on the way out must not turn every
   opened document into a rewritten one — a document is dirty against the body the editor was
   handed, not against having been open.
+- Deleting a document does not write it back. Deleting closes its tab, and that teardown flushes
+  like any other — but the file is gone, and a flush reading the editor's live source would
+  recreate it. Nothing may be written for that document once its delete is under way.
 
 ## Edge cases
 

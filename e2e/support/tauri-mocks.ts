@@ -192,14 +192,16 @@ function installMockInternals({
 		};
 	}
 
-	// Two queries are answered: the document-by-id join, and a view's membership lookup —
-	// every seeded document belongs to the seeded view. Anything else reads as an empty
-	// table, which is what the app shows for a library with no indexed content.
+	// Two queries are answered, each matched on the shape only it has: the document-by-id join,
+	// and a view's membership lookup, which asks for an id set — every seeded document belongs to
+	// the seeded view. Anything else reads as an empty table, which is what the app shows for a
+	// library with no indexed content. Matching loosely (any `FROM documents d`) would answer
+	// queries this was never written for, which is how a mock stops standing for the backend.
 	function runSelect(query: string, params: unknown[]): unknown[] {
 		if (!query.includes('FROM documents d')) return [];
 		const seeded = params.filter((p): p is string => typeof p === 'string' && p in files);
 		if (query.includes('JOIN sources s')) return seeded.slice(0, 1).map(documentRow);
-		return seeded.map(documentRow);
+		return query.includes('d.id IN (') ? seeded.map(documentRow) : [];
 	}
 
 	// ── Stores ─────────────────────────────────────────
@@ -405,6 +407,9 @@ function installMockInternals({
 				});
 				return relPath;
 			}
+			case 'delete_document':
+				delete files[args.relPath];
+				return null;
 			case 'sql_select':
 				return runSelect(args.query, args.params ?? []);
 			case 'sql_execute':

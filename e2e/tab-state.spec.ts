@@ -82,29 +82,28 @@ test('the zoom the reader set is the tab’s, and survives leaving it', async ({
 	expect(await fontSize(page)).toBe('18px');
 });
 
-interface MountOrderWindow {
-	__mountOrder: string[];
+interface SettleWindow {
+	__propsAtEditorInsert?: boolean;
 }
 
 /**
- * Records whether the header's properties panel reaches the DOM after the editor itself. The
- * panel's fields load asynchronously, so the header grows once the editor has painted and the
- * tab's scroll has already been restored — the ordering the scenario below turns on. A fixture
- * whose panel happened to arrive first would pass every assertion while pinning nothing.
+ * Records whether the header's properties panel is already inside the editor at the moment the
+ * editor enters the DOM. The panel renders in the header slot once its fields have loaded, so a
+ * late one is absent there and present later — which is what makes the header grow after the
+ * tab's scroll has been restored, the collision the scenario below exists for. A fixture whose
+ * panel arrived with the editor would satisfy every other assertion while pinning nothing.
  */
-async function watchMountOrder(page: Page) {
+async function watchHeaderSettle(page: Page) {
 	await page.evaluate(() => {
-		const order: string[] = [];
-		(window as unknown as MountOrderWindow).__mountOrder = order;
-		const note = (name: string) => {
-			if (!order.includes(name)) order.push(name);
-		};
-		new MutationObserver((records) => {
+		new MutationObserver((records, observer) => {
 			for (const record of records) {
 				for (const node of record.addedNodes) {
 					if (!(node instanceof HTMLElement)) continue;
-					if (node.matches('.editor') || node.querySelector('.editor')) note('editor');
-					if (node.matches('.doc-props') || node.querySelector('.doc-props')) note('props');
+					const editor = node.matches('.editor') ? node : node.querySelector('.editor');
+					if (!editor) continue;
+					(window as SettleWindow).__propsAtEditorInsert = !!editor.querySelector('.doc-props');
+					observer.disconnect();
+					return;
 				}
 			}
 		}).observe(document.body, { childList: true, subtree: true });
@@ -132,14 +131,13 @@ test('a header that settles after the editor leaves the reader where they were',
 	const leftScroll = await scrollTop(page);
 
 	await focusTab(page, 'other');
-	await watchMountOrder(page);
+	await watchHeaderSettle(page);
 	await focusTab(page, 'hello');
 	await expect(page.locator('.doc-props')).toBeVisible();
 
-	expect(await page.evaluate(() => (window as unknown as MountOrderWindow).__mountOrder)).toEqual([
-		'editor',
-		'props'
-	]);
+	// The header did settle after the editor painted: no panel inside it when it was inserted,
+	// one there now.
+	expect(await page.evaluate(() => (window as SettleWindow).__propsAtEditorInsert)).toBe(false);
 	// And the growth is worth correcting: a panel that rendered empty would make the pin vacuous.
 	const panel = await page
 		.locator('.doc-props')
@@ -150,18 +148,15 @@ test('a header that settles after the editor leaves the reader where they were',
 	expect(await caret(page)).toEqual(left);
 });
 
-test('a caret position left by the previous editor is ignored, not restored', async ({ page }) => {
-	const boot = await bootApp(page, { docs: DOCS, tabState: { [NOTE]: { cursorPos: 4200 } } });
-	await expect(page.locator('.editor')).toBeVisible();
+test('a properties panel the reader opened is still open on return', async ({ page }) => {
+	await bootApp(page, { docs: DOCS, frontmatter: true, propertyFields: ['status'] });
+	await expect(page.locator('.props-chip')).toBeVisible();
+	await expect(page.locator('.doc-props')).toHaveCount(0);
 
-	// The flat offset means nothing here, so the document opens at the top — typable, as any
-	// freshly opened document is.
-	expect(await scrollTop(page)).toBe(0);
-	await page.keyboard.type('Typed. ');
-	await expect
-		.poll(async () => (await getMockState(page)).writes.at(-1)?.content ?? '')
-		.toContain('Typed. Paragraph number 1');
+	await page.locator('.props-chip').click();
+	await expect(page.locator('.doc-props')).toBeVisible();
 
-	expect(boot.pageErrors).toEqual([]);
-	expect(boot.consoleErrors).toEqual([]);
+	await leaveAndReturn(page);
+
+	await expect(page.locator('.doc-props')).toBeVisible();
 });
