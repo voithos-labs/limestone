@@ -2,6 +2,7 @@ import { bootApp, getMockState } from './support/app';
 import { expect, test } from './support/test';
 
 const NOTE_PATH = 'notes/hello.md';
+const MASK = 'updated_at: <stamped>';
 
 /** The body the editor last wrote, waited out past the save debounce. */
 async function lastWrite(page: import('@playwright/test').Page): Promise<string> {
@@ -41,9 +42,8 @@ test('a save keeps the document frontmatter it never edited', async ({ page }) =
 	await page.keyboard.type(' Edited.');
 
 	await expect.poll(() => lastWrite(page)).toContain('Body text here. Edited.');
-	const written = await lastWrite(page);
-	// `updated_at` is stamped fresh on every save, so the stable keys are what this pins.
-	expect(written.startsWith('---\n')).toBe(true);
-	expect(written).toContain('status: draft');
-	expect(written).toContain('created_at: 2026-01-01T00:00:00.000Z');
+	// `updated_at` is stamped fresh on every save; masking that one line is what lets the rest be
+	// compared byte for byte, so a dropped, added or reordered key fails too.
+	const written = (await lastWrite(page)).replace(/^updated_at: .+$/m, MASK);
+	expect(written).toBe(seeded.replace(/^updated_at: .+$/m, MASK).replace(/\n$/, ' Edited.\n'));
 });

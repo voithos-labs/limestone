@@ -14,6 +14,11 @@ document-write command.
 ## Edge cases
 
 - An empty document is typable on open too — there is no first block to click.
+- A fast burst of keystrokes settles on a write carrying all of them. It may take more than one
+  write to get there: the editor commits the first character on its own and the rest on a debounce
+  of its own, longer than this adapter's, so a burst crosses two save windows. Each write is a
+  truthful snapshot of the document at that moment, so what a scenario pins is the settled content,
+  never the number of writes.
 
 ## Known deltas from the CodeMirror editor
 
