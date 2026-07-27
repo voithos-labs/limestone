@@ -68,7 +68,8 @@ import { wallClockToMs } from '$lib/views/dateFormat';
  * faces: table, list, kanban, calendar, pinned doc
  *
  */
-export type ViewFaceType = 'table' | 'list' | 'grid' | 'kanban' | 'calendar' | 'pinned' | 'journal';
+export type ViewFaceType =
+	'table' | 'list' | 'grid' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
 
 interface ViewFaceJSON {
 	id: string;
@@ -85,6 +86,7 @@ const FACE_TYPE_LABEL: Record<ViewFaceType, string> = {
 	table: 'Table',
 	list: 'List',
 	grid: 'Grid',
+	doc: 'Document',
 	kanban: 'Board',
 	calendar: 'Calendar',
 	pinned: 'Pinned',
@@ -100,7 +102,9 @@ export class ViewFace {
 	sort: SortKey[] = $state([]);
 	config: Record<string, any> = $state({});
 	// A compound face (journal) renders another face as its body; the parent owns
-	// the body's additive_filter to scope it (e.g. to the selected day).
+	// the body's additive_filter to scope it (e.g. to the selected day). A journal
+	// always has one: a face saved before the doc face existed (body: null) meant
+	// "show the day's document", which is now a doc body.
 	body: ViewFace | null = $state(null);
 
 	constructor(json: ViewFaceJSON) {
@@ -113,7 +117,9 @@ export class ViewFace {
 		this.config = json.config;
 		this.body = json.body
 			? new ViewFace({ ...json.body, additive_filter: { op: 'and', children: [] } })
-			: null;
+			: json.type === 'journal'
+				? ViewFace.create('doc')
+				: null;
 	}
 
 	get label(): string {
@@ -893,9 +899,9 @@ class View {
 		return face;
 	}
 
-	// swap a compound face's body (null = the face's own native body)
-	setFaceBody(face: ViewFace, type: ViewFaceType | null): void {
-		face.body = type ? ViewFace.create(type, this.defaultFaceFieldIds()) : null;
+	// swap a compound face's body
+	setFaceBody(face: ViewFace, type: ViewFaceType): void {
+		face.body = ViewFace.create(type, this.defaultFaceFieldIds());
 	}
 
 	// copy an existing face (columns, filters, sort, config) under a new id

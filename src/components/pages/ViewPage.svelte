@@ -12,6 +12,8 @@
 	import TableFace from '../views/faces/TableFace.svelte';
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
+	import DocFace from '../views/faces/DocFace.svelte';
+	import { DocPicker } from '$lib/views/docPicker.svelte';
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import Menu from '../views/Menu.svelte';
 	import CoverSourceDialog from '../CoverSourceDialog.svelte';
@@ -27,6 +29,17 @@
 
 	const bodyFlow = true;
 	let bodyEl: HTMLDivElement | null = $state(null);
+
+	// the doc face draws the document, the header's search bar picks which one
+	// fyi fab=floating action button
+	const docPicker = new DocPicker();
+
+	// a doc face makes its own entry, and a journal's card bodies get the fab back
+	const showNewFab = $derived(
+		activeFace?.type === 'journal'
+			? activeFace.body?.type === 'grid' || activeFace.body?.type === 'list'
+			: activeFace?.type !== 'doc'
+	);
 
 	let faceInit = false;
 	$effect(() => {
@@ -267,11 +280,11 @@
 	const moreItems = $derived.by(() => {
 		const items: MenuEntry[] = [];
 		if (!view.cover) items.push({ value: 'add-cover', label: 'Add cover', icon: ImageUp });
-		items.push({ value: 'duplicate', label: 'Duplicate', icon: Copy });
+		items.push({ value: 'duplicate', label: 'Duplicate view', icon: Copy });
 		items.push(
 			confirmingDelete
 				? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
-				: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
+				: { value: 'delete', label: 'Delete view', icon: Trash2, keepOpen: true }
 		);
 		return items;
 	});
@@ -401,6 +414,7 @@
 					<ViewHeader
 						{view}
 						hasCover={!!view.cover}
+						{docPicker}
 						onMore={(anchor) => {
 							moreAnchor = anchor;
 							moreOpen = true;
@@ -409,7 +423,16 @@
 				</div>
 
 				{#if activeFace?.type === 'journal'}
-					<JournalFace {view} face={activeFace} flow={true} {onOpenRow} {createSignal} />
+					<JournalFace
+						{view}
+						face={activeFace}
+						flow={true}
+						{onOpenRow}
+						{createSignal}
+						{docPicker}
+					/>
+				{:else if activeFace?.type === 'doc'}
+					<DocFace {view} face={activeFace} flow={bodyFlow} picker={docPicker} />
 				{:else if activeFace?.type === 'list' || activeFace?.type === 'grid'}
 					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{:else}
@@ -420,7 +443,7 @@
 
 		<ScrollThumb scroller={bodyEl} top={20} />
 
-		{#if activeFace?.type !== 'journal' || activeFace?.body?.type === 'grid' || activeFace?.body?.type === 'list'}
+		{#if showNewFab}
 			<button class="new-fab" type="button" title="New note" onclick={() => createSignal++}>
 				<Plus size={18} strokeWidth={2} />
 			</button>

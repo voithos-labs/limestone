@@ -8,6 +8,8 @@
 	import Menu from './Menu.svelte';
 	import FaceSwitcher from './FaceSwitcher.svelte';
 	import EmojiPicker from './EmojiPicker.svelte';
+	import DocPickerPanel from './DocPicker.svelte';
+	import type { DocPicker } from '$lib/views/docPicker.svelte';
 	import {
 		getFieldIcon,
 		getOpLabel,
@@ -21,6 +23,7 @@
 		Funnel,
 		ChevronLeft,
 		ChevronRight,
+		ChevronDown,
 		Search,
 		EllipsisVertical,
 		X
@@ -30,10 +33,12 @@
 	let {
 		view,
 		hasCover = false,
+		docPicker,
 		onMore
 	}: {
 		view: View;
 		hasCover?: boolean;
+		docPicker?: DocPicker;
 		onMore?: (anchor: HTMLElement) => void;
 	} = $props();
 
@@ -41,16 +46,41 @@
 		view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
 	);
 
-	const searchMode = $derived.by(() => {
-		const effective = activeFace?.type === 'journal' ? activeFace.body?.type : activeFace?.type;
-		return effective === 'table' ? 'title' : 'hybrid';
-	});
+	// a journal searches whatever it renders for the day
+	const effectiveType = $derived(
+		activeFace?.type === 'journal' ? activeFace.body?.type : activeFace?.type
+	);
 
-	const searchable = $derived(activeFace?.type !== 'journal' || activeFace?.body != null);
+	const searchMode = $derived(effectiveType === 'table' ? 'title' : 'hybrid');
+
+	// A doc face draws one document, so its search picks which one,
+	// a dropdown under this bar instead of filtering rows in place
+	const picking = $derived(effectiveType === 'doc' ? docPicker : undefined);
+
+	let searchChipEl: HTMLElement | null = $state(null);
+	$effect(() => {
+		if (picking) picking.anchor = searchChipEl;
+	});
 
 	$effect(() => {
-		if (!searchable && view.state.search) view.state.search = '';
+		if (!picking && docPicker?.open) docPicker.open = false;
 	});
+
+	function onSearchKey(e: KeyboardEvent) {
+		if (!picking) return;
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			if (view.state.search) view.state.search = '';
+			else picking.open = false;
+		} else if (e.key === 'Enter') {
+			e.preventDefault();
+			const first = picking.results[0];
+			if (first) picking.pick(first.id);
+		} else if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			picking.open = true;
+		}
+	}
 
 	const fieldsById = $derived(new Map(view.fields.map((f: ViewField) => [f.id, f])));
 
@@ -187,16 +217,6 @@
 		pendingFocusLeaf = view.filter.children[view.filter.children.length - 1] as FilterLeaf;
 		if (view.state.filters_collapsed) view.state.filters_collapsed = false;
 	}
-
-	const BAR_UNIT = 5;
-	const BAR_WIDTH = 1;
-
-	let fillWidth = $state(0);
-	const barRunWidth = $derived.by(() => {
-		if (fillWidth < BAR_WIDTH) return 0;
-		const bars = Math.floor((fillWidth - BAR_WIDTH) / BAR_UNIT) + 1;
-		return (bars - 1) * BAR_UNIT + BAR_WIDTH;
-	});
 
 	let chipsWidth = $state(0);
 	let hasMounted = $state(false);
@@ -429,36 +449,48 @@
 		placeholder="Search fields…"
 	/>
 
-	{#if searchable}
-		<label class="search-chip">
-			<Search size={13} strokeWidth={1.75} />
-			<input
-				type="text"
-				class="search-input"
-				placeholder={searchMode === 'hybrid' ? 'quick search...' : 'search...'}
-				value={view.state.search ?? ''}
-				oninput={(e) => (view.state.search = (e.currentTarget as HTMLInputElement).value)}
-			/>
-			{#if view.state.search}
-				<button
-					class="search-clear"
-					type="button"
-					title="Clear"
-					onclick={() => (view.state.search = '')}
-				>
-					<X size={12} strokeWidth={2} />
-				</button>
-			{/if}
-		</label>
-	{:else}
-		<div class="search-placeholder" aria-hidden="true">
-			<span
-				class="placeholder-fill"
-				bind:clientWidth={fillWidth}
-				style:background-size="{barRunWidth}px 9px"
-			></span>
-		</div>
-	{/if}
+	<label class="search-chip" bind:this={searchChipEl}>
+		<Search size={13} strokeWidth={1.75} />
+		<input
+			type="text"
+			class="search-input"
+			placeholder={picking
+				? 'find a document...'
+				: searchMode === 'hybrid'
+					? 'quick search...'
+					: 'search...'}
+			value={view.state.search ?? ''}
+			oninput={(e) => {
+				view.state.search = (e.currentTarget as HTMLInputElement).value;
+				if (picking) picking.open = true;
+			}}
+			onfocus={() => picking && (picking.open = true)}
+			onkeydown={onSearchKey}
+		/>
+		{#if view.state.search}
+			<button
+				class="search-clear"
+				type="button"
+				title="Clear"
+				onclick={() => (view.state.search = '')}
+			>
+				<X size={12} strokeWidth={2} />
+			</button>
+		{/if}
+		{#if picking}
+			<button
+				class="search-toggle"
+				type="button"
+				aria-label="Browse documents"
+				onclick={(e) => {
+					e.preventDefault();
+					picking.open = !picking.open;
+				}}
+			>
+				<ChevronDown size={13} strokeWidth={2} />
+			</button>
+		{/if}
+	</label>
 
 	{#if !hasCover && !view.temporary}
 		{@render moreButton()}
@@ -469,6 +501,10 @@
 	<div class="save-row">
 		{@render saveButton()}
 	</div>
+{/if}
+
+{#if picking}
+	<DocPickerPanel picker={picking} query={view.state.search ?? ''} />
 {/if}
 
 <style>
@@ -750,31 +786,6 @@
 		text-decoration: underline;
 	}
 
-	.search-placeholder {
-		display: flex;
-		align-items: center;
-		height: 28px;
-		padding: 0 9px;
-		flex: 1;
-		min-width: 80px;
-		background: var(--chip-bg);
-		border-radius: 6px;
-		overflow: hidden;
-	}
-
-	.placeholder-fill {
-		flex: 1;
-		height: 9px;
-		opacity: 0.5;
-		background-image: repeating-linear-gradient(
-			90deg,
-			var(--color-ui-dulled) 0 1px,
-			transparent 1px 5px
-		);
-		background-repeat: no-repeat;
-		background-position: center;
-	}
-
 	.search-chip {
 		display: inline-flex;
 		align-items: center;
@@ -834,6 +845,26 @@
 		background: transparent;
 		color: var(--color-ui-muted);
 		cursor: pointer;
+	}
+
+	.search-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: none;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+
+	.search-toggle:hover {
+		color: var(--color-text-primary);
+		background: var(--chip-bg-hover);
 	}
 
 	.search-clear:hover {
