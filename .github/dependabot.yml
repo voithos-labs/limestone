@@ -5,30 +5,30 @@
 
 version: 2
 updates:
-  - package-ecosystem: "cargo"
-    directory: "/src-tauri"
-    schedule: { interval: "monthly" }
+  - package-ecosystem: 'cargo'
+    directory: '/src-tauri'
+    schedule: { interval: 'monthly' }
     cooldown:
       default-days: 7
       semver-major-days: 30
     groups:
       rust:
-        update-types: ["patch", "minor"]
+        update-types: ['patch', 'minor']
 
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule: { interval: "monthly" }
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule: { interval: 'monthly' }
     cooldown: { default-days: 7 }
     groups:
       frontend:
-        dependency-type: "production"
-        update-types: ["patch", "minor"]
+        dependency-type: 'production'
+        update-types: ['patch', 'minor']
       tooling: # not shipped
-        dependency-type: "development"
-        update-types: ["patch", "minor"]
+        dependency-type: 'development'
+        update-types: ['patch', 'minor']
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule: { interval: "weekly" }
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule: { interval: 'weekly' }
     groups:
-      actions: { patterns: ["*"] }
+      actions: { patterns: ['*'] }

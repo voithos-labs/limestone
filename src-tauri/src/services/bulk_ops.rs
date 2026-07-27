@@ -17,7 +17,7 @@ use crate::services::fs::{atomic_write, resolve_in_source};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -342,7 +342,7 @@ async fn execute(
                 "UPDATE documents SET properties = json_set(properties, ?, json(?))
                  WHERE source_id = ? AND id IN ({placeholders})"
             );
-            let mut q = sqlx::query(&sql)
+            let mut q = sqlx::query(AssertSqlSafe(sql))
                 .bind(&path)
                 .bind(serde_json::to_string(value).map_err(|e| e.to_string())?)
                 .bind(source_id);
@@ -570,7 +570,7 @@ async fn fetch_paths_by_id(
         "SELECT rel_path FROM documents
          WHERE source_id = ? AND deleted_at IS NULL AND id IN ({placeholders})"
     );
-    let mut q = sqlx::query_as::<_, (String,)>(&sql).bind(source_id);
+    let mut q = sqlx::query_as::<_, (String,)>(AssertSqlSafe(sql)).bind(source_id);
     for id in doc_ids {
         q = q.bind(id);
     }
@@ -604,14 +604,23 @@ mod tests {
 
     #[test]
     fn ident_accepts_ordinary_names() {
-        for s in ["due", "Due Date", "status/state", "priority-1", "café", "a_b"] {
+        for s in [
+            "due",
+            "Due Date",
+            "status/state",
+            "priority-1",
+            "café",
+            "a_b",
+        ] {
             assert!(validate_ident(s, "field name").is_ok(), "{s:?}");
         }
     }
 
     #[test]
     fn ident_rejects_json_path_and_control_chars() {
-        for s in ["", "a.b", "a\"b", "a'b", "a\\b", "a\nb", "a\tb", "a\u{1}b", "a\u{7f}b"] {
+        for s in [
+            "", "a.b", "a\"b", "a'b", "a\\b", "a\nb", "a\tb", "a\u{1}b", "a\u{7f}b",
+        ] {
             assert!(validate_ident(s, "field name").is_err(), "{s:?}");
         }
     }

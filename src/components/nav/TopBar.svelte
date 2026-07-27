@@ -20,7 +20,8 @@
 		TextAlignStart,
 		Pin,
 		PinOff,
-		CircleX
+		CircleX,
+		Scale
 	} from '@lucide/svelte';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
@@ -289,6 +290,8 @@
 					{/if}
 				{:else if d.content.type === 'new'}
 					<TextSearch size={13} />
+				{:else if d.content.type === 'licenses'}
+					<Scale size={13} />
 				{:else if !compactTabs || collapsed}
 					<TextAlignStart class="doc-icon" size={13} />
 				{/if}

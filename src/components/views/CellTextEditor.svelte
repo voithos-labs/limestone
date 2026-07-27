@@ -129,8 +129,7 @@
 			spellcheck="false"
 			oninput={autosize}
 			onkeydown={onKey}
-			onblur={commit}
-		></textarea>
+			onblur={commit}></textarea>
 		<span class="mirror" bind:this={mirrorEl} aria-hidden="true"></span>
 	</div>
 {/if}

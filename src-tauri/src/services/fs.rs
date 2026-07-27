@@ -196,8 +196,21 @@ mod tests {
     #[test]
     fn new_name_rejects_windows_illegal() {
         for name in [
-            "a:b.md", "a<b.md", "a>b.md", "a\"b.md", "a|b.md", "a?b.md", "a*b.md", "trailing.",
-            "trailing ", "CON.md", "con.md", "NUL", "COM1.md", "lpt9.txt", "aux",
+            "a:b.md",
+            "a<b.md",
+            "a>b.md",
+            "a\"b.md",
+            "a|b.md",
+            "a?b.md",
+            "a*b.md",
+            "trailing.",
+            "trailing ",
+            "CON.md",
+            "con.md",
+            "NUL",
+            "COM1.md",
+            "lpt9.txt",
+            "aux",
         ] {
             assert!(validate_new_name(name).is_err(), "{name:?}");
         }

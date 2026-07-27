@@ -12,7 +12,7 @@
 	import DocProperties from './views/DocProperties.svelte';
 	import {
 		Hash,
-		Ellipsis,
+		EllipsisVertical,
 		Trash2,
 		Folders,
 		Plus,
@@ -216,11 +216,11 @@
 	});
 
 	const menuItems: MenuEntry[] = $derived([
-		{ value: 'duplicate', label: 'Duplicate', icon: Copy },
+		{ value: 'duplicate', label: 'Duplicate document', icon: Copy },
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
 		confirmingDelete
 			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
-			: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
+			: { value: 'delete', label: 'Delete document', icon: Trash2, keepOpen: true }
 	]);
 
 	async function duplicateDoc() {
@@ -283,7 +283,7 @@
 			title="More"
 			onclick={() => (menuOpen = !menuOpen)}
 		>
-			<Ellipsis size={15} strokeWidth={1.75} />
+			<EllipsisVertical size={15} strokeWidth={1.75} />
 		</button>
 
 		<div class="head-row">
