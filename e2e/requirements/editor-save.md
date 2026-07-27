@@ -17,7 +17,8 @@ document-write command.
   only after the flush, so a document is never left on disk older than the one on screen. The
   editor batches keystrokes for undo and reports them a burst late, so what a flush writes is the
   editor's live source, not the last edit it was told about.
-- Leaving the tab does the same: the editor is destroyed there too.
+- Closing the tab does the same, and raises nothing on the way: the flush runs while the editor is
+  being torn down, with no later save window to fall back on.
 - Closing a window nobody typed in writes nothing. Flushing on the way out must not turn every
   opened document into a rewritten one — a document is dirty against the body the editor was
   handed, not against having been open.

@@ -89,17 +89,20 @@ test('closing a window nobody typed in writes nothing', async ({ page }) => {
 	expect((await getMockState(page)).writes).toEqual([]);
 });
 
-test('leaving the tab writes the edit too', async ({ page }) => {
-	await bootApp(page, { docs: { [NOTE_PATH]: 'Body text here.\n' } });
+test('closing the tab writes the edit too, on the way out', async ({ page }) => {
+	const boot = await bootApp(page, { docs: { [NOTE_PATH]: 'Body text here.\n' } });
 	await page.locator('.editor .text-editable-block').click();
 	await page.keyboard.press('End');
 	await page.keyboard.type(' Unsaved.');
 
-	// Leaving destroys the editor, which is the other way an edit can be stranded mid-debounce.
-	await page.keyboard.press('Control+l');
+	// The other way an edit is stranded mid-debounce — and the one that reads the editor while
+	// it is being torn down, with nothing left afterwards to save from.
+	await page.keyboard.press('Control+w');
 	await expect(page.locator('.library-page')).toBeVisible();
 
 	expect((await getMockState(page)).writes.at(-1)?.content).toBe('Body text here. Unsaved.\n');
+	expect(boot.pageErrors).toEqual([]);
+	expect(boot.consoleErrors).toEqual([]);
 });
 
 test('a save keeps the document frontmatter it never edited', async ({ page }) => {
