@@ -33,6 +33,14 @@ editor itself binds, which pass through untouched when focus is in the document.
   crossing into the next block is the editor's own and never reaches the window's scroll fallback,
   so only a move within one block leaves the fallback free to claim the key.
 
+## Accepted
+
+- Mod+I and Mod+B ask the editor to format a selection, and do nothing at a bare caret: aragonite
+  reads the selection to wrap (`getRawSelection` returns null while it is collapsed) and its toggle
+  returns without touching the block. A reader who presses Mod+I and then types gets plain text —
+  there is no pending-emphasis state to type into. The chord is still swallowed, so nothing else
+  happens either. Every scenario above selects first, which is why the suite never saw it.
+
 ## Not pinned by a scenario
 
 - The scroll fallback also stands down when focus is on the editor's own root or on chrome inside
