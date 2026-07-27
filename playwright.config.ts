@@ -3,8 +3,12 @@ import { defineConfig, devices } from '@playwright/test';
 // The repo has no @types/node, and this is the only node global the config needs.
 declare const process: { env: Record<string, string | undefined> };
 
-// Vite is pinned to 1420 with strictPort, so the dev server and baseURL cannot drift.
-const BASE_URL = 'http://localhost:1420';
+// Vite is pinned to one port with strictPort, so the dev server and baseURL cannot drift. Both
+// read `PORT`, which the spawned server inherits — set it to run beside another Vite holding 1420
+// (a sibling aragonite showcase). Without it `reuseExistingServer` adopts whatever answers there,
+// and a suite that never reaches this app reads as a wholesale regression in it.
+const PORT = process.env.PORT || '1420';
+const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
 	testDir: './e2e',

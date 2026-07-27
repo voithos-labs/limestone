@@ -5,6 +5,12 @@ import Icons from 'unplugin-icons/vite';
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+// 1420 is what `tauri dev` navigates to, so leave it alone for the app. `PORT` is for running the
+// e2e suite beside another Vite that already holds it — a sibling aragonite showcase, say — which
+// `strictPort` otherwise makes impossible.
+// @ts-expect-error process is a nodejs global
+const port = Number(process.env.PORT) || 1420;
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
 	plugins: [sveltekit(), Icons({ compiler: 'svelte' })],
@@ -15,7 +21,7 @@ export default defineConfig(async () => ({
 	clearScreen: false,
 	// 2. tauri expects a fixed port, fail if that port is not available
 	server: {
-		port: 1420,
+		port,
 		strictPort: true,
 		host: host || false,
 		hmr: host

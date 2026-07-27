@@ -31,6 +31,14 @@ Run dev app
 npm run tauri dev
 ```
 
+Vite is pinned to port 1420, which an aragonite showcase dev server also takes. With one
+running, `npm test` adopts it instead of starting this app and every spec fails on a page
+that was never limestone. Give the suite a port of its own:
+
+```bash
+PORT=1425 npm test
+```
+
 Pick up a rebuilt aragonite, then restart any running dev server — Vite does not watch
 `node_modules`. Plain `npm install` will not notice a rebuild: the version string is
 unchanged, so npm has nothing to compare.
