@@ -119,17 +119,18 @@
 	}
 
 	function setMode(next: PresentationMode) {
+		// Every route into reading records the mode it left — chord, toggle button, alike — so
+		// Mod+E hands the reader back a mode they chose. On the tab, not in a local, or the memory
+		// dies with the component: leaving the document and returning is a remount.
+		if (next === 'reading' && mode !== 'reading') tab.state.modeBeforeReading = mode;
 		mode = next;
 		tab.state.presentationMode = next;
 	}
 
-	// Where Mod+E returns to, so a reader in source mode is not dropped into live preview.
-	let modeBeforeReading: PresentationMode = 'preview-inline';
-
 	function toggleReading() {
-		if (mode === 'reading') return setMode(modeBeforeReading);
-		modeBeforeReading = mode;
-		setMode('reading');
+		if (mode !== 'reading') return setMode('reading');
+		const remembered = tab.state.modeBeforeReading;
+		setMode(isOfferedMode(remembered) && remembered !== 'reading' ? remembered : 'preview-inline');
 	}
 
 	// ── Wire-up: events, scroll tracking, and the restore of where you left off ─────────

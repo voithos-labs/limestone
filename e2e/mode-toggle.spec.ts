@@ -36,6 +36,37 @@ test('Mod+E returns to the editing mode the reader was in', async ({ page }) => 
 	expect(await mode(page)).toBe('source');
 });
 
+test('the mode Mod+E returns to survives leaving the document and coming back', async ({
+	page
+}) => {
+	await bootApp(page, { docs: DOCS });
+	await expect(page.locator('.editor')).toBeVisible();
+	await page.locator('.mode-toggle button', { hasText: 'Source' }).click();
+	await page.keyboard.press('Control+e');
+	expect(await mode(page)).toBe('reading');
+
+	await page.keyboard.press('Control+l');
+	await expect(page.locator('.library-page')).toBeVisible();
+	await page.locator('.tab', { hasText: 'hello' }).first().click();
+	await expect(page.locator('.editor')).toBeVisible();
+	expect(await mode(page)).toBe('reading');
+
+	await page.keyboard.press('Control+e');
+	expect(await mode(page)).toBe('source');
+});
+
+test('entering reading mode from the toggle is remembered too', async ({ page }) => {
+	await bootApp(page, { docs: DOCS });
+	await expect(page.locator('.editor')).toBeVisible();
+	await page.locator('.mode-toggle button', { hasText: 'Source' }).click();
+
+	await page.locator('.mode-toggle button', { hasText: 'Reading' }).click();
+	expect(await mode(page)).toBe('reading');
+
+	await page.keyboard.press('Control+e');
+	expect(await mode(page)).toBe('source');
+});
+
 test('renaming a document does not flip the mode', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
 	await expect(page.locator('.editor')).toBeVisible();
