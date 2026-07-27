@@ -35,6 +35,9 @@ carries the reasoning, these two scenarios pin its halves.
 - Resizing a selected embed writes the new width in the note's own syntax: `![[cat.png|300]]`
   becomes `![[cat.png|320]]`, not `![cat.png|320](cat.png)`. A note edited here still resolves in
   Obsidian.
+- Retargeting an embed from the popover's URL row rewrites the target and nothing else: an embed
+  that carried no width does not come back wearing one. Its alt is derived from the target rather
+  than stored, so an alt still reading as the old target is stale, not authored, and re-derives.
 - An alt an embed cannot carry is declined rather than escaped into GFM: typing one into the
   properties popover commits nothing, and the bytes stay as the author wrote them. The decline is
   asserted from what the editor reports, because bytes alone cannot tell a declined edit from one
