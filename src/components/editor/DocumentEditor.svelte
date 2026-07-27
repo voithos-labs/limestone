@@ -400,6 +400,7 @@
 			header={flow ? undefined : documentHeader}
 			theme={currentThemeType()}
 			presentationMode={mode}
+			blockDragHandles={false}
 			plugins={EDITOR_PLUGINS}
 			{resolveImageUrl}
 			{onLinkActivate}
@@ -426,9 +427,12 @@
 	}
 
 	/* The editor's standalone-widget frame is chrome the app pane already provides, and
-	   its native scrollbar would double up with ScrollThumb. Its padding stays: the hover
-	   drag handle rides in that gutter. Reached through the wrapper because a bare
-	   `.editor` selector loses to the editor component's own scoped rule. */
+	   its native scrollbar would double up with ScrollThumb. Its padding stays, though the
+	   drag handle it used to clear is gone: it is the document's only margin once the page
+	   column stops centring — at 800px the text sits 40px from the pane's edge, at 1280px
+	   the centring absorbs it entirely — and it spaces the hero off the top edge as well.
+	   Reached through the wrapper because a bare `.editor` selector loses to the editor
+	   component's own scoped rule. */
 	.doc-editor :global(.editor) {
 		border: none;
 		border-radius: 0;
