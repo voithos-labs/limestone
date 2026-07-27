@@ -19,6 +19,9 @@ answered by the fake backend in `e2e/support/tauri-mocks.ts`.
 ## Error cases
 
 - Boot raises no uncaught page errors and logs no console errors.
+- A document image resolves to an asset URL only the Tauri webview can serve, so fetching it fails
+  in the browser. That failure is the browser's, not the app's, and does not count as a console
+  error — but a failed fetch of anything else still does.
 - Boot reaches for no command the fake backend lacks a handler for. A recorded unhandled
   command means the app gained a native dependency the mock layer has to answer.
 

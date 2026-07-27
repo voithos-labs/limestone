@@ -14,6 +14,9 @@ import type { Page } from '@playwright/test';
 /** Raw file contents keyed by source-relative path, e.g. `notes/hello.md`. */
 export type SeededDocs = Record<string, string>;
 
+/** The host `convertFileSrc` mints, so a spec can recognize a fetch of a mocked asset. */
+export const ASSET_HOST = 'asset.localhost';
+
 export interface MockOptions {
 	docs: SeededDocs;
 	/**

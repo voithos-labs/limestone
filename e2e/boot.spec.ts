@@ -25,6 +25,19 @@ test('opens a seeded document in the focused tab', async ({ page }) => {
 	expect(boot.consoleErrors).toEqual([]);
 });
 
+test('an unfetchable document image is not counted as an app error', async ({ page }) => {
+	const failures: string[] = [];
+	page.on('requestfailed', (request) => failures.push(request.url()));
+
+	const boot = await bootApp(page, { docs: { 'notes/pic.md': 'Look ![[cat.png]] here.\n' } });
+	await expect(page.locator('.editor img')).toBeAttached();
+	// The browser genuinely cannot serve the asset URL, so the console error is real.
+	await expect.poll(() => failures.some((url) => url.includes('asset.localhost'))).toBe(true);
+
+	expect(boot.consoleErrors).toEqual([]);
+	expect(boot.pageErrors).toEqual([]);
+});
+
 test('writes an edited document back through the IPC layer', async ({ page }) => {
 	await bootApp(page, { docs: { [NOTE_PATH]: NOTE_BODY } });
 
