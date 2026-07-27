@@ -52,7 +52,8 @@ hence they are pinned as hard as the happy paths.
   claimed past it.
 - A target that resolves to nothing renders as the editor's broken-image treatment, the
   same as a GFM image pointing at a missing file. The plugin has no resolver of its own to
-  decline with, so nothing falls back to literal text.
+  decline with, so nothing falls back to literal text. Deferred: the resolver a real
+  document gets arrives with Task 4.
 
 ## User interactions
 
@@ -61,8 +62,6 @@ hence they are pinned as hard as the happy paths.
 - An embed inside a table cell keeps its bytes exactly, through a mount and a read back.
 - Arrowing onto an embed selects it whole, and a further press deletes it — the editor's
   image behavior, which the previous editor emulated with its own key handlers.
-- Resizing a selected embed rewrites its `|width` modifier, a capability the previous
-  editor did not have.
 - Selecting a range that spans an embed and copying it: the clipboard carries the literal
   `![[cat.png]]` bytes.
 - Pasting an image into the editor inserts `![[…]]` (the import hook's format) and it
@@ -83,8 +82,10 @@ prefers the parse layer wherever a scenario is decidable there:
 - **Pinned now, against a mounted editor:** the image widget and its resolved URL, the
   code fence, a table cell's bytes, and round-trip after an edit elsewhere.
 - **Deferred to Task 6:** everything that needs the app around the editor — caret,
-  select-then-delete, resize, and copy through the real document view; paste-image; and an
-  embed's interaction with the app's own save/restore.
+  select-then-delete, and copy through the real document view; paste-image; a target the
+  app's resolver cannot answer; and an embed's interaction with the app's own
+  save/restore. Whatever Task 4 decides about the editing delta below belongs here too:
+  the deltas are what Task 6 pins, not the parity they replaced.
 
 One scenario is pinned but not enforced by this plugin: an embed inside a code fence stays
 literal because a code block has no inline content for the scanner to run over. The
@@ -93,14 +94,38 @@ from the editor, not from here.
 
 ## Known deltas from the CodeMirror editor
 
+Two of these share a root cause: the editor rebuilds an image's bytes from GFM
+assumptions, because an `image` node carries no record of the syntax it was parsed from.
+Both are tracked as aragonite items; neither has a limestone-side fix that does not cost
+more than it buys.
+
+- **Editing an embed rewrites it as GFM — the one delta that changes bytes.** Select an
+  embed and press Shift+ArrowRight, or change anything in its properties popover, and
+  `![[cat.png|300]]` becomes `![cat.png|320](cat.png)`. The Obsidian syntax this plugin
+  exists to preserve is gone from the note, silently, and Obsidian will no longer resolve
+  the image against the vault. Untouched embeds are unaffected — this is a
+  format-preservation delta on edit, not a round-trip one, and the bytes of a document
+  nobody edits stay exact.
+
+  Why: the plugin mints a built-in `image` node, so it inherits the image kind's editing
+  handlers, and those rebuild the node's span from its fields into `![alt](url)`. That is
+  correct behavior for the editor — it has no way to know the node was plugin-minted —
+  which is why the fix is upstream: either a plugin owns re-serialization of a node it
+  minted, or the image kind declines edits whose source is not GFM.
+
+  **Task 4 decides** between accepting-and-documenting this and suppressing the resize and
+  properties affordances for embeds until upstream lands. The hazard is narrower than it
+  reads: the key handler bails in `reading` mode, so it exists only while editing.
+
 - The source is never revealed under the caret. The old editor swapped the image back to
   `![[…]]` text while the caret was inside it; aragonite renders its own images as widgets
   in every presentation mode, and the embed now follows that rule. Editing a target means
   selecting the embed and retyping it.
+
 - Inside a table cell an embed does not render as an image, and its source displays
   garbled — `![[cat.png]]` shows as `![cat.pngg]]`. A cell is the one place the editor
   renders images as alt text rather than widgets, and that fallback rebuilds the displayed
   source assuming the alt begins two characters into the node, as a GFM image's does. The
   character count still matches the source exactly, so offsets and bytes are unaffected;
   only the glyphs are wrong. Rendering an embed's own source verbatim there is an upstream
-  fix, not a limestone one.
+  fix, already tracked as an aragonite item, not a limestone one.
