@@ -153,6 +153,18 @@ test('resizing an embed writes the new width in the note’s own syntax', async 
 	await expect.poll(() => saved(page)).toBe('Look ![[cat.png|320]] here.\n');
 });
 
+// The other half of the write path, and the one that carries no width: an embed that never had a
+// size modifier must not come back wearing one.
+test('retargeting an embed through the popover keeps it an embed', async ({ page }) => {
+	await openNote(page, 'Lead paragraph.\n\nLook ![[cat.png]] here.\n');
+
+	await widget(page).click();
+	await page.locator('.md-image-properties input').first().fill('dog.png');
+	await page.locator('.editor .text-editable-block').first().click();
+
+	await expect.poll(() => saved(page)).toBe('Lead paragraph.\n\nLook ![[dog.png]] here.\n');
+});
+
 // An embed names one target and fills both alt and url from it, so alt text of its own has no
 // form in the syntax. The rewrite declines, and the editor suppresses the commit rather than
 // writing bytes the plugin did not author.

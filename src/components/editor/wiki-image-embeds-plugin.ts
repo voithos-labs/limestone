@@ -66,8 +66,10 @@ function rewriteWikiImageEmbed(source: string, fields: ImageFields): string | nu
 	// here; rewriting those would nest the syntax inside itself.
 	if (!source.startsWith(OPEN)) return null;
 	if (fields.title !== undefined || fields.label !== undefined) return null;
-	// The recognizer fills alt and url from the one target, so an alt that no longer matches it
-	// is an edit this grammar cannot express.
-	if (fields.alt !== fields.url) return null;
+	// The recognizer fills alt from the target, so an embed's alt is a shadow of it rather than
+	// anything the syntax stores. It may read as the new target, or as the old one it is still
+	// carrying through a retarget — both re-derive. Anything else is alt text with nowhere to go.
+	const target = recognizeWikiImageEmbed(source, 0, source.length)?.target;
+	if (fields.alt !== fields.url && fields.alt !== target) return null;
 	return `${OPEN}${fields.url}${fields.width !== undefined ? `|${fields.width}` : ''}]]`;
 }
