@@ -20,7 +20,8 @@ export interface WikiImageEmbed {
 // text, which is what keeps `![[some-note.md]]` — an Obsidian note link — readable.
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
 
-const OPEN = '![[';
+/** The bytes an embed opens with: the scanner's prefix, and the plugin's rung and rewrite gate. */
+export const OPEN = '![[';
 const NEWLINE = 0x0a;
 const OPEN_PAREN = 0x28;
 const OPEN_BRACKET = 0x5b;

@@ -92,40 +92,23 @@ literal because a code block has no inline content for the scanner to run over. 
 scenario stays — it is what a reader of a note cares about — but a regression would come
 from the editor, not from here.
 
+## Why the plugin owns the way back
+
+An `image` node carries no record of the syntax it was parsed from. Every read path can
+therefore treat an embed as an image — which is the point — but no write path can: the
+editor's inverse for a built-in kind emits that kind's built-in grammar, so re-serializing
+an edited embed would bring it back as `![cat.png|320](cat.png)` and the syntax the note
+was written in would be gone.
+
+That is what the rung's rewrite hook is for, and it is why the hook must decline as
+readily as it writes: an embed holds a target and an optional width, so an edit that needs
+anywhere else to live has no form here, and the editor suppresses it rather than writing
+bytes this plugin did not author. Both halves are pinned against a real document in
+`document-embeds.md` — a resize commits `![[cat.png|320]]`, an alt edit commits nothing.
+
 ## Known deltas from the CodeMirror editor
-
-Two of these share a root cause: the editor rebuilds an image's bytes from GFM
-assumptions, because an `image` node carries no record of the syntax it was parsed from.
-Both are tracked as aragonite items; neither has a limestone-side fix that does not cost
-more than it buys.
-
-- **Editing an embed rewrites it as GFM — the one delta that changes bytes.** Select an
-  embed and press Shift+ArrowRight, or change anything in its properties popover, and
-  `![[cat.png|300]]` becomes `![cat.png|320](cat.png)`. The Obsidian syntax this plugin
-  exists to preserve is gone from the note, silently, and Obsidian will no longer resolve
-  the image against the vault. Untouched embeds are unaffected — this is a
-  format-preservation delta on edit, not a round-trip one, and the bytes of a document
-  nobody edits stay exact.
-
-  Why: the plugin mints a built-in `image` node, so it inherits the image kind's editing
-  handlers, and those rebuild the node's span from its fields into `![alt](url)`. That is
-  correct behavior for the editor — it has no way to know the node was plugin-minted —
-  which is why the fix is upstream: either a plugin owns re-serialization of a node it
-  minted, or the image kind declines edits whose source is not GFM.
-
-  **Task 4 decides** between accepting-and-documenting this and suppressing the resize and
-  properties affordances for embeds until upstream lands. The hazard is narrower than it
-  reads: the key handler bails in `reading` mode, so it exists only while editing.
 
 - The source is never revealed under the caret. The old editor swapped the image back to
   `![[…]]` text while the caret was inside it; aragonite renders its own images as widgets
   in every presentation mode, and the embed now follows that rule. Editing a target means
   selecting the embed and retyping it.
-
-- Inside a table cell an embed does not render as an image, and its source displays
-  garbled — `![[cat.png]]` shows as `![cat.pngg]]`. A cell is the one place the editor
-  renders images as alt text rather than widgets, and that fallback rebuilds the displayed
-  source assuming the alt begins two characters into the node, as a GFM image's does. The
-  character count still matches the source exactly, so offsets and bytes are unaffected;
-  only the glyphs are wrong. Rendering an embed's own source verbatim there is an upstream
-  fix, already tracked as an aragonite item, not a limestone one.

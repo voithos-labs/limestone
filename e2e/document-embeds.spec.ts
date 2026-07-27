@@ -140,15 +140,47 @@ test('a pasted image is imported into the source and embedded', async ({ page })
 	]);
 });
 
-// Recorded, not desired: an embed inherits the built-in image kind's editing handlers, which
-// rebuild its source from the node's fields as GFM. Documented in `wiki-image-embeds.md`; the fix is
-// upstream, so this pins what a reader's file actually says today.
-test('editing an embed rewrites it as a GFM image', async ({ page }) => {
+// An embed is a built-in image to every read path, and the editor's inverse for that kind writes
+// GFM — so without the plugin's own rewrite the resize below would leave `![cat.png|320](cat.png)`
+// in the note, and Obsidian would stop resolving the image.
+test('resizing an embed writes the new width in the note’s own syntax', async ({ page }) => {
 	await openNote(page, 'Look ![[cat.png|300]] here.\n');
 
 	await widget(page).click();
 	await expect(page.locator('[data-image-overlay]')).toBeVisible();
 	await page.keyboard.press('Shift+ArrowRight');
 
-	await expect.poll(() => saved(page)).toBe('Look ![cat.png|320](cat.png) here.\n');
+	await expect.poll(() => saved(page)).toBe('Look ![[cat.png|320]] here.\n');
+});
+
+// An embed names one target and fills both alt and url from it, so alt text of its own has no
+// form in the syntax. The rewrite declines, and the editor suppresses the commit rather than
+// writing bytes the plugin did not author.
+test('an alt an embed cannot carry is declined, and the bytes stay as written', async ({
+	page
+}) => {
+	// The decline is what the editor reports; the bytes alone cannot tell it from a rewrite that
+	// ignored the alt and handed back what it was given, which the commit drops without a word.
+	const declines: string[] = [];
+	page.on('console', (message) => {
+		if (message.type() === 'warning' && message.text().includes('declined')) {
+			declines.push(message.text());
+		}
+	});
+	await openNote(page, 'Lead paragraph.\n\nLook ![[cat.png]] here.\n');
+
+	await widget(page).click();
+	await page.locator('.md-image-properties input').nth(1).fill('A cat');
+	// Committing the popover is clicking away from it, onto something that is not the widget.
+	const lead = page.locator('.editor .text-editable-block').first();
+	await lead.click();
+	await expect(page.locator('.md-image-properties')).toHaveCount(0);
+	expect(declines.join('\n')).toContain('cannot represent this edit');
+
+	// A real edit after it, so "nothing was written for the alt" is a settled fact and not a race.
+	await page.keyboard.press('End');
+	await page.keyboard.type(' Edited.');
+	await expect.poll(() => saved(page)).toBe('Lead paragraph. Edited.\n\nLook ![[cat.png]] here.\n');
+	const { writes } = await getMockState(page);
+	expect(writes.every((write) => write.content.includes('![[cat.png]]'))).toBe(true);
 });

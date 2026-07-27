@@ -187,16 +187,16 @@ test('leaves an embed inside a code fence as literal text', async ({ page }) => 
 	await expect(editor(page)).toContainText('![[cat.png]]');
 });
 
-// A table cell is the one place the editor renders images as alt text instead of widgets,
-// and that fallback reconstructs the source from the alt's LENGTH — which for an embed is
-// the wrong text, though never the wrong number of characters. So the bytes are what this
-// pins; the display is a recorded delta.
-test('keeps an embed in a table cell byte-for-byte', async ({ page }) => {
+// A table cell is the one place the editor renders an image as text rather than a widget, so
+// what a reader sees there is the embed's own source — which it shows verbatim, marker for
+// marker, rather than rebuilt from the node's fields.
+test('keeps an embed in a table cell byte-for-byte, and shows it as written', async ({ page }) => {
 	const source = '| a |\n| --- |\n| ![[cat.png]] |\n';
 	await mountEditor(page, source);
 
 	expect(await editedSource(page)).toBe(source);
 	await expect(images(page)).toHaveCount(0);
+	await expect(editor(page)).toContainText('![[cat.png]]', { useInnerText: true });
 });
 
 test('keeps the embed bytes through an edit elsewhere', async ({ page }) => {

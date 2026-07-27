@@ -67,7 +67,9 @@
 		}
 		// The editor's model is current the moment a key lands, but its `edit` event is debounced
 		// for undo batching — so the last event's snapshot can be a whole burst behind, and a
-		// reader who types and immediately quits would lose it.
+		// reader who types and immediately quits would lose it. The fallback covers a flush with
+		// no instance left to read; removing it would leave the window-close scenario in
+		// `editor-save.spec.ts` as the only cover for the live read.
 		const body = deleted ? null : (instance?.getSource() ?? pendingSource);
 		pendingSource = null;
 		if (body === null || body === savedBody) return;
@@ -151,6 +153,28 @@
 
 	// ── Wire-up: events, scroll tracking, and the restore of where you left off ─────────
 
+	/**
+	 * Where the document's blocks begin inside the scroller — the height of the header the editor
+	 * renders above them, cached because the scroll listener reads it on every event.
+	 *
+	 * Scroll positions are persisted relative to it, never as a raw `scrollTop`: the header can be
+	 * shorter when a document is reopened than it was when the reader left (its properties panel
+	 * loads asynchronously), and the editor compensates for that growth with a relative scroll
+	 * write of its own. A raw offset would be corrected twice over — once by this restore, once by
+	 * that compensation — and land the reader the header's growth below where they were.
+	 */
+	let blocksTop = 0;
+
+	function measureBlocksTop(): number {
+		// The editor's own top-level list, addressed as aragonite addresses it: a nested list or
+		// table block carries `.block-list` too, and one of those measures a block, not the header.
+		const list = scrollEl?.querySelector(':scope > .block-list');
+		if (!list || !scrollEl) return 0;
+		return (
+			list.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop
+		);
+	}
+
 	let restored = false;
 
 	$effect(() => {
@@ -191,28 +215,6 @@
 			el?.removeEventListener('scroll', onScroll);
 		};
 	});
-
-	/**
-	 * Where the document's blocks begin inside the scroller — the height of the header the editor
-	 * renders above them, cached because the scroll listener reads it on every event.
-	 *
-	 * Scroll positions are persisted relative to it, never as a raw `scrollTop`: the header can be
-	 * shorter when a document is reopened than it was when the reader left (its properties panel
-	 * loads asynchronously), and the editor compensates for that growth with a relative scroll
-	 * write of its own. A raw offset would be corrected twice over — once by this restore, once by
-	 * that compensation — and land the reader the header's growth below where they were.
-	 */
-	let blocksTop = 0;
-
-	function measureBlocksTop(): number {
-		// The editor's own top-level list, addressed as aragonite addresses it: a nested list or
-		// table block carries `.block-list` too, and one of those measures a block, not the header.
-		const list = scrollEl?.querySelector(':scope > .block-list');
-		if (!list || !scrollEl) return 0;
-		return (
-			list.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop
-		);
-	}
 
 	/** A persisted selection, or null when the tab carries none this editor can place. */
 	function rememberedSelection(): EditorSelection | null {

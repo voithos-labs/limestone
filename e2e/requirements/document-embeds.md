@@ -26,14 +26,19 @@ see its size — is unobservable without one.
   rendered immediately. What reaches the importer is asserted, not just that it was called: the
   source, the extension, and the bytes' length.
 
-## Known deltas from the CodeMirror editor
+## Editing an embed keeps it an embed
 
-Recorded rather than desired; the fixes are upstream in the editor. `wiki-image-embeds.md` carries the
-reasoning, this file the scenario that pins today's behavior.
+The editor treats an embed as the built-in image it is, and the built-in way back is GFM. What
+keeps a note in the syntax it was written in is the plugin's own rewrite; `wiki-image-embeds.md`
+carries the reasoning, these two scenarios pin its halves.
 
-- **Editing a selected embed rewrites it as GFM.** `![[cat.png|300]]` becomes
-  `![cat.png|320](cat.png)`, and the Obsidian syntax is gone from the note. Pinned so the day it
-  changes upstream is a red test rather than a surprise.
+- Resizing a selected embed writes the new width in the note's own syntax: `![[cat.png|300]]`
+  becomes `![[cat.png|320]]`, not `![cat.png|320](cat.png)`. A note edited here still resolves in
+  Obsidian.
+- An alt an embed cannot carry is declined rather than escaped into GFM: typing one into the
+  properties popover commits nothing, and the bytes stay as the author wrote them. The decline is
+  asserted from what the editor reports, because bytes alone cannot tell a declined edit from one
+  that was quietly ignored and dropped by the commit's equality guard.
 
 ## Deferred
 
