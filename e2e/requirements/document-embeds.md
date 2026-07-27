@@ -45,11 +45,12 @@ carries the reasoning, these two scenarios pin its halves.
 
 ## Accepted
 
-- An embed whose image fails to load leaves a 0×0 gap where it sits until something re-renders
-  that block; only from the next render on does aragonite's "⚠ image failed to load" placeholder
-  appear, and it then stays in every mode. The failure is cached the moment the load fails, but
-  the widget already in the DOM is not redecorated — so the placeholder is a render behind, not a
-  mode-gated one. A reader who opens a note with a missing image sees nothing until they touch it.
+- An embed whose image fails to load leaves a 0×0 gap where it sits. aragonite caches the failure
+  the moment it happens, but the widget already in the DOM is never redecorated, so nothing marks
+  the spot until something re-renders that block: measured still 0×0 two seconds on in live
+  preview, while a mode round-trip re-renders it and the "⚠ image failed to load" placeholder then
+  appears and survives the trip back. The placeholder is a render behind rather than mode-gated —
+  a reader opening a note with a missing image is shown nothing at all where it should be.
 
 ## Deferred
 

@@ -36,7 +36,7 @@ a collapsed marker stays in `textContent`, so only `innerText` says what the rea
 
 ## Accepted
 
-- A task item keeps its literal `[ ]` / `[x]` glyphs in every mode, reading included, rather than
-  swapping them for a checkbox control. They are not inert text — aragonite wraps the glyphs in a
-  `role="checkbox"` span carrying `aria-checked`, and clicking one in an editing mode toggles it —
-  but a reader expecting a real box will not find one.
+- A task item keeps its literal `[ ]` / `[x]` glyphs — in live preview and in reading alike —
+  rather than swapping them for a checkbox control. They are not inert text: aragonite wraps the
+  glyphs in a `role="checkbox"` span carrying `aria-checked`, and clicking one in live preview
+  toggles it. But a reader expecting a real box will not find one.
