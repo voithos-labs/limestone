@@ -11,8 +11,9 @@ editor itself binds, which pass through untouched when focus is in the document.
   swallowed on its way there.
 - Mod+I italicizes rather than opening settings. Its old app binding made italic unreachable while
   typing, which is the whole reason the policy exists.
-- Mod+Shift+I opens settings, from a focused document as readily as from anywhere else. Settings
-  moved off Mod+I and has to stay reachable without leaving the document first.
+- Mod+, opens settings, from a focused document as readily as from anywhere else. Settings moved
+  off Mod+I and has to stay reachable without leaving the document first, so its replacement is a
+  chord the editor does not claim.
 - Mod+F opens the editor's find bar with the caret in a block.
 - Mod+W closes the tab while typing. An app chord the editor does not bind is untouched by the
   policy.
@@ -25,8 +26,9 @@ editor itself binds, which pass through untouched when focus is in the document.
 - The same rebinding fires while renaming the document in the title field. That field rides inside
   the editor's root but is the app's own chrome, and the editor hands its keystrokes back whole —
   renaming is not editing the document, and closing the tab from the title bar has to work.
-- The same rebinding fires from the library, where no editor is mounted. The chord is only the
-  editor's where the editor can act on it.
+- The same rebinding fires from the library, where quick search holds focus and no editor is
+  mounted. Focus in a field is the point: the chord is only the editor's where the editor can act
+  on it, not in every text field the app has.
 - ArrowDown inside a wrapped paragraph moves the caret and does not page the document. A caret
   crossing into the next block is the editor's own and never reaches the window's scroll fallback,
   so only a move within one block leaves the fallback free to claim the key.
@@ -40,3 +42,6 @@ editor itself binds, which pass through untouched when focus is in the document.
 - macOS reads Ctrl+B as bold in the editor but as a distinct chord in the app, so a Mac reader who
   rebinds an app action onto Ctrl+B takes it from the editor. Windows is the tested platform and
   the two agree there.
+- The editor's zoom-in chord is reserved as Mod+= alone. The adapter also accepts the shifted and
+  numpad plus, so a reader who rebinds an app action onto Mod+Shift+= takes zoom-in from the
+  editor. Nothing binds either today.

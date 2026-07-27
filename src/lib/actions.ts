@@ -117,7 +117,8 @@ export const actions: Action[] = [
 		id: 'tab.prev',
 		title: 'Previous tab',
 		category: 'tabs',
-		defaultKeys: ['ctrl+shift+tab', 'mod+alt+arrowleft', 'ctrl+,'],
+		// No `ctrl+,` alias: settings took it, the way it reads on every other desktop app.
+		defaultKeys: ['ctrl+shift+tab', 'mod+alt+arrowleft'],
 		run: (session) => session.editors[0].focusAdjacentTab(-1)
 	},
 	{
@@ -160,8 +161,9 @@ export const actions: Action[] = [
 		title: 'Open settings',
 		category: 'navigation',
 		// Not Mod+I: the editor binds it to italic, and a chord the editor claims never reaches
-		// this handler while a document has focus. Mod+, is taken by tab.prev off Windows' Ctrl.
-		defaultKeys: ['mod+shift+i'],
+		// this handler while a document has focus. Whatever replaces it has to stay out of
+		// `RESERVED` for the same reason — Mod+, does.
+		defaultKeys: ['mod+,'],
 		run: (session) => session.editors[0].focusTab({ kind: 'settings' })
 	}
 ];

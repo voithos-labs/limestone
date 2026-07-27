@@ -19,6 +19,14 @@
  * Modifier-carrying chords only. The editor binds plain Enter/Tab/Backspace/Delete/Escape and
  * the bare arrows too, but an app shortcut on a bare typing key is broken whatever this set
  * says, and listing them is a drift surface for nothing.
+ *
+ * Membership costs nothing but an app shortcut inside a document: the guard's only move is to
+ * return, so over-reserving can never reach native browser behaviour. Under-reserving is the
+ * direction that loses an editor feature, so err long.
+ *
+ * On macOS the editor folds Ctrl and Cmd into one modifier and `specFromEvent` does not, so a
+ * chord held with Ctrl reads as the editor's and not as this set's. Ledgered, with the reason
+ * it is not fixed here, in `e2e/requirements/keybindings.md`.
  */
 const RESERVED = new Set([
 	// Inline formatting and heading level
@@ -43,6 +51,8 @@ const RESERVED = new Set([
 	'mod+shift+a',
 	'mod+c',
 	'mod+x',
+	'mod+shift+end',
+	'mod+shift+home',
 	// Block motion and hard line breaks
 	'alt+arrowup',
 	'alt+arrowdown',
@@ -73,7 +83,12 @@ export function isEditorReservedChord(spec: string | null): boolean {
 
 // ── Where the editor claims them ─────────────────────────────────────────────
 
-/** aragonite's root, and the slot within it that the host fills with its own chrome. */
+/**
+ * aragonite's root, and the slot within it that the host fills with its own chrome. Both are
+ * class names the editor mints and neither is contract: the editor declines to key its own copy
+ * on `.editor-header` precisely because a host could mint a node by that name. `.editor` is
+ * load-bearing a second time, in the `EDITABLE` selector in `+page.svelte`.
+ */
 const EDITOR_ROOT = '.editor';
 const HOST_CHROME = '.editor-header';
 
@@ -84,8 +99,7 @@ const HOST_CHROME = '.editor-header';
  *
  * Deliberately narrower than `inEditable`, which matches any text field on the page: reserving
  * chords there would take them from quick search, the settings pane and every view editor, none
- * of which the document editor can act in. The class name is the only handle the host has; the
- * editor keys its own copy on the bound element.
+ * of which the document editor can act in.
  */
 export function inEditorContent(e: KeyboardEvent): boolean {
 	const target = e.target instanceof Element ? e.target : null;

@@ -97,6 +97,11 @@
 	}
 
 	const SCROLL_STEP = 48;
+	// `.editor` is aragonite's own class, not a contract — the editor declines to key its own
+	// rules on such a name because a host could mint a node by it. It earns its place here
+	// anyway: focus parks on the editor root, which is neither a field nor contenteditable, and
+	// the fallback would page the document under a reader who is only moving the caret. The
+	// other place this coupling lives is `$lib/editor-chords`; re-check both on an editor bump.
 	const EDITABLE =
 		'input, textarea, select, [contenteditable=""], [contenteditable="true"], .editor';
 

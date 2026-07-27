@@ -40,10 +40,10 @@ test('Mod+I italicizes instead of opening settings', async ({ page }) => {
 	await expect(page.locator('.settings-page')).toHaveCount(0);
 });
 
-test('Mod+Shift+I opens settings from a focused document', async ({ page }) => {
+test('Mod+, opens settings from a focused document', async ({ page }) => {
 	await selectTheLine(page);
 
-	await page.keyboard.press('Control+Shift+i');
+	await page.keyboard.press('Control+Comma');
 
 	await expect(page.locator('.settings-page')).toBeVisible();
 });
@@ -88,9 +88,14 @@ test('the same rebinding fires while renaming, which is not editing the document
 	await expect(page.locator('.settings-page')).toBeVisible();
 });
 
-test('the same rebinding fires from the library, where no editor is mounted', async ({ page }) => {
+test('the same rebinding fires from the library, in a field of the app’s own', async ({ page }) => {
 	await bootApp(page, { settings: SETTINGS_ON_MOD_B });
 	await expect(page.locator('.library-page')).toBeVisible();
+	// The precondition this scenario turns on, asserted rather than assumed: quick search takes
+	// focus on open, so the chord is pressed in a text field — the case a guard written against
+	// `inEditable` would swallow. Were focus to land nowhere, the scenario would still pass and
+	// would stop discriminating that.
+	await expect(page.locator('.quick-search-input')).toBeFocused();
 
 	await page.keyboard.press('Control+b');
 
