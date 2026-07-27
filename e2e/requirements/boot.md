@@ -13,6 +13,8 @@ answered by the fake backend in `e2e/support/tauri-mocks.ts`.
 
 - Typing into a seeded doc: the edit is written back through the document-write command,
   addressed by the path it was seeded under.
+- Opening a doc without touching it: nothing is written. A mount that counted as an edit
+  would rewrite every document the moment it was opened.
 
 ## Error cases
 

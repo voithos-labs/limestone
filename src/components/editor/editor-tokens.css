@@ -51,9 +51,11 @@
    --font-editor holds an identical value on both sides — deliberately unbridged. */
 
 /* The editor root fills its pane; the content column is what carries the app's
-   page width, the way every other page surface does. */
+   page width, the way every other page surface does. Its horizontal inset matches
+   `DocumentHero`'s, so the document title and the first block share a left edge. */
 .editor > .block-list {
 	max-width: var(--page-max-width, 1200px);
 	margin: 0 auto;
 	width: 100%;
+	padding: 0 24px;
 }

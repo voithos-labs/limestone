@@ -19,7 +19,7 @@ test('opens a seeded document in the focused tab', async ({ page }) => {
 
 	await expect(page.locator('.tab.active .tab-label')).toHaveText('hello');
 	await expect(page.locator('.title-input')).toHaveValue('hello');
-	await expect(page.locator('.cm-content')).toContainText('Seeded from the mocked filesystem.');
+	await expect(page.locator('.editor')).toContainText('Seeded from the mocked filesystem.');
 
 	expect(boot.pageErrors).toEqual([]);
 	expect(boot.consoleErrors).toEqual([]);
@@ -28,9 +28,15 @@ test('opens a seeded document in the focused tab', async ({ page }) => {
 test('writes an edited document back through the IPC layer', async ({ page }) => {
 	await bootApp(page, { docs: { [NOTE_PATH]: NOTE_BODY } });
 
-	const content = page.locator('.cm-content');
-	await expect(content).toContainText('Seeded from the mocked filesystem.');
-	await content.click();
+	const paragraph = page.locator('.editor .text-editable-block', {
+		hasText: 'Seeded from the mocked filesystem.'
+	});
+	await expect(paragraph).toBeVisible();
+	// Opening a document must not itself count as an edit, or every doc is rewritten on open.
+	expect((await getMockState(page)).writes).toEqual([]);
+
+	await paragraph.click();
+	await page.keyboard.press('End');
 	await page.keyboard.type(' Typed by the spec.');
 
 	await expect

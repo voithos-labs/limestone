@@ -10,7 +10,7 @@
 	import ViewPage from '../components/pages/ViewPage.svelte';
 	import NewTabPage from '../components/pages/NewTabPage.svelte';
 	import LicensesPage from '../components/pages/LicensesPage.svelte';
-	import MarkdownEditor from '../components/editor/MarkdownEditor.svelte';
+	import DocumentEditor from '../components/editor/DocumentEditor.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import { actionForKey, keyCapture } from '$lib/actions';
@@ -93,7 +93,7 @@
 
 	const SCROLL_STEP = 48;
 	const EDITABLE =
-		'input, textarea, select, [contenteditable=""], [contenteditable="true"], .cm-editor';
+		'input, textarea, select, [contenteditable=""], [contenteditable="true"], .editor';
 
 	function inEditable(e: KeyboardEvent): boolean {
 		const t = e.target as HTMLElement | null;
@@ -157,7 +157,7 @@
 					{#if tab.content.type === 'view'}
 						<ViewPage view={tab.content.view} {tab} {editor} />
 					{:else if tab.content.type === 'markdown'}
-						<MarkdownEditor {tab} {editor} />
+						<DocumentEditor {tab} {editor} />
 					{:else if tab.content.type === 'new'}
 						<NewTabPage {tab} {editor} />
 					{:else if tab.content.type === 'licenses'}

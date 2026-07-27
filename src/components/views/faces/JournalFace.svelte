@@ -12,7 +12,7 @@
 	import Menu from '../Menu.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import DateValueEditor from '../DateValueEditor.svelte';
-	import MarkdownEditor from '../../editor/MarkdownEditor.svelte';
+	import DocumentEditor from '../../editor/DocumentEditor.svelte';
 	import TableFace from './TableFace.svelte';
 	import ListFace from './ListFace.svelte';
 	import { ChevronDown, Plus } from '@lucide/svelte';
@@ -736,7 +736,7 @@
 			{/if}
 			{#if docTab}
 				{#key docTab.id}
-					<MarkdownEditor tab={docTab} {flow} />
+					<DocumentEditor tab={docTab} {flow} />
 				{/key}
 			{:else}
 				<div class="entry-empty">
