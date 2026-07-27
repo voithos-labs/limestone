@@ -35,3 +35,17 @@ test('Mod+E returns to the editing mode the reader was in', async ({ page }) => 
 	await page.keyboard.press('Control+e');
 	expect(await mode(page)).toBe('source');
 });
+
+test('renaming a document does not flip the mode', async ({ page }) => {
+	await bootApp(page, { docs: DOCS });
+	await expect(page.locator('.editor')).toBeVisible();
+
+	await page.locator('.title-input').click();
+	await page.keyboard.press('Control+e');
+	await page.keyboard.press('Control+Equal');
+
+	expect(await mode(page)).toBe('preview-inline');
+	expect(await page.locator('.editor').evaluate((el) => getComputedStyle(el).fontSize)).toBe(
+		'16px'
+	);
+});

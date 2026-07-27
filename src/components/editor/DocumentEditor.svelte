@@ -243,6 +243,10 @@
 
 	function onKeydown(e: KeyboardEvent) {
 		if (!(e.ctrlKey || e.metaKey)) return;
+		// A text field in the chrome keeps its own keystrokes — the hero's title input rides in
+		// the editor's header slot, so a rename would otherwise flip the mode under the reader.
+		// The document's own blocks are contenteditable, never fields, so they are unaffected.
+		if ((e.target as HTMLElement | null)?.closest('input, textarea, select')) return;
 		if (e.key === '=' || e.key === '+') {
 			e.preventDefault();
 			setZoom(zoom + 1);
