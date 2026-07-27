@@ -14,7 +14,8 @@ editor itself binds, which pass through untouched when focus is in the document.
 - Mod+, opens settings, from a focused document as readily as from anywhere else. Settings moved
   off Mod+I and has to stay reachable without leaving the document first, so its replacement is a
   chord the editor does not claim.
-- Mod+F opens the editor's find bar with the caret in a block.
+- Mod+F opens the editor's find bar with the caret in a block. Verified here, unconfirmed in the
+  packaged app: Ctrl+F is on the same WebView2 accelerator list as Ctrl+Plus (see Accepted below).
 - Mod+W closes the tab while typing. An app chord the editor does not bind is untouched by the
   policy.
 
@@ -40,6 +41,14 @@ editor itself binds, which pass through untouched when focus is in the document.
   returns without touching the block. A reader who presses Mod+I and then types gets plain text —
   there is no pending-emphasis state to type into. The chord is still swallowed, so nothing else
   happens either. Every scenario above selects first, which is why the suite never saw it.
+- A whole class of chords may never reach the page in the packaged Windows app, whatever this
+  suite says: WebView2 runs its own browser-accelerator handling _before_ the web content, and the
+  keys on that list — Ctrl+F, Ctrl+P, Ctrl+R and F5, Ctrl+Plus and Ctrl+Minus, Ctrl+Shift+C and
+  F12 — reach a JavaScript listener only if the browser does not claim them. Tauri leaves that
+  handling enabled (there is no config option for it, and tauri-runtime-wry never sets wry's flag),
+  so the app's claim on Mod+F and on the zoom pair is untested outside this harness. Playwright
+  dispatches into the renderer directly, past that stage, so every scenario here passes either way.
+  Mod+E, Mod+B, Mod+I, Mod+W and Mod+, are not on the list and are unaffected.
 
 ## Not pinned by a scenario
 
