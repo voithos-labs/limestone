@@ -17,41 +17,22 @@ interface InlineSummary {
 	width?: number;
 }
 
-/**
- * Runs `body` in the page, once more if Vite reloaded under it. The first spec to import
- * the harness makes Vite discover the editor's dependency tree, and it reloads the page
- * when it finishes pre-bundling — a destroyed execution context there is that reload, not
- * a failure. Only the first browser spec of a cold-cache run ever sees it, which is every
- * CI run.
- */
-async function throughViteReload<T>(page: Page, run: () => Promise<T>): Promise<T> {
-	try {
-		return await run();
-	} catch (error) {
-		if (!String(error).includes('Execution context was destroyed')) throw error;
-		await page.waitForLoadState();
-		return await run();
-	}
-}
-
 /** Inline nodes of the document's block at `index`, parsed with the plugins installed. */
 async function inlineNodes(page: Page, source: string, index = 0): Promise<InlineSummary[]> {
 	await bootApp(page);
-	return throughViteReload(page, () =>
-		page.evaluate(
-			async ({ harnessUrl, source, index }) => {
-				const harness = await import(harnessUrl);
-				return harness.inlineNodesAt(source, index).map((node: Record<string, unknown>) => ({
-					kind: node.kind,
-					start: node.start,
-					end: node.end,
-					...(node.alt !== undefined ? { alt: node.alt } : {}),
-					...(node.url !== undefined ? { url: node.url } : {}),
-					...(node.width !== undefined ? { width: node.width } : {})
-				}));
-			},
-			{ harnessUrl: HARNESS_URL, source, index }
-		)
+	return page.evaluate(
+		async ({ harnessUrl, source, index }) => {
+			const harness = await import(harnessUrl);
+			return harness.inlineNodesAt(source, index).map((node: Record<string, unknown>) => ({
+				kind: node.kind,
+				start: node.start,
+				end: node.end,
+				...(node.alt !== undefined ? { alt: node.alt } : {}),
+				...(node.url !== undefined ? { url: node.url } : {}),
+				...(node.width !== undefined ? { width: node.width } : {})
+			}));
+		},
+		{ harnessUrl: HARNESS_URL, source, index }
 	);
 }
 
@@ -61,14 +42,12 @@ async function imageNodes(page: Page, source: string, index = 0): Promise<Inline
 
 async function mountEditor(page: Page, source: string): Promise<void> {
 	await bootApp(page);
-	await throughViteReload(page, () =>
-		page.evaluate(
-			async ({ harnessUrl, source }) => {
-				const harness = await import(harnessUrl);
-				harness.mountHarnessEditor(source);
-			},
-			{ harnessUrl: HARNESS_URL, source }
-		)
+	await page.evaluate(
+		async ({ harnessUrl, source }) => {
+			const harness = await import(harnessUrl);
+			harness.mountHarnessEditor(source);
+		},
+		{ harnessUrl: HARNESS_URL, source }
 	);
 	await expect(page.locator('#wiki-embed-harness .editor')).toBeVisible();
 }
@@ -112,6 +91,7 @@ test('declines an embed whose close lies past the scan window', () => {
 const declined = [
 	['a target with no image extension', '![[notes.md]]'],
 	['an empty target', '![[]]'],
+	['a target that is bare extension, with no stem', '![[.png]]'],
 	['a size modifier with no target', '![[|300]]'],
 	['an embed broken by a line ending', '![[cat\n.png]]'],
 	['an unterminated embed', '![[cat.png'],
@@ -162,6 +142,14 @@ test('parses a GFM image exactly as it did before', async ({ page }) => {
 
 test('leaves a non-image target as text', async ({ page }) => {
 	expect(await imageNodes(page, '![[notes.md]]')).toEqual([]);
+});
+
+// The declining half of this is a recognizer case; what matters to a reader of a note is
+// that one unterminated opener does not eat the rest of the paragraph.
+test('parses the embed that follows an unterminated opener', async ({ page }) => {
+	expect(await imageNodes(page, '![[cat.png and ![[dog.png]]')).toEqual([
+		{ kind: 'image', start: 15, end: 27, alt: 'dog.png', url: 'dog.png' }
+	]);
 });
 
 test('parses every embed in a block over its own bytes', async ({ page }) => {

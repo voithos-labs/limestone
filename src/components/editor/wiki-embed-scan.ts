@@ -43,8 +43,10 @@ export function recognizeWikiEmbed(raw: string, pos: number, end: number): WikiE
 	const innerEnd = findClose(raw, innerStart, end);
 	if (innerEnd < 0) return null;
 	const embedEnd = innerEnd + 2;
-	// A `(` here means the built-in scanner has an inline image to parse; leave it be.
-	if (raw.charCodeAt(embedEnd) === OPEN_PAREN) return null;
+	// A `(` here means the built-in scanner has an inline image to parse; leave it be. The
+	// window bound is not decoration: reading `raw[end]` would be outside the range this is
+	// handed, and a `(` beyond it is a tail the built-in scanner cannot reach either.
+	if (embedEnd < end && raw.charCodeAt(embedEnd) === OPEN_PAREN) return null;
 
 	const inner = raw.slice(innerStart, innerEnd);
 	const bar = inner.indexOf('|');
