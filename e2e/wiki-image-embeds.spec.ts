@@ -1,11 +1,11 @@
 import type { Page } from '@playwright/test';
-import { recognizeWikiEmbed } from '../src/components/editor/wiki-embed-scan';
+import { recognizeWikiImageEmbed } from '../src/components/editor/wiki-image-embeds-scan';
 import { bootApp } from './support/app';
 import { expect, test } from './support/test';
 
 // Vite serves and transforms this path; a string keeps the harness (and aragonite's
 // types) out of the e2e type-check program, which knows neither Svelte nor the alias.
-const HARNESS_URL = '/src/components/editor/wiki-embed-harness.ts';
+const HARNESS_URL = '/src/components/editor/wiki-image-embeds-harness.ts';
 
 /** The fields of an inline node these scenarios turn on. */
 interface InlineSummary {
@@ -49,25 +49,25 @@ async function mountEditor(page: Page, source: string): Promise<void> {
 		},
 		{ harnessUrl: HARNESS_URL, source }
 	);
-	await expect(page.locator('#wiki-embed-harness .editor')).toBeVisible();
+	await expect(page.locator('#wiki-image-embeds-harness .editor')).toBeVisible();
 }
 
-const images = (page: Page) => page.locator('#wiki-embed-harness [data-image-widget]');
-const editor = (page: Page) => page.locator('#wiki-embed-harness .editor');
+const images = (page: Page) => page.locator('#wiki-image-embeds-harness [data-image-widget]');
+const editor = (page: Page) => page.locator('#wiki-image-embeds-harness .editor');
 
 function editedSource(page: Page): Promise<string> {
-	return page.evaluate(() => (window as unknown as HarnessWindow).__wikiEmbedSource());
+	return page.evaluate(() => (window as unknown as HarnessWindow).__wikiImageEmbedSource());
 }
 
 interface HarnessWindow {
-	__wikiEmbedSource(): string;
+	__wikiImageEmbedSource(): string;
 }
 
 // ── The recognizer ──────────────────────────────────────────────────────────
 
 test('claims an embed with its target and size modifier', () => {
 	const raw = 'a ![[cat.png|300]] b';
-	expect(recognizeWikiEmbed(raw, 2, raw.length)).toEqual({
+	expect(recognizeWikiImageEmbed(raw, 2, raw.length)).toEqual({
 		start: 2,
 		end: 18,
 		target: 'cat.png',
@@ -77,7 +77,7 @@ test('claims an embed with its target and size modifier', () => {
 
 test('ignores a size modifier that is not a pixel width', () => {
 	const raw = '![[cat.png|abc]]';
-	expect(recognizeWikiEmbed(raw, 0, raw.length)).toEqual({
+	expect(recognizeWikiImageEmbed(raw, 0, raw.length)).toEqual({
 		start: 0,
 		end: 16,
 		target: 'cat.png'
@@ -85,7 +85,7 @@ test('ignores a size modifier that is not a pixel width', () => {
 });
 
 test('declines an embed whose close lies past the scan window', () => {
-	expect(recognizeWikiEmbed('![[cat.png]] tail', 0, 8)).toBeNull();
+	expect(recognizeWikiImageEmbed('![[cat.png]] tail', 0, 8)).toBeNull();
 });
 
 const declined = [
@@ -101,7 +101,7 @@ const declined = [
 
 for (const [what, raw] of declined) {
 	test(`declines ${what}`, () => {
-		expect(recognizeWikiEmbed(raw, 0, raw.length)).toBeNull();
+		expect(recognizeWikiImageEmbed(raw, 0, raw.length)).toBeNull();
 	});
 }
 

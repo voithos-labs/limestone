@@ -141,7 +141,7 @@ test('a pasted image is imported into the source and embedded', async ({ page })
 });
 
 // Recorded, not desired: an embed inherits the built-in image kind's editing handlers, which
-// rebuild its source from the node's fields as GFM. Documented in `wiki-embed.md`; the fix is
+// rebuild its source from the node's fields as GFM. Documented in `wiki-image-embeds.md`; the fix is
 // upstream, so this pins what a reader's file actually says today.
 test('editing an embed rewrites it as a GFM image', async ({ page }) => {
 	await openNote(page, 'Look ![[cat.png|300]] here.\n');

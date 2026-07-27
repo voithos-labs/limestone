@@ -1,9 +1,9 @@
 /**
- * Drives the wiki-embed plugin before Task 4 gives the app an editor: it parses with the
- * plugins installed, and mounts a bare editor when a scenario needs rendered DOM. Nothing
- * in the app imports it — `wiki-embed.spec.ts` pulls it in over the dev server, which
- * serves modules from `src/` alone. That fs policy, not a preference, is why test
- * scaffolding sits beside the code it drives.
+ * Drives the wiki image embeds plugin without the app around it: it parses with the plugins
+ * installed, and mounts a bare editor when a scenario needs rendered DOM. Nothing in the app
+ * imports it — `wiki-image-embeds.spec.ts` pulls it in over the dev server, which serves
+ * modules from `src/` alone. That fs policy, not a preference, is why test scaffolding sits
+ * beside the code it drives.
  */
 import { mount } from 'svelte';
 import { Editor, installPlugins, parse, type EditorInstance, type InlineNode } from 'aragonite';
@@ -27,7 +27,7 @@ export function inlineNodesAt(source: string, index = 0): InlineNode[] {
  */
 export function mountHarnessEditor(source: string): void {
 	const host = document.createElement('div');
-	host.id = 'wiki-embed-harness';
+	host.id = 'wiki-image-embeds-harness';
 	document.body.appendChild(host);
 
 	const editor = mount(Editor, {
@@ -39,5 +39,5 @@ export function mountHarnessEditor(source: string): void {
 		}
 	}) as EditorInstance;
 
-	Object.assign(window, { __wikiEmbedSource: () => editor.getSource() });
+	Object.assign(window, { __wikiImageEmbedSource: () => editor.getSource() });
 }

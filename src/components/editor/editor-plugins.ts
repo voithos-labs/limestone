@@ -8,7 +8,7 @@ import { mermaidPlugin } from 'aragonite/plugins/mermaid';
 import { mermaidRenderer } from 'aragonite/plugins/mermaid/renderer';
 import { tocPlugin } from 'aragonite/plugins/toc';
 import { highlightOccurrencesPlugin } from 'aragonite/plugins/highlight-occurrences';
-import { wikiEmbedPlugin } from './wiki-embed-plugin';
+import { wikiImageEmbedsPlugin } from './wiki-image-embeds-plugin';
 import type { EditorPluginEntry } from 'aragonite';
 
 /**
@@ -29,5 +29,5 @@ export const EDITOR_PLUGINS: readonly EditorPluginEntry[] = [
 	mermaidPlugin({ renderer: mermaidRenderer }),
 	tocPlugin(),
 	highlightOccurrencesPlugin(),
-	wikiEmbedPlugin()
+	wikiImageEmbedsPlugin()
 ];

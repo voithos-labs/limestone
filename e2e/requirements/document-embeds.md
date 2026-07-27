@@ -1,8 +1,8 @@
 # Feature: `![[…]]` embeds inside a real document
 
-Covers `document-embeds.spec.ts` — the half of `wiki-embed.md` that needs the app around the
+Covers `document-embeds.spec.ts` — the half of `wiki-image-embeds.md` that needs the app around the
 editor: the host's own image resolver, the clipboard, the save path, and the asset importer.
-`wiki-embed.spec.ts` owns the recognizer and the parse, which need no app.
+`wiki-image-embeds.spec.ts` owns the recognizer and the parse, which need no app.
 
 The asset URLs the app mints are answerable only by the Tauri webview, so the spec serves them
 itself. A broken image has no height, and half of what a reader does with an embed — click it,
@@ -28,7 +28,7 @@ see its size — is unobservable without one.
 
 ## Known deltas from the CodeMirror editor
 
-Recorded rather than desired; the fixes are upstream in the editor. `wiki-embed.md` carries the
+Recorded rather than desired; the fixes are upstream in the editor. `wiki-image-embeds.md` carries the
 reasoning, this file the scenario that pins today's behavior.
 
 - **Editing a selected embed rewrites it as GFM.** `![[cat.png|300]]` becomes

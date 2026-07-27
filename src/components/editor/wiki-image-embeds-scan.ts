@@ -1,11 +1,11 @@
 /**
  * Recognizer for Obsidian-style image embeds — `![[cat.png]]`, `![[cat.png|300]]`.
- * Pure and aragonite-free so a spec can drive it directly; `wiki-embed-plugin.ts` is
+ * Pure and aragonite-free so a spec can drive it directly; `wiki-image-embeds-plugin.ts` is
  * what turns a recognized span into an inline image node.
  */
 
 /** One embed's span within the raw it was recognized in. */
-export interface WikiEmbed {
+export interface WikiImageEmbed {
 	/** Offset of the `!`. */
 	start: number;
 	/** Offset just past the closing `]]`. */
@@ -35,7 +35,11 @@ const CLOSE_BRACKET = 0x5d;
  * and a wrong claim is silent — the bytes still serialize, they just stop being the
  * construct the author wrote. Hence two gates, both declining rather than guessing.
  */
-export function recognizeWikiEmbed(raw: string, pos: number, end: number): WikiEmbed | null {
+export function recognizeWikiImageEmbed(
+	raw: string,
+	pos: number,
+	end: number
+): WikiImageEmbed | null {
 	if (!raw.startsWith(OPEN, pos)) return null;
 	const innerStart = pos + OPEN.length;
 	// Nothing is sliced until the construct is known to close on this line — a document

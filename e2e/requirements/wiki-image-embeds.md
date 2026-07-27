@@ -1,10 +1,14 @@
 # Feature: Obsidian-style `![[…]]` image embeds
 
-Covers `wiki-embed.spec.ts`. Notes written by limestone's previous editor — and by
+Covers `wiki-image-embeds.spec.ts`. Notes written by limestone's previous editor — and by
 Obsidian — carry image embeds as `![[image.png]]`, optionally sized as
 `![[image.png|300]]`. Those bytes are not GFM, so the embedded aragonite editor parses
-them as ordinary text; `src/components/editor/wiki-embed-plugin.ts` is what makes them
+them as ordinary text; `src/components/editor/wiki-image-embeds-plugin.ts` is what makes them
 render as images again after the editor swap.
+
+Named for what it handles and nothing more: `![[…]]` wrapping an image is the whole of it, and
+`![[note.md]]` — Obsidian's transclusion of another note — is a separate feature this deliberately
+leaves unclaimed. A plugin called `wiki-embed` would have read as owning both.
 
 The plugin registers `![[` as inline syntax and mints a **built-in `image` inline node**.
 An embed is therefore an image to the whole editor, not just to the eye: the editor's own

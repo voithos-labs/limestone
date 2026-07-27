@@ -1,6 +1,6 @@
 import { definePlugin, registerInlineSyntax, INLINE_PRIORITIES } from 'aragonite/plugin';
 import type { EditorPlugin, InlineNode } from 'aragonite/plugin';
-import { recognizeWikiEmbed } from './wiki-embed-scan';
+import { recognizeWikiImageEmbed } from './wiki-image-embeds-scan';
 
 /**
  * Renders Obsidian-style `![[cat.png]]` image embeds, the format limestone's notes
@@ -14,13 +14,13 @@ import { recognizeWikiEmbed } from './wiki-embed-scan';
  *
  * The `![[` rung is priced below the built-in boundary so it is consulted before the
  * bracket scanner claims the `!`. That is also why the recognizer must decline the
- * grammars' overlap itself; see `wiki-embed-scan.ts`.
+ * grammars' overlap itself; see `wiki-image-embeds-scan.ts`.
  */
-export function wikiEmbedPlugin(): EditorPlugin {
+export function wikiImageEmbedsPlugin(): EditorPlugin {
 	return definePlugin({
-		name: 'limestone-wiki-embed',
+		name: 'limestone-wiki-image-embeds',
 		setup() {
-			registerInlineSyntax('!', wikiEmbedNode, {
+			registerInlineSyntax('!', wikiImageEmbedNode, {
 				prefix: '![[',
 				priority: INLINE_PRIORITIES.prefixOverride
 			});
@@ -30,8 +30,8 @@ export function wikiEmbedPlugin(): EditorPlugin {
 
 // ── Internal ────────────────────────────────────────────────────────────────
 
-function wikiEmbedNode(raw: string, pos: number, end: number): InlineNode | null {
-	const embed = recognizeWikiEmbed(raw, pos, end);
+function wikiImageEmbedNode(raw: string, pos: number, end: number): InlineNode | null {
+	const embed = recognizeWikiImageEmbed(raw, pos, end);
 	if (!embed) return null;
 	return {
 		kind: 'image',
