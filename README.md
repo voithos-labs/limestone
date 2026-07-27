@@ -31,18 +31,18 @@ Run dev app
 npm run tauri dev
 ```
 
-Pick up a rebuilt aragonite. Plain `npm install` will not notice it — the version string
-is unchanged, so npm has nothing to compare.
+Pick up a rebuilt aragonite, then restart any running dev server — Vite does not watch
+`node_modules`. Plain `npm install` will not notice a rebuild: the version string is
+unchanged, so npm has nothing to compare.
 
 ```bash
 npm run editor:sync
-rm -rf node_modules/.vite
 ```
 
-Both steps, then restart any running dev server. Vite does not watch `node_modules`, and
-it also caches the editor pre-bundled under a key that the new files do not change — so
-refreshing the package alone leaves the browser running the old build, which fails as if
-the rebuild had never happened rather than as a missing file.
+The script drops Vite's dependency cache along with the package, because Vite keys the
+editor's pre-bundled copy on something a rebuild does not change. Refreshing the package
+alone would leave the browser running the old build — a failure that looks like the
+rebuild never happened rather than like a stale file.
 
 Format
 
