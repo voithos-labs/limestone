@@ -431,10 +431,18 @@
 		display: none;
 	}
 
+	/* Takes the page column its neighbours take — the hero above it and the block list
+	   below — so the toggle ends where the document's own right edge does. Without it
+	   `flex-end` aligns to the editor root's padding, far outside the text column. */
 	.mode-toggle {
 		display: flex;
 		justify-content: flex-end;
 		gap: 2px;
+		box-sizing: border-box;
+		width: 100%;
+		max-width: var(--page-max-width, 1200px);
+		margin: 0 auto;
+		padding: 0 24px;
 	}
 
 	.mode-toggle button {

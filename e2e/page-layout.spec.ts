@@ -16,6 +16,19 @@ async function columnOf(page: Page): Promise<{ width: number; centerOffset: numb
 	});
 }
 
+/** Where the document's text column ends, and where the mode toggle's last button does. */
+async function rightEdges(page: Page): Promise<{ block: number; toggle: number }> {
+	const right = async (selector: string) => {
+		const box = await page.locator(selector).last().boundingBox();
+		if (!box) throw new Error(`${selector} has no box`);
+		return box.x + box.width;
+	};
+	return {
+		block: await right('.editor > .block-list > *'),
+		toggle: await right('.mode-toggle button')
+	};
+}
+
 const fontToken = (page: Page) =>
 	page
 		.locator('.editor')
@@ -44,6 +57,22 @@ test('the document sits in the app’s page column, at the app’s width', async
 	const narrowed = await columnOf(page);
 	expect(narrowed.width).toBe(700);
 	expect(Math.abs(narrowed.centerOffset)).toBeLessThanOrEqual(1);
+});
+
+test('the mode toggle ends where the document does', async ({ page }) => {
+	await bootApp(page, { docs: DOCS });
+	await expect(page.locator('.mode-toggle button').last()).toBeVisible();
+
+	const seeded = await rightEdges(page);
+	expect(seeded.toggle).toBeCloseTo(seeded.block, 0);
+
+	// The column is the app's, not a number of the toggle's own: narrowing the page brings
+	// the toggle in with the text.
+	await setPageWidth(page, 700);
+
+	const narrowed = await rightEdges(page);
+	expect(narrowed.block).toBeLessThan(seeded.block);
+	expect(narrowed.toggle).toBeCloseTo(narrowed.block, 0);
 });
 
 test('zooming scales the document’s own text', async ({ page }) => {
