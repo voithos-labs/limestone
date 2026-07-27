@@ -1,5 +1,5 @@
 use serde_json::Value;
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 use std::sync::RwLock;
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
@@ -31,7 +31,9 @@ pub async fn create_pool(
         .await?;
     }
     sqlx::raw_sql(SCHEMA).execute(&pool).await?;
-    sqlx::raw_sql(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
+    sqlx::raw_sql(AssertSqlSafe(format!(
+        "PRAGMA user_version = {SCHEMA_VERSION}"
+    )))
         .execute(&pool)
         .await?;
     Ok(pool)
