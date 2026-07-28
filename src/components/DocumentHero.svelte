@@ -97,6 +97,7 @@
 	});
 
 	// ── Title rename ───────────────────────────────────────────────────────────
+	let titleInput: HTMLInputElement | null = $state(null);
 	let titleTaken = $state(false);
 	// catch & display os-level errors, etc.
 	let titleFailed = $state(false);
@@ -269,6 +270,10 @@
 	}
 
 	onMount(() => {
+		if (handle.isDraft) {
+			titleInput?.focus();
+			titleInput?.select();
+		}
 		Group.list()
 			.then((gs) => (allGroups = gs))
 			.catch(() => {});
@@ -296,6 +301,7 @@
 					<input
 						class="title-input"
 						class:invalid={titleTaken || titleIllegal || titleFailed}
+						bind:this={titleInput}
 						bind:value={title}
 						oninput={() => (titleFailed = false)}
 						onblur={commitTitle}

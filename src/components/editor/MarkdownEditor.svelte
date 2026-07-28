@@ -504,7 +504,7 @@
 				if (initialScrollTop !== undefined && scrollEl) {
 					scrollEl.scrollTop = initialScrollTop;
 				}
-				if (!flow) view.focus();
+				if (!flow && !handle?.isDraft) view.focus();
 				initApplied = true;
 			});
 		}
