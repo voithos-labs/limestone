@@ -13,20 +13,20 @@ for lunch
 
 **Review**
 
-- [ ] All argonite fundemental components, full visual/UX pass
+- [ ] All aragonite fundemental components, full visual/UX pass
 
 **UI/UX**
 
 - [ ] view creation preamble (select folder, default type, eventually templates, etc.)
 - [ ] Kanban view face
 - [ ] File explorer view face? (default for sources / folders opened as a view)
-- [ ] Customize install (make cute)
+- [x] Customize install (make cute)
 
 **Chores**
 
-- [ ] Finish designing limestone.app launch site
-- [ ] Repo organization for o-s, deployment streams, etc.
-- [ ] Gh actions CI (build, sign, etc.) configuration :: link to download stable on website
+- [ ] Finish limestone.app launch site
+- [x] Repo organization for o-s, deployment streams, etc.
+- [x] Gh actions CI (build, sign, etc.) configuration :: link to download stable on website
 
 @danielzfliu
 
