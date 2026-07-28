@@ -9,7 +9,7 @@ mod user;
 pub use bulk_ops::BulkRunner;
 pub use fts_index::index_fts;
 pub use settings::{dot_get, JsonSettingsStore};
-pub(crate) use source::{cleanup_orphan_folder_groups, sync_folders, sync_tags};
+pub(crate) use source::{sync_folders, sync_tags};
 pub use source::{
     cleanup_orphan_tag_groups, create_source, fm_properties, index_document, reconcile_source,
     Source, Sources,

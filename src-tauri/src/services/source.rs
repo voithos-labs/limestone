@@ -1,3 +1,38 @@
+//! ── Overview BAF (Big Ass File) ──────────────────────────────────────────────────────────
+//! This contains, broadly:
+//! 1. The source data model definition & associated helpers
+//! 2. source scanning and reconciliation logic (big and ugly)
+//!
+//! Due to the size of the file, I will give a brief overview here.
+//!
+//! *Source Model*
+//!
+//! Okay, so, a 'source' is a saved folder resource for the app. It is a static path that is indexed
+//! by limestone and made accessible and searchable to the user -- an added folder.
+//!
+//! Per source, there is basic metadata, a UUID for db reference, and the boolean property
+//! `use_frontmatter`, which enables the use of frontmatter in the source's .md documents, which
+//! supports more features downstream.
+//!
+//! *Scan & Reconciliation*
+//!
+//! Little complicated, but basically:
+//! PER SOURCE, RUN IN PARALLEL
+//! 1. Walks source dir, collecting dirs and rel_path (to source) + mtime for *.md documents
+//! 2. Loads all documents from the db (cache)
+//! 3. Diffs source dir to db documents
+//!     - same path AND same mtime => unchanged
+//!     - same path AND NOT same mtime => modified
+//!     - on disk but not found in db (by rel_path) => new_paths
+//!     - in db but not found on disk => missing, delete from cache (TODO: soft-delete, recoverable)
+//!          -> later can prompt to restore for autpmerge history in UI, and allows a better missing
+//!             doc page
+//! 4. Extract and parse frontmatter, quickly ideally
+//! 5. Resolve id-first for each read file, dupes get re-keyed
+//! 6. Commit changes
+//! 7. Cleanup orphaned tags
+//!
+
 use crate::services::frontmatter;
 use crate::services::fs::clean_location;
 use chrono::prelude::{DateTime, Utc};
@@ -10,41 +45,6 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use uuid::Uuid;
-
-// ── Overview (BAF: Big Ass File) ──────────────────────────────────────────────────────────
-/// This contains, broadly:
-/// 1. The source data model definition & associated helpers
-/// 2. source scanning and reconciliation logic (big and ugly)
-///
-/// Due to the size of the file, I will give a brief overview here.
-///
-/// *Source Model*
-///
-/// Okay, so, a 'source' is a saved folder resource for the app. It is a static path that is indexed
-/// by limestone and made accessible and searchable to the user -- an added folder.
-///
-/// Per source, there is basic metadata, a UUID for db reference, and the boolean property
-/// `use_frontmatter`, which enables the use of frontmatter in the source's .md documents, which
-/// supports more features downstream.
-///
-/// *Scan & Reconciliation*
-///
-/// Little complicated, but basically:
-/// PER SOURCE, RUN IN PARALLEL
-/// 1. Walks source dir, collecting rel_path (to source) and mtime for .md documents
-/// 2. Loads all documents from the db (cache)
-/// 3. Diffs source dir to db documents
-///     - same path AND same mtime => unchanged
-///     - same path AND NOT same mtime => modified
-///     - on disk but not found in db (by rel_path) => new_paths
-///     - in db but not found on disk => missing, delete from cache (TODO: soft-delete, recoverable)
-///          -> later can prompt to restore for autpmerge history in UI, and allows a better missing
-///             doc page
-/// 4. Extract and parse frontmatter, quickly ideally
-/// 5. Resolve id-first for each read file, dupes get re-keyed
-/// 6. Commit changes
-/// 7. Cleanup orphaned groups
-///
 
 // ── Model ────────────────────────────────────────────────────────────────────────────
 
@@ -212,24 +212,74 @@ fn build_ignore(source: &Source) -> Option<globset::GlobSet> {
     builder.build().ok()
 }
 
-/// Walk the source directory and collect (rel_path, mtime) for files w/ ignore
-pub fn walk_source(source: &Source, extensions: &[&str]) -> (Vec<(String, i64)>, usize) {
+fn keep_dir(rel_path: &str, ignore: Option<&globset::GlobSet>) -> bool {
+    let name = rel_path.rsplit('/').next().unwrap_or(rel_path);
+    if name.starts_with('.') {
+        return false;
+    }
+    ignore.is_none_or(|g| !g.is_match(rel_path))
+}
+
+pub struct WalkResult {
+    pub files: Vec<(String, i64)>,
+    pub dirs: Vec<String>,
+    pub skipped: usize,
+}
+
+/// Walk the source directory and collect (rel_path, mtime) for files w/ ignore + dirs
+pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
     let source_path = &source.path;
     let ignore = build_ignore(source);
-    let mut entries = Vec::new();
+    let mut files = Vec::new();
+    let mut dirs = Vec::new();
     let mut skipped = 0;
 
-    for entry in jwalk::WalkDir::new(source_path).sort(true) {
+    let prune_ignore = ignore.clone();
+    let prune_root = source_path.clone();
+    let walker = jwalk::WalkDir::new(source_path)
+        .sort(true)
+        .process_read_dir(move |_depth, _path, _state, children| {
+            children.retain(|entry| {
+                let Ok(entry) = entry else { return true };
+                if !entry.file_type().is_dir() {
+                    return true;
+                }
+                let path = entry.path();
+                let Ok(rel) = path.strip_prefix(&prune_root) else {
+                    return true;
+                };
+                let rel_path = rel.to_string_lossy().replace('\\', "/");
+                keep_dir(&rel_path, prune_ignore.as_ref())
+            });
+        });
+
+    for entry in walker {
         let entry = match entry {
             Ok(e) => e,
             Err(_) => continue,
         };
 
+        let path = entry.path();
+
+        if entry.file_type().is_dir() {
+            let Ok(rel) = path.strip_prefix(source_path) else {
+                continue;
+            };
+            if rel.as_os_str().is_empty() {
+                continue;
+            }
+            if rel.to_str().is_none() {
+                skipped += 1;
+                continue;
+            }
+            dirs.push(rel.to_string_lossy().replace('\\', "/"));
+            continue;
+        }
+
         if !entry.file_type().is_file() {
             continue;
         }
 
-        let path = entry.path();
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         if !extensions
@@ -263,10 +313,14 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> (Vec<(String, i64)>,
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
 
-        entries.push((rel_path, mtime));
+        files.push((rel_path, mtime));
     }
 
-    (entries, skipped)
+    WalkResult {
+        files,
+        dirs,
+        skipped,
+    }
 }
 
 /// Diff fs and sqlite documents
@@ -763,24 +817,50 @@ pub async fn cleanup_orphan_tag_groups(db: &SqlitePool) -> sqlx::Result<()> {
     Ok(())
 }
 
-// repeatedly prune this source's folder leaves with no documents and no children
-pub(crate) async fn cleanup_orphan_folder_groups(
-    db: &SqlitePool,
-    source_id: &str,
-) -> sqlx::Result<()> {
-    loop {
-        let result = sqlx::query(
-            "DELETE FROM groups WHERE group_type = 'folder'
-             AND source_id = ?1
-             AND id NOT IN (SELECT group_id FROM document_groups)
-             AND id NOT IN (SELECT parent_group_id FROM groups WHERE parent_group_id IS NOT NULL)",
-        )
-        .bind(source_id)
-        .execute(db)
-        .await?;
+fn folder_parent_and_slug(path: &str) -> (Option<&str>, &str) {
+    match path.rsplit_once('/') {
+        Some((parent, slug)) => (Some(parent), slug),
+        None => (None, path),
+    }
+}
 
-        if result.rows_affected() == 0 {
-            break;
+/// Reconcile this source's folder groups against the walked directory set (disk is truth).
+/// `dirs` must be ordered parent-before-child.
+pub(crate) async fn sync_folder_dirs(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &str,
+    dirs: &[String],
+) -> sqlx::Result<()> {
+    let mut expected: HashSet<String> = HashSet::with_capacity(dirs.len());
+    for path in dirs {
+        let id = folder_group_id(source_id, path);
+        let (parent, slug) = folder_parent_and_slug(path);
+        let parent_id = parent.map(|p| folder_group_id(source_id, p));
+        sqlx::query(
+            "INSERT INTO groups (id, source_id, slug, group_type, parent_group_id)
+             VALUES (?1, ?2, ?3, 'folder', ?4)
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(&id)
+        .bind(source_id)
+        .bind(slug)
+        .bind(parent_id.as_deref())
+        .execute(&mut **tx)
+        .await?;
+        expected.insert(id);
+    }
+
+    let existing: Vec<String> =
+        sqlx::query_scalar("SELECT id FROM groups WHERE source_id = ?1 AND group_type = 'folder'")
+            .bind(source_id)
+            .fetch_all(&mut **tx)
+            .await?;
+    for id in existing {
+        if !expected.contains(&id) {
+            sqlx::query("DELETE FROM groups WHERE id = ?1")
+                .bind(&id)
+                .execute(&mut **tx)
+                .await?;
         }
     }
 
@@ -893,7 +973,6 @@ pub async fn index_document(
     }
 
     tx.commit().await?;
-    cleanup_orphan_folder_groups(db, source_id).await?;
     Ok(())
 }
 
@@ -922,7 +1001,15 @@ pub async fn reconcile_source(
     .execute(db)
     .await?;
 
-    let (fs_entries, skipped) = walk_source(source, extensions);
+    let WalkResult {
+        files: fs_entries,
+        dirs: fs_dirs,
+        skipped,
+    } = walk_source(source, extensions);
+
+    let mut tx = db.begin().await?;
+    sync_folder_dirs(&mut tx, source_id, &fs_dirs).await?;
+    tx.commit().await?;
 
     let db_rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT id, rel_path, coalesce(mtime, 0) FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
@@ -962,7 +1049,6 @@ pub async fn reconcile_source(
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
-    cleanup_orphan_folder_groups(db, source_id).await?;
 
     eprintln!(
         "[reconcile:{}] {}ms | {} files, {} cached, {} ops, {} skipped",
@@ -1161,5 +1247,35 @@ mod tests {
         assert_eq!(d.id, "id-a");
         assert!(d.existing && !d.moved && !d.rewrite_id);
         assert_eq!(p.delete_ids, vec!["id-gone".to_string()]);
+    }
+
+    #[test]
+    fn dot_dirs_pruned_at_any_depth() {
+        let source = Source::new("t".into(), PathBuf::from("/tmp/t"));
+        let ignore = build_ignore(&source);
+        assert!(!keep_dir(".git", ignore.as_ref()));
+        assert!(!keep_dir("notes/.obsidian", ignore.as_ref()));
+        assert!(keep_dir("notes", ignore.as_ref()));
+        assert!(keep_dir("notes/daily", ignore.as_ref()));
+    }
+
+    #[test]
+    fn asset_and_ignored_dirs_pruned_with_subtrees() {
+        let mut source = Source::new("t".into(), PathBuf::from("/tmp/t"));
+        source.ignore.push("junk".into());
+        let ignore = build_ignore(&source);
+        assert!(!keep_dir("assets", ignore.as_ref()));
+        assert!(!keep_dir("assets/img", ignore.as_ref()));
+        assert!(!keep_dir("junk", ignore.as_ref()));
+        assert!(!keep_dir("junk/sub", ignore.as_ref()));
+        assert!(keep_dir("junkyard", ignore.as_ref()));
+    }
+
+    #[test]
+    fn folder_rows_derive_parent_from_path() {
+        assert_eq!(folder_parent_and_slug("a"), (None, "a"));
+        assert_eq!(folder_parent_and_slug("a/b"), (Some("a"), "b"));
+        assert_eq!(folder_parent_and_slug("a/b/c"), (Some("a/b"), "c"));
+        assert_eq!(folder_group_id("src", "a/b"), "folder:src:a/b");
     }
 }
