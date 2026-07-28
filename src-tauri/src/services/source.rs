@@ -213,10 +213,11 @@ fn build_ignore(source: &Source) -> Option<globset::GlobSet> {
 }
 
 /// Walk the source directory and collect (rel_path, mtime) for files w/ ignore
-pub fn walk_source(source: &Source, extensions: &[&str]) -> Vec<(String, i64)> {
+pub fn walk_source(source: &Source, extensions: &[&str]) -> (Vec<(String, i64)>, usize) {
     let source_path = &source.path;
     let ignore = build_ignore(source);
     let mut entries = Vec::new();
+    let mut skipped = 0;
 
     for entry in jwalk::WalkDir::new(source_path).sort(true) {
         let entry = match entry {
@@ -238,15 +239,20 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> Vec<(String, i64)> {
             continue;
         }
 
-        let rel_path = match path.strip_prefix(source_path) {
-            Ok(r) => r.to_string_lossy().replace('\\', "/"),
-            Err(_) => continue,
+        let Ok(rel) = path.strip_prefix(source_path) else {
+            continue;
         };
+        let rel_path = rel.to_string_lossy().replace('\\', "/");
 
         if let Some(ref ignore) = ignore {
             if ignore.is_match(&rel_path) {
                 continue;
             }
+        }
+
+        if rel.to_str().is_none() {
+            skipped += 1;
+            continue;
         }
 
         let mtime = entry
@@ -260,7 +266,7 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> Vec<(String, i64)> {
         entries.push((rel_path, mtime));
     }
 
-    entries
+    (entries, skipped)
 }
 
 /// Diff fs and sqlite documents
@@ -898,7 +904,7 @@ pub async fn reconcile_source(
     db: &SqlitePool,
     extensions: &[&str],
     frontmatter_buffer_size: usize,
-) -> sqlx::Result<Vec<(String, String)>> {
+) -> sqlx::Result<(Vec<(String, String)>, usize)> {
     use std::time::Instant;
     let t_total = Instant::now();
     let source_path = &source.path;
@@ -916,7 +922,7 @@ pub async fn reconcile_source(
     .execute(db)
     .await?;
 
-    let fs_entries = walk_source(source, extensions);
+    let (fs_entries, skipped) = walk_source(source, extensions);
 
     let db_rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT id, rel_path, coalesce(mtime, 0) FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
@@ -959,18 +965,21 @@ pub async fn reconcile_source(
     cleanup_orphan_folder_groups(db, source_id).await?;
 
     eprintln!(
-        "[reconcile:{}] {}ms | {} files, {} cached, {} ops",
+        "[reconcile:{}] {}ms | {} files, {} cached, {} ops, {} skipped",
         source.title,
         t_total.elapsed().as_millis(),
         fs_entries.len(),
         db_entries.len(),
-        ops_count
+        ops_count,
+        skipped
     );
-    Ok(plan
-        .docs
-        .iter()
-        .map(|d| (d.id.clone(), d.rel_path.clone()))
-        .collect())
+    Ok((
+        plan.docs
+            .iter()
+            .map(|d| (d.id.clone(), d.rel_path.clone()))
+            .collect(),
+        skipped,
+    ))
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { listen } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { getCurrentWebview } from '@tauri-apps/api/webview';
 	import TopBar from '../components/nav/TopBar.svelte';
@@ -15,6 +16,7 @@
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import { actionForKey, keyCapture } from '$lib/actions';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
+	import { toasts } from '$lib/toasts.svelte';
 
 	let session = $state<Session>();
 	let tab: TabState | undefined = $state();
@@ -65,6 +67,15 @@
 		persistTimer = setTimeout(() => session!.persist(), 200);
 	});
 
+	// todo: start collecting launch actionables here
+	function reportScanSkips(count: number) {
+		if (count === 0) return;
+		toasts.push(
+			`${count} ${count === 1 ? 'note' : 'notes'} couldn't be indexed: unsupported title encoding`,
+			{ timeout: 5000 }
+		);
+	}
+
 	onMount(() => {
 		const win = getCurrentWindow();
 		const unlisten = win.onCloseRequested(async (e) => {
@@ -77,8 +88,12 @@
 			}
 			await win.destroy();
 		});
+		const unlistenScan = listen<{ source_id: string; skipped: number }>('source-reconciled', (e) =>
+			reportScanSkips(e.payload.skipped)
+		);
 		return () => {
 			unlisten.then((f) => f());
+			unlistenScan.then((f) => f());
 		};
 	});
 

@@ -61,13 +61,19 @@ fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
     drop(settings);
     tauri::async_runtime::spawn(async move {
         let source_id = source.id.to_string();
-        let changed = services::reconcile_source(&source, &pool, &["md"], fm_buf_size)
+        let (changed, skipped) = services::reconcile_source(&source, &pool, &["md"], fm_buf_size)
             .await
             .unwrap_or_else(|e| {
                 eprintln!("reconcile failed: {e}");
-                Vec::new()
+                Default::default()
             });
-        let _ = app_handle.emit("source-reconciled", &source_id);
+        let _ = app_handle.emit(
+            "source-reconciled",
+            crate::Reconciled {
+                source_id: &source_id,
+                skipped,
+            },
+        );
         if let Err(e) = services::index_fts(&pool, &source, changed).await {
             eprintln!("FTS indexing failed: {e}");
         }
