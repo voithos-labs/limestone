@@ -143,6 +143,10 @@ body {
 	font-family: var(--font-ui);
 }
 
+::selection {
+	background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
 ::-webkit-scrollbar-button,
 ::-webkit-scrollbar-button:single-button,
 ::-webkit-scrollbar-button:start,
