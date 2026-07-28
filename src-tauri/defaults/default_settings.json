@@ -2,8 +2,8 @@
 	"version": 1,
 	"appearance": {
 		"accent": "default",
-		"compact_tabs": false,
-		"compact_doc_header": true,
+		"compact_tabs": true,
+		"compact_doc_header": false,
 		"collapse_pinned_tabs": true,
 		"editor_font_size": 14,
 		"ui_scale_percent": 100,
