@@ -98,6 +98,8 @@
 
 	// ── Title rename ───────────────────────────────────────────────────────────
 	let titleTaken = $state(false);
+	// catch & display os-level errors, etc.
+	let titleFailed = $state(false);
 	let titleCheckToken = 0;
 	const titleIllegal = $derived(title.trim() !== '' && !isValidSegment(`${title.trim()}${ext}`));
 
@@ -134,6 +136,7 @@
 		} catch (e) {
 			console.error('rename failed', e);
 			title = handle.title;
+			titleFailed = true;
 		}
 	}
 
@@ -292,8 +295,9 @@
 					<span class="title-ghost">{title || ' '}</span>
 					<input
 						class="title-input"
-						class:invalid={titleTaken || titleIllegal}
+						class:invalid={titleTaken || titleIllegal || titleFailed}
 						bind:value={title}
+						oninput={() => (titleFailed = false)}
 						onblur={commitTitle}
 						onkeydown={onTitleKeydown}
 						spellcheck="false"
@@ -424,7 +428,7 @@
 	}
 
 	/* Meta sits inline with the title; when the row can't give it its basis width
-	   it wraps to its own line, which is the old two-row layout. */
+       it wraps to its own line, which is the old two-row layout. */
 	.head-row {
 		display: flex;
 		flex-wrap: wrap;
@@ -497,9 +501,9 @@
 	}
 
 	/* Out of flow so the meta can wrap under the title without dragging it along.
-	   Sized to the metadata row, not the title. */
+       Sized to the metadata row, not the title. */
 	/* The 22px button matches the title's line box, so it centres on the title line
-	   by simply starting where the row does. */
+       by simply starting where the row does. */
 	.kebab {
 		position: absolute;
 		top: 34px;
