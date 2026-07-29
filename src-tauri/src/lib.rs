@@ -246,6 +246,8 @@ pub fn run() {
             commands::source_commands::set_default_source,
             commands::source_commands::list_dirs,
             commands::source_commands::make_dir,
+            commands::source_commands::create_folder,
+            commands::source_commands::move_folder,
             commands::settings_commands::get_app_info,
             commands::settings_commands::get_setting,
             commands::settings_commands::get_all_settings,

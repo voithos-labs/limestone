@@ -178,7 +178,7 @@
 			folders = [...folders, g];
 			pick(g.id);
 		} catch (e) {
-			loadError = String(e);
+			loadError = Group.describeOpError(e, "The folder couldn't be created.");
 		} finally {
 			creating = false;
 		}

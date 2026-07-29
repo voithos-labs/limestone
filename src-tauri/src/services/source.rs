@@ -824,6 +824,28 @@ fn folder_parent_and_slug(path: &str) -> (Option<&str>, &str) {
     }
 }
 
+pub(crate) async fn upsert_folder_group(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &str,
+    path: &str,
+) -> sqlx::Result<String> {
+    let id = folder_group_id(source_id, path);
+    let (parent, slug) = folder_parent_and_slug(path);
+    let parent_id = parent.map(|p| folder_group_id(source_id, p));
+    sqlx::query(
+        "INSERT INTO groups (id, source_id, slug, group_type, parent_group_id)
+         VALUES (?1, ?2, ?3, 'folder', ?4)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(&id)
+    .bind(source_id)
+    .bind(slug)
+    .bind(parent_id.as_deref())
+    .execute(&mut **tx)
+    .await?;
+    Ok(id)
+}
+
 /// Reconcile this source's folder groups against the walked directory set (disk is truth).
 /// `dirs` must be ordered parent-before-child.
 pub(crate) async fn sync_folder_dirs(
@@ -833,21 +855,7 @@ pub(crate) async fn sync_folder_dirs(
 ) -> sqlx::Result<()> {
     let mut expected: HashSet<String> = HashSet::with_capacity(dirs.len());
     for path in dirs {
-        let id = folder_group_id(source_id, path);
-        let (parent, slug) = folder_parent_and_slug(path);
-        let parent_id = parent.map(|p| folder_group_id(source_id, p));
-        sqlx::query(
-            "INSERT INTO groups (id, source_id, slug, group_type, parent_group_id)
-             VALUES (?1, ?2, ?3, 'folder', ?4)
-             ON CONFLICT DO NOTHING",
-        )
-        .bind(&id)
-        .bind(source_id)
-        .bind(slug)
-        .bind(parent_id.as_deref())
-        .execute(&mut **tx)
-        .await?;
-        expected.insert(id);
+        expected.insert(upsert_folder_group(tx, source_id, path).await?);
     }
 
     let existing: Vec<String> =

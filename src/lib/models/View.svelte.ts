@@ -755,6 +755,25 @@ export async function isViewSaved(id: string): Promise<boolean> {
 	return (await listSavedViewJSON()).some((v) => v.id === id);
 }
 
+export async function remapFolderIdsInSavedViews(oldId: string, newId: string): Promise<void> {
+	const remap = (v: unknown): unknown => {
+		if (typeof v === 'string') {
+			if (v === oldId) return newId;
+			if (v.startsWith(oldId + '/')) return newId + v.slice(oldId.length);
+			return v;
+		}
+		if (Array.isArray(v)) return v.map(remap);
+		if (v && typeof v === 'object') {
+			return Object.fromEntries(Object.entries(v).map(([k, val]) => [k, remap(val)]));
+		}
+		return v;
+	};
+	const s = await getViewStore();
+	const all = (await s.get<ViewJSON[]>('views')) ?? [];
+	await s.set('views', remap(all));
+	await s.save();
+}
+
 export async function isViewSlugTaken(slug: string, excludeId: string): Promise<boolean> {
 	return (await listSavedViewJSON()).some((v) => v.id !== excludeId && v.slug === slug);
 }
