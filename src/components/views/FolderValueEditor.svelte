@@ -127,34 +127,37 @@
 		return map;
 	});
 
-	const movingExcluded = $derived.by(() => {
+	function subtreeOf(id: string): Set<string> {
 		const ex = new Set<string>();
-		if (!movingId) return ex;
-		const stack = [movingId];
+		const stack = [id];
 		while (stack.length) {
-			const id = stack.pop()!;
-			if (ex.has(id)) continue;
-			ex.add(id);
-			for (const c of childrenByParent.get(id) ?? []) stack.push(c.id);
+			const cur = stack.pop()!;
+			if (ex.has(cur)) continue;
+			ex.add(cur);
+			for (const c of childrenByParent.get(cur) ?? []) stack.push(c.id);
 		}
 		return ex;
-	});
+	}
+
+	const movingExcluded = $derived(movingId ? subtreeOf(movingId) : new Set<string>());
+
+	function blockReasonFor(f: FolderNode, destKey: string | null): string | undefined {
+		if (parentKey(f) === destKey) return 'Already here';
+		const sibs = childrenByParent.get(destKey) ?? [];
+		if (
+			sibs.some(
+				(o) =>
+					o.id !== f.id && !isSrcNode(o.id) && o.slug.toLowerCase() === f.slug.toLowerCase()
+			)
+		)
+			return `A folder named "${f.slug}" is already there`;
+		return undefined;
+	}
 
 	function moveBlockReason(destKey: string | null): string | undefined {
 		if (!movingId) return undefined;
 		const moving = byId.get(movingId);
-		if (moving && parentKey(moving) === destKey) return 'Already here';
-		const sibs = childrenByParent.get(destKey) ?? [];
-		if (
-			sibs.some(
-				(f) =>
-					f.id !== movingId &&
-					!isSrcNode(f.id) &&
-					f.slug.toLowerCase() === movingSlug.toLowerCase()
-			)
-		)
-			return `A folder named "${movingSlug}" is already there`;
-		return undefined;
+		return moving ? blockReasonFor(moving, destKey) : undefined;
 	}
 
 	const showRootRow = $derived.by(() => {
@@ -363,32 +366,43 @@
 		searchEl?.focus();
 	}
 
-	async function doMove(destKey: string | null) {
-		if (!movingId || movingBusy || moveBlockReason(destKey)) return;
-		if (destKey && movingExcluded.has(destKey)) return;
-		const src = movingSourceId!;
-		const oldPath = folderPath(movingId, folders);
+	async function performMove(f: FolderNode, destKey: string | null): Promise<string | null> {
+		if (!f.sourceId || movingBusy || blockReasonFor(f, destKey)) return null;
+		if (destKey && subtreeOf(f.id).has(destKey)) return null;
+		const src = f.sourceId;
+		const oldPath = folderPath(f.id, folders);
 		const destDir = destKey && !isSrcNode(destKey) ? folderPath(destKey, folders) : '';
-		const newPath = destDir ? `${destDir}/${movingSlug}` : movingSlug;
+		const newPath = destDir ? `${destDir}/${f.slug}` : f.slug;
 		movingBusy = true;
 		try {
 			const newId = await Group.moveFolder(src, oldPath, newPath);
 			await loadData();
-			movingId = null;
-			movingSourceId = null;
-			navAnimate = false;
-			focusId = destKey ?? (sourcesMode ? `src:${src}` : null);
-			queueMicrotask(() => {
-				const i = navEntries.findIndex((n) => n.kind === 'folder' && n.folder.id === newId);
-				if (i >= 0) activeIndex = i;
-			});
+			return newId;
 		} catch (e) {
 			toasts.push(Group.describeOpError(e, "The folder couldn't be moved."), {
-				action: { label: 'Retry', run: () => doMove(destKey) }
+				action: { label: 'Retry', run: () => performMove(f, destKey) }
 			});
+			return null;
 		} finally {
 			movingBusy = false;
 		}
+	}
+
+	async function doMove(destKey: string | null) {
+		if (!movingId) return;
+		const moving = byId.get(movingId);
+		if (!moving) return;
+		const src = moving.sourceId;
+		const newId = await performMove(moving, destKey);
+		if (newId === null) return;
+		movingId = null;
+		movingSourceId = null;
+		navAnimate = false;
+		focusId = destKey ?? (sourcesMode ? `src:${src}` : null);
+		queueMicrotask(() => {
+			const i = navEntries.findIndex((n) => n.kind === 'folder' && n.folder.id === newId);
+			if (i >= 0) activeIndex = i;
+		});
 	}
 
 	function startRename(f: FolderNode) {
@@ -527,7 +541,7 @@
 		if (!value) return;
 		const target = folders.find((g) => g.id === value);
 		if (target) focusId = parentKey(target);
-		else if (byId.has(`src:${value}`)) focusId = null;
+		else if (byId.has(`src:${value}`)) focusId = `src:${value}`;
 		else return;
 		const i = navEntries.findIndex((n) => n.kind === 'folder' && nodeValue(n.folder.id) === value);
 		if (i >= 0) activeIndex = i;
@@ -559,6 +573,120 @@
 			left = Math.max(8, a.right - m.width);
 		}
 		pos = { top, left };
+	}
+
+	// ── Drag to move ────────────────────────────────────────────────────────────
+	const DRAG_PX = 4;
+	const SPRING_MS = 550;
+	let dragArmed: { f: FolderNode; x: number; y: number } | null = null;
+	let dragging: FolderNode | null = $state(null);
+	let dragExcluded: Set<string> = new Set();
+	let dragPos = $state({ x: 0, y: 0 });
+	let dropKey: string | null = $state(null);
+	let dropOk = $state(false);
+	let justDragged = false;
+	let springKey: string | null = null;
+	let springT = 0;
+
+	function dragArm(e: PointerEvent, f: FolderNode) {
+		if (!manage || e.button !== 0 || isSrcNode(f.id) || movingId || renamingId) return;
+		dragArmed = { f, x: e.clientX, y: e.clientY };
+		window.addEventListener('pointermove', onDragMove);
+		window.addEventListener('pointerup', onDragUp);
+		window.addEventListener('keydown', onDragKey, true);
+	}
+
+	function dragCleanup() {
+		window.removeEventListener('pointermove', onDragMove);
+		window.removeEventListener('pointerup', onDragUp);
+		window.removeEventListener('keydown', onDragKey, true);
+		clearTimeout(springT);
+		springKey = null;
+		dragArmed = null;
+		dragging = null;
+		dropKey = null;
+		dropOk = false;
+	}
+
+	function dragValid(f: FolderNode, destKey: string | null): boolean {
+		if (destKey && dragExcluded.has(destKey)) return false;
+		if (!destKey && sourcesMode) return false;
+		if (destKey) {
+			const d = byId.get(destKey);
+			if (!d) return false;
+			const destSource = isSrcNode(destKey) ? nodeValue(destKey) : d.sourceId;
+			if (destSource !== f.sourceId) return false;
+		}
+		return !blockReasonFor(f, destKey);
+	}
+
+	function onDragMove(e: PointerEvent) {
+		if (dragArmed && !dragging) {
+			if (Math.hypot(e.clientX - dragArmed.x, e.clientY - dragArmed.y) < DRAG_PX) return;
+			dragging = dragArmed.f;
+			dragExcluded = subtreeOf(dragging.id);
+		}
+		if (!dragging) return;
+		e.preventDefault();
+		dragPos = { x: e.clientX, y: e.clientY };
+		const el = document.elementFromPoint(e.clientX, e.clientY);
+		const t = el?.closest('[data-drop]');
+		if (!t || !popEl?.contains(t)) {
+			dropKey = null;
+			dropOk = false;
+			springKey = null;
+			clearTimeout(springT);
+			return;
+		}
+		const raw = t.getAttribute('data-drop')!;
+		dropKey = raw;
+		dropOk = dragValid(dragging, raw === '' ? null : raw);
+		const springable =
+			raw !== '' &&
+			!dragExcluded.has(raw) &&
+			(isSrcNode(raw)
+				? nodeValue(raw) === dragging.sourceId
+				: byId.get(raw)?.sourceId === dragging.sourceId) &&
+			(childrenByParent.get(raw)?.length ?? 0) > 0;
+		if (springable && raw !== focusId) {
+			if (springKey !== raw) {
+				springKey = raw;
+				clearTimeout(springT);
+				springT = window.setTimeout(() => {
+					if (dragging && springKey) focusFolderId(springKey);
+				}, SPRING_MS);
+			}
+		} else {
+			springKey = null;
+			clearTimeout(springT);
+		}
+	}
+
+	function onDragUp() {
+		const f = dragging;
+		const raw = dropKey;
+		const ok = dropOk;
+		dragCleanup();
+		if (!f) return;
+		justDragged = true;
+		setTimeout(() => (justDragged = false), 0);
+		if (raw !== null && ok) performMove(f, raw === '' ? null : raw);
+	}
+
+	function onDragKey(e: KeyboardEvent) {
+		if (e.key === 'Escape' && (dragging || dragArmed)) {
+			e.stopPropagation();
+			e.preventDefault();
+			dragCleanup();
+		}
+	}
+
+	function onPopClickCapture(e: MouseEvent) {
+		if (justDragged) {
+			e.stopPropagation();
+			e.preventDefault();
+			justDragged = false;
+		}
 	}
 
 	function loadData(): Promise<void> {
@@ -691,6 +819,7 @@
 		}
 		if (!isOpen && wasOpen) {
 			wasOpen = false;
+			dragCleanup();
 		}
 	});
 
@@ -705,12 +834,14 @@
 {#if open && ready}
 	<div
 		class="pop"
+		class:dragging={!!dragging}
 		bind:this={popEl}
 		style:top="{pos.top}px"
 		style:left="{pos.left}px"
 		style:max-height="{maxH}px"
 		role="menu"
 		tabindex="-1"
+		onclickcapture={onPopClickCapture}
 	>
 		<div class="search-row">
 			<Search size={13} strokeWidth={1.75} />
@@ -808,7 +939,12 @@
 		{/if}
 		{#if !searching && showRootRow}
 			{@const rootBlock = moveBlockReason(null)}
-			<div class="folder-row root-row" class:active={activeIndex === 0}>
+			<div
+				class="folder-row root-row"
+				class:active={activeIndex === 0}
+				class:drop-hot={dropKey === '' && dropOk}
+				data-drop=""
+			>
 				<button
 					class="folder-name"
 					type="button"
@@ -846,6 +982,9 @@
 						class="folder-row"
 						class:selected={folder.id === value}
 						class:active={i === activeIndex}
+						class:drop-hot={dropKey === folder.id && dropOk}
+						data-drop={folder.id}
+						onpointerdown={(e) => dragArm(e, folder)}
 						use:ctxMenu={() => folderCtxItems(folder)}
 					>
 						<button
@@ -918,16 +1057,22 @@
 							<button
 								class="crumb-root"
 								class:current={!focusId}
+								class:drop-hot={dropKey === '' && dropOk}
 								type="button"
 								disabled={!focusId}
+								data-drop=""
 								onclick={() => jumpTo(null)}>{rootCrumbLabel}</button
 							>
 						{/if}
 						{#if focusChain.length > 1}
 							{@const first = focusChain[0]}
 							<span class="crumb-sep"><ChevronRight size={9} strokeWidth={2.25} /></span>
-							<button class="crumb" type="button" onclick={() => jumpTo(first.id)}
-								>{first.slug}</button
+							<button
+								class="crumb"
+								class:drop-hot={dropKey === first.id && dropOk}
+								type="button"
+								data-drop={first.id}
+								onclick={() => jumpTo(first.id)}>{first.slug}</button
 							>
 						{/if}
 						{#if focusChain.length > 3}
@@ -937,8 +1082,12 @@
 						{#if focusChain.length > 2}
 							{@const parent = focusChain[focusChain.length - 2]}
 							<span class="crumb-sep"><ChevronRight size={9} strokeWidth={2.25} /></span>
-							<button class="crumb" type="button" onclick={() => jumpTo(parent.id)}
-								>{parent.slug}</button
+							<button
+								class="crumb"
+								class:drop-hot={dropKey === parent.id && dropOk}
+								type="button"
+								data-drop={parent.id}
+								onclick={() => jumpTo(parent.id)}>{parent.slug}</button
 							>
 						{/if}
 						{#if focusFolder}
@@ -948,8 +1097,10 @@
 							<button
 								class="focus-name"
 								class:selected={focusValue === value}
+								class:drop-hot={!!focusId && dropKey === focusId && dropOk}
 								type="button"
 								disabled={!!movingId && !!focusBlock}
+								data-drop={focusId}
 								title={movingId
 									? (focusBlock ?? `Place in ${focusFolder.slug}`)
 									: isSrcNode(focusFolder.id)
@@ -997,6 +1148,9 @@
 								class="folder-row"
 								class:selected={nodeValue(folder.id) === value}
 								class:active={navIndex === activeIndex}
+								class:drop-hot={dropKey === folder.id && dropOk}
+								data-drop={folder.id}
+								onpointerdown={(e) => dragArm(e, folder)}
 								use:ctxMenu={() => folderCtxItems(folder)}
 							>
 								{#if renamingId === folder.id}
@@ -1070,6 +1224,17 @@
 			{/if}
 		</div>
 	</div>
+	{#if dragging}
+		<div
+			class="drag-ghost"
+			class:blocked={dropKey !== null && !dropOk}
+			style:top="{dragPos.y + 14}px"
+			style:left="{dragPos.x + 12}px"
+		>
+			<Folder size={12} strokeWidth={1.75} />
+			<span>{dragging.slug}</span>
+		</div>
+	{/if}
 {/if}
 
 <style>
@@ -1453,8 +1618,51 @@
 		background: var(--chip-bg);
 	}
 
-	.folder-row.active {
+	.folder-row.active,
+	.folder-row.drop-hot {
 		background: var(--menu-item-hover);
+	}
+
+	.crumb.drop-hot,
+	.crumb-root.drop-hot,
+	.focus-name.drop-hot {
+		color: var(--color-text-primary);
+	}
+
+	.pop.dragging {
+		user-select: none;
+		cursor: grabbing;
+	}
+
+	.pop.dragging .row-select {
+		display: none;
+	}
+
+	.drag-ghost {
+		position: fixed;
+		z-index: 2000;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 3px 9px;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		box-shadow: var(--menu-shadow);
+		font-family: var(--font-ui);
+		font-size: 12px;
+		color: var(--color-text-primary);
+		pointer-events: none;
+		white-space: nowrap;
+	}
+
+	.drag-ghost.blocked {
+		opacity: 0.5;
+	}
+
+	.drag-ghost :global(svg) {
+		color: var(--color-ui-muted);
+		flex-shrink: 0;
 	}
 
 	.root-divider {

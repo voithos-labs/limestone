@@ -158,7 +158,7 @@
     }
 
     // ── Move flow ──────────────────────────────────────────────────────────────
-    // One location chip → unscoped folder picker (sources are selectable roots).
+    // One location chip unscoped folder picker (sources are selectable roots).
     // Nothing moves until a folder or source is picked.
     let folderOpen = $state(false);
     let pickAnchor: HTMLElement | null = $state(null);
