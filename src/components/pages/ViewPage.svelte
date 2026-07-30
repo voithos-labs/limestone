@@ -205,12 +205,15 @@
 	});
 
 	onMount(async () => {
-		const sourceField = view.fields.find((f) => f.type === 'source');
-		if (!sourceField) return;
+		const locationField = view.fields.find((f) => f.type === 'folder');
+		if (!locationField) return;
 		const leaf = view.filter.children.find(
-			(n): n is FilterLeaf => 'field_id' in n && n.field_id === sourceField.id && n.op === 'eq'
+			(n): n is FilterLeaf => 'field_id' in n && n.field_id === locationField.id && n.op === 'in'
 		);
-		const sid = leaf && typeof leaf.value === 'string' ? leaf.value : undefined;
+		const sid =
+			leaf && typeof leaf.value === 'string' && !leaf.value.startsWith('folder:')
+				? leaf.value
+				: undefined;
 		if (!sid) return;
 		const sources = await listSources();
 		sourceRemoved = !sources.some((s) => s.id === sid);

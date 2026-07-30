@@ -212,8 +212,6 @@
 				return 200;
 			case 'id':
 				return 220;
-			case 'source':
-				return 160;
 			case 'select':
 				return 150;
 			case 'folder':

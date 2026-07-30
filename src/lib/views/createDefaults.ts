@@ -87,8 +87,6 @@ export function deriveCreateContext(
 				if (leaf.value.startsWith('folder:')) folderIds.push(leaf.value);
 				else if (!folderSourceId) folderSourceId = leaf.value;
 			}
-		} else if (field.type === 'source') {
-			if (leaf.op === 'eq' && typeof leaf.value === 'string') sourceId = leaf.value;
 		} else if (field.type === 'tags') {
 			if ((leaf.op === 'has_any' || leaf.op === 'has_all') && Array.isArray(leaf.value)) {
 				for (const v of leaf.value) if (typeof v === 'string') tagGroupIds.push(v);

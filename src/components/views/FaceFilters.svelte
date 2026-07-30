@@ -48,8 +48,6 @@
 			} else if (field.type === 'tags') {
 				if (Array.isArray(leaf.value))
 					for (const v of leaf.value) if (typeof v === 'string') groupIds.add(v);
-			} else if (field.type === 'source') {
-				if (typeof leaf.value === 'string') sourceIds.add(leaf.value);
 			}
 		}
 		for (const id of groupIds) {
@@ -85,10 +83,6 @@
 		if (field.type === 'folder') {
 			if (typeof leaf.value !== 'string') return '';
 			return groupNames[leaf.value] ?? sourceNames[leaf.value] ?? leaf.value;
-		}
-		if (field.type === 'source') {
-			if (typeof leaf.value !== 'string') return '';
-			return sourceNames[leaf.value] ?? leaf.value;
 		}
 		if (field.type === 'boolean') return leaf.value ? 'Checked' : 'Unchecked';
 		return formatFilterValue(leaf.value);

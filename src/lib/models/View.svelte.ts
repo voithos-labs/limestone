@@ -189,7 +189,6 @@ export class ViewFace {
 const BUILTIN_FIELD_TYPES = [
 	'title',
 	'id',
-	'source',
 	'tags',
 	'folder',
 	'path',
@@ -332,7 +331,6 @@ export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	// BUILT-INS
 	title: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
 	id: ['eq', 'neq'],
-	source: ['eq', 'neq'],
 	tags: ['has_any', 'has_all', 'has_none'],
 	folder: ['in', 'not_in'],
 	path: ['contains', 'not_contains', 'starts_with'],
@@ -363,7 +361,6 @@ export const VIEW_FIELD_SORTABLE: ReadonlySet<ViewFieldType> = new Set([
 	'select',
 	'title',
 	'id',
-	'source',
 	'path',
 	'created_at',
 	'updated_at'
@@ -407,8 +404,6 @@ function resolveColumn(fieldType: ViewFieldType, fieldName: string, viewSlug: st
 			return 'd.id';
 		case 'title':
 			return 'd.title';
-		case 'source':
-			return 'd.source_id';
 		case 'path':
 			return 'd.rel_path';
 		case 'created_at':
@@ -887,11 +882,11 @@ class View {
 	static createFromSource(source: Source): View {
 		const view = View.create(sourceName(source));
 		view.state.origin_id = source.id;
-		const sourceFieldId = view.fields.find((f) => f.type == 'source')!.id;
+		const locationFieldId = view.fields.find((f) => f.type == 'folder')!.id;
 
 		view.addBasicFilter({
-			field_id: sourceFieldId,
-			op: 'eq',
+			field_id: locationFieldId,
+			op: 'in',
 			value: source.id
 		});
 
