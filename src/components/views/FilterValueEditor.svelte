@@ -2,7 +2,6 @@
 	import type { Component } from 'svelte';
 	import type { ViewField } from '$lib/models/View.svelte';
 	import Group, { GroupType } from '$lib/models/Group';
-	import { listSources, sourceName } from '$lib/models/Source';
 	import { SquareCheck, Square } from '@lucide/svelte';
 	import Menu from './Menu.svelte';
 	import InputPopover from './InputPopover.svelte';
@@ -44,9 +43,7 @@
 	}
 
 	let tagItems: MenuItem[] = $state([]);
-	let sourceItems: MenuItem[] = $state([]);
 	let tagsLoaded = false;
-	let sourcesLoaded = false;
 
 	$effect(() => {
 		if (!open) return;
@@ -59,12 +56,6 @@
 							.filter((g) => g.groupType === GroupType.Tag)
 							.map((g) => ({ value: g.id, label: g.slug })))
 				)
-				.catch(() => {});
-		}
-		if (field.type === 'source' && !sourcesLoaded) {
-			sourcesLoaded = true;
-			listSources()
-				.then((ss) => (sourceItems = ss.map((s) => ({ value: s.id, label: sourceName(s) }))))
 				.catch(() => {});
 		}
 	});
@@ -173,17 +164,8 @@
 		{anchor}
 		value={typeof value === 'string' ? value : null}
 		{sourceId}
+		manage
 		onChange={(v) => onChange(v)}
-	/>
-{:else if field.type === 'source'}
-	<Menu
-		bind:open
-		{anchor}
-		items={sourceItems}
-		selected={typeof value === 'string' ? value : undefined}
-		onSelect={(v) => onChange(v)}
-		searchable={sourceItems.length > 7}
-		placeholder="Search sources…"
 	/>
 {:else}
 	<InputPopover

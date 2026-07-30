@@ -91,7 +91,12 @@
 	const sourceScopeId: string | undefined = $derived.by(() => {
 		for (const leaf of leafFilters) {
 			const field = fieldsById.get(leaf.field_id);
-			if (field?.type === 'source' && leaf.op === 'eq' && typeof leaf.value === 'string') {
+			if (
+				field?.type === 'folder' &&
+				leaf.op === 'in' &&
+				typeof leaf.value === 'string' &&
+				!leaf.value.startsWith('folder:')
+			) {
 				return leaf.value;
 			}
 		}
@@ -108,13 +113,14 @@
 			const field = fieldsById.get(leaf.field_id);
 			if (!field) continue;
 			if (field.type === 'folder') {
-				if (typeof leaf.value === 'string') groupIds.add(leaf.value);
+				if (typeof leaf.value === 'string') {
+					if (leaf.value.startsWith('folder:')) groupIds.add(leaf.value);
+					else sourceIds.add(leaf.value);
+				}
 			} else if (field.type === 'tags') {
 				if (Array.isArray(leaf.value)) {
 					for (const v of leaf.value) if (typeof v === 'string') groupIds.add(v);
 				}
-			} else if (field.type === 'source') {
-				if (typeof leaf.value === 'string') sourceIds.add(leaf.value);
 			}
 		}
 		for (const id of groupIds) {
@@ -149,11 +155,7 @@
 		}
 		if (field.type === 'folder') {
 			if (typeof leaf.value !== 'string') return '';
-			return groupNames[leaf.value] ?? leaf.value;
-		}
-		if (field.type === 'source') {
-			if (typeof leaf.value !== 'string') return '';
-			return sourceNames[leaf.value] ?? leaf.value;
+			return groupNames[leaf.value] ?? sourceNames[leaf.value] ?? leaf.value;
 		}
 		if (field.type === 'boolean') {
 			return leaf.value ? 'Checked' : 'Unchecked';

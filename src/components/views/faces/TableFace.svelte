@@ -212,8 +212,6 @@
 				return 200;
 			case 'id':
 				return 220;
-			case 'source':
-				return 160;
 			case 'select':
 				return 150;
 			case 'folder':
@@ -2004,6 +2002,7 @@
 	anchor={folderAnchor}
 	value={effectiveFolderId}
 	sourceId={createCtx.sourceId ?? undefined}
+	manage
 	onChange={(id, dir) => {
 		folderOverride = id;
 		folderOverrideDir = dir ?? null;

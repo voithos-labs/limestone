@@ -1,9 +1,6 @@
 use crate::commands::source_commands::{source_root, source_uses_frontmatter};
 use crate::services::fs::{atomic_write, move_file, resolve_in_source, validate_file_name};
-use crate::services::{
-    cleanup_orphan_folder_groups, fm_properties, frontmatter, index_document, sync_folders,
-    sync_tags,
-};
+use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
 use crate::AppData;
 use tauri::{AppHandle, State};
 
@@ -324,11 +321,6 @@ pub async fn move_document(
         )
         .await
         .map_err(|e| e.to_string())?;
-        if dest_source_id != source_id {
-            cleanup_orphan_folder_groups(&app_data.db, &source_id)
-                .await
-                .map_err(|e| e.to_string())?;
-        }
     }
 
     Ok(())
@@ -388,9 +380,6 @@ pub async fn delete_document(
         .await
         .map_err(|e| e.to_string())?;
     }
-    cleanup_orphan_folder_groups(&app_data.db, &source_id)
-        .await
-        .map_err(|e| e.to_string())?;
 
     Ok(())
 }

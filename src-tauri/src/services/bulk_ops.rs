@@ -39,7 +39,7 @@ pub struct BulkResult {
     pub source_unreachable: bool,
 }
 
-fn classify_io(e: &std::io::Error) -> String {
+pub(crate) fn classify_io(e: &std::io::Error) -> String {
     use std::io::ErrorKind;
     let kind = match e.kind() {
         ErrorKind::NotFound => "not_found",

@@ -189,7 +189,13 @@
 		for (const n of view.filter.children) {
 			if (!('field_id' in n)) continue;
 			const f = view.fields.find((ff) => ff.id === n.field_id);
-			if (f?.type === 'source' && n.op === 'eq' && typeof n.value === 'string') return n.value;
+			if (
+				f?.type === 'folder' &&
+				n.op === 'in' &&
+				typeof n.value === 'string' &&
+				!n.value.startsWith('folder:')
+			)
+				return n.value;
 		}
 		return undefined;
 	});

@@ -60,8 +60,6 @@
 				return rawArrayValue(row, viewSlug, f.name).length > 0;
 			case 'boolean':
 				return rawStatefulValue(row, viewSlug, f.name) === true;
-			case 'source':
-				return false;
 			default: {
 				const v = valueFor(f, row, viewSlug);
 				return v !== '' && v !== '—';

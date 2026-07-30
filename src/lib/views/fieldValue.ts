@@ -96,7 +96,6 @@ export function valueFor(field: ViewField, row: MemberRow, viewSlug: string): st
 		}
 		case 'folder':
 			return folderDir(row.rel_path).split('/').filter(Boolean).join(' / ');
-		case 'source':
 		case 'tags':
 			return '—';
 		default:
@@ -135,9 +134,8 @@ export function isMetaField(type: ViewFieldType): boolean {
 const PRETTY_FIELD: Record<string, string> = {
 	title: 'Title',
 	id: 'ID',
-	source: 'Source',
 	tags: 'Tags',
-	folder: 'Folder',
+	folder: 'Location',
 	path: 'Path',
 	created_at: 'Created',
 	updated_at: 'Updated'
