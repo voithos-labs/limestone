@@ -173,6 +173,7 @@
 		{anchor}
 		value={typeof value === 'string' ? value : null}
 		{sourceId}
+		manage
 		onChange={(v) => onChange(v)}
 	/>
 {:else if field.type === 'source'}

@@ -392,7 +392,9 @@ pub async fn move_folder(
     if !old_full.is_dir() {
         return Err(FolderOpError::named("not_found", folder_leaf(&old_rel_dir)));
     }
-    if new_full.exists() {
+    // case-only change should still pass exists guard
+    let case_only = old_rel_dir.eq_ignore_ascii_case(&new_rel_dir);
+    if new_full.exists() && !case_only {
         return Err(FolderOpError::named(
             "already_exists",
             folder_leaf(&new_rel_dir),

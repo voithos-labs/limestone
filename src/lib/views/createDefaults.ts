@@ -68,6 +68,7 @@ export function deriveCreateContext(
 	const fieldValues: Record<string, unknown> = {};
 	const metaDates: { created_at?: string; updated_at?: string } = {};
 	let sourceId: string | null = null;
+	let folderSourceId: string | null = null;
 
 	for (const field of view.fields) {
 		const def = field.config?.default;
@@ -82,7 +83,10 @@ export function deriveCreateContext(
 		if (!field) continue;
 
 		if (field.type === 'folder') {
-			if (leaf.op === 'in' && typeof leaf.value === 'string') folderIds.push(leaf.value);
+			if (leaf.op === 'in' && typeof leaf.value === 'string') {
+				if (leaf.value.startsWith('folder:')) folderIds.push(leaf.value);
+				else if (!folderSourceId) folderSourceId = leaf.value;
+			}
 		} else if (field.type === 'source') {
 			if (leaf.op === 'eq' && typeof leaf.value === 'string') sourceId = leaf.value;
 		} else if (field.type === 'tags') {
@@ -101,6 +105,7 @@ export function deriveCreateContext(
 
 	const folder = resolveFolder(folderIds, byId);
 	if (!sourceId && folder.id) sourceId = byId.get(folder.id)?.sourceId ?? null;
+	if (!sourceId) sourceId = folderSourceId;
 
 	return {
 		folderGroupId: folder.id,

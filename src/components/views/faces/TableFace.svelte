@@ -2004,6 +2004,7 @@
 	anchor={folderAnchor}
 	value={effectiveFolderId}
 	sourceId={createCtx.sourceId ?? undefined}
+	manage
 	onChange={(id, dir) => {
 		folderOverride = id;
 		folderOverrideDir = dir ?? null;

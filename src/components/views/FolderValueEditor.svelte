@@ -1,9 +1,25 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { Search, Folder, FolderPlus, Folders, ChevronRight, Check } from '@lucide/svelte';
+	import {
+		Search,
+		Folder,
+		FolderOpen,
+		FolderInput,
+		FolderPlus,
+		Folders,
+		ChevronRight,
+		Check,
+		ExternalLink,
+		History,
+		Pencil,
+		X
+	} from '@lucide/svelte';
 	import Group, { GroupType } from '$lib/models/Group';
 	import { listSources, sourceName } from '$lib/models/Source';
+	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { toasts } from '$lib/toasts.svelte';
+	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { folderPath } from '$lib/views/createDefaults';
 	import { isValidSegment } from '$lib/util/paths';
 
@@ -24,6 +40,7 @@
 		rootOption = false,
 		rootLabel,
 		placement = 'auto',
+		manage = false,
 		loadFolders,
 		onCreateFolder,
 		onChange
@@ -35,6 +52,7 @@
 		rootOption?: boolean;
 		rootLabel?: string;
 		placement?: 'auto' | 'below';
+		manage?: boolean;
 		loadFolders?: () => Promise<FolderNode[]>;
 		onCreateFolder?: (
 			name: string,
@@ -43,12 +61,25 @@
 		onChange: (id: string, path?: string) => void;
 	} = $props();
 
+	const POP_MAX_H = 420;
+
 	let popEl: HTMLDivElement | null = $state(null);
 	let searchEl: HTMLInputElement | null = $state(null);
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
-	let maxH = $state(window.innerHeight - 16);
+	let maxH = $state(Math.min(window.innerHeight - 16, POP_MAX_H));
 
 	let folders: FolderNode[] = $state([]);
+	let ready = $state(false);
+	let sourcePaths: Map<string, string> = $state(new Map());
+
+	let movingId: string | null = $state(null);
+	let movingSourceId: string | null = $state(null);
+	let movingSlug = $state('');
+	let movingBusy = $state(false);
+
+	let renamingId: string | null = $state(null);
+	let renameDraft = $state('');
+	let renameEl: HTMLInputElement | null = $state(null);
 	let sourceNames: Map<string, string> = $state(new Map());
 	let loadError = $state('');
 	let query = $state('');
@@ -56,23 +87,83 @@
 
 	const scoped = $derived(sourceId ? folders.filter((f) => f.sourceId === sourceId) : folders);
 
-	const byId = $derived(new Map(scoped.map((f) => [f.id, f])));
+	const sourcesMode = $derived(!sourceId && !loadFolders);
+
+	function isSrcNode(id: string): boolean {
+		return id.startsWith('src:');
+	}
+
+	function nodeValue(id: string): string {
+		return isSrcNode(id) ? id.slice(4) : id;
+	}
+
+	const sourceNodes = $derived.by((): FolderNode[] => {
+		if (!sourcesMode) return [];
+		return [...sourceNames.entries()].map(([id, name]) => ({
+			id: `src:${id}`,
+			slug: name,
+			accessedAt: new Date(0)
+		}));
+	});
+
+	const byId = $derived(new Map([...scoped, ...sourceNodes].map((f) => [f.id, f])));
+
+	function parentKey(f: FolderNode): string | null {
+		if (f.parentGroupId && byId.has(f.parentGroupId)) return f.parentGroupId;
+		if (sourcesMode && !isSrcNode(f.id) && f.sourceId) return `src:${f.sourceId}`;
+		return null;
+	}
 
 	const childrenByParent = $derived.by(() => {
 		const map = new Map<string | null, FolderNode[]>();
 		for (const f of scoped) {
-			const key = f.parentGroupId ?? null;
+			const key = parentKey(f);
 			const list = map.get(key) ?? [];
 			list.push(f);
 			map.set(key, list);
 		}
 		for (const list of map.values()) list.sort((a, b) => a.slug.localeCompare(b.slug));
+		if (sourcesMode) map.set(null, [...sourceNodes]);
 		return map;
 	});
 
-	let createMode = $state(false);
+	const movingExcluded = $derived.by(() => {
+		const ex = new Set<string>();
+		if (!movingId) return ex;
+		const stack = [movingId];
+		while (stack.length) {
+			const id = stack.pop()!;
+			if (ex.has(id)) continue;
+			ex.add(id);
+			for (const c of childrenByParent.get(id) ?? []) stack.push(c.id);
+		}
+		return ex;
+	});
 
-	const searching = $derived(!createMode && query.trim() !== '');
+	function moveBlockReason(destKey: string | null): string | undefined {
+		if (!movingId) return undefined;
+		const moving = byId.get(movingId);
+		if (moving && parentKey(moving) === destKey) return 'Already here';
+		const sibs = childrenByParent.get(destKey) ?? [];
+		if (
+			sibs.some(
+				(f) =>
+					f.id !== movingId &&
+					!isSrcNode(f.id) &&
+					f.slug.toLowerCase() === movingSlug.toLowerCase()
+			)
+		)
+			return `A folder named "${movingSlug}" is already there`;
+		return undefined;
+	}
+
+	const showRootRow = $derived.by(() => {
+		if (focusId) return false;
+		if (movingId) return !!sourceId && moveBlockReason(null) !== 'Already here';
+		return rootOption;
+	});
+
+	const searching = $derived(query.trim() !== '');
 
 	const focusFolder = $derived(focusId ? byId.get(focusId) : undefined);
 
@@ -82,20 +173,18 @@
 		let guard = 0;
 		while (f && guard++ < 32) {
 			chain.unshift(f);
-			f = f.parentGroupId ? byId.get(f.parentGroupId) : undefined;
+			const pid = parentKey(f);
+			f = pid ? byId.get(pid) : undefined;
 		}
 		return chain;
 	});
 
 	let navDir = $state(1);
+	let navAnimate = $state(false);
 
-	const levelRows = $derived.by(() => {
-		if (focusId) return childrenByParent.get(focusId) ?? [];
-		const inScope = new Set(scoped.map((f) => f.id));
-		return scoped
-			.filter((f) => !f.parentGroupId || !inScope.has(f.parentGroupId))
-			.sort((a, b) => a.slug.localeCompare(b.slug));
-	});
+	const levelRows = $derived(
+		(childrenByParent.get(focusId) ?? []).filter((f) => !movingExcluded.has(f.id))
+	);
 
 	const searchMatches = $derived.by(() => {
 		if (!searching) return [] as FolderNode[];
@@ -103,6 +192,8 @@
 		const prefix: FolderNode[] = [];
 		const rest: FolderNode[] = [];
 		for (const f of scoped) {
+			if (movingExcluded.has(f.id)) continue;
+			if (movingId && f.sourceId !== movingSourceId) continue;
 			const s = f.slug.toLowerCase();
 			if (s.startsWith(q)) prefix.push(f);
 			else if (s.includes(q)) rest.push(f);
@@ -111,21 +202,61 @@
 		return [...prefix.sort(bySlug), ...rest.sort(bySlug)];
 	});
 
-	const RECENTS_MIN = 9;
+	const RECENTS_MAX = 6;
 	const recentFolders = $derived.by(() => {
-		if (searching || loadFolders || scoped.length < RECENTS_MIN) return [] as FolderNode[];
-		const current = value ? scoped.find((f) => f.id === value) : undefined;
-		const recents = scoped
+		if (loadFolders) return [] as FolderNode[];
+		const pool = scoped.filter(
+			(f) => !movingExcluded.has(f.id) && (!movingId || f.sourceId === movingSourceId)
+		);
+		const current = value ? pool.find((f) => f.id === value) : undefined;
+		const recents = pool
 			.filter((f) => f.id !== value)
 			.sort((a, b) => b.accessedAt.getTime() - a.accessedAt.getTime())
-			.slice(0, 2);
+			.slice(0, RECENTS_MAX - (current ? 1 : 0));
 		return current ? [current, ...recents] : recents;
 	});
 
-	const createSourceId = $derived(
-		sourceId ??
-			(new Set(folders.map((f) => f.sourceId)).size === 1 ? folders[0]?.sourceId : undefined)
-	);
+	let recentsOpen = $state(false);
+	let recentsIndex = $state(0);
+	let recentsRowEl: HTMLElement | null = $state(null);
+	let flyPos = $state({ top: 0, left: 0 });
+	let recentsHoverT = 0;
+
+	function openRecents() {
+		const r = recentsRowEl?.getBoundingClientRect();
+		if (!r) return;
+		const width = 260;
+		let left = r.right - 2;
+		let top = r.top - 4;
+		if (left + width > window.innerWidth - 8) {
+			left = Math.max(8, r.right - width);
+			top = r.bottom - 2;
+		}
+		flyPos = { top: Math.max(8, Math.min(top, window.innerHeight - 8 - 248)), left };
+		recentsIndex = 0;
+		recentsOpen = true;
+	}
+
+	function closeRecents() {
+		recentsOpen = false;
+	}
+
+	function recentsEnter() {
+		recentsHoverT = window.setTimeout(() => openRecents(), 150);
+	}
+
+	function recentsLeave() {
+		clearTimeout(recentsHoverT);
+		closeRecents();
+	}
+
+	const rootCrumbLabel = $derived((sourceId && sourceNames.get(sourceId)) || 'All folders');
+
+	const createSourceId = $derived.by(() => {
+		if (sourceId) return sourceId;
+		if (focusId) return isSrcNode(focusId) ? focusId.slice(4) : byId.get(focusId)?.sourceId;
+		return new Set(folders.map((f) => f.sourceId)).size === 1 ? folders[0]?.sourceId : undefined;
+	});
 	const canCreate = $derived(!!onCreateFolder || !!createSourceId);
 
 	function siblingExists(slug: string): boolean {
@@ -134,33 +265,37 @@
 		return (childrenByParent.get(focusId ?? null) ?? []).some((f) => f.slug.toLowerCase() === s);
 	}
 
+	function validFolderName(name: string): boolean {
+		const s = name.trim();
+		return isValidSegment(s) && !s.startsWith('.');
+	}
+
 	const showCreate = $derived(
-		searching && canCreate && isValidSegment(query) && !siblingExists(query)
+		searching && canCreate && validFolderName(query) && !siblingExists(query)
 	);
 
 	type NavEntry = { kind: 'folder'; folder: FolderNode } | { kind: 'root' } | { kind: 'create' };
 
 	const navEntries = $derived.by((): NavEntry[] => {
+		const out: NavEntry[] = [];
 		if (searching) {
-			const out: NavEntry[] = searchMatches.map((f) => ({ kind: 'folder' as const, folder: f }));
+			for (const f of searchMatches) out.push({ kind: 'folder', folder: f });
 			if (showCreate) out.push({ kind: 'create' });
 			return out;
 		}
-		const out: NavEntry[] = recentFolders.map((f) => ({ kind: 'folder' as const, folder: f }));
-		if (rootOption && !focusId) out.push({ kind: 'root' });
+		if (showRootRow) out.push({ kind: 'root' });
 		for (const f of levelRows) out.push({ kind: 'folder', folder: f });
 		return out;
 	});
 
 	const navCount = $derived(navEntries.length);
-	const levelBase = $derived(
-		searching ? 0 : recentFolders.length + (rootOption && !focusId ? 1 : 0)
-	);
+	const levelBase = $derived(searching || !showRootRow ? 0 : 1);
 	let activeIndex = $state(0);
 
 	$effect(() => {
 		query;
 		focusId;
+		recentsOpen = false;
 		if (activeIndex >= navCount) activeIndex = 0;
 	});
 
@@ -168,15 +303,21 @@
 
 	async function createFolderNamed(slug: string) {
 		const name = slug.trim();
-		if (!isValidSegment(name) || !canCreate || creating || siblingExists(name)) return;
+		if (!validFolderName(name) || !canCreate || creating || siblingExists(name)) return;
 		creating = true;
 		try {
-			const parent = focusId ? { id: focusId, path: folderPath(focusId, folders) } : null;
+			const parent =
+				focusId && !isSrcNode(focusId)
+					? { id: focusId, path: folderPath(focusId, folders) }
+					: null;
 			const g = onCreateFolder
 				? await onCreateFolder(name, parent)
 				: await Group.createFolder(name, createSourceId!, parent ?? undefined);
 			folders = [...folders, g];
-			pick(g.id);
+			loadError = '';
+			newName = '';
+			focusFolderId(g.id);
+			if (newFolderOpen) queueMicrotask(() => newFolderEl?.focus());
 		} catch (e) {
 			loadError = Group.describeOpError(e, "The folder couldn't be created.");
 		} finally {
@@ -184,28 +325,169 @@
 		}
 	}
 
-	function toggleCreateMode() {
-		createMode = !createMode;
-		query = '';
+	let newFolderOpen = $state(false);
+	let newName = $state('');
+	let newFolderEl: HTMLInputElement | null = $state(null);
+
+	function openNewFolder() {
+		newFolderOpen = true;
+		newName = '';
+		queueMicrotask(() => newFolderEl?.focus());
+	}
+
+	function closeNewFolder() {
+		newFolderOpen = false;
+		newName = '';
 		searchEl?.focus();
 	}
 
-	function hasChildren(id: string): boolean {
-		return (childrenByParent.get(id)?.length ?? 0) > 0;
+	function onNewFolderKey(e: KeyboardEvent) {
+		e.stopPropagation();
+		if (e.key === 'Enter') createFolderNamed(newName);
+		else if (e.key === 'Escape') closeNewFolder();
+	}
+
+	function startMove(f: FolderNode) {
+		movingId = f.id;
+		movingSourceId = f.sourceId ?? null;
+		movingSlug = f.slug;
+		navAnimate = false;
+		focusId = parentKey(f);
+		activeIndex = 0;
+		query = '';
+	}
+
+	function cancelMove() {
+		movingId = null;
+		movingSourceId = null;
+		searchEl?.focus();
+	}
+
+	async function doMove(destKey: string | null) {
+		if (!movingId || movingBusy || moveBlockReason(destKey)) return;
+		if (destKey && movingExcluded.has(destKey)) return;
+		const src = movingSourceId!;
+		const oldPath = folderPath(movingId, folders);
+		const destDir = destKey && !isSrcNode(destKey) ? folderPath(destKey, folders) : '';
+		const newPath = destDir ? `${destDir}/${movingSlug}` : movingSlug;
+		movingBusy = true;
+		try {
+			const newId = await Group.moveFolder(src, oldPath, newPath);
+			await loadData();
+			movingId = null;
+			movingSourceId = null;
+			navAnimate = false;
+			focusId = destKey ?? (sourcesMode ? `src:${src}` : null);
+			queueMicrotask(() => {
+				const i = navEntries.findIndex((n) => n.kind === 'folder' && n.folder.id === newId);
+				if (i >= 0) activeIndex = i;
+			});
+		} catch (e) {
+			toasts.push(Group.describeOpError(e, "The folder couldn't be moved."), {
+				action: { label: 'Retry', run: () => doMove(destKey) }
+			});
+		} finally {
+			movingBusy = false;
+		}
+	}
+
+	function startRename(f: FolderNode) {
+		if (searching) {
+			navAnimate = false;
+			focusId = parentKey(f);
+			query = '';
+		}
+		renamingId = f.id;
+		renameDraft = f.slug;
+		queueMicrotask(() => {
+			renameEl?.focus();
+			renameEl?.select();
+		});
+	}
+
+	function renameInvalid(f: FolderNode): boolean {
+		const s = renameDraft.trim();
+		if (s === f.slug || s === '') return false;
+		if (!validFolderName(s)) return true;
+		const sibs = childrenByParent.get(parentKey(f)) ?? [];
+		return sibs.some((o) => o.id !== f.id && o.slug.toLowerCase() === s.toLowerCase());
+	}
+
+	function commitRename(f: FolderNode) {
+		if (renamingId !== f.id) return;
+		const s = renameDraft.trim();
+		const invalid = renameInvalid(f);
+		renamingId = null;
+		if (!f.sourceId || s === f.slug || s === '' || invalid || !validFolderName(s)) return;
+		const oldPath = folderPath(f.id, folders);
+		const dir = oldPath.split('/').slice(0, -1).join('/');
+		doRename(f.sourceId, oldPath, dir ? `${dir}/${s}` : s);
+	}
+
+	async function doRename(src: string, oldPath: string, newPath: string) {
+		try {
+			await Group.moveFolder(src, oldPath, newPath);
+			await loadData();
+		} catch (e) {
+			toasts.push(Group.describeOpError(e, "The folder couldn't be renamed."), {
+				action: { label: 'Retry', run: () => doRename(src, oldPath, newPath) }
+			});
+		}
+	}
+
+	function onRenameKey(e: KeyboardEvent, f: FolderNode) {
+		e.stopPropagation();
+		if (e.key === 'Enter') commitRename(f);
+		else if (e.key === 'Escape') renamingId = null;
+	}
+
+	function revealFolder(f: FolderNode) {
+		const root = f.sourceId ? sourcePaths.get(f.sourceId) : undefined;
+		if (!root) return;
+		revealItemInDir(`${root}/${folderPath(f.id, folders)}`).catch(() => {});
+	}
+
+	function folderCtxItems(f: FolderNode): CtxEntry[] | null {
+		if (!manage || isSrcNode(f.id) || movingId || renamingId) return null;
+		return [
+			{ label: 'Rename', icon: Pencil, action: () => startRename(f) },
+			{ label: 'Move to…', icon: FolderInput, action: () => startMove(f) },
+			{
+				label: 'New folder inside',
+				icon: FolderPlus,
+				action: () => {
+					focusFolderId(f.id);
+					openNewFolder();
+				}
+			},
+			{ divider: true },
+			{ label: 'Reveal in file manager', icon: ExternalLink, action: () => revealFolder(f) }
+		];
 	}
 
 	function ancestorPath(folder: FolderNode): string {
 		const parts: string[] = [];
-		let p = folder.parentGroupId ? byId.get(folder.parentGroupId) : undefined;
+		let pid = parentKey(folder);
 		let guard = 0;
-		while (p && guard++ < 32) {
+		while (pid && guard++ < 32) {
+			const p = byId.get(pid);
+			if (!p) break;
 			parts.unshift(p.slug);
-			p = p.parentGroupId ? byId.get(p.parentGroupId) : undefined;
+			pid = parentKey(p);
 		}
 		return parts.join(' / ');
 	}
 
 	function pick(id: string) {
+		if (movingId) {
+			doMove(id === '' ? null : id);
+			return;
+		}
+		if (isSrcNode(id)) {
+			onChange(nodeValue(id), '');
+			open = false;
+			return;
+		}
 		if (id)
 			byId
 				.get(id)
@@ -216,6 +498,7 @@
 	}
 
 	function focusFolderId(id: string) {
+		navAnimate = true;
 		navDir = 1;
 		focusId = id;
 		activeIndex = 0;
@@ -223,6 +506,7 @@
 	}
 
 	function jumpTo(id: string | null) {
+		navAnimate = true;
 		navDir = -1;
 		focusId = id;
 		activeIndex = 0;
@@ -230,9 +514,11 @@
 
 	function goUp() {
 		if (!focusId) return;
+		if (movingId && isSrcNode(focusId)) return;
 		const from = focusId;
+		navAnimate = true;
 		navDir = -1;
-		focusId = focusFolder?.parentGroupId ?? null;
+		focusId = focusFolder ? parentKey(focusFolder) : null;
 		const i = navEntries.findIndex((n) => n.kind === 'folder' && n.folder.id === from);
 		activeIndex = i >= 0 ? i : 0;
 	}
@@ -240,9 +526,10 @@
 	function revealValue() {
 		if (!value) return;
 		const target = folders.find((g) => g.id === value);
-		if (!target) return;
-		focusId = target.parentGroupId ?? null;
-		const i = navEntries.findIndex((n) => n.kind === 'folder' && n.folder.id === value);
+		if (target) focusId = parentKey(target);
+		else if (byId.has(`src:${value}`)) focusId = null;
+		else return;
+		const i = navEntries.findIndex((n) => n.kind === 'folder' && nodeValue(n.folder.id) === value);
 		if (i >= 0) activeIndex = i;
 		queueMicrotask(() => {
 			popEl?.querySelector('.folder-row.selected')?.scrollIntoView({ block: 'nearest' });
@@ -262,10 +549,10 @@
 		let top: number;
 		if (placement === 'below' || naturalH <= spaceBelow || spaceBelow >= spaceAbove) {
 			top = a.bottom + margin;
-			maxH = spaceBelow;
+			maxH = Math.min(spaceBelow, POP_MAX_H);
 		} else {
-			maxH = spaceAbove;
-			top = Math.max(8, a.top - margin - Math.min(naturalH, spaceAbove));
+			maxH = Math.min(spaceAbove, POP_MAX_H);
+			top = Math.max(8, a.top - margin - Math.min(naturalH, maxH));
 		}
 		let left = a.left;
 		if (left + m.width > window.innerWidth - 8) {
@@ -274,29 +561,65 @@
 		pos = { top, left };
 	}
 
+	function loadData(): Promise<void> {
+		const load = loadFolders
+			? loadFolders()
+			: Group.list().then((gs) => gs.filter((g) => g.groupType === GroupType.Folder));
+		return Promise.all([load, listSources().catch(() => [])])
+			.then(([fs, ss]) => {
+				folders = fs;
+				sourceNames = new Map(ss.map((s) => [s.id, sourceName(s)]));
+				sourcePaths = new Map(ss.map((s) => [s.id, s.path]));
+				loadError = '';
+				ready = true;
+			})
+			.catch((e) => {
+				loadError = String(e);
+				ready = true;
+			});
+	}
+
 	function onDocPointerDown(e: PointerEvent) {
 		if (!open) return;
 		if (popEl?.contains(e.target as Node)) return;
 		if (anchor?.contains(e.target as Node)) return;
+		if ((e.target as Element | null)?.closest?.('.ctx-menu')) return;
 		open = false;
 	}
 
 	function onKey(e: KeyboardEvent) {
 		if (!open) return;
+		if (contextMenu.open) return;
+		if (recentsOpen) {
+			if (e.key === 'Escape' || e.key === 'ArrowLeft') {
+				e.preventDefault();
+				closeRecents();
+				return;
+			} else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+				e.preventDefault();
+				if (recentFolders.length) recentsIndex = (recentsIndex + 1) % recentFolders.length;
+				return;
+			} else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+				e.preventDefault();
+				if (recentFolders.length)
+					recentsIndex = (recentsIndex - 1 + recentFolders.length) % recentFolders.length;
+				return;
+			} else if (e.key === 'Enter') {
+				e.preventDefault();
+				const f = recentFolders[recentsIndex];
+				if (f) pick(f.id);
+				return;
+			}
+			closeRecents();
+		}
 		const entry = navEntries[activeIndex];
 		if (e.key === 'Escape') {
-			if (createMode) {
-				createMode = false;
-				query = '';
-			} else if (focusId) {
+			if (focusId && !(movingId && isSrcNode(focusId))) {
 				goUp();
 			} else {
 				open = false;
 			}
 			e.preventDefault();
-		} else if (e.key === 'Enter' && createMode) {
-			e.preventDefault();
-			createFolderNamed(query);
 		} else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
 			e.preventDefault();
 			if (navCount > 0) activeIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % navCount;
@@ -305,9 +628,10 @@
 			if (navCount > 0)
 				activeIndex = activeIndex < 0 ? navCount - 1 : (activeIndex - 1 + navCount) % navCount;
 		} else if (e.key === 'ArrowRight' && !searching) {
-			if (entry?.kind !== 'folder') return;
-			e.preventDefault();
-			focusFolderId(entry.folder.id);
+			if (entry?.kind === 'folder') {
+				e.preventDefault();
+				focusFolderId(entry.folder.id);
+			}
 		} else if (e.key === 'ArrowLeft' && !searching) {
 			if (!focusId) return;
 			e.preventDefault();
@@ -321,6 +645,8 @@
 		}
 	}
 
+	if (!loadFolders) loadData();
+
 	let wasOpen = false;
 
 	$effect(() => {
@@ -329,26 +655,25 @@
 			wasOpen = true;
 			untrack(() => {
 				query = '';
-				createMode = false;
+				newFolderOpen = false;
+				newName = '';
+				recentsOpen = false;
+				movingId = null;
+				movingSourceId = null;
+				renamingId = null;
 				focusId = null;
 				activeIndex = 0;
+				navAnimate = false;
+				ready = folders.length > 0;
+				revealValue();
 			});
-			const load = loadFolders
-				? loadFolders()
-				: Group.list().then((gs) => gs.filter((g) => g.groupType === GroupType.Folder));
-			load
-				.then((fs) => {
-					folders = fs;
-					loadError = '';
-					revealValue();
-					queueMicrotask(position);
-				})
-				.catch((e) => {
-					loadError = String(e);
+			loadData().then(() => {
+				revealValue();
+				queueMicrotask(() => {
+					position();
+					searchEl?.focus();
 				});
-			listSources()
-				.then((ss) => (sourceNames = new Map(ss.map((s) => [s.id, sourceName(s)]))))
-				.catch(() => {});
+			});
 			queueMicrotask(() => {
 				position();
 				searchEl?.focus();
@@ -372,12 +697,12 @@
 	$effect(() => {
 		query;
 		focusId;
-		createMode;
+		newFolderOpen;
 		if (open) queueMicrotask(position);
 	});
 </script>
 
-{#if open}
+{#if open && ready}
 	<div
 		class="pop"
 		bind:this={popEl}
@@ -387,64 +712,151 @@
 		role="menu"
 		tabindex="-1"
 	>
-		<div class="search-row" class:create={createMode}>
-			{#if createMode}
-				<FolderPlus size={13} strokeWidth={1.75} />
-			{:else}
-				<Search size={13} strokeWidth={1.75} />
-			{/if}
+		<div class="search-row">
+			<Search size={13} strokeWidth={1.75} />
 			<input
 				class="search-input"
-				class:invalid={createMode &&
-					query.trim() !== '' &&
-					(!isValidSegment(query) || siblingExists(query))}
 				type="text"
 				bind:value={query}
 				bind:this={searchEl}
-				placeholder={createMode
-					? focusFolder
-						? `New folder in ${focusFolder.slug}…`
-						: 'New folder name…'
-					: 'Search folders…'}
+				placeholder="Search folders…"
 			/>
-			{#if canCreate}
+			{#if query}
 				<button
-					class="create-toggle"
-					class:on={createMode}
+					class="clear-btn"
 					type="button"
-					title={createMode ? 'Back to search' : 'New folder'}
-					onclick={toggleCreateMode}
+					title="Clear"
+					onclick={() => {
+						query = '';
+						searchEl?.focus();
+					}}
 				>
-					{#if createMode}
-						<Search size={13} strokeWidth={1.75} />
-					{:else}
-						<FolderPlus size={13} strokeWidth={1.75} />
-					{/if}
+					<X size={13} />
 				</button>
+			{:else if !loadFolders}
+				<span
+					class="recents-anchor"
+					bind:this={recentsRowEl}
+					onmouseenter={recentsEnter}
+					onmouseleave={recentsLeave}
+					role="presentation"
+				>
+					<button
+						class="clear-btn"
+						type="button"
+						title="Recent folders"
+						onclick={() => (recentsOpen ? closeRecents() : openRecents())}
+					>
+						<History size={13} strokeWidth={1.75} />
+					</button>
+					{#if recentsOpen}
+						<div
+							class="recents-fly"
+							style:top="{flyPos.top}px"
+							style:left="{flyPos.left}px"
+							role="menu"
+							tabindex="-1"
+						>
+							<div class="fly-label">Recent folders</div>
+							{#each recentFolders as folder, i (folder.id)}
+								{@const blockReason = movingId ? moveBlockReason(folder.id) : undefined}
+								<div
+									class="folder-row"
+									class:selected={folder.id === value}
+									class:active={i === recentsIndex}
+								>
+									<button
+										class="folder-name"
+										type="button"
+										tabindex="-1"
+										disabled={!!movingId && !!blockReason}
+										title={movingId ? (blockReason ?? `Move into ${folder.slug}`) : undefined}
+										onclick={() => pick(folder.id)}
+										onmouseenter={() => (recentsIndex = i)}
+									>
+										<Folder size={13} strokeWidth={1.75} />
+										<span class="name-label">{folder.slug}</span>
+										{#if folder.id === value}
+											<Check size={13} strokeWidth={2} />
+										{/if}
+										{#if ancestorPath(folder)}
+											<span class="name-path">{ancestorPath(folder)}</span>
+										{/if}
+									</button>
+								</div>
+							{:else}
+								<div class="empty">No recent folders</div>
+							{/each}
+						</div>
+					{/if}
+				</span>
 			{/if}
 		</div>
 
 		{#if loadError}
 			<div class="load-error">{loadError}</div>
 		{/if}
+		{#if movingId}
+			<div class="move-head">
+				<FolderInput size={12} strokeWidth={1.75} />
+				<span class="move-label">Moving</span>
+				<span class="move-name">{movingSlug}</span>
+				<button class="move-cancel" type="button" title="Cancel move" onclick={cancelMove}>
+					<X size={12} />
+				</button>
+			</div>
+		{/if}
+		{#if !searching && showRootRow}
+			{@const rootBlock = moveBlockReason(null)}
+			<div class="folder-row root-row" class:active={activeIndex === 0}>
+				<button
+					class="folder-name"
+					type="button"
+					tabindex="-1"
+					disabled={!!movingId && !!rootBlock}
+					title={movingId ? (rootBlock ?? 'Place here') : undefined}
+					onclick={() => pick('')}
+					onmouseenter={() => (activeIndex = 0)}
+				>
+					<Folders size={13} strokeWidth={1.75} />
+					<span class="name-label"
+						>{movingId
+							? rootCrumbLabel
+							: (rootLabel ?? ((sourceId && sourceNames.get(sourceId)) || 'No folder'))}</span
+					>
+				</button>
+				<button
+					class="row-select"
+					type="button"
+					tabindex="-1"
+					disabled={!!movingId && !!rootBlock}
+					title={movingId ? (rootBlock ?? '') : ''}
+					onclick={() => pick('')}
+				>
+					{movingId ? 'Place here' : 'Select this source'}
+				</button>
+			</div>
+			<div class="root-divider"></div>
+		{/if}
 		<div class="list" onmouseleave={() => (activeIndex = -1)} role="presentation">
 			{#if searching}
 				{#each searchMatches as folder, i (folder.id)}
-					{@const sourceLabel = folder.sourceId ? sourceNames.get(folder.sourceId) : undefined}
+					{@const blockReason = movingId ? moveBlockReason(folder.id) : undefined}
 					<div
 						class="folder-row"
 						class:selected={folder.id === value}
 						class:active={i === activeIndex}
+						use:ctxMenu={() => folderCtxItems(folder)}
 					>
-						<span class="disclosure-spacer"></span>
 						<button
 							class="folder-name"
 							type="button"
 							tabindex="-1"
-							onclick={() => pick(folder.id)}
+							onclick={() => focusFolderId(folder.id)}
 							onmouseenter={() => (activeIndex = i)}
 						>
-							<Folder size={13} strokeWidth={1.75} />
+							<span class="row-icon"><Folder size={13} strokeWidth={1.75} /></span>
+							<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
 							<span class="name-label">{folder.slug}</span>
 							{#if folder.id === value}
 								<Check size={13} strokeWidth={2} />
@@ -452,16 +864,25 @@
 							{#if ancestorPath(folder)}
 								<span class="name-path">{ancestorPath(folder)}</span>
 							{/if}
-							{#if sourceLabel}
-								<span class="source-label">{sourceLabel}</span>
-							{/if}
+						</button>
+						<button
+							class="row-select"
+							type="button"
+							tabindex="-1"
+							disabled={!!movingId && !!blockReason}
+							title={movingId ? (blockReason ?? '') : ''}
+							onclick={() => pick(folder.id)}
+						>
+							{movingId ? 'Place' : 'Select'}
 						</button>
 					</div>
 				{/each}
 				{#if showCreate}
-					<div class="folder-row create" class:active={activeIndex === searchMatches.length}>
-						<span class="disclosure-spacer"></span>
-						<button
+					<div
+						class="folder-row create"
+						class:active={activeIndex === searchMatches.length}
+					>
+												<button
 							class="folder-name"
 							type="button"
 							tabindex="-1"
@@ -478,47 +899,42 @@
 					<div class="empty">No folders</div>
 				{/if}
 			{:else}
-				{#if recentFolders.length}
-					<div class="section-label">Recent</div>
-					{#each recentFolders as folder, i ('r' + folder.id)}
-						<div
-							class="folder-row"
-							class:selected={folder.id === value}
-							class:active={i === activeIndex}
-						>
-							<span class="disclosure-spacer"></span>
+				{#if true}
+					<div class="section-label all-row">
+						{#if sourcesMode && !movingId}
 							<button
-								class="folder-name"
+								class="crumb-root crumb-icon"
 								type="button"
-								tabindex="-1"
-								onclick={() => pick(folder.id)}
-								onmouseenter={() => (activeIndex = i)}
+								disabled={!focusId}
+								title="All sources"
+								onclick={() => jumpTo(null)}
 							>
-								<Folder size={13} strokeWidth={1.75} />
-								<span class="name-label">{folder.slug}</span>
-								{#if folder.id === value}
-									<Check size={13} strokeWidth={2} />
-								{/if}
-								{#if ancestorPath(folder)}
-									<span class="name-path">{ancestorPath(folder)}</span>
+								<FolderOpen size={11} strokeWidth={1.75} />
+								{#if !focusId}
+									<span>SOURCES</span>
 								{/if}
 							</button>
-						</div>
-					{/each}
-				{/if}
-				{#if recentFolders.length || focusId}
-					<div class="section-label all-row">
-						<button
-							class="crumb-root"
-							type="button"
-							disabled={!focusId}
-							onclick={() => jumpTo(null)}>All folders</button
-						>
-						{#if focusChain.length > 2}
+						{:else if !sourcesMode}
+							<button
+								class="crumb-root"
+								class:current={!focusId}
+								type="button"
+								disabled={!focusId}
+								onclick={() => jumpTo(null)}>{rootCrumbLabel}</button
+							>
+						{/if}
+						{#if focusChain.length > 1}
+							{@const first = focusChain[0]}
+							<span class="crumb-sep"><ChevronRight size={9} strokeWidth={2.25} /></span>
+							<button class="crumb" type="button" onclick={() => jumpTo(first.id)}
+								>{first.slug}</button
+							>
+						{/if}
+						{#if focusChain.length > 3}
 							<span class="crumb-sep"><ChevronRight size={9} strokeWidth={2.25} /></span>
 							<span class="crumb-dots">…</span>
 						{/if}
-						{#if focusChain.length > 1}
+						{#if focusChain.length > 2}
 							{@const parent = focusChain[focusChain.length - 2]}
 							<span class="crumb-sep"><ChevronRight size={9} strokeWidth={2.25} /></span>
 							<button class="crumb" type="button" onclick={() => jumpTo(parent.id)}
@@ -526,82 +942,128 @@
 							>
 						{/if}
 						{#if focusFolder}
+							{@const focusValue = nodeValue(focusFolder.id)}
+							{@const focusBlock = movingId && focusId ? moveBlockReason(focusId) : undefined}
 							<span class="crumb-sep"><ChevronRight size={9} strokeWidth={2.25} /></span>
 							<button
 								class="focus-name"
-								class:selected={focusId === value}
+								class:selected={focusValue === value}
 								type="button"
-								title="Use this folder"
+								disabled={!!movingId && !!focusBlock}
+								title={movingId
+									? (focusBlock ?? `Place in ${focusFolder.slug}`)
+									: isSrcNode(focusFolder.id)
+										? 'Use this source'
+										: 'Use this folder'}
 								onclick={() => focusId && pick(focusId)}
 							>
 								<span>{focusFolder.slug}</span>
-								{#if focusId === value}
+								{#if focusValue === value}
 									<Check size={12} strokeWidth={2} />
 								{/if}
+							</button>
+						{/if}
+						{#if canCreate}
+							<button class="crumb-new" type="button" title="New folder" onclick={openNewFolder}>
+								<FolderPlus size={12} strokeWidth={1.75} />
 							</button>
 						{/if}
 					</div>
 				{/if}
 				{#key focusId}
-					<div class="level" in:fly={{ x: 24 * navDir, duration: 130 }}>
-						{#if rootOption && !focusId}
-							<div class="folder-row root-row" class:active={activeIndex === recentFolders.length}>
-								<span class="disclosure-spacer"></span>
-								<button
-									class="folder-name"
-									type="button"
-									tabindex="-1"
-									onclick={() => pick('')}
-									onmouseenter={() => (activeIndex = recentFolders.length)}
-								>
-									<Folders size={13} strokeWidth={1.75} />
-									<span class="name-label"
-										>{rootLabel ?? ((sourceId && sourceNames.get(sourceId)) || 'No folder')}</span
-									>
-								</button>
+					<div class="level" in:fly={{ x: 24 * navDir, duration: navAnimate ? 130 : 0 }}>
+						{#if canCreate && newFolderOpen}
+							<div class="folder-row new-row">
+								<div class="folder-name new-edit">
+									<FolderPlus size={13} strokeWidth={1.75} />
+									<input
+										class="new-input"
+										class:invalid={newName.trim() !== '' &&
+											(!validFolderName(newName) || siblingExists(newName))}
+										type="text"
+										bind:value={newName}
+										bind:this={newFolderEl}
+										placeholder="Folder name…"
+										onkeydown={onNewFolderKey}
+									/>
+								</div>
 							</div>
 						{/if}
 						{#each levelRows as folder, i (folder.id)}
 							{@const navIndex = levelBase + i}
-							{@const children = hasChildren(folder.id)}
-							{@const sourceLabel = folder.sourceId ? sourceNames.get(folder.sourceId) : undefined}
+							{@const src = isSrcNode(folder.id)}
+							{@const blockReason = movingId ? moveBlockReason(folder.id) : undefined}
 							<div
 								class="folder-row"
-								class:selected={folder.id === value}
+								class:selected={nodeValue(folder.id) === value}
 								class:active={navIndex === activeIndex}
+								use:ctxMenu={() => folderCtxItems(folder)}
 							>
-								{#if children}
+								{#if renamingId === folder.id}
+									<div class="folder-name new-edit">
+										<Folder size={13} strokeWidth={1.75} />
+										<input
+											class="new-input"
+											class:invalid={renameInvalid(folder)}
+											type="text"
+											bind:value={renameDraft}
+											bind:this={renameEl}
+											onkeydown={(e) => onRenameKey(e, folder)}
+											onblur={() => commitRename(folder)}
+										/>
+									</div>
+								{:else}
 									<button
-										class="disclosure"
+										class="folder-name"
 										type="button"
 										tabindex="-1"
-										aria-label="Open folder"
 										onclick={() => focusFolderId(folder.id)}
+										onmouseenter={() => (activeIndex = navIndex)}
 									>
-										<ChevronRight size={12} strokeWidth={2} />
+										{#if src}
+											<Folders size={13} strokeWidth={1.75} />
+										{:else}
+											<span class="row-icon"><Folder size={13} strokeWidth={1.75} /></span>
+											<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
+										{/if}
+										<span class="name-label">{folder.slug}</span>
+										{#if nodeValue(folder.id) === value || blockReason === 'Already here'}
+											<Check size={13} strokeWidth={2} />
+										{/if}
 									</button>
-								{:else}
-									<span class="disclosure-spacer"></span>
+									<button
+										class="row-select"
+										type="button"
+										tabindex="-1"
+										disabled={!!movingId && !!blockReason}
+										title={movingId ? (blockReason ?? '') : ''}
+										onclick={() => pick(folder.id)}
+									>
+										{movingId ? 'Place' : 'Select'}
+									</button>
 								{/if}
-								<button
-									class="folder-name"
-									type="button"
-									tabindex="-1"
-									onclick={() => pick(folder.id)}
-									onmouseenter={() => (activeIndex = navIndex)}
-								>
-									<Folder size={13} strokeWidth={1.75} />
-									<span class="name-label">{folder.slug}</span>
-									{#if folder.id === value}
-										<Check size={13} strokeWidth={2} />
-									{/if}
-									{#if sourceLabel}
-										<span class="source-label">{sourceLabel}</span>
-									{/if}
-								</button>
 							</div>
 						{:else}
-							<div class="empty">{focusFolder ? 'No folders inside' : 'No folders'}</div>
+							<div class="empty">
+								{#if focusFolder && (!movingId || !moveBlockReason(focusId))}
+									<span
+										>{movingId ? 'No folders to move into,' : 'No folders inside,'}</span
+									>
+									<button class="empty-link" type="button" onclick={() => focusId && pick(focusId)}>
+										{movingId
+											? 'place it here?'
+											: isSrcNode(focusFolder.id)
+												? 'select this source?'
+												: 'select this folder?'}
+									</button>
+								{:else if movingId}
+									No folders to move into
+								{:else if focusFolder}
+									No folders inside
+								{:else}
+									No folders
+								{/if}
+							</div>
 						{/each}
 					</div>
 				{/key}
@@ -627,6 +1089,56 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+	}
+
+	.move-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: -4px -4px 4px;
+		padding: 6px 12px;
+		border-bottom: 1px solid var(--menu-search-divider);
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--color-ui-muted);
+	}
+
+	.move-head :global(svg) {
+		flex-shrink: 0;
+	}
+
+	.move-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--color-text-primary);
+	}
+
+	.move-cancel {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		margin-left: auto;
+		padding: 0;
+		border: 0;
+		border-radius: 50%;
+		background: transparent;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+
+	.move-cancel:hover {
+		background: rgba(255, 255, 255, 0.06);
+		color: var(--color-text-primary);
+	}
+
+	.folder-name:disabled {
+		opacity: 0.45;
+		cursor: default;
 	}
 
 	.search-row {
@@ -659,43 +1171,34 @@
 		color: var(--color-ui-dulled);
 	}
 
-	.search-input.invalid {
-		text-decoration: underline;
-		text-decoration-color: var(--error-fg);
-		text-underline-offset: 3px;
-	}
-
-	.create-toggle {
-		display: inline-flex;
+	.clear-btn {
+		display: flex;
 		align-items: center;
 		justify-content: center;
-		flex-shrink: 0;
-		padding: 3px;
-		border: 0;
-		border-radius: 4px;
+		width: 20px;
+		height: 20px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
 		background: transparent;
-		color: var(--color-ui-dulled);
+		color: var(--color-ui-muted);
 		cursor: pointer;
+		flex-shrink: 0;
 	}
 
-	.create-toggle:hover {
+	.clear-btn:hover {
+		background: rgba(255, 255, 255, 0.06);
 		color: var(--color-text-primary);
-	}
-
-	.create-toggle.on {
-		color: var(--color-accent);
 	}
 
 	.list {
 		overflow-y: auto;
 		overflow-x: hidden;
 		flex: 1;
-		scrollbar-width: thin;
-		scrollbar-color: var(--menu-scrollbar-thumb) transparent;
 	}
 
 	.list::-webkit-scrollbar {
-		width: 5px;
+		width: 1px;
 	}
 
 	.list::-webkit-scrollbar-track {
@@ -703,12 +1206,7 @@
 	}
 
 	.list::-webkit-scrollbar-thumb {
-		background: var(--menu-scrollbar-thumb);
-		border-radius: 3px;
-	}
-
-	.list::-webkit-scrollbar-thumb:hover {
-		background: var(--menu-scrollbar-thumb-hover);
+		background: var(--color-border);
 	}
 
 	.section-label {
@@ -727,6 +1225,9 @@
 		min-width: 0;
 		height: 28px;
 		box-sizing: border-box;
+		text-transform: none;
+		letter-spacing: normal;
+		font-size: 11px;
 	}
 
 	.crumb-root {
@@ -743,6 +1244,85 @@
 
 	.crumb-root:disabled {
 		cursor: default;
+	}
+
+	.crumb-root.current {
+		color: var(--color-text-primary);
+	}
+
+	.crumb-icon {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+	}
+
+	.crumb-new {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		margin-left: auto;
+		padding: 0;
+		border: 0;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--color-ui-dulled);
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+
+	.crumb-new:hover {
+		color: var(--color-text-primary);
+	}
+
+	.empty-link {
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: var(--color-ui-muted);
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.empty-link:hover {
+		color: var(--color-text-primary);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.recents-anchor {
+		position: relative;
+		display: inline-flex;
+		flex-shrink: 0;
+	}
+
+	.fly-label {
+		padding: 4px 8px 6px;
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--color-ui-muted);
+	}
+
+	.recents-fly {
+		position: fixed;
+		z-index: 1001;
+		width: 260px;
+		max-height: 240px;
+		overflow-y: auto;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		box-shadow: var(--menu-shadow);
+		padding: 4px;
+	}
+
+	.recents-fly::-webkit-scrollbar {
+		width: 1px;
+	}
+
+	.recents-fly::-webkit-scrollbar-thumb {
+		background: var(--color-border);
 	}
 
 	.crumb-root:not(:disabled):hover {
@@ -822,25 +1402,51 @@
 		border-radius: 5px;
 	}
 
-	.disclosure,
-	.disclosure-spacer {
+	.row-icon {
 		display: inline-flex;
+	}
+
+	.row-icon.open {
+		display: none;
+	}
+
+	.folder-name:hover .row-icon {
+		display: none;
+	}
+
+	.folder-name:hover .row-icon.open {
+		display: inline-flex;
+	}
+
+	.row-select {
+		display: none;
 		align-items: center;
-		justify-content: center;
-		width: 18px;
 		flex-shrink: 0;
+		margin: 3px 4px 3px 0;
+		padding: 2px 8px;
 		border: 0;
+		border-radius: 4px;
 		background: transparent;
-		color: var(--color-ui-dulled);
+		color: var(--color-ui-muted);
+		font: inherit;
+		font-size: 11px;
 		cursor: pointer;
 	}
 
-	.disclosure:hover {
+	.folder-row:hover .row-select,
+	.folder-row.active .row-select {
+		display: inline-flex;
+	}
+
+	.row-select:hover {
+		background: var(--chip-bg);
 		color: var(--color-text-primary);
 	}
 
-	.disclosure-spacer {
+	.row-select:disabled {
+		opacity: 0.45;
 		cursor: default;
+		background: transparent;
 	}
 
 	.folder-row.selected {
@@ -849,6 +1455,13 @@
 
 	.folder-row.active {
 		background: var(--menu-item-hover);
+	}
+
+	.root-divider {
+		height: 1px;
+		margin: 4px -4px;
+		background: var(--menu-search-divider);
+		flex-shrink: 0;
 	}
 
 	.root-row .name-label {
@@ -898,18 +1511,33 @@
 		color: var(--color-ui-dulled);
 	}
 
-	.source-label {
-		flex-shrink: 0;
-		margin-left: auto;
-		padding-left: 8px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		font-size: 11px;
+	.folder-row.create .name-label {
+		color: var(--color-ui-muted);
+	}
+
+	.new-edit {
+		cursor: default;
+	}
+
+	.new-input {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		background: transparent;
+		font: inherit;
+		color: var(--color-text-primary);
+		outline: none;
+		padding: 0;
+	}
+
+	.new-input::placeholder {
 		color: var(--color-ui-dulled);
 	}
 
-	.folder-row.create .name-label {
-		color: var(--color-ui-muted);
+	.new-input.invalid {
+		text-decoration: underline;
+		text-decoration-color: var(--error-fg);
+		text-underline-offset: 3px;
 	}
 
 	.create-name {

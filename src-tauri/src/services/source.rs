@@ -998,6 +998,15 @@ pub async fn reconcile_source(
     let source_id = source.id.to_string();
     let source_id = source_id.as_str();
 
+    // unreachable root: skip instead of recc (will WRECK your shit, deleting all your notes)
+    if !source_path.is_dir() {
+        eprintln!(
+            "[reconcile:{}] source path unreachable, skipping",
+            source.title
+        );
+        return Ok(Default::default());
+    }
+
     // Ensure source row exists
     sqlx::query(
         "INSERT INTO sources (id, title, path) VALUES (?1, ?2, ?3)

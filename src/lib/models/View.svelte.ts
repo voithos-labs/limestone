@@ -426,7 +426,11 @@ function resolveColumn(fieldType: ViewFieldType, fieldName: string, viewSlug: st
 function compileFolderLeaf(op: string, value: unknown): CompiledFilter {
 	// docs carry every ancestor folder as a group includes children without recursive lookup
 	// (done at index time)
-	const exists = `EXISTS (SELECT 1 FROM document_groups dg WHERE dg.document_id = d.id AND dg.group_id = ?)`;
+	// a value without the folder: prefix is a source id (source root)
+	const exists =
+		typeof value === 'string' && !value.startsWith('folder:')
+			? `d.source_id = ?`
+			: `EXISTS (SELECT 1 FROM document_groups dg WHERE dg.document_id = d.id AND dg.group_id = ?)`;
 	switch (op) {
 		case 'in':
 			return { sql: exists, params: [value] };
