@@ -194,17 +194,26 @@
 	const searchMatches = $derived.by(() => {
 		if (!searching) return [] as FolderNode[];
 		const q = query.trim().toLowerCase();
+		const srcPrefix: FolderNode[] = [];
+		const srcRest: FolderNode[] = [];
 		const prefix: FolderNode[] = [];
 		const rest: FolderNode[] = [];
-		for (const f of scoped) {
+		for (const f of [...sourceNodes, ...scoped]) {
 			if (movingExcluded.has(f.id)) continue;
-			if (movingId && f.sourceId !== movingSourceId) continue;
+			const src = isSrcNode(f.id);
+			if (movingId && (src ? f.id !== `src:${movingSourceId}` : f.sourceId !== movingSourceId))
+				continue;
 			const s = f.slug.toLowerCase();
-			if (s.startsWith(q)) prefix.push(f);
-			else if (s.includes(q)) rest.push(f);
+			if (s.startsWith(q)) (src ? srcPrefix : prefix).push(f);
+			else if (s.includes(q)) (src ? srcRest : rest).push(f);
 		}
 		const bySlug = (a: FolderNode, b: FolderNode) => a.slug.localeCompare(b.slug);
-		return [...prefix.sort(bySlug), ...rest.sort(bySlug)].slice(0, SEARCH_MAX);
+		return [
+			...srcPrefix.sort(bySlug),
+			...prefix.sort(bySlug),
+			...srcRest.sort(bySlug),
+			...rest.sort(bySlug)
+		].slice(0, SEARCH_MAX);
 	});
 
 	const RECENTS_MAX = 6;
@@ -980,9 +989,10 @@
 			{#if searching}
 				{#each searchMatches as folder, i (folder.id)}
 					{@const blockReason = movingId ? moveBlockReason(folder.id) : undefined}
+					{@const src = isSrcNode(folder.id)}
 					<div
 						class="folder-row"
-						class:selected={folder.id === value}
+						class:selected={nodeValue(folder.id) === value}
 						class:active={i === activeIndex}
 						class:drop-hot={dropKey === folder.id && dropOk}
 						data-drop={folder.id}
@@ -996,10 +1006,15 @@
 							onclick={() => focusFolderId(folder.id)}
 							onmouseenter={() => (activeIndex = i)}
 						>
-							<span class="row-icon"><Folder size={13} strokeWidth={1.75} /></span>
-							<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
+							{#if src}
+								<span class="row-icon"><Notebook size={13} strokeWidth={1.75} /></span>
+								<span class="row-icon open"><BookOpen size={13} strokeWidth={1.75} /></span>
+							{:else}
+								<span class="row-icon"><Folder size={13} strokeWidth={1.75} /></span>
+								<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
+							{/if}
 							<span class="name-label">{folder.slug}</span>
-							{#if folder.id === value}
+							{#if nodeValue(folder.id) === value}
 								<Check size={13} strokeWidth={2} />
 							{/if}
 							{#if ancestorPath(folder)}

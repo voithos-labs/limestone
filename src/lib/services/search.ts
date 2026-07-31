@@ -291,7 +291,7 @@ async function containerMatches(q: string): Promise<SearchResult[]> {
 			group_type: string;
 			source_id: string | null;
 		}>(
-			'SELECT id, slug, group_type, source_id FROM groups WHERE lower(slug) LIKE ? ORDER BY length(slug) ASC, slug ASC LIMIT ?',
+			"SELECT id, slug, group_type, source_id FROM groups WHERE lower(slug) LIKE ? ORDER BY (group_type = 'folder') ASC, length(slug) ASC, slug ASC LIMIT ?",
 			[like, CONTAINER_MAX_RESULTS]
 		)
 	]);
