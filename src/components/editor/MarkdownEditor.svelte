@@ -501,10 +501,11 @@
 					const pos = Math.min(initialCursorPos, view.state.doc.length);
 					view.dispatch({ selection: { anchor: pos } });
 				}
+				if ((!flow || initialCursorPos !== undefined) && !handle?.isDraft)
+					view.contentDOM.focus({ preventScroll: true });
 				if (initialScrollTop !== undefined && scrollEl) {
 					scrollEl.scrollTop = initialScrollTop;
 				}
-				if (!flow && !handle?.isDraft) view.focus();
 				initApplied = true;
 			});
 		}

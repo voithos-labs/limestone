@@ -55,7 +55,7 @@
 		SquareArrowOutUpRight,
 		SquareCheck,
 		Folder,
-		Database,
+		Notebook,
 		Ellipsis,
 		Hash,
 		X
@@ -1754,7 +1754,7 @@
 									{#if folderDirLabel}
 										<Folder size={13} strokeWidth={1.75} />
 									{:else}
-										<Database size={13} strokeWidth={1.75} />
+										<Notebook size={13} strokeWidth={1.75} />
 									{/if}
 									<span class="nr-float-label">
 										{needsFolderChoice

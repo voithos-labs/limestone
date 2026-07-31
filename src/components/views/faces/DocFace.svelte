@@ -23,6 +23,7 @@
 		scope = null,
 		labels = {},
 		picker,
+		tab,
 		onCreated
 	}: {
 		view: View;
@@ -31,12 +32,14 @@
 		scope?: FilterNode | null;
 		labels?: { newTitle?: string; empty?: string; create?: string };
 		picker?: DocPicker;
+		tab?: TabState;
 		onCreated?: (rowId: string) => void;
 	} = $props();
 
 	const query = $derived((view.state.search as string | undefined) ?? '');
 
 	let rows = $state<SearchResult[]>([]);
+	let rowsLoaded = $state(false);
 
 	function asResult(row: MemberRow): SearchResult {
 		return {
@@ -58,6 +61,7 @@
 			rows = q
 				? await searchDocuments(q, searchScope ?? view.searchScope({ face, scope }))
 				: (await view.getMembers({ face, scope, limit: 100 })).map(asResult);
+			rowsLoaded = true;
 		} catch (e) {
 			console.error('doc face load failed', e);
 		}
@@ -83,13 +87,13 @@
 
 	$effect(() => {
 		if (!picker) return;
-		picker.results = rows;
+		picker.results = rows.slice(0, 25);
 	});
 
 	// Nothing is picked until you pick something, but a document is on screen the whole
 	// time. Resolving the fallback back into the picker is what marks it as current.
 	$effect(() => {
-		if (!picker) return;
+		if (!picker || !rowsLoaded) return;
 		const id = activeRow?.id ?? null;
 		if (picker.activeId !== id) picker.activeId = id;
 	});
@@ -103,6 +107,16 @@
 	});
 
 	let docTab: TabState | null = $state(null);
+
+	function docStateFor(id: string): Record<string, any> {
+		if (!tab) return {};
+		const docs = (tab.state.docs ??= {});
+		const bag = (docs[id] ??= {});
+		if (bag.zoom === undefined && typeof tab.state.doc_zoom === 'number')
+			bag.zoom = tab.state.doc_zoom;
+		return bag;
+	}
+
 	$effect(() => {
 		const target = activeRow;
 		if (!target) {
@@ -113,15 +127,17 @@
 		DocHandle.fromID(target.id)
 			.then((h) => {
 				if (cancelled) return;
-				const t = TabState.forDoc(h);
-				const prevScroll = docTab?.state.scrollTop;
-				if (prevScroll !== undefined) t.state.scrollTop = prevScroll;
-				docTab = t;
+				docTab = new TabState({ type: 'markdown', handle: h }, docStateFor(h.id));
 			})
 			.catch((e) => console.error('open doc failed', e));
 		return () => {
 			cancelled = true;
 		};
+	});
+
+	$effect(() => {
+		const z = docTab?.state.zoom;
+		if (tab && typeof z === 'number' && tab.state.doc_zoom !== z) tab.state.doc_zoom = z;
 	});
 
 	let folders = $state<Group[]>([]);

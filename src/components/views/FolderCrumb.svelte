@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Folder, Database } from '@lucide/svelte';
+	import { Folder, Notebook } from '@lucide/svelte';
 
 	let { dir, rootLabel = 'Root' }: { dir: string; rootLabel?: string } = $props();
 
@@ -14,7 +14,7 @@
 			<span class="crumb-seg" class:last={i === segs.length - 1}>{s}</span>
 		{/each}
 	{:else}
-		<Database size={12} strokeWidth={1.75} />
+		<Notebook size={12} strokeWidth={1.75} />
 		<span class="crumb-seg last">{rootLabel}</span>
 	{/if}
 </span>

@@ -7,7 +7,8 @@
 		FolderOpen,
 		FolderInput,
 		FolderPlus,
-		Folders,
+		Notebook,
+		BookOpen,
 		ChevronRight,
 		Check,
 		ExternalLink,
@@ -189,20 +190,30 @@
 		(childrenByParent.get(focusId) ?? []).filter((f) => !movingExcluded.has(f.id))
 	);
 
+	const SEARCH_MAX = 50;
 	const searchMatches = $derived.by(() => {
 		if (!searching) return [] as FolderNode[];
 		const q = query.trim().toLowerCase();
+		const srcPrefix: FolderNode[] = [];
+		const srcRest: FolderNode[] = [];
 		const prefix: FolderNode[] = [];
 		const rest: FolderNode[] = [];
-		for (const f of scoped) {
+		for (const f of [...sourceNodes, ...scoped]) {
 			if (movingExcluded.has(f.id)) continue;
-			if (movingId && f.sourceId !== movingSourceId) continue;
+			const src = isSrcNode(f.id);
+			if (movingId && (src ? f.id !== `src:${movingSourceId}` : f.sourceId !== movingSourceId))
+				continue;
 			const s = f.slug.toLowerCase();
-			if (s.startsWith(q)) prefix.push(f);
-			else if (s.includes(q)) rest.push(f);
+			if (s.startsWith(q)) (src ? srcPrefix : prefix).push(f);
+			else if (s.includes(q)) (src ? srcRest : rest).push(f);
 		}
 		const bySlug = (a: FolderNode, b: FolderNode) => a.slug.localeCompare(b.slug);
-		return [...prefix.sort(bySlug), ...rest.sort(bySlug)];
+		return [
+			...srcPrefix.sort(bySlug),
+			...prefix.sort(bySlug),
+			...srcRest.sort(bySlug),
+			...rest.sort(bySlug)
+		].slice(0, SEARCH_MAX);
 	});
 
 	const RECENTS_MAX = 6;
@@ -954,7 +965,7 @@
 					onclick={() => pick('')}
 					onmouseenter={() => (activeIndex = 0)}
 				>
-					<Folders size={13} strokeWidth={1.75} />
+					<Notebook size={13} strokeWidth={1.75} />
 					<span class="name-label"
 						>{movingId
 							? rootCrumbLabel
@@ -978,9 +989,10 @@
 			{#if searching}
 				{#each searchMatches as folder, i (folder.id)}
 					{@const blockReason = movingId ? moveBlockReason(folder.id) : undefined}
+					{@const src = isSrcNode(folder.id)}
 					<div
 						class="folder-row"
-						class:selected={folder.id === value}
+						class:selected={nodeValue(folder.id) === value}
 						class:active={i === activeIndex}
 						class:drop-hot={dropKey === folder.id && dropOk}
 						data-drop={folder.id}
@@ -994,10 +1006,15 @@
 							onclick={() => focusFolderId(folder.id)}
 							onmouseenter={() => (activeIndex = i)}
 						>
-							<span class="row-icon"><Folder size={13} strokeWidth={1.75} /></span>
-							<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
+							{#if src}
+								<span class="row-icon"><Notebook size={13} strokeWidth={1.75} /></span>
+								<span class="row-icon open"><BookOpen size={13} strokeWidth={1.75} /></span>
+							{:else}
+								<span class="row-icon"><Folder size={13} strokeWidth={1.75} /></span>
+								<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
+							{/if}
 							<span class="name-label">{folder.slug}</span>
-							{#if folder.id === value}
+							{#if nodeValue(folder.id) === value}
 								<Check size={13} strokeWidth={2} />
 							{/if}
 							{#if ancestorPath(folder)}
@@ -1048,9 +1065,9 @@
 								title="All sources"
 								onclick={() => jumpTo(null)}
 							>
-								<FolderOpen size={11} strokeWidth={1.75} />
+								<BookOpen size={11} strokeWidth={1.75} />
 								{#if !focusId}
-									<span>SOURCES</span>
+									<span>YOUR SOURCES</span>
 								{/if}
 							</button>
 						{:else if !sourcesMode}
@@ -1120,6 +1137,7 @@
 							</button>
 						{/if}
 					</div>
+					<div class="crumb-divider"></div>
 				{/if}
 				{#key focusId}
 					<div class="level" in:fly={{ x: 24 * navDir, duration: navAnimate ? 130 : 0 }}>
@@ -1175,7 +1193,8 @@
 										onmouseenter={() => (activeIndex = navIndex)}
 									>
 										{#if src}
-											<Folders size={13} strokeWidth={1.75} />
+											<span class="row-icon"><Notebook size={13} strokeWidth={1.75} /></span>
+											<span class="row-icon open"><BookOpen size={13} strokeWidth={1.75} /></span>
 										{:else}
 											<span class="row-icon"><Folder size={13} strokeWidth={1.75} /></span>
 											<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
@@ -1390,12 +1409,16 @@
 		min-width: 0;
 		height: 28px;
 		box-sizing: border-box;
+		padding: 0 10px;
 		text-transform: none;
 		letter-spacing: normal;
 		font-size: 11px;
 	}
 
 	.crumb-root {
+		display: inline-flex;
+		align-items: center;
+		height: 18px;
 		padding: 0;
 		border: 0;
 		background: transparent;
@@ -1497,18 +1520,23 @@
 	.crumb-sep {
 		display: inline-flex;
 		align-items: center;
+		height: 18px;
 		flex-shrink: 0;
 		color: var(--color-ui-dulled);
 		opacity: 0.7;
 	}
 
 	.crumb-dots {
+		height: 18px;
+		line-height: 18px;
 		flex-shrink: 0;
 		color: var(--color-ui-dulled);
 	}
 
 	.crumb {
 		max-width: 70px;
+		height: 18px;
+		line-height: 18px;
 		padding: 0;
 		border: 0;
 		background: transparent;
@@ -1533,6 +1561,7 @@
 	.focus-name {
 		display: inline-flex;
 		align-items: center;
+		height: 18px;
 		gap: 3px;
 		max-width: 150px;
 		min-width: 0;
@@ -1580,6 +1609,14 @@
 	}
 
 	.folder-name:hover .row-icon.open {
+		display: inline-flex;
+	}
+
+	.folder-row.active .folder-name .row-icon {
+		display: none;
+	}
+
+	.folder-row.active .folder-name .row-icon.open {
 		display: inline-flex;
 	}
 
@@ -1672,6 +1709,13 @@
 		flex-shrink: 0;
 	}
 
+	.crumb-divider {
+		height: 1px;
+		margin: 2px -4px 4px;
+		background: var(--menu-search-divider);
+		flex-shrink: 0;
+	}
+
 	.root-row .name-label {
 		color: var(--color-ui-muted);
 	}
@@ -1686,7 +1730,7 @@
 		gap: 8px;
 		flex: 1;
 		min-width: 0;
-		padding: 6px 8px 6px 6px;
+		padding: 6px 8px 6px 10px;
 		border: 0;
 		background: transparent;
 		border-radius: 5px;

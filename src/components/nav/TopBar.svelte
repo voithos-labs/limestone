@@ -13,7 +13,7 @@
 		Box,
 		Hash,
 		Folder,
-		Folders,
+		Notebook,
 		X,
 		Plus,
 		TextSearch,
@@ -43,7 +43,7 @@
 		}
 		if (hasTags) return Hash;
 		if (hasFolder) return Folder;
-		if (hasSource) return Folders;
+		if (hasSource) return Notebook;
 		return Box;
 	}
 

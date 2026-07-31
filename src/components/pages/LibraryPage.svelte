@@ -21,7 +21,7 @@
 	import {
 		Box,
 		Plus,
-		Folders,
+		Notebook,
 		FilePlus,
 		FolderPlus,
 		GripVertical,
@@ -315,7 +315,7 @@
 								{#if s.source.id === defaultSourceId}
 									<FoldersStar size={14} />
 								{:else}
-									<Folders size={14} />
+									<Notebook size={14} />
 								{/if}
 								<span class="vc-title">{s.view.slug}</span>
 							</button>

@@ -5,7 +5,7 @@
 	import { getSource, touchSource, listSources, type Source } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import Group from '$lib/models/Group';
-	import View from '$lib/models/View.svelte';
+	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
 	import { searchDocuments } from '$lib/services/search';
 	import SearchResultRow from './SearchResultRow.svelte';
 	import { Search, X } from '@lucide/svelte';
@@ -25,6 +25,7 @@
 
 	let query = $state(untrack(() => tab?.state.query ?? ''));
 	let results: SearchResult[] = $state([]);
+	let resultsFor = $state('');
 	let inputEl: HTMLInputElement | undefined = $state();
 	let sources: Source[] = $state([]);
 
@@ -56,7 +57,7 @@
 	}
 
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
-	const SEARCH_DEBOUNCE_MS = 50;
+	const SEARCH_DEBOUNCE_MS = 10;
 
 	function scheduleSearch() {
 		if (searchTimer) clearTimeout(searchTimer);
@@ -67,12 +68,16 @@
 		const q = query;
 		if (!q.trim()) {
 			results = [];
+			resultsFor = q;
 			return;
 		}
-		const docResults = await searchDocuments(q);
-		// Saved views live in views.json (frontend)
 		const ql = q.trim().toLowerCase();
-		const viewResults: SearchResult[] = (await View.listSaved())
+		// Saved views live in views.json (frontend)
+		const [docResults, savedViews] = await Promise.all([
+			searchDocuments(q),
+			listSavedViewJSON().catch(() => [])
+		]);
+		const viewResults: SearchResult[] = savedViews
 			.filter((v) => v.slug.toLowerCase().includes(ql))
 			.map((v) => ({
 				id: v.id,
@@ -86,7 +91,8 @@
 				emoji: v.emoji
 			}));
 		if (q !== query) return;
-		results = [...viewResults, ...docResults];
+		results = [...viewResults, ...docResults].slice(0, 25);
+		resultsFor = q;
 	}
 
 	async function openResult(result: SearchResult) {
@@ -147,6 +153,7 @@
 		if (searchTimer) clearTimeout(searchTimer);
 		query = '';
 		results = [];
+		resultsFor = '';
 		inputEl?.focus();
 	}
 
@@ -178,7 +185,7 @@
 		{/if}
 	</div>
 
-	{#if query.trim()}
+	{#if query.trim() && (results.length > 0 || resultsFor === query)}
 		<div class="results-dropdown">
 			{#each results as result}
 				<SearchResultRow

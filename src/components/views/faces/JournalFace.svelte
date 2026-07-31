@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, FilterNode } from '$lib/models/View.svelte';
+	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import { rawStatefulValue } from '$lib/views/fieldValue';
 	import { wallClockToMs } from '$lib/views/dateFormat';
 	import type { DocPicker } from '$lib/views/docPicker.svelte';
@@ -16,7 +17,8 @@
 		flow = false,
 		onOpenRow,
 		createSignal = 0,
-		docPicker
+		docPicker,
+		tab
 	}: {
 		view: View;
 		face: ViewFace;
@@ -24,6 +26,7 @@
 		onOpenRow?: (rowId: string) => void;
 		createSignal?: number;
 		docPicker?: DocPicker;
+		tab?: TabState;
 	} = $props();
 
 	const DAY_SIZE = 46;
@@ -162,7 +165,7 @@
 		return { op: 'and', children };
 	});
 
-	const showActivity = $derived(face.config.show_activity !== false);
+	const showActivity = $derived(face.config.show_activity === true);
 	let jumpOpen = $state(false);
 
 	function onJumpDate(v: string | null) {
@@ -605,6 +608,7 @@
 							scope={bodyScope}
 							labels={docLabels}
 							picker={docPicker}
+							{tab}
 							onCreated={loadRows}
 						/>
 					{:else if bodyFace.type === 'list' || bodyFace.type === 'grid'}
