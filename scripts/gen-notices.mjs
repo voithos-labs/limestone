@@ -35,12 +35,13 @@ const OUT = join(ROOT, 'THIRD-PARTY-NOTICES.txt');
 const OUT_JSON = join(ROOT, 'static', 'third-party-notices.json');
 
 const LICENSE_FILE = /^(licen[cs]e|copying|notice|unlicense)/i;
-const COPYRIGHT_LINE = /^\s*(copyright\b|\(c\)\s|©)/i;
+const COPYRIGHT_LINE = /^\s*(copyright\b|©)/i;
 
 function isCopyrightLine(line) {
 	const t = line.trim();
-	if (!COPYRIGHT_LINE.test(t) || t.length > 300) return false;
-	return /\b\d{4}\b/.test(t) || /\(c\)|©/i.test(t);
+	if (t.length > 300) return false;
+	if (COPYRIGHT_LINE.test(t)) return /\b\d{4}\b/.test(t) || /\(c\)|©/i.test(t);
+	return /^\(c\)\s+\d{4}\b/i.test(t);
 }
 const PREFERENCE = [
 	'MIT',
@@ -234,9 +235,7 @@ function renderItem(item) {
 				.replace(/^git\+/, '')
 				.replace(/\.git$/, '')}`
 		);
-	for (const ref of refs) {
-		for (const c of ref.copyrights) lines.push(`  ${c}`);
-	}
+	for (const c of item.copyrights) lines.push(`  ${c}`);
 	if (refs.length) {
 		lines.push(`  Full text: ${refs.map((r) => `[${r.id}]`).join(' ')}`);
 	} else {
@@ -260,7 +259,7 @@ function toJson(item, ecosystem) {
 		version: item.version,
 		license: item.expression,
 		source: cleanUrl(item.url),
-		copyrights: item.refs.flatMap((r) => r.copyrights),
+		copyrights: item.copyrights,
 		texts: item.refs.map((r) => r.id)
 	};
 }
@@ -268,7 +267,10 @@ function toJson(item, ecosystem) {
 function main() {
 	const rust = collectRust();
 	const npm = collectNpm();
-	for (const item of [...rust, ...npm]) item.refs = resolveTexts(item);
+	for (const item of [...rust, ...npm]) {
+		item.refs = resolveTexts(item);
+		item.copyrights = [...new Set(item.refs.flatMap((r) => r.copyrights))];
+	}
 	const rustRendered = rust.map(renderItem);
 	const npmRendered = npm.map(renderItem);
 
