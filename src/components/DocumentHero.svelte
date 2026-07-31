@@ -14,7 +14,7 @@
         Hash,
         EllipsisVertical,
         Trash2,
-        Folders,
+        Notebook,
         Plus,
         Copy,
         SlidersHorizontal,
@@ -304,7 +304,7 @@
                         title="Move document"
                         onclick={() => (folderOpen = !folderOpen)}
                 >
-                    <Folders size={12}/>
+                    <Notebook size={12}/>
                     <span class="loc-part src">{srcName}</span>
                     {#each dirParts as part}
                         <span class="crumb-sep">/</span>

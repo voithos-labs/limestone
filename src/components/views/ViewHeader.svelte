@@ -88,7 +88,7 @@
 		view.filter.children.filter((n: FilterNode): n is FilterLeaf => 'field_id' in n)
 	);
 
-	const sourceScopeId: string | undefined = $derived.by(() => {
+	const sourceScopeLeaf: FilterLeaf | undefined = $derived.by(() => {
 		for (const leaf of leafFilters) {
 			const field = fieldsById.get(leaf.field_id);
 			if (
@@ -97,11 +97,14 @@
 				typeof leaf.value === 'string' &&
 				!leaf.value.startsWith('folder:')
 			) {
-				return leaf.value;
+				return leaf;
 			}
 		}
 		return undefined;
 	});
+	const sourceScopeId: string | undefined = $derived(
+		sourceScopeLeaf?.value as string | undefined
+	);
 
 	let groupNames: Record<string, string> = $state({});
 	let sourceNames: Record<string, string> = $state({});
@@ -424,7 +427,7 @@
 					valuePills={valuePillsFor(leaf, field)}
 					rawValue={leaf.value}
 					{field}
-					sourceId={sourceScopeId}
+					sourceId={leaf === sourceScopeLeaf ? undefined : sourceScopeId}
 					autoOpenValue={leaf === pendingFocusLeaf}
 					onOpChange={(op) => changeOp(leaf, op)}
 					onValueChange={(v) => changeValue(leaf, v)}

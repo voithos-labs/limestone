@@ -33,6 +33,11 @@
 	// the doc face draws the document, the header's search bar picks which one
 	// fyi fab=floating action button
 	const docPicker = new DocPicker();
+	docPicker.activeId = (tab?.state.picked_doc as string | undefined) ?? null;
+	$effect(() => {
+		const id = docPicker.activeId;
+		if (tab && id) tab.state.picked_doc = id;
+	});
 
 	// a doc face makes its own entry, and a journal's card bodies get the fab back
 	const showNewFab = $derived(
@@ -49,25 +54,52 @@
 			faceInit = true;
 			return;
 		}
+		endScrollRestore();
 		bodyEl.scrollTop = 0;
 		if (tab) tab.state.scrollTop = 0;
 	});
 
 	function bodyScroll() {
+		if (restoreTarget !== null) return;
 		if (tab && bodyEl) tab.state.scrollTop = bodyEl.scrollTop;
 	}
 
 	let didRestoreScroll = false;
+	let restoreTarget: number | null = null;
+	let restoringScroll = $state(false);
+	let restoreRO: ResizeObserver | null = null;
+	let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function endScrollRestore() {
+		restoreTarget = null;
+		restoringScroll = false;
+		restoreRO?.disconnect();
+		restoreRO = null;
+		if (restoreTimer) clearTimeout(restoreTimer);
+		restoreTimer = null;
+		bodyEl?.removeEventListener('wheel', endScrollRestore);
+		bodyEl?.removeEventListener('pointerdown', endScrollRestore);
+	}
+
 	$effect(() => {
 		if (!bodyEl || didRestoreScroll) return;
 		didRestoreScroll = true;
 		const el = bodyEl;
 		const st = tab?.state.scrollTop;
-		if (typeof st === 'number' && st > 0) {
-			requestAnimationFrame(() => {
-				el.scrollTop = st;
-			});
-		}
+		if (typeof st !== 'number' || st <= 0) return;
+		restoreTarget = st;
+		restoringScroll = true;
+		const attempt = () => {
+			if (restoreTarget === null) return;
+			el.scrollTop = restoreTarget;
+			if (Math.abs(el.scrollTop - restoreTarget) < 1) endScrollRestore();
+		};
+		requestAnimationFrame(attempt);
+		restoreRO = new ResizeObserver(attempt);
+		for (const child of el.children) restoreRO.observe(child);
+		el.addEventListener('wheel', endScrollRestore, { passive: true });
+		el.addEventListener('pointerdown', endScrollRestore);
+		restoreTimer = setTimeout(endScrollRestore, 1500);
 	});
 
 	const FB_SNAP_TOP = 20;
@@ -182,6 +214,7 @@
 	});
 
 	onDestroy(() => {
+		endScrollRestore();
 		if (fbSnapTimer) clearTimeout(fbSnapTimer);
 		if (saveTimer && !view.temporary) view.save().catch(() => {});
 	});
@@ -356,6 +389,7 @@
 		<div
 			class="view-body"
 			class:flow={bodyFlow}
+			class:restoring={restoringScroll}
 			bind:this={bodyEl}
 			onwheel={queueFilterBarSnap}
 			onscroll={bodyScroll}
@@ -433,9 +467,10 @@
 						{onOpenRow}
 						{createSignal}
 						{docPicker}
+						{tab}
 					/>
 				{:else if activeFace?.type === 'doc'}
-					<DocFace {view} face={activeFace} flow={bodyFlow} picker={docPicker} />
+					<DocFace {view} face={activeFace} flow={bodyFlow} picker={docPicker} {tab} />
 				{:else if activeFace?.type === 'list' || activeFace?.type === 'grid'}
 					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{:else}
@@ -527,6 +562,10 @@
 
 	.view-body:not(.flow) {
 		overflow: hidden;
+	}
+
+	.view-body.restoring {
+		opacity: 0;
 	}
 
 	.view-body.flow {

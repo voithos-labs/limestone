@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { flip } from 'svelte/animate';
 	import type { Component } from 'svelte';
 	import {
 		ChevronDown,
@@ -14,7 +15,6 @@
 		Trash2,
 		Plus,
 		ArrowLeft,
-		ChevronUp,
 		NotebookText,
 		FileText,
 		LayoutGrid,
@@ -165,7 +165,7 @@
 		dateFieldOpen = false;
 	}
 
-	const showActivity = $derived(face.config.show_activity !== false);
+	const showActivity = $derived(face.config.show_activity === true);
 
 	function toggleActivity() {
 		face.config.show_activity = !showActivity;
@@ -224,11 +224,13 @@
 	let closeOnSwapLeave = false;
 
 	function selectFace(id: string) {
+		if (justDragged) return;
 		view.state.active_face_id = id;
 		closeOnSwapLeave = true;
 	}
 
 	function onPopLeave() {
+		if (dragId) return;
 		if (!closeOnSwapLeave) return;
 		if (groupOpen || addFaceOpen || renamingId || confirmFor || fieldsOpen) return;
 		if (sortOpen || bodyOpen || dateFieldOpen) return;
@@ -265,14 +267,87 @@
 		confirmFor = null;
 	}
 
-	function moveFace(id: string, dir: -1 | 1) {
-		const idx = view.faces.findIndex((f) => f.id === id);
-		const next = idx + dir;
-		if (idx < 0 || next < 0 || next >= view.faces.length) return;
-		const arr = [...view.faces];
-		const [f] = arr.splice(idx, 1);
-		arr.splice(next, 0, f);
-		view.faces = arr;
+	const DRAG_PX = 4;
+	let dragArm: { id: string; x: number; y: number } | null = null;
+	let dragId: string | null = $state(null);
+	let dragOrder: string[] | null = $state(null);
+	let justDragged = false;
+
+	const displayFaces = $derived(
+		dragOrder
+			? dragOrder
+					.map((id) => view.faces.find((f) => f.id === id))
+					.filter((f): f is ViewFace => !!f)
+			: view.faces
+	);
+
+	function armDrag(e: PointerEvent, id: string) {
+		if (e.button !== 0) return;
+		if (renamingId || confirmFor) return;
+		if ((e.target as HTMLElement).closest('.icon-btn, .confirm-btn, input')) return;
+		dragArm = { id, x: e.clientX, y: e.clientY };
+		window.addEventListener('pointermove', onDragMove);
+		window.addEventListener('pointerup', onDragUp);
+		window.addEventListener('keydown', onDragKey, true);
+	}
+
+	function onDragMove(e: PointerEvent) {
+		if (!dragArm) return;
+		if (!dragId) {
+			if (Math.hypot(e.clientX - dragArm.x, e.clientY - dragArm.y) < DRAG_PX) return;
+			dragId = dragArm.id;
+			dragOrder = view.faces.map((f) => f.id);
+		}
+		if (!dragOrder) return;
+		const rows = popEl ? Array.from(popEl.querySelectorAll<HTMLElement>('.list > .row')) : [];
+		const cur = dragOrder.indexOf(dragId);
+		if (cur < 0 || rows.length !== dragOrder.length) return;
+		let next = cur;
+		for (let i = 0; i < rows.length; i++) {
+			const r = rows[i].getBoundingClientRect();
+			const mid = r.top + r.height / 2;
+			if (i < cur && e.clientY < mid) {
+				next = i;
+				break;
+			}
+			if (i > cur && e.clientY > mid) next = i;
+		}
+		if (next !== cur) {
+			const order = [...dragOrder];
+			order.splice(cur, 1);
+			order.splice(next, 0, dragId);
+			dragOrder = order;
+		}
+	}
+
+	function onDragUp() {
+		if (dragId && dragOrder) {
+			const order = dragOrder;
+			if (order.some((id, i) => view.faces[i]?.id !== id))
+				view.faces = order
+					.map((id) => view.faces.find((f) => f.id === id))
+					.filter((f): f is ViewFace => !!f);
+			justDragged = true;
+			setTimeout(() => (justDragged = false), 0);
+		}
+		dragCleanup();
+	}
+
+	function onDragKey(e: KeyboardEvent) {
+		if (e.key === 'Escape' && dragId) {
+			e.stopPropagation();
+			e.preventDefault();
+			dragCleanup();
+		}
+	}
+
+	function dragCleanup() {
+		dragArm = null;
+		dragId = null;
+		dragOrder = null;
+		window.removeEventListener('pointermove', onDragMove);
+		window.removeEventListener('pointerup', onDragUp);
+		window.removeEventListener('keydown', onDragKey, true);
 	}
 
 	function startRename(f: ViewFace) {
@@ -394,7 +469,10 @@
 				document.removeEventListener('keydown', onKey);
 			};
 		}
-		if (!open) wasOpen = false;
+		if (!open) {
+			wasOpen = false;
+			dragCleanup();
+		}
 	});
 </script>
 
@@ -415,12 +493,14 @@
 		tabindex="-1"
 	>
 		<div class="pop-label">View Faces</div>
-		<div class="list">
-			{#each view.faces as f, i (f.id)}
+		<div class="list" class:dragging={!!dragId}>
+			{#each displayFaces as f (f.id)}
 				<div
 					class="row"
 					class:active={f.id === view.state.active_face_id}
 					class:confirming={confirmFor === f.id}
+					class:drag-src={dragId === f.id}
+					animate:flip={{ duration: 160 }}
 				>
 					{#if renamingId === f.id}
 						<span class="name as-input">
@@ -447,6 +527,7 @@
 							class="name"
 							type="button"
 							data-nav
+							onpointerdown={(e) => armDrag(e, f.id)}
 							onclick={() => selectFace(f.id)}
 							ondblclick={() => startRename(f)}
 						>
@@ -468,24 +549,6 @@
 							>Confirm</button
 						>
 					{:else}
-						<button
-							class="icon-btn"
-							type="button"
-							aria-label="Move up"
-							disabled={i === 0}
-							onclick={() => moveFace(f.id, -1)}
-						>
-							<ChevronUp size={14} strokeWidth={2} />
-						</button>
-						<button
-							class="icon-btn"
-							type="button"
-							aria-label="Move down"
-							disabled={i === view.faces.length - 1}
-							onclick={() => moveFace(f.id, 1)}
-						>
-							<ChevronDown size={14} strokeWidth={2} />
-						</button>
 						<button
 							class="icon-btn"
 							type="button"
@@ -804,6 +867,25 @@
 	.row.active,
 	.row:hover {
 		background: var(--menu-item-hover);
+	}
+
+	.list.dragging,
+	.list.dragging * {
+		cursor: grabbing;
+	}
+
+	.list.dragging .row:hover {
+		background: transparent;
+	}
+
+	.list.dragging .row:hover .icon-btn {
+		opacity: 0;
+	}
+
+	.row.drag-src,
+	.list.dragging .row.drag-src:hover {
+		background: var(--menu-item-hover);
+		opacity: 0.65;
 	}
 
 	.name {

@@ -2,7 +2,7 @@
 	import type { SearchResult } from '$lib/types/SearchResult';
 	import { sourceName, type Source } from '$lib/models/Source';
 	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
-	import { Folder, Folders, Hash, TextAlignStart, Box, Check } from '@lucide/svelte';
+	import { Folder, Notebook, Hash, TextAlignStart, Box, Check } from '@lucide/svelte';
 
 	let {
 		result,
@@ -33,7 +33,7 @@
 					<Box size={14} />
 				{/if}
 			{:else if result.kind === 'source'}
-				<Folders size={14} />
+				<Notebook size={14} />
 			{:else if result.kind === 'group'}
 				{#if result.group_type === 'folder'}
 					<Folder size={14} />
@@ -53,7 +53,7 @@
 		{/if}
 	</span>
 	{#if source}
-		<span class="src-chip"><Folders size={11} />{sourceName(source)}</span>
+		<span class="src-chip"><Notebook size={11} />{sourceName(source)}</span>
 	{/if}
 	{#if active}
 		<span class="result-check"><Check size={13} strokeWidth={2} /></span>
