@@ -273,13 +273,12 @@
 	let dragOrder: string[] | null = $state(null);
 	let justDragged = false;
 
-	const displayFaces = $derived(
-		dragOrder
-			? dragOrder
-					.map((id) => view.faces.find((f) => f.id === id))
-					.filter((f): f is ViewFace => !!f)
-			: view.faces
-	);
+	const displayFaces = $derived.by(() => {
+		if (!dragOrder) return view.faces;
+		return dragOrder
+			.map((id) => view.faces.find((f) => f.id === id))
+			.filter((f): f is ViewFace => !!f);
+	});
 
 	function armDrag(e: PointerEvent, id: string) {
 		if (e.button !== 0) return;
