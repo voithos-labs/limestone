@@ -211,9 +211,13 @@
 	class="doc-face"
 	class:flow
 	onclick={(e) => {
-		// Only the face's own empty region below the entry — in flow the editor root hugs its
-		// content, so the in-editor dead-space gesture cannot reach clicks landing down here.
-		if (flow && e.target === e.currentTarget) void docEditor?.focusEntryEnd();
+		// Only the face's empty region BELOW the entry — in flow the editor root hugs its content,
+		// so the in-editor dead-space gesture cannot reach clicks down here. The side gutters stay
+		// inert: teleporting a beside-line click to the document's end would surprise.
+		if (!flow || e.target !== e.currentTarget) return;
+		const editorEl = (e.currentTarget as HTMLElement).querySelector('.editor');
+		if (editorEl && e.clientY <= editorEl.getBoundingClientRect().bottom) return;
+		void docEditor?.focusEntryEnd();
 	}}
 >
 	{#if docTab}
