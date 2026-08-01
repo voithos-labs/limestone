@@ -27,8 +27,8 @@
 - [ ] All aragonite fundemental components, full visual/UX pass
 - [ ] Webview shell checklist, per platform in the BUILT app (aragonite consumer-guide § Embedding in a webview shell; Windows keyboard findings already in e2e/requirements/keybindings.md):
   - [ ] every chord the editor + app rely on (zoom, devtools, reload are the usual shell claims)
-  - [ ] select-all across an image / thematic break, copy, paste into an external app
-  - [ ] the two async-clipboard routes: whole-block Mod+C/X on a rule or diagram, table menu Paste (unproven on wry)
+  - [x] select-all across an image / thematic break, copy, paste into an external app
+  - [x] the two async-clipboard routes: whole-block Mod+C/X on a rule or diagram, table menu Paste (unproven on wry)
   - [ ] multi-line text copied from a native app, pasted into a block
   - [ ] image paste from the system clipboard (onPasteImage)
   - [ ] a local-file image on each platform (asset protocol differs on Windows vs mac/linux)

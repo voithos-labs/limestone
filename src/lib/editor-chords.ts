@@ -1,26 +1,24 @@
 /**
- * What the document editor claims off the keyboard, so the window-level shortcut handler can
- * stand down for it. That handler runs in the capture phase and stops what it takes, so without
- * this the app silently wins every collision — Mod+I opened settings instead of italicizing.
+ * Keyboard shortcuts the document editor uses, so the app's window-level handler can leave them
+ * alone. That handler captures and swallows what it takes, so without this list the app quietly
+ * wins every clash (Mod+I opened settings instead of italicizing).
  *
- * Both halves are read out of aragonite, neither being derivable at runtime: the editor exposes
- * no chord list, and its focus boundary is keyed on an element the host cannot reach.
+ * Both halves are copied from aragonite by hand: it publishes no shortcut list, and its idea of
+ * "focus is in the editor" is not something the app can ask it at runtime.
  */
 
 // ── Chords the editor claims ─────────────────────────────────────────────────
 
 /**
- * Read off aragonite 0.9.36 and the plugins limestone mounts: the block-kind and editor-global
- * keymaps, the search UI's reserved pair, the cell-arrow and staged select-all handlers that sit
- * outside the keymaps, the plugin chords, and this adapter's own chrome in `DocumentEditor.svelte`.
- * Re-check when the editor dependency moves.
+ * Copied by hand from aragonite 0.9.36, the plugins limestone mounts, and this file's companion
+ * shortcuts in `DocumentEditor.svelte`. Re-check it when the aragonite dependency moves.
  *
- * Modifier-carrying chords only: an app shortcut on a bare typing key is broken whatever this set
- * says. Over-reserving only costs an app shortcut inside a document, under-reserving loses an
- * editor feature — so err long.
+ * Chords with a modifier only: an app shortcut on a bare typing key is lost inside a document
+ * whatever this list says. Listing too many only costs an app shortcut while a document has
+ * focus, listing too few loses an editor feature, so err long.
  *
- * On macOS the editor folds Ctrl and Cmd into one modifier and `specFromEvent` does not; ledgered
- * with the reason it is not fixed here in `e2e/requirements/keybindings.md`.
+ * On macOS aragonite treats Ctrl and Cmd as one modifier and `specFromEvent` does not. Why that
+ * is not fixed here is recorded in `e2e/requirements/keybindings.md`.
  */
 const RESERVED = new Set([
 	// Inline formatting and heading level
@@ -63,16 +61,16 @@ const RESERVED = new Set([
 	'alt+shift+backspace',
 	'mod+alt+arrowup',
 	'mod+alt+arrowdown',
-	// Plugin chords: admonition kind, mermaid focus
+	// Plugin shortcuts: admonition kind, mermaid focus
 	'mod+7',
 	'mod+m',
-	// The adapter's own chrome: reading toggle and zoom
+	// Added by DocumentEditor: mode toggle and zoom
 	'mod+e',
 	'mod+=',
 	'mod+-'
 ]);
 
-/** Takes what `specFromEvent` produces, null included, so a bare modifier press is not a chord. */
+/** Takes whatever `specFromEvent` returns, null included, so a lone modifier is not a chord. */
 export function isEditorReservedChord(spec: string | null): boolean {
 	return spec !== null && RESERVED.has(spec);
 }
@@ -80,18 +78,18 @@ export function isEditorReservedChord(spec: string | null): boolean {
 // ── Where the editor claims them ─────────────────────────────────────────────
 
 /**
- * Class names the editor mints, neither of them contract — the editor declines to key its own
- * copy on `.editor-header` precisely because a host could mint a node by that name. `.editor` is
- * load-bearing a second time, in the `EDITABLE` selector in `+page.svelte`.
+ * aragonite's own class names, neither of them a promised API (aragonite avoids relying on
+ * `.editor-header` itself, since a host app could add an element by that name). `.editor` is
+ * depended on a second time, by the `EDITABLE` selector in `+page.svelte`.
  */
 const EDITOR_ROOT = '.editor';
 const HOST_CHROME = '.editor-header';
 
 /**
- * Whether focus sits where the editor routes chords: inside its root but outside the header slot,
- * which is the editor's own boundary — so renaming a document in the title field keeps the app's
- * shortcuts. Narrower than `inEditable` on purpose: reserving chords in every text field would
- * take them from quick search, the settings pane and the view editors.
+ * Whether focus is somewhere the editor handles shortcuts: inside its root but outside the header
+ * slot, which is where aragonite draws the line too, so renaming a document in the title field
+ * keeps the app's shortcuts. Narrower than `inEditable` on purpose: reserving these in every text
+ * field would take them from quick search, the settings pane and the view editors.
  */
 export function inEditorContent(e: KeyboardEvent): boolean {
 	const target = e.target instanceof Element ? e.target : null;

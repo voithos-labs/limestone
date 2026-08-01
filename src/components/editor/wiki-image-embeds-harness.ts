@@ -1,7 +1,7 @@
 /**
- * Drives the wiki image embeds plugin without the app around it. Nothing in the app imports it;
- * it sits under `src/` because that is the only tree the dev server serves modules from, and
- * `wiki-image-embeds.spec.ts` pulls it over that server.
+ * Runs the wiki image embeds plugin without the app around it. Nothing in the app imports this;
+ * it lives under `src/` because that is the only tree the dev server serves modules from, and
+ * `wiki-image-embeds.spec.ts` loads it through that server.
  */
 import { mount } from 'svelte';
 import { Editor, installPlugins, parse, type EditorInstance, type InlineNode } from 'aragonite';
@@ -12,7 +12,7 @@ import { EDITOR_PLUGINS } from './editor-plugins';
 const PIXEL =
 	'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
-/** The inline nodes of the document block at `index`, with the plugins installed. */
+/** How the plugins parse the inline content of the document block at `index`. */
 export function inlineNodesAt(source: string, index = 0): InlineNode[] {
 	installPlugins(EDITOR_PLUGINS.map((entry) => ('plugin' in entry ? entry.plugin : entry)));
 	const block = parse(source).children[index];

@@ -119,9 +119,9 @@ test("carries the size modifier as the node's width", async ({ page }) => {
 	]);
 });
 
-// Both of these are legal built-in images with a bracketed alt. The plugin's rung is consulted
-// first, so a recognizer that failed to decline would swallow them — silently, since the bytes
-// still serialize.
+// Both of these are valid ordinary Markdown images with a bracketed alt. The plugin is asked
+// first, so a recognizer that failed to bow out would swallow them, and silently, since the
+// text still saves.
 test('leaves a bracketed image alt to the built-in scanner', async ({ page }) => {
 	expect(await imageNodes(page, '![[a]](u)')).toEqual([
 		{ kind: 'image', start: 0, end: 9, alt: '[a]', url: 'u' }

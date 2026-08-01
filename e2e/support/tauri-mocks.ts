@@ -15,7 +15,7 @@ import SHIPPED_DEFAULTS from '../../src-tauri/defaults/default_settings.json' wi
 /** Raw file contents keyed by source-relative path, e.g. `notes/hello.md`. */
 export type SeededDocs = Record<string, string>;
 
-/** The host `convertFileSrc` mints, so a spec can recognize a fetch of a mocked asset. */
+/** The host `convertFileSrc` produces, so a spec can recognize a fetch of a mocked asset. */
 export const ASSET_HOST = 'asset.localhost';
 
 export interface MockOptions {

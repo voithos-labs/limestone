@@ -10,8 +10,8 @@ type EventInternals = {
 };
 
 // Guards what `listen()` depends on: an emit reaches the handler, and the id `listen` resolved to
-// is the one `unlisten` accepts back. Deliberately says nothing about what that id IS — the real
-// backend mints its own counter, so pinning the mock's handler-echo would block making it faithful.
+// is the one `unlisten` accepts back. Deliberately says nothing about what that id IS, since the
+// real backend uses its own counter and pinning the mock's echo would block making it faithful.
 test('a listener registered through the IPC channel receives emits until unlistened', async ({
 	page
 }) => {

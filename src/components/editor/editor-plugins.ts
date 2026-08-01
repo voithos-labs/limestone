@@ -12,10 +12,9 @@ import { wikiImageEmbedsPlugin } from './wiki-image-embeds-plugin';
 import type { EditorPluginEntry } from 'aragonite';
 
 /**
- * Built once at module scope, not per mount: aragonite installs plugin definitions
- * process-globally and dev-warns when a remount hands it a fresh object under a name already
- * installed. Importing the two renderer subpaths is what opts limestone into `katex` and
- * `mermaid` — the plugins bundle neither engine.
+ * Built once here, not per mount: aragonite registers plugins once for the whole process and
+ * warns in dev if a remount hands it a new object under a name it already has. Importing the two
+ * renderer paths is what pulls in katex and mermaid; the plugins ship neither.
  */
 export const EDITOR_PLUGINS: readonly EditorPluginEntry[] = [
 	admonitionsPlugin(),

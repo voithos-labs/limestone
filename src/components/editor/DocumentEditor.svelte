@@ -3,7 +3,7 @@
 	import { Editor, parse } from 'aragonite';
 	import type { EditorInstance, EditorSelection, PastedImage, PresentationMode } from 'aragonite';
 	import 'aragonite/styles/editor-theme.css';
-	// Loaded after aragonite's own palette, which is what lets the bridge win over it.
+	// yes you must load editor-tokens.css after aragonite's editor-theme.css
 	import './editor-tokens.css';
 	import { EDITOR_PLUGINS } from './editor-plugins';
 	import { isImageTarget } from './image-targets';
@@ -28,8 +28,8 @@
 	let handle = $derived(tab.handle);
 	let instance = $state<EditorInstance>();
 	let wrapperEl = $state<HTMLDivElement | null>(null);
-	// aragonite's `.editor` root, which owns the scroll outside flow mode. Queried after
-	// mount rather than bound, and `$state` because ScrollThumb reads it as a prop.
+	// aragonite's own `.editor` element, which is the scroller outside flow mode. Found by query
+	// after mount (there is nothing to bind to), and `$state` so ScrollThumb can take it as a prop.
 	let scrollEl = $state<HTMLElement | null>(null);
 
 	// The thumb track starts level with the document title rather than at the scroller's top.
@@ -48,15 +48,15 @@
 		});
 	});
 
-	// ── Save: edit events → debounce → the source the editor serialized ─────────────────
+	// ── Save: edit events, debounced, writing back what the editor serialized ───────────
 
 	const SAVE_DEBOUNCE_MS = 250;
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	// Captured when the edit lands, so a flush that outlives the editor instance (window close,
 	// tab teardown) still has a body to write.
 	let pendingSource: string | null = null;
-	// The body as the editor serializes it, last written or as handed over. Comparing against it
-	// keeps an untouched document unwritten even when the editor's bytes differ from the disk's.
+	// What we last wrote, or what the editor started with. Comparing against it keeps an untouched
+	// document unsaved even when the editor's output differs from the file on disk.
 	let savedBody: string | null = null;
 	// A deleted document must not be resurrected by the flush its own teardown triggers.
 	let deleted = false;
@@ -66,13 +66,13 @@
 			clearTimeout(saveTimer);
 			saveTimer = null;
 		}
-		// Read live: the `edit` event is debounced for undo batching, so its last snapshot can be a
-		// whole typing burst behind. `pendingSource` covers a flush with no instance left to read.
+		// Ask the editor now: its `edit` event is debounced, so the last thing it handed us can be a
+		// whole typing burst behind. `pendingSource` is the fallback when the editor is already gone.
 		const body = deleted ? null : (instance?.getSource() ?? pendingSource);
 		pendingSource = null;
 		if (body === null || body === savedBody) return;
-		// Advanced only once the write lands: a baseline moved on the way out would call a failed
-		// save saved, and the retry behind it would be skipped as a no-op.
+		// Moved only once the write lands: setting it earlier would mark a failed save as saved,
+		// and the next attempt would be skipped as a no-op.
 		return handle
 			?.saveContent(body)
 			.then(() => {
@@ -115,13 +115,13 @@
 		{ value: 'reading', label: 'Reading' }
 	];
 
-	/** aragonite's `preview-block` rung is deliberately not among them. */
+	/** aragonite has a fourth mode, `preview-block`; limestone deliberately doesn't offer it. */
 	function isOfferedMode(value: unknown): value is PresentationMode {
 		return MODES.some((m) => m.value === value);
 	}
 
-	// A tab remembers its mode only once the reader picks one; until then the global
-	// setting seeds it, so `tab.state.presentationMode` is written by setMode alone.
+	// A tab only remembers a mode once the reader picks one; until then the global setting
+	// supplies it. That is why setMode is the only thing that writes tab.state.presentationMode.
 	let mode = $state<PresentationMode>(
 		untrack(() => {
 			const remembered = tab.state.presentationMode;
@@ -139,7 +139,7 @@
 		tab.state.presentationMode = next;
 	}
 
-	/** Steps from the live mode, not a remembered one, so the chord and the toggle buttons compose. */
+	/** Steps from the current mode, not the stored one, so the shortcut and the buttons agree. */
 	function cycleMode() {
 		const from = MODES.findIndex((m) => m.value === mode);
 		setMode(MODES[(from + 1) % MODES.length].value);
@@ -148,18 +148,18 @@
 	// ── Wire-up: events, scroll tracking, and the restore of where you left off ─────────
 
 	/**
-	 * Height of the header the editor renders above the blocks. Scroll is persisted relative to it,
-	 * never as a raw `scrollTop`: the header can reopen shorter than the reader left it (its
-	 * properties panel loads async), and the editor compensates for that growth itself — a raw
-	 * offset would be corrected twice and land the reader a header's growth too low.
+	 * Height of the header the editor draws above the blocks. Scroll position is stored relative
+	 * to this, not as a raw `scrollTop`: the header can come back shorter than the reader left it
+	 * (the properties panel loads late) and the editor already corrects for that growth, so a raw
+	 * offset would be corrected twice and land the reader a header too low.
 	 */
 	let blocksTop = 0;
 
-	// A parameter, not a read of `scrollEl`: the wire-up effect writes that state and measures in
-	// the same pass, and reading it back there would re-run the effect against its own teardown.
+	// Takes the scroller as an argument instead of reading `scrollEl`: the effect below sets that
+	// state and measures in the same pass, and reading it back there would re-run the effect.
 	function measureBlocksTop(scroller: HTMLElement | null): number {
-		// `:scope >` is load-bearing — nested list and table blocks carry `.block-list` too, and one
-		// of those measures a block, not the header.
+		// `:scope >` matters: lists and tables have their own inner `.block-list`, and matching one
+		// of those would measure a block instead of the header.
 		const list = scroller?.querySelector(':scope > .block-list');
 		if (!list || !scroller) return 0;
 		return (
@@ -172,13 +172,13 @@
 	$effect(() => {
 		if (!instance || !loaded) return;
 		restored = false;
-		// Untracked: serializing reads the document, and a dependency on it would re-run this
-		// whole wire-up — listeners, restore and all — on every keystroke.
+		// Untracked: serializing reads the document, so tracking it would re-run this whole block
+		// (listeners, restore and all) on every keystroke.
 		savedBody = untrack(() => instance?.getSource() ?? null);
 		const events = instance.getEvents();
-		// Any edit commits, not just the paste's own: an unrelated one landing between the import
-		// and its insertion clears the ledger, which errs toward keeping a file over deleting a
-		// referenced one.
+		// Any edit commits the ledger, not just the paste's own. An unrelated edit arriving between
+		// the import and its insertion clears it, which errs toward leaving a stray file behind
+		// rather than deleting one the document still points at.
 		const offEdit = events.on('edit', () => {
 			pasteImports.commit();
 			scheduleSave();
@@ -188,8 +188,8 @@
 		});
 		const offError = events.on('error', (err) => {
 			console.error('[editor]', err.origin, err.error, err.context);
-			// A clipboard failure that is not limestone's own import throw means the paste's
-			// markdown never landed, so whatever it imported is an orphan in the source.
+			// A clipboard failure that isn't our own import error means the pasted markdown never
+			// made it in, so any file imported for it is now sitting in the source unreferenced.
 			if (err.origin === 'clipboard' && !pasteImports.isOwnFailure(err.error)) {
 				void pasteImports.release();
 			}
@@ -218,7 +218,7 @@
 		};
 	});
 
-	/** A persisted selection, or null when the tab carries none this editor can place. */
+	/** The selection stored on the tab, or null if it has nothing this editor could place. */
 	function rememberedSelection(): EditorSelection | null {
 		const stored = $state.snapshot(tab.state.selection) as Partial<EditorSelection> | undefined;
 		if (!stored?.anchor || !stored.focus) return null;
@@ -233,27 +233,28 @@
 	};
 
 	async function restore() {
-		// The previous editor's `cursorPos`/`scrollTop` tab keys are ignored: both address a
-		// flat-offset, header-outside-the-scroller space this editor does not have.
+		// The old editor's `cursorPos`/`scrollTop` tab keys are ignored: they measure a flat
+		// character offset and a scroller with the header outside it, neither of which exists here.
 		const selection = rememberedSelection();
-		// A remembered selection can fail — a file that shrank outside the app no longer holds the
-		// block its path names — and `setSelection` reports that by returning false, not throwing.
+		// Restoring can fail (a file edited outside the app may no longer have the block that
+		// selection names), and setSelection reports that by returning false rather than throwing.
 		const placed = selection ? await instance?.setSelection(selection) : false;
-		// `false` covers placed-but-out-of-view shapes too, so only a caretless editor falls back.
-		// An opened document must be typable, and root focus parks without a caret — hence last.
+		// It also returns false in cases where the caret did land, so ask the editor before giving
+		// up. An open document has to be typable, and focusing the root leaves no caret, hence last.
 		const hasCaret = placed || (!!selection && instance?.getSelection() != null);
 		if (!hasCaret && !flow && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
 		if (typeof tab.state.scrollTopBlocks === 'number' && scrollEl) {
 			blocksTop = measureBlocksTop(scrollEl);
 			scrollEl.scrollTop = tab.state.scrollTopBlocks + blocksTop;
 		}
-		// Only now: persisting mid-restore would write values the restore is about to re-state.
+		// Last: persisting mid-restore would save values the restore is about to overwrite.
 		restored = true;
 	}
 
 	/**
-	 * Caret to the document's end, for a host click below a flow entry — dead space the editor
-	 * cannot see. No document on the instance, hence the re-parse; the offset clamps upstream.
+	 * Puts the caret at the end of the document, for a click in the empty space below a flow entry
+	 * that the editor itself never sees. The instance hands out no parsed document, hence the
+	 * re-parse to count blocks; an over-large offset is clamped by the editor.
 	 */
 	export async function focusEntryEnd(): Promise<boolean> {
 		if (!instance) return false;
@@ -268,8 +269,8 @@
 	const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 	function resolveImageUrl(target: string): string {
-		// Anything already carrying a scheme is the editor's own allowlist to judge —
-		// rebasing it would mangle a URL limestone does not own (`appasset:`) into a path.
+		// Anything that already has a scheme is the editor's to judge; rewriting it would turn a
+		// URL limestone does not own (`appasset:`) into a path.
 		if (!handle || HAS_SCHEME.test(target)) return target;
 		const clean = target.replace(/\\/g, '/').replace(/^\.?\//, '');
 		if (!isImageTarget(clean)) return target;
@@ -293,8 +294,8 @@
 		'image/avif': 'avif'
 	};
 
-	// Entries still uncommitted at teardown are deliberately left on disk: a tab closing
-	// mid-gesture cannot tell an insertion that failed from one whose markdown has landed.
+	// Anything still uncommitted at teardown is left on disk on purpose: a tab closing mid-paste
+	// cannot tell an insertion that failed from one whose markdown already landed.
 	const pasteImports = createPasteImportLedger({
 		deleteAsset: async (relPath) => {
 			if (handle) await deleteSourceAsset(handle.source.id, relPath);
@@ -311,8 +312,8 @@
 				MIME_EXTS[image.mimeType] ?? 'png'
 			);
 		} catch (e) {
-			// The editor reports this on the same `clipboard` channel as a failed insertion, and
-			// the gesture's other images still land — so the error handler must not release on it.
+			// The editor reports this on the same `clipboard` error channel as a failed insertion,
+			// and the paste's other images still land, so the error handler must not delete on it.
 			pasteImports.markOwnFailure(e);
 			throw e;
 		}
@@ -320,12 +321,12 @@
 		return `![[${relPath}]]`;
 	}
 
-	// ── Chrome the editor doesn't own: zoom and the presentation toggle ─────────────────
+	// ── UI the editor doesn't provide: zoom and the mode toggle ─────────────────────────
 
 	function onKeydown(e: KeyboardEvent) {
 		if (!(e.ctrlKey || e.metaKey)) return;
-		// The hero's title input rides in the editor's header slot, so a rename would otherwise flip
-		// the mode under the reader. Blocks are contenteditable, never fields, so they are unaffected.
+		// The hero's title input sits inside the editor's header, so without this, typing a rename
+		// would flip the mode. Blocks are contenteditable, not form fields, so they are unaffected.
 		if ((e.target as HTMLElement | null)?.closest('input, textarea, select')) return;
 		if (e.key === '=' || e.key === '+') {
 			e.preventDefault();
@@ -336,8 +337,8 @@
 		} else if (e.key.toLowerCase() === 'e' && !e.shiftKey && !e.altKey) {
 			e.preventDefault();
 			cycleMode();
-			// Reading mode is read-only, so focus drops to <body>, past this wrapper-scoped handler.
-			// Reclaimed after the mode's re-render so the chord that steps back out still lands.
+			// Reading mode is read-only, so focus falls to <body>, outside this wrapper's handler.
+			// Take it back after the re-render or the shortcut cannot cycle out again.
 			void tick().then(() => scrollEl?.focus());
 		}
 	}
@@ -349,8 +350,8 @@
 			saveTimer = null;
 		}
 		pendingSource = null;
-		// Before the delete, not after it: a flush landing while the delete is in flight reads the
-		// editor's live source, and would write back the file the backend has just removed.
+		// Set before the delete, not after: a save flushing while the delete is in flight reads the
+		// editor's live text and would write the file back after the backend removed it.
 		deleted = true;
 		try {
 			await handle.delete();
@@ -442,10 +443,10 @@
 		height: auto;
 	}
 
-	/* The app pane already provides the frame, and the native scrollbar would double up with
+	/* The app pane already draws the frame, and the native scrollbar would double up with
 	   ScrollThumb. The padding stays: it is the document's only margin once the page column
-	   stops centring, and it spaces the hero off the top edge. Reached through the wrapper
-	   because a bare `.editor` selector loses to the editor component's own scoped rule. */
+	   stops centring, and it keeps the hero off the top edge. Selected through the wrapper
+	   because a bare `.editor` rule loses to the editor component's own scoped one. */
 	.doc-editor :global(.editor) {
 		border: none;
 		border-radius: 0;
@@ -456,8 +457,8 @@
 		display: none;
 	}
 
-	/* Takes the page column its neighbours take, so the toggle's right edge is the document's.
-	   Without it `flex-end` aligns to the editor root's padding, far outside the text column. */
+	/* Same page column as its neighbours, so the toggle's right edge is the document's. Without
+	   it, `flex-end` aligns to the editor root's padding, far outside the text column. */
 	.mode-toggle {
 		display: flex;
 		justify-content: flex-end;

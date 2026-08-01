@@ -1,6 +1,6 @@
 /**
- * Recognizer for Obsidian-style image embeds — `![[cat.png]]`, `![[cat.png|300]]`. Pure and
- * aragonite-free so a spec can drive it directly.
+ * Recognizes Obsidian-style image embeds: `![[cat.png]]`, `![[cat.png|300]]`. Pure, and imports
+ * nothing from aragonite, so a test can call it directly.
  */
 
 import { isImageTarget } from './image-targets';
@@ -11,13 +11,13 @@ export interface WikiImageEmbed {
 	start: number;
 	/** Offset just past the closing `]]`. */
 	end: number;
-	/** Source-relative image path, which the editor's `resolveImageUrl` resolves. */
+	/** Image path relative to the source, turned into a URL by `resolveImageUrl`. */
 	target: string;
 	/** Display width in pixels, from a numeric `|size` modifier. */
 	width?: number;
 }
 
-/** The bytes an embed opens with: the scanner's prefix, and the plugin's rung and rewrite gate. */
+/** What an embed starts with: the scan prefix, the plugin's trigger, and its rewrite guard. */
 export const OPEN = '![[';
 const NEWLINE = 0x0a;
 const OPEN_PAREN = 0x28;
@@ -25,10 +25,10 @@ const OPEN_BRACKET = 0x5b;
 const CLOSE_BRACKET = 0x5d;
 
 /**
- * The embed at `pos` (the `!`) within `raw[pos, end)`, or null to leave the bytes to the
- * scanner. Declining is a contract: this runs ahead of the built-in scanner, whose grammar
- * overlaps (`![[a]](u)` is a legal GFM image), a claim here wins, and a wrong claim is silent —
- * the bytes still serialize, they just stop being the construct the author wrote.
+ * The embed starting at `pos` (the `!`) within `raw[pos, end)`, or null to hand the text back to
+ * aragonite's own parser. Returning null matters: this runs first and wins whatever it claims,
+ * the two syntaxes overlap (`![[a]](u)` is a valid Markdown image), and claiming wrongly is
+ * silent. The text still saves, it just stops being what the author wrote.
  */
 export function recognizeWikiImageEmbed(
 	raw: string,
@@ -37,14 +37,14 @@ export function recognizeWikiImageEmbed(
 ): WikiImageEmbed | null {
 	if (!raw.startsWith(OPEN, pos)) return null;
 	const innerStart = pos + OPEN.length;
-	// Nothing is sliced until the construct is known to close on this line — a document
-	// of prose runs this at every `![[` on every keystroke.
+	// No string is cut until we know it closes on this line; a long document runs this at
+	// every `![[` on every keystroke.
 	const innerEnd = findClose(raw, innerStart, end);
 	if (innerEnd < 0) return null;
 	const embedEnd = innerEnd + 2;
-	// A `(` here means the built-in scanner has an inline image to parse; leave it be. The
-	// `< end` bound is load-bearing: past it is outside the range this call was handed, and a
-	// `(` there is a tail the built-in scanner cannot reach either.
+	// A `(` right after means aragonite has an ordinary Markdown image to parse, so leave it
+	// alone. The `< end` check matters: past that is outside the range this call was handed,
+	// and a `(` there is text aragonite cannot reach either.
 	if (embedEnd < end && raw.charCodeAt(embedEnd) === OPEN_PAREN) return null;
 
 	const inner = raw.slice(innerStart, innerEnd);
@@ -63,8 +63,8 @@ export function recognizeWikiImageEmbed(
 // ── Internal ────────────────────────────────────────────────────────────────
 
 /**
- * Offset of the `]]` closing the embed opened at `from`, or -1. A bracket or a line ending ends
- * the search, so an unterminated `![[` cannot swallow the embed that follows it.
+ * Offset of the `]]` that closes the embed opened at `from`, or -1. A `[` or a line break stops
+ * the search, so an unclosed `![[` cannot swallow the embed after it.
  */
 function findClose(raw: string, from: number, end: number): number {
 	for (let i = from; i < end; i++) {

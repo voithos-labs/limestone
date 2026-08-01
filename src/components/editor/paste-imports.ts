@@ -1,7 +1,7 @@
 /**
- * Correlates the assets one paste gesture imported with whether its markdown ever reached the
- * document. An import whose insertion fails leaves a file in the source nothing references, and
- * the editor's `clipboard` error origin is the only place that failure is announced.
+ * Tracks the files one paste imported until its markdown actually reaches the document. If the
+ * insert fails, those files sit in the source with nothing pointing at them, and the editor's
+ * `clipboard` error is the only place that failure is reported.
  */
 
 export interface PasteImportLedgerDeps {
@@ -13,7 +13,7 @@ export interface PasteImportLedger {
 	record(relPath: string): void;
 	/** The gesture's markdown landed: the recorded paths are the document's now. */
 	commit(): void;
-	/** The insertion failed: delete what was recorded. Contains every delete failure. */
+	/** The insert failed: delete what was recorded. Never throws, even if a delete fails. */
 	release(): Promise<void>;
 	markOwnFailure(error: unknown): void;
 	isOwnFailure(error: unknown): boolean;
@@ -21,9 +21,9 @@ export interface PasteImportLedger {
 
 export function createPasteImportLedger(deps: PasteImportLedgerDeps): PasteImportLedger {
 	let imported: string[] = [];
-	// Identity, not a message: the editor hands an import throw back on the error channel as
-	// the same object, unwrapped. A marked error is limestone's OWN failed import, whose
-	// siblings in the gesture still land — releasing on it would delete referenced assets.
+	// Matched by identity, not by message: the editor hands our own import error back on its
+	// error channel as the same object, unwrapped. A marked error means our import failed while
+	// the paste's other images still landed, so releasing on it would delete files in use.
 	const ownFailures = new WeakSet<object>();
 
 	return {
@@ -34,8 +34,8 @@ export function createPasteImportLedger(deps: PasteImportLedgerDeps): PasteImpor
 			imported = [];
 		},
 		async release() {
-			// Forgotten before the awaits, so a second error on the same gesture cannot
-			// re-delete paths this call already owns.
+			// Cleared before awaiting, so a second error on the same paste cannot delete
+			// these paths twice.
 			const orphans = imported;
 			imported = [];
 			await Promise.all(
@@ -55,7 +55,7 @@ export function createPasteImportLedger(deps: PasteImportLedgerDeps): PasteImpor
 	};
 }
 
-// A throw is not obliged to be an object, and a WeakSet takes only references.
+// Anything at all can be thrown, and a WeakSet only holds objects.
 function isReferenceType(value: unknown): value is object {
 	return value !== null && (typeof value === 'object' || typeof value === 'function');
 }

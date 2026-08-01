@@ -37,8 +37,8 @@ describe('the paste import ledger', () => {
 		expect(deleted).toEqual(['assets/a.png', 'assets/b.png']);
 	});
 
-	// A source that refuses one delete must not strand the rest, and must not surface as an
-	// unhandled rejection out of an error handler that has nowhere to report it.
+	// One delete failing must not strand the others, and must not escape as an unhandled
+	// rejection out of an error handler that has nowhere to report it.
 	it('contains a failing delete and still releases the others', async () => {
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 		failOn = 'assets/locked.png';
@@ -59,7 +59,7 @@ describe('the paste import ledger', () => {
 		expect(ledger.isOwnFailure(new Error('import failed'))).toBe(false);
 	});
 
-	// A throw is not obliged to be an object, and a WeakSet rejects primitives outright.
+	// Anything at all can be thrown, and a WeakSet rejects primitives outright.
 	it.each([['a string'], [null], [undefined], [7]])('survives a non-object throw (%s)', (error) => {
 		expect(() => ledger.markOwnFailure(error)).not.toThrow();
 		expect(ledger.isOwnFailure(error)).toBe(false);

@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
- * Enrollment: the `![[…]]` rung runs aragonite's published inline-conformance battery. The rung
- * is priced below the built-in boundary on a trigger the built-in scanner owns, so the cells
- * that matter here are the overlap decline and the image claim — neither shows up in a byte
- * round-trip, and both are what keeps a note readable in Obsidian.
+ * Runs the `![[…]]` syntax through aragonite's published tests for plugin-added inline syntax.
+ * This plugin gets first look at `!`, which aragonite's own image parser also owns, so the checks
+ * that matter are that it bows out on the overlap and that it really produces an image. Neither
+ * shows up in a plain save-and-reload check, and both are what keeps a note readable in Obsidian.
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -23,10 +23,10 @@ const wikiImageEmbedRung: InlineConformanceProfile = {
 	prefix: OPEN,
 	priority: INLINE_PRIORITIES.prefixOverride,
 	fixtures: ['![[cat.png]]', '![[cat.png|300]]', 'Look ![[cat.png]] here.'],
-	// `![[cat.png]](u)` is a legal GFM image whose alt is `[cat.png]`, and `![[notes.md]]` is
-	// prose the reader wants left alone — the rung runs ahead of both and owes them a decline.
-	// The `.png` in the overlap is load-bearing: with a target no extension makes an image,
-	// the decline comes from `isImageTarget` and the grammar overlap is never exercised.
+	// `![[cat.png]](u)` is a valid Markdown image whose alt text is `[cat.png]`, and
+	// `![[notes.md]]` is prose to leave alone. This plugin sees both first and has to bow out of
+	// each. Keep the `.png` in the overlap case: with a name that isn't an image, isImageTarget
+	// declines first and the clash between the two syntaxes is never actually tested.
 	overlapFixtures: ['![[cat.png]](u)', '![[a]](u)', '![[notes.md]]', 'see ![[cat.png]](u) here'],
 	overlapDecline: { mode: 'assert' },
 	widget: { mode: 'exempt', reason: MINTS_ONLY_A_BUILT_IN },
@@ -53,8 +53,8 @@ describe('the `![[…]]` rung passes aragonite’s inline conformance kit', () =
 		]);
 	});
 
-	// A recorded cell proves nothing: an exemption the kit could falsify, or a fixture that
-	// stopped being claimed, would otherwise pass as a quiet non-assertion.
+	// A check that merely ran proves nothing: an exemption that should have failed, or a fixture
+	// the plugin stopped claiming, would otherwise slip through as a silent pass.
 	it('asserts the two cells the rung’s shape owns', () => {
 		const cells = runInlineKindConformance(wikiImageEmbedRung).cells;
 		const cell = (name: string) => cells.find((c) => c.cell === name)!;

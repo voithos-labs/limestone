@@ -156,9 +156,9 @@ export function resolveAccent(
 // ── Applying to the document ────────────────────────────────────────────────────────
 
 /**
- * Reactive mirror of `root.dataset.themeType`, for consumers needing the mode as a value
- * rather than a CSS selector. Seeded light, not from `DEFAULT_THEME`: before `applyTheme`
- * runs, an attribute-less document renders app.css's `:root` block, the light palette.
+ * Reactive copy of `root.dataset.themeType`, for anything needing the mode as a value rather
+ * than a CSS selector. Starts light, not at DEFAULT_THEME: before applyTheme runs the attribute
+ * is unset and the document renders app.css's `:root` block, which is the light palette.
  */
 let themeType = $state<'dark' | 'light'>('light');
 

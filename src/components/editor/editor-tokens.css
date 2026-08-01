@@ -1,16 +1,16 @@
 /**
- * Bridge: limestone's theme variables → aragonite's editor tokens. Must load AFTER
- * `aragonite/styles/editor-theme.css` — equal specificity, so source order is what wins.
- * `inherit` (a `var()` self-reference would cycle) takes the PARENT's value, so no
- * ancestor of the editor may carry `.aragonite-editor-theme` or every line below picks
- * up aragonite's defaults instead of limestone's.
+ * Points aragonite's editor variables at limestone's theme variables.
+ * Load this file after `aragonite/styles/editor-theme.css` or aragonite's own values win.
+ * `inherit` below means "take whatever the app set on the parent" (naming the same variable
+ * would just point it at itself), so no ancestor of the editor may carry the
+ * `.aragonite-editor-theme` class, or those lines pick up aragonite's colors instead.
  */
 .editor {
 	--color-bg: var(--color-surface);
 	--color-text: var(--color-text-secondary);
 	--color-danger: var(--color-error);
-	/* The wash aragonite's table menu hovers with: the app's menu hover is the same
-	   affordance, and it follows limestone's theme where aragonite's own value cannot. */
+	/* aragonite hovers its table menu with this. The app's own menu hover is the same thing,
+	   and unlike aragonite's value it follows the limestone theme. */
 	--color-ui-faint: var(--menu-item-hover);
 	--color-border: inherit;
 	--color-text-primary: inherit;
@@ -28,26 +28,26 @@
 	--syntax-separator: inherit;
 	--syntax-task: inherit;
 	--syntax-task-done: inherit;
-	/* No fallbacks above: tokens `applyTheme` mints resolve invalid until it runs, which is
-	   harmless (aragonite's reads carry their own), and a literal would bake one mode's palette
-	   into a mode-agnostic file. Names limestone has no twin for — and `--font-editor`, which
-	   holds the same value on both sides — are deliberately left to aragonite's defaults. */
+	/* No fallbacks above: the app's variables are unset until applyTheme runs, which is fine
+	   (aragonite's own reads carry fallbacks), and a literal color would pin one of light/dark
+	   into a file that has to serve both. Anything aragonite declares that limestone has no
+	   equivalent for is left at aragonite's default, --font-editor included. */
 
-	/* aragonite declares its own default at `.editor`, which shadows anything inherited
-	   from the host wrapper, so the wrapper's zoom is pulled in explicitly. WITH a unit:
-	   unitless makes the font-size declaration it feeds invalid, and zoom does nothing. */
+	/* aragonite sets this on `.editor` itself, which beats anything inherited from our wrapper,
+	   so pull the wrapper's zoom in by hand. Keep the px unit: a bare number makes the
+	   font-size rule it feeds invalid, and zoom stops working. */
 	--editor-font-size: var(--ls-zoom, 16px);
 }
 
-/* --syntax-separator tints `---` glyphs inside a line of text; on a full-width rule the
-   same value is the loudest thing on the page. Targeted at the rule rather than remapped
-   at the token, so the syntax palette keeps its meaning. */
+/* --syntax-separator colors the `---` characters where they sit in a line of text. Painted
+   across a full-width rule the same color shouts. Fixed on the rule rather than by changing
+   the variable, so the rest of the syntax colors keep their meaning. */
 .editor .thematic-break-block[role='separator'] > hr {
 	border-top-color: var(--color-border);
 }
 
-/* The content column carries the app's page width, the way every other page surface does.
-   Its inset matches `DocumentHero`'s, so the title and the first block share a left edge. */
+/* The same page width every other page uses, and the same side padding as DocumentHero, so
+   the document title and the first block line up on the left. */
 .editor > .block-list {
 	max-width: var(--page-max-width, 1200px);
 	margin: 0 auto;
@@ -55,8 +55,8 @@
 	padding: 0 24px;
 }
 
-/* In flow the hero renders outside the editor at the face's own inset, so a column inset here
-   would double-pay and push the body right of the title. Same numbers the previous editor used. */
+/* In flow mode the hero sits outside the editor and the face already supplies the side padding,
+   so adding it again here would push the body right of the title. */
 .doc-editor.flow .editor > .block-list {
 	padding: 4px 0 48px;
 }

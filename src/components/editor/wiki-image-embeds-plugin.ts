@@ -4,10 +4,11 @@ import { OPEN, recognizeWikiImageEmbed } from './wiki-image-embeds-scan';
 
 /**
  * Obsidian-style `![[cat.png]]` image embeds, the format limestone's notes use and its image
- * paste writes. An embed becomes a built-in `image` node so it is an image to the whole editor,
- * not merely to the eye. Two consequences: the rung is priced below the built-in boundary, so
- * the recognizer must decline the grammars' overlap itself (`wiki-image-embeds-scan.ts`); and
- * every write path re-serializes in the built-in grammar, so `rewriteImage` owns the way back.
+ * paste writes. An embed parses into aragonite's ordinary `image` node, so the editor treats it
+ * as a real image everywhere, not just visually. Two consequences: this gets first look at `!`,
+ * ahead of aragonite's own image parser, so it must bow out where the two syntaxes overlap (see
+ * wiki-image-embeds-scan.ts), and every edit comes back in aragonite's image shape, so
+ * `rewriteImage` is what puts the `![[…]]` back.
  */
 export function wikiImageEmbedsPlugin(): EditorPlugin {
 	return definePlugin({
@@ -40,22 +41,21 @@ function wikiImageEmbedNode(raw: string, pos: number, end: number): InlineNode |
 }
 
 /**
- * Writes an edited embed back in its own syntax, declining with `null` any field the grammar
- * (a target and an optional width) cannot hold. Declining suppresses the commit visibly;
- * ignoring the field would return unchanged bytes, which the commit's equality guard drops
- * with no diagnostic at all.
+ * Writes an edited embed back as `![[…]]`, returning null for anything the syntax cannot hold
+ * (it has room for a path and a width, nothing else). Null makes the editor reject the edit
+ * visibly; quietly ignoring the field would hand back the same text, and the edit would vanish
+ * with no explanation at all.
  */
 function rewriteWikiImageEmbed(source: string, fields: ImageFields): string | null {
-	// The claim reaches the node's descendants too, so bytes this rung never shaped can arrive
-	// here; rewriting those would nest the syntax inside itself.
+	// This is also called for text nested inside the node, which this plugin never produced.
+	// Rewriting that would nest `![[` inside itself.
 	if (!source.startsWith(OPEN)) return null;
 	if (fields.title !== undefined || fields.label !== undefined) return null;
-	// The recognizer fills alt from the target, so an embed's alt shadows it rather than being
-	// stored: it reads as the new target, or as the old one mid-retarget. Both re-derive;
-	// anything else is alt text with nowhere to go.
+	// alt is copied from the path when parsing and never stored, so what comes back here is
+	// either the new path or the old one. Anything else is real alt text, with nowhere to put it.
 	const target = recognizeWikiImageEmbed(source, 0, source.length)?.target;
 	if (fields.alt !== fields.url && fields.alt !== target) return null;
-	// A height is dropped rather than declined: the grammar has one dimension slot, and keeping
-	// the width a reader dragged to serves them better than refusing the drag.
+	// Height is dropped rather than refused: the syntax has one size slot, and keeping the width
+	// someone just dragged to serves them better than rejecting the drag.
 	return `${OPEN}${fields.url}${fields.width !== undefined ? `|${fields.width}` : ''}]]`;
 }
