@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { bootApp, getMockState } from './support/app';
+import { bootApp, clickTab, getMockState } from './support/app';
 import { expect, test } from './support/test';
 
 const NOTE = 'notes/hello.md';
@@ -113,7 +113,7 @@ test('a tab keeps its mode over leaving the document, and the cycle goes on from
 
 	await page.keyboard.press('Control+l');
 	await expect(page.locator('.library-page')).toBeVisible();
-	await page.locator('.tab', { hasText: 'hello' }).first().click();
+	await clickTab(page, 'hello');
 	await expect(page.locator('.editor')).toBeVisible();
 	expect(await mode(page)).toBe('preview-inline');
 

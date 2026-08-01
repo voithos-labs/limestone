@@ -34,6 +34,17 @@ function isMockedAssetFetch(message: ConsoleMessage): boolean {
 	return URL.parse(message.location().url)?.hostname === ASSET_HOST;
 }
 
+/**
+ * Clicks a tab near its left edge, where the label starts. A center click lands on the
+ * hover-revealed close button once compact tabs shrink a short title below ~50px.
+ */
+export async function clickTab(page: Page, label: string) {
+	await page
+		.locator('.tab', { hasText: label })
+		.first()
+		.click({ position: { x: 10, y: 16 } });
+}
+
 /** Loads the app against a fake Tauri backend and waits for its shell to render. */
 export async function bootApp(page: Page, opts: BootOptions = {}): Promise<BootReport> {
 	const report: BootReport = { consoleErrors: [], pageErrors: [] };

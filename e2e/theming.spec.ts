@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { bootApp } from './support/app';
+import { bootApp, clickTab } from './support/app';
 import { expect, test } from './support/test';
 
 const DOCS = { 'notes/hello.md': '# Hello\n\nBody text here.\n' };
@@ -86,7 +86,7 @@ async function chooseTheme(page: Page, name: string) {
 	await page.locator('.settings-page .search-input').fill('theme');
 	await page.locator('.setting-item', { hasText: 'Theme' }).locator('.select-trigger').click();
 	await page.locator('.menu-item', { hasText: name }).click();
-	await page.locator('.tab', { hasText: 'hello' }).first().click();
+	await clickTab(page, 'hello');
 	await expect(page.locator('.editor')).toBeVisible();
 }
 

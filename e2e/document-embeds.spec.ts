@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { bootApp, getMockState } from './support/app';
+import { bootApp, clickTab, getMockState } from './support/app';
 import { expect, test } from './support/test';
 
 const NOTE = 'notes/pic.md';
@@ -108,9 +108,9 @@ test('an edit elsewhere leaves the embed’s bytes alone, and it still renders o
 	await page.keyboard.type('Hey. ');
 	await expect.poll(() => saved(page)).toBe('Hey. Look ![[cat.png]] here.\n');
 
-	await page.locator('.tab', { hasText: 'other' }).first().click();
+	await clickTab(page, 'other');
 	await expect(page.locator('.editor')).toContainText('The other document.');
-	await page.locator('.tab', { hasText: 'pic' }).first().click();
+	await clickTab(page, 'pic');
 
 	await expect(widget(page).locator('img')).toBeVisible();
 });

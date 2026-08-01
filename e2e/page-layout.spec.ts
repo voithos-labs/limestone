@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { bootApp } from './support/app';
+import { bootApp, clickTab } from './support/app';
 import { expect, test } from './support/test';
 
 const DOCS = { 'notes/hello.md': '# Hello\n\nBody text here.\n' };
@@ -40,7 +40,7 @@ async function setPageWidth(page: Page, px: number) {
 	await page.locator('.settings-page .search-input').fill('page width');
 	await page.locator('.setting-item', { hasText: 'Max Page Width' }).locator('input').fill(`${px}`);
 	await page.keyboard.press('Enter');
-	await page.locator('.tab', { hasText: 'hello' }).first().click();
+	await clickTab(page, 'hello');
 	await expect(page.locator('.editor')).toBeVisible();
 }
 

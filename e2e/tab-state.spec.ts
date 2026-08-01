@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { bootApp, getMockState } from './support/app';
+import { bootApp, clickTab, getMockState } from './support/app';
 import { expect, test } from './support/test';
 
 const NOTE = 'notes/hello.md';
@@ -27,7 +27,7 @@ const fontSize = (page: Page) =>
 	page.locator('.editor').evaluate((el) => getComputedStyle(el).fontSize);
 
 async function focusTab(page: Page, label: string) {
-	await page.locator('.tab', { hasText: label }).first().click();
+	await clickTab(page, label);
 	await expect(page.locator('.editor')).toBeVisible();
 }
 
