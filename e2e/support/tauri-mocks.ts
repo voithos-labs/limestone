@@ -1,16 +1,13 @@
 /**
- * A fake Tauri backend for the browser. Every native surface limestone touches —
- * store, fs, events, window/webview chrome, SQL, settings, sources — funnels
- * through one `invoke` channel, so replacing `__TAURI_INTERNALS__` covers all of
- * it. Commands the handler map doesn't answer are recorded rather than faked, so
- * an app change that reaches for a new command fails a spec instead of silently
- * reading `null`.
+ * A fake Tauri backend for the browser. Every native surface limestone touches funnels through
+ * one `invoke` channel, so replacing `__TAURI_INTERNALS__` covers all of it. Commands the handler
+ * map doesn't answer are recorded rather than faked, so an app change that reaches for a new
+ * command fails a spec instead of silently reading `null`.
  */
 
 import type { Page } from '@playwright/test';
-// The backend's own defaults, not a copy of them: a hand-written parallel set drifts, and the
-// suite then encodes the drift as expectations — a spec asserting a font size the shipped app
-// never starts at cannot tell a setting that was read from one that silently fell back.
+// The backend's own defaults, not a copy: a parallel set drifts, and a spec asserting a value the
+// shipped app never starts at cannot tell a read setting from one that silently fell back.
 import SHIPPED_DEFAULTS from '../../src-tauri/defaults/default_settings.json' with { type: 'json' };
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -24,10 +21,9 @@ export const ASSET_HOST = 'asset.localhost';
 export interface MockOptions {
 	docs: SeededDocs;
 	/**
-	 * Whether the seeded source keeps document metadata in YAML frontmatter. Off by default:
-	 * with it on, every save stamps a fresh `updated_at`, so the recorded write content differs
-	 * from the editor body and from run to run. A spec that turns it on asserts on the stable
-	 * frontmatter keys, never on the whole file.
+	 * Whether the seeded source keeps document metadata in YAML frontmatter. Off by default: with
+	 * it on every save stamps a fresh `updated_at`, so a spec that turns it on asserts on the
+	 * stable frontmatter keys, never on the whole file.
 	 */
 	frontmatter: boolean;
 	/**
@@ -35,15 +31,11 @@ export interface MockOptions {
 	 * name — seeding one `appearance` field drops the rest of the group, so seed the group whole.
 	 */
 	settings: Settings;
-	/**
-	 * Per-document tab state, keyed by the path the doc was seeded under: what a previous
-	 * session left in `state.json` for that tab — caret, scroll, zoom, panel state.
-	 */
+	/** What a previous session left in `state.json` per tab, keyed by the doc's seeded path. */
 	tabState: Record<string, Record<string, unknown>>;
 	/**
-	 * Property names a saved view contributes to every seeded document. With any, the document
-	 * header grows a properties panel, which loads asynchronously — the shape a spec needs to
-	 * exercise a header that settles after the editor's first paint.
+	 * Property names a saved view contributes to every seeded document. With any, the header grows
+	 * an asynchronously loading properties panel — a header that settles after the first paint.
 	 */
 	propertyFields: string[];
 }
@@ -85,9 +77,8 @@ type MockWindow = typeof globalThis & {
 };
 
 /**
- * Installs the fake backend before any app code runs. Seeded docs exist both on
- * the fake filesystem and in the restored session, so each opens as a tab, the
- * first one focused.
+ * Installs the fake backend before any app code runs. Seeded docs exist both on the fake
+ * filesystem and in the restored session, so each opens as a tab, the first one focused.
  */
 export async function installTauriMocks(page: Page, options: MockOptions): Promise<void> {
 	await page.addInitScript(installMockInternals, { ...options, defaults: SHIPPED_DEFAULTS });
@@ -186,11 +177,10 @@ function installMockInternals({
 		};
 	}
 
-	// Two queries are answered, each matched on the shape only it has: the document-by-id join,
-	// and a view's membership lookup, which asks for an id set — every seeded document belongs to
-	// the seeded view. Anything else reads as an empty table, which is what the app shows for a
-	// library with no indexed content. Matching loosely (any `FROM documents d`) would answer
-	// queries this was never written for, which is how a mock stops standing for the backend.
+	// Two queries answered, each matched on the shape only it has: the document-by-id join and a
+	// view's membership lookup. Anything else reads as an empty table. Matching loosely (any
+	// `FROM documents d`) would answer queries this was never written for — the way a mock stops
+	// standing for the backend.
 	function runSelect(query: string, params: unknown[]): unknown[] {
 		if (!query.includes('FROM documents d')) return [];
 		const seeded = params.filter((p): p is string => typeof p === 'string' && p in files);

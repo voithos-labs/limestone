@@ -156,15 +156,9 @@ export function resolveAccent(
 // ── Applying to the document ────────────────────────────────────────────────────────
 
 /**
- * Reactive mirror of `root.dataset.themeType`, for consumers that need the mode
- * as a value rather than a CSS selector — the embedded editor keys its own
- * light/dark attribute off this.
- *
- * Seeded light rather than from `DEFAULT_THEME`: nothing writes the attribute
- * before `applyTheme` does, and an attribute-less document renders app.css's
- * `:root` block, which is the light palette. That window closes before anything
- * can read this — `Session.create` awaits `applyCurrentTheme()` — so the seed only
- * matters to a future caller that runs earlier.
+ * Reactive mirror of `root.dataset.themeType`, for consumers needing the mode as a value
+ * rather than a CSS selector. Seeded light, not from `DEFAULT_THEME`: before `applyTheme`
+ * runs, an attribute-less document renders app.css's `:root` block, the light palette.
  */
 let themeType = $state<'dark' | 'light'>('light');
 
@@ -187,8 +181,8 @@ export function applyTheme(theme: Theme) {
 	for (const [key, value] of Object.entries(theme.variables)) {
 		root.style.setProperty(`--${key}`, value);
 	}
-	// The theme's own accent, preserved so the "default" accent swatch can show it
-	// even while a preset override has replaced --color-accent
+	// Preserved so the "default" accent swatch can show it while a preset override has
+	// replaced --color-accent.
 	root.style.setProperty('--color-accent-default', theme.variables['color-accent'] ?? '#567b67');
 	root.style.setProperty(
 		'--color-accent-contrast',

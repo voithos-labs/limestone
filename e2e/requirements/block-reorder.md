@@ -1,9 +1,8 @@
 # Feature: moving a block within a document
 
-Covers `block-reorder.spec.ts`. The editor offers two ways to reorder a block — a grip that
-appears in the left gutter on hover, and Alt+↑ / Alt+↓ with the caret in the block. limestone
-takes the keyboard one only: a grip that materialises beside every paragraph the pointer passes
-is chrome a document should not wear.
+Covers `block-reorder.spec.ts`. The editor offers a hover grip and Alt+↑ / Alt+↓; limestone takes
+the keyboard one only, because a grip beside every paragraph the pointer passes is chrome a
+document should not wear.
 
 ## Happy paths
 
@@ -12,6 +11,5 @@ is chrome a document should not wear.
 
 ## Edge cases
 
-- Hovering a block reveals no grip. Asserted by counting the handles rather than by looking at
-  one: the editor renders them transparent until their block is hovered, so an assertion on
-  visibility passes just as well with the handles switched on.
+- Hovering a block reveals no grip. Asserted by counting the handles, not by looking at one: the
+  editor renders them transparent until hovered, so a visibility assertion passes either way.

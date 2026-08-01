@@ -90,11 +90,9 @@ interface SettleWindow {
 }
 
 /**
- * Records whether the header's properties panel is already inside the editor at the moment the
- * editor enters the DOM. The panel renders in the header slot once its fields have loaded, so a
- * late one is absent there and present later — which is what makes the header grow after the
- * tab's scroll has been restored, the collision the scenario below exists for. A fixture whose
- * panel arrived with the editor would satisfy every other assertion while pinning nothing.
+ * Whether the properties panel is already inside the editor when the editor enters the DOM. A
+ * panel that loads late grows the header after the tab's scroll has been restored — the collision
+ * below. A fixture whose panel arrived with the editor would pass every assertion pinning nothing.
  */
 async function watchHeaderSettle(page: Page) {
 	await page.evaluate(() => {
@@ -152,24 +150,16 @@ test('a header that settles after the editor leaves the reader where they were',
 });
 
 /**
- * A block whose height settles after the editor has painted — the diagram is the loudest of
- * them, and display math and a resolving image behave the same. Its late measure pass is what
- * used to re-assert the caret's block at the top of the scroller and throw away everything the
- * restore had just done.
- *
- * Which side of the fold it sits on decides what the scenario can assert. Growth ABOVE the
- * reader legitimately moves `scrollTop` — the editor holds the block under their eyes still,
- * which is worth more than the number — so the remembered-position scenario puts the diagram
- * at the end, below a reader who is 600px in, where the honest movement is none. The
- * opens-at-the-top scenario puts it first, which is where a reader meets one in a journal
- * entry and where the reported symptom landed.
+ * A block whose height settles after the editor has painted; display math and a resolving image
+ * behave the same. Placement decides what can be asserted: growth ABOVE the reader legitimately
+ * moves `scrollTop`, so the remembered-position scenario puts the diagram last (below a reader
+ * 600px in, where honest movement is none) and the opens-at-the-top scenario puts it first.
  */
 const DIAGRAM = '```mermaid\ngraph TD\n  A[Start] --> B[Finish]\n```';
 const DIAGRAM_LAST = `${LONG}\n\n${DIAGRAM}\n`;
 const DIAGRAM_FIRST = `${DIAGRAM}\n\n${LONG}\n`;
 
-/** Where the document's blocks begin inside the scroller — the origin the tab's position is
- *  persisted against, measured the way the editor measures it. */
+/** The origin the tab's scroll is persisted against, measured the way the editor measures it. */
 const blocksTop = (page: Page) =>
 	page.locator('.editor').evaluate((el) => {
 		const list = el.querySelector(':scope > .block-list')!;

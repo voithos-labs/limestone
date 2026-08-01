@@ -26,10 +26,9 @@ export interface BootReport {
 }
 
 /**
- * A fetch of a mocked asset URL, which the app resolves through `convertFileSrc` and only the
- * Tauri webview can serve. Dropped so the assertion keeps catching what it is for: errors the app
- * itself logged. Keyed on the resource's own URL rather than the message text, so it can only ever
- * hide this one host — a broken app fetch to anywhere else still fails the assertion.
+ * A fetch of a mocked asset URL, which only the Tauri webview can serve — dropped so the boot
+ * assertion keeps catching errors the app itself logged. Keyed on the resource URL, not the
+ * message text, so it can only ever hide this one host.
  */
 function isMockedAssetFetch(message: ConsoleMessage): boolean {
 	return URL.parse(message.location().url)?.hostname === ASSET_HOST;

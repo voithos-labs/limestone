@@ -78,10 +78,8 @@ test('the mode toggle ends where the document does', async ({ page }) => {
 test('zooming scales the document’s own text, with no click to wake it', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
 	const paragraph = page.locator('.editor .text-editable-block', { hasText: 'Body text here.' });
-	// Nobody clicks first: opening the document places the caret in its first block, and the chord
-	// is handled on the wrapper around the editor, so it is only ever seen while focus is inside
-	// one. Waited for rather than assumed — the placement is asynchronous, and a chord pressed
-	// before it lands would be a race rather than the scenario.
+	// Nobody clicks first — the chord is handled on the editor's wrapper, so focus must already be
+	// inside. Waited for, not assumed: caret placement is async, and pressing early is a race.
 	await expect(page.locator('.editor .text-editable-block').first()).toBeFocused();
 	// The reader's own font size, read from settings — and not the adapter's hardcoded fallback,
 	// which is a different number on purpose, so this assertion can tell the two apart.

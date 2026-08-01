@@ -105,7 +105,7 @@ class Session {
 		let state = await loadAppState();
 		let themeStore = await load('themes.json');
 
-		// ensure built-in themes are always up to date in the store
+		// Built-ins are code-owned, so they are rewritten every boot and anything else is stale.
 		for (const [key, theme] of Object.entries(BUILTIN_THEMES)) {
 			await themeStore.set(key, theme);
 		}
@@ -115,7 +115,6 @@ class Session {
 			}
 		}
 
-		// hydrate EditorState instances from JSON
 		let editors: EditorState[] = [];
 		for (const editorJSON of state.editors) {
 			editors.push(await EditorState.loadFromJSON(editorJSON));

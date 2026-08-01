@@ -91,10 +91,8 @@ test('the same rebinding fires while renaming, which is not editing the document
 test('the same rebinding fires from the library, in a field of the app’s own', async ({ page }) => {
 	await bootApp(page, { settings: SETTINGS_ON_MOD_B });
 	await expect(page.locator('.library-page')).toBeVisible();
-	// The precondition this scenario turns on, asserted rather than assumed: quick search takes
-	// focus on open, so the chord is pressed in a text field — the case a guard written against
-	// `inEditable` would swallow. Were focus to land nowhere, the scenario would still pass and
-	// would stop discriminating that.
+	// Asserted, not assumed: the chord must land in a text field — the case a guard written against
+	// `inEditable` would swallow. With focus nowhere the scenario passes while discriminating nothing.
 	await expect(page.locator('.quick-search-input')).toBeFocused();
 
 	await page.keyboard.press('Control+b');
@@ -103,10 +101,9 @@ test('the same rebinding fires from the library, in a field of the app’s own',
 });
 
 /**
- * A first paragraph that wraps over several lines, then enough short ones to make the editor
- * overflow. The wrap is what matters: an ArrowDown that crosses into the next block is the
- * editor's own, prevented before the window's fallback ever sees it, so only a caret moving
- * WITHIN a block leaves the fallback free to claim the key and page the document instead.
+ * A wrapping first paragraph, then enough short ones to overflow the editor. The wrap is what
+ * matters: an ArrowDown crossing into the next block is the editor's own and never reaches the
+ * window fallback, so only a caret moving WITHIN a block leaves the fallback free to page.
  */
 const WRAPPED_DOC =
 	`${'A paragraph long enough to wrap over several lines of the page. '.repeat(6)}\n\n` +

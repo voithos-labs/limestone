@@ -26,18 +26,14 @@ shares, and the reader's own zoom. Colour is the other half of that bridge and l
 
 ## Accepted
 
-- Zoom belongs to the document editor and to nothing else: on the library page, in a view tab, or
-  in a journal entry nobody has clicked into yet — flow mode deliberately places no caret — Mod+=
-  does nothing at all. The app's own scale lives in settings (`appearance.ui_scale_percent`) and
-  has no chord.
+- Zoom belongs to the document editor alone: on the library page, in a view tab, or in a journal
+  entry nobody has clicked into yet (flow mode deliberately places no caret), Mod+= does nothing.
+  The app's own scale is a setting, `appearance.ui_scale_percent`, with no chord.
 - In the packaged Windows app the browser claims Mod+= and Mod+- before the page does: WebView2
-  lists Ctrl+Plus / Ctrl+Minus among its browser accelerator keys, which are handled ahead of the
-  web content, and Tauri leaves that handling on while turning WebView2's own zoom off
-  (`zoomHotkeysEnabled` defaults to false). Nothing in this suite can see that — Playwright
-  dispatches straight into the page — so the zoom scenarios above pin the app's half only.
-
-- With the document at the top, the open find bar covers the hero's metadata row — the properties
-  chip, the updated date, the kebab. aragonite sticks its search anchor to the top of the
-  scrollport and the app renders the hero into that same scrollport. Transient, and the alternative
-  is worse: offsetting the anchor by the header's height unsticks it from the scrollport, which is
-  what makes it findable mid-document.
+  handles them as browser accelerators ahead of the web content, and Tauri leaves that on while
+  turning WebView2's own zoom off. Playwright dispatches straight into the page, so the zoom
+  scenarios above pin the app's half only. Same mechanism as `keybindings.md` § Accepted.
+- With the document at the top, the open find bar covers the hero's metadata row: aragonite sticks
+  its search anchor to the top of the scrollport and the app renders the hero into that same
+  scrollport. Transient, and the alternative is worse — offsetting the anchor by the header's
+  height unsticks it, which is what makes it findable mid-document.

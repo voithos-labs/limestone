@@ -23,9 +23,8 @@ async function tokens(page: Page, names: string[]): Promise<Record<string, [stri
 const token = async (page: Page, name: string) => (await tokens(page, [name]))[name][0];
 
 /**
- * Colours as the browser resolves them, painted inside the editor so editor-scoped tokens
- * apply. A raw token (`#d0d0d0`) cannot be compared against a computed `border-top-color`
- * (`rgb(208, 208, 208)`) without going through a paint.
+ * Colours as the browser resolves them, painted inside the editor so editor-scoped tokens apply.
+ * A raw `#d0d0d0` cannot be compared against a computed `rgb(208, 208, 208)` without a paint.
  */
 async function resolvedColors(page: Page, expressions: string[]): Promise<string[]> {
 	return page.locator('.editor').evaluate((editor, expressions) => {
@@ -57,10 +56,9 @@ interface FirstPaintWindow {
 }
 
 /**
- * Captures the editor's surface token against the app's, at the instant the editor enters the
- * DOM. Installed before the app boots, because by the time a locator can see the editor the
- * palette has long since applied and a frame rendered against the editor's own defaults would
- * already be gone.
+ * Captures the editor's surface token against the app's the instant the editor enters the DOM.
+ * Installed pre-boot: by the time a locator can see the editor, a frame rendered against the
+ * editor's own defaults would already be gone.
  */
 async function watchFirstPaint(page: Page) {
 	await page.addInitScript(() => {

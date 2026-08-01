@@ -43,9 +43,8 @@ test('a scroll position left by the previous editor is ignored, not reinterprete
 }) => {
 	const boot = await openWithTabState(page, { scrollTop: 900 });
 
-	// That number measured a scroller the document header sat inside, and this editor's scroll
-	// positions are counted from where the blocks begin — so honouring it would drop the reader a
-	// header's height below where the number meant. The document opens at the top instead.
+	// That number measured a scroller with the header inside it; this editor counts from where the
+	// blocks begin, so honouring it would drop the reader a header's height too low.
 	expect(await scrollTop(page)).toBe(0);
 	expect(boot.pageErrors).toEqual([]);
 	expect(boot.consoleErrors).toEqual([]);
@@ -54,10 +53,8 @@ test('a scroll position left by the previous editor is ignored, not reinterprete
 test('a remembered caret the document no longer has leaves it typable all the same', async ({
 	page
 }) => {
-	// This editor's own selection format, gone stale: it addresses a block by path, and the file
-	// shrank outside the app between sessions — a sync, a pull, another editor. Placing it fails,
-	// and a restore that read that as success would leave the reopened document with no caret at
-	// all: not in a block, not on the root, dead to the keyboard until the reader clicks.
+	// This editor's own format, gone stale: the file shrank outside the app, so the path addresses
+	// nothing. A restore reading that failure as success leaves the document dead to the keyboard.
 	const stale = { anchor: { path: [7], offset: 0 }, focus: { path: [7], offset: 0 } };
 	const boot = await openWithTabState(page, { selection: stale }, { [NOTE]: SHORT });
 

@@ -6,11 +6,9 @@ observer the scroll coordinate depends on, and the restore of where the reader l
 
 ## Happy paths
 
-- The wire-up runs once per open. A second pass is invisible to a reader — it places the same
-  caret and the same scroll — but it tears the first down mid-flight and leaves two restores in
-  the air, so the next change to any of them inherits a concurrency case nobody designed. This is
-  where three separate rounds of caret, scroll and reveal work meet, which is why it is pinned
-  rather than trusted.
+- The wire-up runs once per open. A second pass is invisible to a reader — same caret, same
+  scroll — but it tears the first down mid-flight and leaves two restores in the air, so any
+  later change inherits a concurrency case nobody designed.
 
   Asserted structurally, by counting the adapter's own observers on the header slot: nothing
   user-facing tells one pass from two, and the editor keeps an observer of its own on the same

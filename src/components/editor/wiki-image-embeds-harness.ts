@@ -1,9 +1,7 @@
 /**
- * Drives the wiki image embeds plugin without the app around it: it parses with the plugins
- * installed, and mounts a bare editor when a scenario needs rendered DOM. Nothing in the app
- * imports it — `wiki-image-embeds.spec.ts` pulls it in over the dev server, which serves
- * modules from `src/` alone. That fs policy, not a preference, is why test scaffolding sits
- * beside the code it drives.
+ * Drives the wiki image embeds plugin without the app around it. Nothing in the app imports it;
+ * it sits under `src/` because that is the only tree the dev server serves modules from, and
+ * `wiki-image-embeds.spec.ts` pulls it over that server.
  */
 import { mount } from 'svelte';
 import { Editor, installPlugins, parse, type EditorInstance, type InlineNode } from 'aragonite';

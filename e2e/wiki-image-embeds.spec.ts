@@ -119,9 +119,9 @@ test("carries the size modifier as the node's width", async ({ page }) => {
 	]);
 });
 
-// The grammars overlap: both of these are legal built-in images whose alt text happens
-// to be bracketed. The plugin's rung is consulted first, so a recognizer that failed to
-// decline would swallow them — silently, since the bytes still serialize.
+// Both of these are legal built-in images with a bracketed alt. The plugin's rung is consulted
+// first, so a recognizer that failed to decline would swallow them — silently, since the bytes
+// still serialize.
 test('leaves a bracketed image alt to the built-in scanner', async ({ page }) => {
 	expect(await imageNodes(page, '![[a]](u)')).toEqual([
 		{ kind: 'image', start: 0, end: 9, alt: '[a]', url: 'u' }
@@ -187,9 +187,8 @@ test('leaves an embed inside a code fence as literal text', async ({ page }) => 
 	await expect(editor(page)).toContainText('![[cat.png]]');
 });
 
-// A table cell is the one place the editor renders an image as text rather than a widget, so
-// what a reader sees there is the embed's own source — which it shows verbatim, marker for
-// marker, rather than rebuilt from the node's fields.
+// A table cell is the one place the editor renders an image as text, so what a reader sees there
+// is the embed's own source, shown verbatim rather than rebuilt from the node's fields.
 test('keeps an embed in a table cell byte-for-byte, and shows it as written', async ({ page }) => {
 	const source = '| a |\n| --- |\n| ![[cat.png]] |\n';
 	await mountEditor(page, source);

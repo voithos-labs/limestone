@@ -9,11 +9,9 @@ type EventInternals = {
 	__TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: (event: string, id: number) => void };
 };
 
-// Guards what the app's `listen()` actually depends on: an emit reaches the handler, and the id
-// `listen` resolved to is the id `unlisten` accepts back. Nothing here says what that id IS —
-// the real backend mints an independent counter, and the mock happens to hand back the handler
-// it was given, so an assertion on the two being equal would pin the mock's convenience and
-// block making it faithful. This channel carries the window-close drive in `editor-save.md`.
+// Guards what `listen()` depends on: an emit reaches the handler, and the id `listen` resolved to
+// is the one `unlisten` accepts back. Deliberately says nothing about what that id IS — the real
+// backend mints its own counter, so pinning the mock's handler-echo would block making it faithful.
 test('a listener registered through the IPC channel receives emits until unlistened', async ({
 	page
 }) => {

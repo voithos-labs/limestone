@@ -131,11 +131,8 @@ test('Mod+E keeps the reader where they were reading', async ({ page }) => {
 	await editor.evaluate((el) => (el.scrollTop = 900));
 	await expect.poll(() => editor.evaluate((el) => el.scrollTop)).toBe(900);
 
-	// Driven by the chord, which is the journal's only mode control and the one route that
-	// touches nothing but the mode. Clicking the toggle cannot stand in for it: on a document
-	// scrolled this far the toggle is off-screen in the header, so Playwright scrolls it into
-	// view before it can click — a reset the app never performed, and the reading that made
-	// this look like a defect in the first place.
+	// The chord, not the toggle: scrolled this far the toggle is off-screen, so Playwright would
+	// scroll it into view before clicking — a reset the app never performed.
 	await page.keyboard.press('Control+e');
 	expect(await mode(page)).toBe('reading');
 	expect(await editor.evaluate((el) => el.scrollTop)).toBe(900);

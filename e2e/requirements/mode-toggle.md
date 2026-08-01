@@ -41,15 +41,14 @@ a collapsed marker stays in `textContent`, so only `innerText` says what the rea
 
 ## Miss analysis
 
-The stays-where-they-were scenario is driven by the chord, not by clicking the toggle, and the
-distinction is the whole scenario. The toggle rides in the header, which on a scrolled document is
-off-screen; a `locator.click()` on it scrolls it into view before clicking, so the reading lands at
-the top of the document whatever the app does. A version of this scenario written that way reports a
-scroll reset that nothing in either codebase performs.
+The stays-where-they-were scenario is driven by the chord, not by clicking the toggle. The toggle
+rides in the header, off-screen on a scrolled document, so `locator.click()` scrolls it into view
+first and the reading lands at the top whatever the app does — reporting a scroll reset that
+nothing in either codebase performs.
 
 ## Accepted
 
-- A task item keeps its literal `[ ]` / `[x]` glyphs — in live preview and in reading alike —
-  rather than swapping them for a checkbox control. They are not inert text: aragonite wraps the
-  glyphs in a `role="checkbox"` span carrying `aria-checked`, and clicking one in live preview
-  toggles it. But a reader expecting a real box will not find one.
+- A task item keeps its literal `[ ]` / `[x]` glyphs in every mode rather than swapping them for a
+  checkbox control. Not inert text — aragonite wraps them in a `role="checkbox"` span with
+  `aria-checked`, and clicking one in live preview toggles it — but a reader expecting a real box
+  will not find one.

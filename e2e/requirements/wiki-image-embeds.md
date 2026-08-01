@@ -1,25 +1,19 @@
 # Feature: Obsidian-style `![[…]]` image embeds
 
 Covers `wiki-image-embeds.spec.ts`. Notes written by limestone's previous editor — and by
-Obsidian — carry image embeds as `![[image.png]]`, optionally sized as
-`![[image.png|300]]`. Those bytes are not GFM, so the embedded aragonite editor parses
-them as ordinary text; `src/components/editor/wiki-image-embeds-plugin.ts` is what makes them
-render as images again after the editor swap.
+Obsidian — carry image embeds as `![[image.png]]`, optionally sized as `![[image.png|300]]`.
+Those bytes are not GFM, so `src/components/editor/wiki-image-embeds-plugin.ts` is what makes
+them render as images again. `![[note.md]]`, Obsidian's note transclusion, is deliberately
+unclaimed — hence the narrow name.
 
-Named for what it handles and nothing more: `![[…]]` wrapping an image is the whole of it, and
-`![[note.md]]` — Obsidian's transclusion of another note — is a separate feature this deliberately
-leaves unclaimed. A plugin called `wiki-embed` would have read as owning both.
+The plugin mints a **built-in `image` inline node**, so an embed is an image to the whole editor:
+`resolveImageUrl` resolves it, the image widget renders it, and selecting, resizing and deleting
+behave as they do for `![alt](url)`.
 
-The plugin registers `![[` as inline syntax and mints a **built-in `image` inline node**.
-An embed is therefore an image to the whole editor, not just to the eye: the editor's own
-`resolveImageUrl` resolves it, its image widget renders it, and selecting, resizing and
-deleting behave as they do for `![alt](url)`. The plugin resolves no URLs itself.
-
-That rung is consulted **before** the built-in bracket scanner, and the two grammars
-overlap — `![[a]](u)` is a legal GFM image whose alt text is `[a]`. Declining the overlap
-is the recognizer's job, and getting it wrong is silent: the bytes still serialize, they
-just stop being the construct the author wrote. Hence the two decline gates below, and
-hence they are pinned as hard as the happy paths.
+Its rung is consulted **before** the built-in bracket scanner, and the grammars overlap —
+`![[a]](u)` is a legal GFM image with alt `[a]`. Declining the overlap is the recognizer's job,
+and getting it wrong is silent: the bytes still serialize, they just stop being the construct the
+author wrote. Hence the two decline gates below are pinned as hard as the happy paths.
 
 ## Happy paths
 
@@ -54,11 +48,9 @@ hence they are pinned as hard as the happy paths.
   ignored rather than treated as a target.
 - An embed whose closing `]]` lies outside the scanner's window is declined rather than
   claimed past it.
-- A target that resolves to nothing is still an image node, not literal text: the plugin has
-  no resolver of its own to decline with, so the gate is the extension alone. What the reader
-  is shown for one is measured behavior rather than this file's to state — see
-  `document-embeds.md` § Accepted, which records a 0×0 gap rather than the broken-image
-  placeholder this bullet claimed before it was measured.
+- A target that resolves to nothing is still an image node, not literal text: the plugin has no
+  resolver of its own to decline with, so the gate is the extension alone. What a reader is shown
+  for one is measured in `document-embeds.md` § Accepted.
 
 ## User interactions
 
@@ -69,44 +61,35 @@ hence they are pinned as hard as the happy paths.
 Selecting, deleting, copying and pasting an embed are the app's to answer, not the
 plugin's; they are `document-embeds.md`'s.
 
-## Verifiable now vs deferred
+## Which layer pins what
 
-Task 3 owns the plugin; Task 4 is what first mounts an editor in the app. The spec drives
-an editor it mounts itself in a bare page rather than the app's document view, and it
-prefers the parse layer wherever a scenario is decidable there:
+The spec mounts its own editor in a bare page and prefers the parse layer wherever a scenario is
+decidable there:
 
-- **Pinned now, against the recognizer directly:** every case that turns on whether bytes
-  are claimed — extension gate, the `(` gate, unterminated, line ending, empty target,
-  non-numeric size, nested opener, scan window.
-- **Pinned now, against a parse with the plugins installed:** node shape and offsets,
-  width, heading offsets, two embeds in one block, neighbouring constructs, and both
-  overlap fixtures resolving to built-in images.
-- **Pinned now, against a mounted editor:** the image widget and its resolved URL, the
-  code fence, a table cell's bytes, and round-trip after an edit elsewhere.
-- **Pinned against the running app, in `document-embeds.md`:** everything that needs the
-  app around the editor — caret, select-then-delete, and copy through the real document
-  view; paste-image; the host's resolved URL; and an embed's survival of the app's own
-  save and reopen. The editing delta below is pinned there too: the deltas are what that
-  spec records, not the parity they replaced.
+- **The recognizer directly:** every case that turns on whether bytes are claimed — extension
+  gate, the `(` gate, unterminated, line ending, empty target, non-numeric size, nested opener,
+  scan window.
+- **A parse with the plugins installed:** node shape and offsets, width, heading offsets, two
+  embeds in one block, neighbouring constructs, and both overlap fixtures as built-in images.
+- **A mounted editor:** the image widget and its resolved URL, the code fence, a table cell's
+  bytes, and round-trip after an edit elsewhere.
+- **The running app, in `document-embeds.md`:** caret, select-then-delete and copy through the
+  real document view; paste-image; the host's resolved URL; survival of a save and reopen.
 
-One scenario is pinned but not enforced by this plugin: an embed inside a code fence stays
-literal because a code block has no inline content for the scanner to run over. The
-scenario stays — it is what a reader of a note cares about — but a regression would come
-from the editor, not from here.
+The code-fence scenario is pinned here but enforced by the editor, not this plugin: a code block
+has no inline content for the scanner to run over. It stays because it is what a reader cares
+about, but a regression would come from upstream.
 
 ## Why the plugin owns the way back
 
-An `image` node carries no record of the syntax it was parsed from. Every read path can
-therefore treat an embed as an image — which is the point — but no write path can: the
-editor's inverse for a built-in kind emits that kind's built-in grammar, so re-serializing
-an edited embed would bring it back as `![cat.png|320](cat.png)` and the syntax the note
-was written in would be gone.
+An `image` node records nothing of the syntax it was parsed from, so every read path can treat an
+embed as an image but no write path can: the built-in inverse emits GFM, and re-serializing an
+edited embed would bring it back as `![cat.png|320](cat.png)`.
 
-That is what the rung's rewrite hook is for, and it is why the hook must decline as
-readily as it writes: an embed holds a target and an optional width, so an edit that needs
-anywhere else to live has no form here, and the editor suppresses it rather than writing
-bytes this plugin did not author. Both halves are pinned against a real document in
-`document-embeds.md` — a resize commits `![[cat.png|320]]`, an alt edit commits nothing.
+That is the rewrite hook's job, and why it declines as readily as it writes: an embed holds a
+target and an optional width, so an edit needing anywhere else to live has no form here. Both
+halves are pinned in `document-embeds.md` — a resize commits `![[cat.png|320]]`, an alt edit
+commits nothing.
 
 ## Known deltas from the CodeMirror editor
 

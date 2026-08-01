@@ -85,9 +85,8 @@
 
 	function onKeydown(e: KeyboardEvent) {
 		if (!session || e.repeat || e.defaultPrevented || keyCapture.active) return;
-		// Ahead of the lookup, not after it: a chord the editor claims is the editor's even when
-		// the reader has bound an app action to it, and this handler captures — whatever it takes
-		// never reaches the document.
+		// Ahead of the lookup: this handler captures, so a chord it takes never reaches the
+		// document, even one the reader has bound an app action to.
 		if (inEditorContent(e) && isEditorReservedChord(specFromEvent(e))) return;
 		const action = actionForKey(e, session.settings);
 		if (!action) return;
@@ -97,11 +96,9 @@
 	}
 
 	const SCROLL_STEP = 48;
-	// `.editor` is aragonite's own class, not a contract — the editor declines to key its own
-	// rules on such a name because a host could mint a node by it. It earns its place here
-	// anyway: focus parks on the editor root, which is neither a field nor contenteditable, and
-	// the fallback would page the document under a reader who is only moving the caret. The
-	// other place this coupling lives is `$lib/editor-chords`; re-check both on an editor bump.
+	// `.editor` is aragonite's own class, not a contract, but it earns its place: focus parks on
+	// the editor root, which is neither a field nor contenteditable, and the scroll fallback would
+	// page the document under a reader only moving the caret. `$lib/editor-chords` couples to it too.
 	const EDITABLE =
 		'input, textarea, select, [contenteditable=""], [contenteditable="true"], .editor';
 

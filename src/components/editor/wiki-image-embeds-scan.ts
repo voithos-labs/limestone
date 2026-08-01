@@ -1,7 +1,6 @@
 /**
- * Recognizer for Obsidian-style image embeds — `![[cat.png]]`, `![[cat.png|300]]`.
- * Pure and aragonite-free so a spec can drive it directly; `wiki-image-embeds-plugin.ts` is
- * what turns a recognized span into an inline image node.
+ * Recognizer for Obsidian-style image embeds — `![[cat.png]]`, `![[cat.png|300]]`. Pure and
+ * aragonite-free so a spec can drive it directly.
  */
 
 import { isImageTarget } from './image-targets';
@@ -26,13 +25,10 @@ const OPEN_BRACKET = 0x5b;
 const CLOSE_BRACKET = 0x5d;
 
 /**
- * The embed at `pos` within `raw[pos, end)`, or null to leave the bytes to the scanner.
- * `pos` is at the `!`.
- *
- * Declining is a contract, not tidiness. This runs ahead of the built-in scanner, whose
- * grammar overlaps: `![[a]](u)` is a legal GFM image with alt `[a]`. A claim here wins,
- * and a wrong claim is silent — the bytes still serialize, they just stop being the
- * construct the author wrote. Hence two gates, both declining rather than guessing.
+ * The embed at `pos` (the `!`) within `raw[pos, end)`, or null to leave the bytes to the
+ * scanner. Declining is a contract: this runs ahead of the built-in scanner, whose grammar
+ * overlaps (`![[a]](u)` is a legal GFM image), a claim here wins, and a wrong claim is silent —
+ * the bytes still serialize, they just stop being the construct the author wrote.
  */
 export function recognizeWikiImageEmbed(
 	raw: string,
@@ -47,8 +43,8 @@ export function recognizeWikiImageEmbed(
 	if (innerEnd < 0) return null;
 	const embedEnd = innerEnd + 2;
 	// A `(` here means the built-in scanner has an inline image to parse; leave it be. The
-	// window bound is not decoration: reading `raw[end]` would be outside the range this is
-	// handed, and a `(` beyond it is a tail the built-in scanner cannot reach either.
+	// `< end` bound is load-bearing: past it is outside the range this call was handed, and a
+	// `(` there is a tail the built-in scanner cannot reach either.
 	if (embedEnd < end && raw.charCodeAt(embedEnd) === OPEN_PAREN) return null;
 
 	const inner = raw.slice(innerStart, innerEnd);
@@ -67,9 +63,8 @@ export function recognizeWikiImageEmbed(
 // ── Internal ────────────────────────────────────────────────────────────────
 
 /**
- * Offset of the `]]` closing the embed opened at `from`, or -1 before one appears. A
- * bracket or a line ending ends the search, so an unterminated `![[` cannot swallow the
- * embed that follows it — the inner opener is the one that wins.
+ * Offset of the `]]` closing the embed opened at `from`, or -1. A bracket or a line ending ends
+ * the search, so an unterminated `![[` cannot swallow the embed that follows it.
  */
 function findClose(raw: string, from: number, end: number): number {
 	for (let i = from; i < end; i++) {

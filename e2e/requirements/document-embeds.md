@@ -1,12 +1,10 @@
 # Feature: `![[…]]` embeds inside a real document
 
-Covers `document-embeds.spec.ts` — the half of `wiki-image-embeds.md` that needs the app around the
-editor: the host's own image resolver, the clipboard, the save path, and the asset importer.
-`wiki-image-embeds.spec.ts` owns the recognizer and the parse, which need no app.
+Covers `document-embeds.spec.ts` — the half of `wiki-image-embeds.md` that needs the app around
+the editor: the host's image resolver, the clipboard, the save path, and the asset importer.
 
 The asset URLs the app mints are answerable only by the Tauri webview, so the spec serves them
-itself. A broken image has no height, and half of what a reader does with an embed — click it,
-see its size — is unobservable without one.
+itself: a broken image has no height, and clicking one or reading its size needs one.
 
 ## Happy paths
 
@@ -28,9 +26,8 @@ see its size — is unobservable without one.
 
 ## Editing an embed keeps it an embed
 
-The editor treats an embed as the built-in image it is, and the built-in way back is GFM. What
-keeps a note in the syntax it was written in is the plugin's own rewrite; `wiki-image-embeds.md`
-carries the reasoning, these two scenarios pin its halves.
+The built-in way back from an image node is GFM; the plugin's own rewrite is what keeps a note in
+the syntax it was written in. `wiki-image-embeds.md` carries the reasoning.
 
 - Resizing a selected embed writes the new width in the note's own syntax: `![[cat.png|300]]`
   becomes `![[cat.png|320]]`, not `![cat.png|320](cat.png)`. A note edited here still resolves in
@@ -46,11 +43,9 @@ carries the reasoning, these two scenarios pin its halves.
 ## Accepted
 
 - An embed whose image fails to load leaves a 0×0 gap where it sits. aragonite caches the failure
-  the moment it happens, but the widget already in the DOM is never redecorated, so nothing marks
-  the spot until something re-renders that block: measured still 0×0 two seconds on in live
-  preview, while a mode round-trip re-renders it and the "⚠ image failed to load" placeholder then
-  appears and survives the trip back. The placeholder is a render behind rather than mode-gated —
-  a reader opening a note with a missing image is shown nothing at all where it should be.
+  at once, but the widget already in the DOM is never redecorated, so the "⚠ image failed to load"
+  placeholder appears only when something re-renders that block (a mode round-trip does). It is a
+  render behind rather than mode-gated: a reader opening a note with a missing image sees nothing.
 
 ## Deferred
 

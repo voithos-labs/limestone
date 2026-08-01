@@ -9,13 +9,10 @@ interface WireUpWindow {
 }
 
 /**
- * Records who observes the editor's header slot, and from where. The adapter registers exactly
- * one observer there; a second registration means its wire-up effect ran twice, which also means
- * the run before it was torn down mid-flight and its restore ran alongside the new one.
- *
- * Structural, because there is nothing user-facing to watch: a second pass places the same caret
- * and the same scroll, so only the count can tell. Attributed by stack rather than by count
- * alone — the editor keeps an observer of its own on the same element.
+ * Records who observes the editor's header slot. A second adapter registration means the wire-up
+ * effect ran twice, and that the run before it was torn down mid-restore. Structural because a
+ * second pass places the same caret and scroll; attributed by stack because the editor keeps an
+ * observer of its own on the same element.
  */
 async function watchHeaderObservers(page: Page) {
 	await page.addInitScript(() => {

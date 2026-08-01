@@ -25,7 +25,6 @@ answered by the fake backend in `e2e/support/tauri-mocks.ts`.
 - Boot reaches for no command the fake backend lacks a handler for. A recorded unhandled
   command means the app gained a native dependency the mock layer has to answer.
 
-## Deferred
+## Covered elsewhere
 
-- Flushing pending saves when the window closes: covered by the spec for the task that
-  ports close handling to the new editor (aragonite integration, Task 5).
+- Flushing pending saves when the window closes: `editor-save.md`.

@@ -178,8 +178,7 @@
 	]);
 
 	// ── Compound body (table / grid) ──────────────────────────────────────────
-	// The body is a nested face. Its scope (the journal's own filters AND the selected
-	// day) is passed down as a value
+
 	const bodyFace = $derived(face.body);
 
 	const bodyScope = $derived.by((): FilterNode => {

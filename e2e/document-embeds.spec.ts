@@ -17,9 +17,8 @@ const PNG_BASE64 =
 	'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR42mP8z8BQz0AEYBxVSF+FABJADveWkH6oAAAAAElFTkSuQmCC';
 
 /**
- * Answers the asset URLs the app mints, which only the Tauri webview can serve. Without this an
- * embed renders as a broken image of zero height — enough to see that a widget exists, not enough
- * to click one or to tell a sized embed from an unsized one.
+ * Answers the asset URLs only the Tauri webview can serve. Without it an embed renders as a broken
+ * image of zero height — not clickable, and a sized embed indistinguishable from an unsized one.
  */
 async function serveAssets(page: Page) {
 	await page.route(/asset\.localhost/, (route) =>
@@ -140,9 +139,8 @@ test('a pasted image is imported into the source and embedded', async ({ page })
 	]);
 });
 
-// An embed is a built-in image to every read path, and the editor's inverse for that kind writes
-// GFM — so without the plugin's own rewrite the resize below would leave `![cat.png|320](cat.png)`
-// in the note, and Obsidian would stop resolving the image.
+// An embed is a built-in image to every read path, and the built-in inverse writes GFM — so
+// without the plugin's rewrite this resize would leave `![cat.png|320](cat.png)` in the note.
 test('resizing an embed writes the new width in the note’s own syntax', async ({ page }) => {
 	await openNote(page, 'Look ![[cat.png|300]] here.\n');
 
@@ -165,13 +163,11 @@ test('retargeting an embed through the popover keeps it an embed', async ({ page
 	await expect.poll(() => saved(page)).toBe('Lead paragraph.\n\nLook ![[dog.png]] here.\n');
 });
 
-// An embed names one target and fills both alt and url from it, so alt text of its own has no
-// form in the syntax. The rewrite declines, and the editor suppresses the commit rather than
-// writing bytes the plugin did not author.
+// An embed fills alt and url from one target, so alt text of its own has no form in the syntax.
 test('an alt an embed cannot carry is declined, and the bytes stay as written', async ({
 	page
 }) => {
-	// The decline is what the editor reports; the bytes alone cannot tell it from a rewrite that
+	// The reported decline is the assertion: the bytes alone cannot tell it from a rewrite that
 	// ignored the alt and handed back what it was given, which the commit drops without a word.
 	const declines: string[] = [];
 	page.on('console', (message) => {

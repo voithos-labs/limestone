@@ -160,9 +160,8 @@ export const actions: Action[] = [
 		id: 'nav.settings',
 		title: 'Open settings',
 		category: 'navigation',
-		// Not Mod+I: the editor binds it to italic, and a chord the editor claims never reaches
-		// this handler while a document has focus. Whatever replaces it has to stay out of
-		// `RESERVED` for the same reason — Mod+, does.
+		// Not Mod+I: the editor binds italic to it, and a chord in `RESERVED` never reaches this
+		// handler while a document has focus. Any replacement has to stay out of that set.
 		defaultKeys: ['mod+,'],
 		run: (session) => session.editors[0].focusTab({ kind: 'settings' })
 	}
