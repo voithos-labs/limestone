@@ -204,16 +204,14 @@
 	}
 </script>
 
-<!-- Mouse-only by design, like the editor's own dead-space gesture; keyboard reaches the
-     entry through focus traversal. -->
+<!-- Mouse-only, like the editor's own dead-space gesture; keyboard reaches the entry via focus. -->
 <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 <div
 	class="doc-face"
 	class:flow
 	onclick={(e) => {
-		// Only the face's empty region BELOW the entry — in flow the editor root hugs its content,
-		// so the in-editor dead-space gesture cannot reach clicks down here. The side gutters stay
-		// inert: teleporting a beside-line click to the document's end would surprise.
+		// Only below the entry, where the in-editor dead-space gesture cannot reach; side gutters
+		// stay inert rather than teleporting the caret to the end.
 		if (!flow || e.target !== e.currentTarget) return;
 		const editorEl = (e.currentTarget as HTMLElement).querySelector('.editor');
 		if (editorEl && e.clientY <= editorEl.getBoundingClientRect().bottom) return;

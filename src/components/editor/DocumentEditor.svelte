@@ -252,10 +252,8 @@
 	}
 
 	/**
-	 * Lands the caret at the end of the document, for a host click below a flow-mode entry —
-	 * dead space the editor's own gesture cannot reach, since in flow its root hugs the content.
-	 * The instance exposes no document, so the last block's index comes from a re-parse; the
-	 * oversized offset clamps to the block's end at the editor's restore seam.
+	 * Caret to the document's end, for a host click below a flow entry — dead space the editor
+	 * cannot see. No document on the instance, hence the re-parse; the offset clamps upstream.
 	 */
 	export async function focusEntryEnd(): Promise<boolean> {
 		if (!instance) return false;
