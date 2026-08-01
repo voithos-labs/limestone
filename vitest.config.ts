@@ -17,6 +17,9 @@ export default defineConfig({
 		restoreMocks: true,
 		// A suite needing a DOM opts in with a `// @vitest-environment jsdom` docblock.
 		environment: 'node',
+		// A stylesheet import hands a test an empty string unless the file is listed here, and the
+		// theme bridge test reads these two as text.
+		css: { include: [/editor-theme\.css/, /editor-tokens\.css/] },
 		// aragonite ships extensionless relative imports and uncompiled `.svelte`, neither of
 		// which node's own resolver takes; inlining routes the package through vite as the dev
 		// server already does.
