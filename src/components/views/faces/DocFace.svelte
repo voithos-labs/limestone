@@ -36,6 +36,8 @@
 		onCreated?: (rowId: string) => void;
 	} = $props();
 
+	let docEditor: DocumentEditor | undefined = $state();
+
 	const query = $derived((view.state.search as string | undefined) ?? '');
 
 	let rows = $state<SearchResult[]>([]);
@@ -202,10 +204,21 @@
 	}
 </script>
 
-<div class="doc-face" class:flow>
+<!-- Mouse-only by design, like the editor's own dead-space gesture; keyboard reaches the
+     entry through focus traversal. -->
+<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+<div
+	class="doc-face"
+	class:flow
+	onclick={(e) => {
+		// Only the face's own empty region below the entry — in flow the editor root hugs its
+		// content, so the in-editor dead-space gesture cannot reach clicks landing down here.
+		if (flow && e.target === e.currentTarget) void docEditor?.focusEntryEnd();
+	}}
+>
 	{#if docTab}
 		{#key docTab.id}
-			<DocumentEditor tab={docTab} {flow} />
+			<DocumentEditor bind:this={docEditor} tab={docTab} {flow} />
 		{/key}
 	{:else}
 		<div class="doc-empty">

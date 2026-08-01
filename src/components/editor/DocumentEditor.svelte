@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { Editor } from 'aragonite';
+	import { Editor, parse } from 'aragonite';
 	import type { EditorInstance, EditorSelection, PastedImage, PresentationMode } from 'aragonite';
 	import 'aragonite/styles/editor-theme.css';
 	// Loaded after aragonite's own palette, which is what lets the bridge win over it.
@@ -249,6 +249,20 @@
 		}
 		// Only now: persisting mid-restore would write values the restore is about to re-state.
 		restored = true;
+	}
+
+	/**
+	 * Lands the caret at the end of the document, for a host click below a flow-mode entry —
+	 * dead space the editor's own gesture cannot reach, since in flow its root hugs the content.
+	 * The instance exposes no document, so the last block's index comes from a re-parse; the
+	 * oversized offset clamps to the block's end at the editor's restore seam.
+	 */
+	export async function focusEntryEnd(): Promise<boolean> {
+		if (!instance) return false;
+		const last = parse(instance.getSource()).children.length - 1;
+		if (last < 0) return false;
+		const end = { path: [last], offset: Number.MAX_SAFE_INTEGER };
+		return instance.setSelection({ anchor: end, focus: end });
 	}
 
 	// ── Services the editor delegates to the app ────────────────────────────────────────

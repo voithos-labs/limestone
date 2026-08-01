@@ -54,3 +54,9 @@
 	width: 100%;
 	padding: 0 24px;
 }
+
+/* In flow the hero renders outside the editor at the face's own inset, so a column inset here
+   would double-pay and push the body right of the title. Same numbers the previous editor used. */
+.doc-editor.flow .editor > .block-list {
+	padding: 4px 0 48px;
+}
