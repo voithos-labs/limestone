@@ -14,9 +14,7 @@ Good entry point to explore the code base is Session ([see file](https://github.
 
 ---
 
-The editor comes from a sibling [aragonite](https://github.com/voithos-labs/aragonite)
-checkout rather than the registry, so clone and build it first — `npm i` here fails
-without it.
+Currently, the editor library is not on the npm registry. Thus we have to do a bit of setup for local dev:
 
 ```bash
 git clone https://github.com/voithos-labs/aragonite.git ../aragonite
@@ -26,34 +24,25 @@ cd ../limestone
 npm i
 ```
 
-Run dev app
+Then:
 
 ```bash
 npm run tauri dev
 ```
 
-Vite is pinned to port 1420, which an aragonite showcase dev server also takes. With one
-running, `npm test` adopts it instead of starting this app and every spec fails on a page
-that was never limestone. Give the suite a port of its own:
-
-```bash
-PORT=1425 npm test
-```
-
-Pick up a rebuilt aragonite, then restart any running dev server — Vite does not watch
-`node_modules`. Plain `npm install` will not notice a rebuild: the version string is
-unchanged, so npm has nothing to compare.
+Since aragonite is also actively under dev, so sometimes you have to rebuild it with `npm run package` after new changes. To pick up on the new build, run:
 
 ```bash
 npm run editor:sync
 ```
 
-The script drops Vite's dependency cache along with the package, because Vite keys the
-editor's pre-bundled copy on something a rebuild does not change. Refreshing the package
-alone would leave the browser running the old build — a failure that looks like the
-rebuild never happened rather than like a stale file.
+Also, if you are developing both limestone and aragonite on the same machine, note that aragonite's showcase dev server also uses port 1420. So, if you are stupid enough to run both the showcase dev server and limestone's npm test at the same time, try to avoid port collision with:
 
-Format
+```bash
+PORT=1425 npm test
+```
+
+Formating:
 
 ```bash
 npm run format
