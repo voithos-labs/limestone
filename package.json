@@ -10,6 +10,7 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit -p ./e2e/tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "playwright test",
+		"test:unit": "vitest run",
 		"editor:sync": "node -e \"const fs=require('fs');for(const p of ['node_modules/aragonite','node_modules/.vite'])fs.rmSync(p,{recursive:true,force:true})\" && npm install",
 		"tauri": "tauri",
 		"notices": "node scripts/gen-notices.mjs",
@@ -46,12 +47,14 @@
 		"@sveltejs/vite-plugin-svelte": "^7.2.0",
 		"@tauri-apps/cli": "^2",
 		"@types/js-yaml": "^4.0.9",
+		"jsdom": "^30.0.1",
 		"prettier": "^3.8.1",
 		"prettier-plugin-svelte": "^4.1.1",
 		"svelte": "^5.0.0",
 		"svelte-check": "^4.0.0",
 		"typescript": "~5.6.2",
 		"unplugin-icons": "^23.0.1",
-		"vite": "^8.1.5"
+		"vite": "^8.1.5",
+		"vitest": "^4.1.10"
 	}
 }
