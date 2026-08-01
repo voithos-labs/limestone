@@ -1,9 +1,9 @@
 # Feature: which keystrokes the app claims while a document is focused
 
 Covers `keybindings.spec.ts`. The window handler in `+page.svelte` runs in the capture phase, so
-whatever it claims never reaches the editor. The policy it enforces: an app chord keeps working
-while you type — closing a tab mid-sentence is exactly when you want it — except for the chords the
-editor itself binds, which pass through untouched when focus is in the document.
+whatever it claims never reaches the editor. The policy: an app chord keeps working while you type
+— closing a tab mid-sentence is exactly when you want it — except for the chords the editor itself
+binds, which pass through untouched when focus is in the document.
 
 ## Happy paths
 
@@ -36,19 +36,17 @@ editor itself binds, which pass through untouched when focus is in the document.
 
 ## Accepted
 
-- Mod+I and Mod+B ask the editor to format a selection, and do nothing at a bare caret: aragonite
-  reads the selection to wrap (`getRawSelection` returns null while it is collapsed) and its toggle
-  returns without touching the block. A reader who presses Mod+I and then types gets plain text —
-  there is no pending-emphasis state to type into. The chord is still swallowed, so nothing else
-  happens either. Every scenario above selects first, which is why the suite never saw it.
-- A whole class of chords may never reach the page in the packaged Windows app, whatever this
-  suite says: WebView2 runs its own browser-accelerator handling _before_ the web content, and the
-  keys on that list — Ctrl+F, Ctrl+P, Ctrl+R and F5, Ctrl+Plus and Ctrl+Minus, Ctrl+Shift+C and
-  F12 — reach a JavaScript listener only if the browser does not claim them. Tauri leaves that
-  handling enabled (there is no config option for it, and tauri-runtime-wry never sets wry's flag),
-  so the app's claim on Mod+F and on the zoom pair is untested outside this harness. Playwright
-  dispatches into the renderer directly, past that stage, so every scenario here passes either way.
-  Mod+E, Mod+B, Mod+I, Mod+W and Mod+, are not on the list and are unaffected.
+- Mod+I and Mod+B act at a bare caret too, as of aragonite 0.9.36: the toggle inserts an empty
+  marker pair and lands the caret between its halves, so the next character typed is formatted; a
+  second press (or one undo) removes the pair. Every scenario above selects first, so the suite
+  does not pin the collapsed-caret contract — it is aragonite's, exercised by its own battery.
+- A whole class of chords may never reach the page in the packaged Windows app: WebView2 runs its
+  browser-accelerator handling _before_ the web content, and Tauri leaves it enabled (no config
+  option; tauri-runtime-wry never sets wry's flag). The listed keys — Ctrl+F, Ctrl+P, Ctrl+R, F5,
+  Ctrl+Plus, Ctrl+Minus, Ctrl+Shift+C, F12 — reach a JS listener only if the browser declines
+  them, so the app's claim on Mod+F and the zoom pair is untested outside this harness. Playwright
+  dispatches past that stage, so every scenario here passes either way. Mod+E, Mod+B, Mod+I,
+  Mod+W and Mod+, are not on the list.
 
 ## Not pinned by a scenario
 

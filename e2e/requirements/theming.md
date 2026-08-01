@@ -1,14 +1,13 @@
 # Feature: the editor's theme bridge
 
-Covers `theming.spec.ts`. `src/components/editor/editor-tokens.css` maps limestone's
-theme variables onto the tokens the embedded aragonite editor reads; these scenarios
-pin that mapping through the running app. The same file bridges two measurements —
-the page column's width and the reader's zoom — which are `page-layout.md`'s.
+Covers `theming.spec.ts`. `src/components/editor/editor-tokens.css` maps limestone's theme
+variables onto the tokens the embedded aragonite editor reads; these scenarios pin that mapping
+through the running app. The same file bridges the page column's width and the reader's zoom,
+which are `page-layout.md`'s.
 
-Assertions read resolved custom properties off the live `.editor` element rather than
-painted colors. The editor root paints no background of its own — `--color-bg` is what
-its search bar, table menu and image panel paint with — so the resolved token, not a
-screenshot pixel, is the observable the bridge actually controls.
+Assertions read resolved custom properties off the live `.editor` element rather than painted
+colors: the editor root paints no background of its own, so the token is the observable the
+bridge actually controls.
 
 ## Happy paths
 
@@ -18,15 +17,13 @@ screenshot pixel, is the observable the bridge actually controls.
   values rather than to aragonite's shipped defaults.
 - Markdown syntax tokens on the editor resolve to the app's `--syntax-*` palette for the
   active mode.
-- A thematic break's rule paints the app's border colour, in both modes. aragonite colours
-  it from `--syntax-separator`, a value limestone picked to tint `---` glyphs inside a line
-  of text; the same value across a full-width rule is the loudest thing on the page. The
-  rule is retargeted rather than the token remapped, so the syntax palette keeps its
-  meaning — asserted as a computed `border-top-color`, since a raw token and a painted
-  colour are not comparable strings.
-- The wash aragonite's table menu hovers with takes the app's own menu hover, so it follows
-  the reader's mode and sits beside limestone's accent. aragonite ships one blue for both
-  modes, which is the one chrome token of its own that a light theme does not change.
+- A thematic break's rule paints the app's border colour, in both modes. aragonite colours it
+  from `--syntax-separator`, which limestone picked to tint `---` glyphs inside a line of text;
+  across a full-width rule the same value is the loudest thing on the page. The rule is
+  retargeted rather than the token remapped, so the syntax palette keeps its meaning — asserted
+  as a computed `border-top-color`, since a raw token and a painted colour are not comparable.
+- The wash aragonite's table menu hovers with takes the app's own menu hover, so it follows the
+  reader's theme and sits beside limestone's accent rather than aragonite's neutral tint.
 
 ## User interactions
 
@@ -50,9 +47,7 @@ screenshot pixel, is the observable the bridge actually controls.
 ## Deferred
 
 - Tokens limestone deliberately does not bridge — aragonite's code-token palette and its
-  selection/search overlays — keep aragonite's light/dark defaults and are covered by
-  aragonite's own suite, not here.
-- Mermaid diagrams draw their own light palette in every theme, so a diagram in a dark
-  document is a bright rectangle. The theme mermaid initialises with is plausibly
-  limestone's to choose — the renderer is injected here — but no seam for it exists yet on
-  either side, so nothing pins it.
+  selection/search overlays — keep aragonite's light/dark defaults and are aragonite's to cover.
+- Mermaid diagrams draw their own light palette in every theme, so a diagram in a dark document is
+  a bright rectangle. Choosing mermaid's theme is plausibly limestone's call (the renderer is
+  injected here), but no seam exists on either side yet, so nothing pins it.

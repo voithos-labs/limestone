@@ -1,29 +1,16 @@
 /**
- * Bridge: limestone's theme variables → aragonite's editor tokens, declared at
- * `.editor` scope. Must load AFTER `aragonite/styles/editor-theme.css` — the two
- * carry equal specificity, so source order is what lets this file win over
- * aragonite's `[data-editor-theme='light']` block.
- *
- * `inherit` wherever limestone declares a token of the same name at `:root`; a
- * `var()` self-reference would be a cycle. That takes the PARENT element's value,
- * so no ancestor of the editor may carry `.aragonite-editor-theme` — aragonite
- * declares these same names there, and every `inherit` below would quietly pick up
- * its defaults instead of limestone's.
- *
- * Mapped by reference where the names differ. Tokens limestone only has once
- * `applyTheme` has run (`--color-error`,
- * every `--syntax-*`) resolve to the guaranteed-invalid value until then —
- * harmless, because aragonite's reads all carry inline fallbacks and the session
- * applies a theme before an editor can mount. Hardcoding fallbacks here would
- * bake one mode's palette into a mode-agnostic file.
+ * Bridge: limestone's theme variables → aragonite's editor tokens. Must load AFTER
+ * `aragonite/styles/editor-theme.css` — equal specificity, so source order is what wins.
+ * `inherit` (a `var()` self-reference would cycle) takes the PARENT's value, so no
+ * ancestor of the editor may carry `.aragonite-editor-theme` or every line below picks
+ * up aragonite's defaults instead of limestone's.
  */
 .editor {
 	--color-bg: var(--color-surface);
 	--color-text: var(--color-text-secondary);
 	--color-danger: var(--color-error);
-	/* The wash aragonite's table menu hovers with. Its own value is one blue for both
-	   modes, so it neither follows the reader's theme nor sits beside limestone's green;
-	   the app's menu hover is the same affordance and does both. */
+	/* The wash aragonite's table menu hovers with: the app's menu hover is the same
+	   affordance, and it follows limestone's theme where aragonite's own value cannot. */
 	--color-ui-faint: var(--menu-item-hover);
 	--color-border: inherit;
 	--color-text-primary: inherit;
@@ -41,30 +28,26 @@
 	--syntax-separator: inherit;
 	--syntax-task: inherit;
 	--syntax-task-done: inherit;
+	/* No fallbacks above: tokens `applyTheme` mints resolve invalid until it runs, which is
+	   harmless (aragonite's reads carry their own), and a literal would bake one mode's palette
+	   into a mode-agnostic file. Names limestone has no twin for — and `--font-editor`, which
+	   holds the same value on both sides — are deliberately left to aragonite's defaults. */
 
-	/* aragonite declares its own default at `.editor`, which shadows any value
-	   inherited from a host wrapper — so the wrapper's zoom has to be pulled in
-	   explicitly, under a limestone-owned name. Set it WITH a unit: unitless makes
-	   the font-size declaration it feeds invalid, and zoom silently does nothing. */
+	/* aragonite declares its own default at `.editor`, which shadows anything inherited
+	   from the host wrapper, so the wrapper's zoom is pulled in explicitly. WITH a unit:
+	   unitless makes the font-size declaration it feeds invalid, and zoom does nothing. */
 	--editor-font-size: var(--ls-zoom, 16px);
 }
 
-/* aragonite's light/dark defaults stand for the tokens limestone has no semantic
-   twin for: --color-bg-secondary/-elevated/-muted, --color-text-muted,
-   --code-tok-*, and the selection/search overlays.
-   --font-editor holds an identical value on both sides — deliberately unbridged. */
-
-/* aragonite paints the thematic break with --syntax-separator, a colour limestone
-   chose to tint `---` glyphs inside a line of text; on a full-width 2px rule the
-   same value is the loudest thing on the page. Targeted at the rule rather than
-   remapped at the token, so the syntax palette keeps its meaning. */
+/* --syntax-separator tints `---` glyphs inside a line of text; on a full-width rule the
+   same value is the loudest thing on the page. Targeted at the rule rather than remapped
+   at the token, so the syntax palette keeps its meaning. */
 .editor .thematic-break-block[role='separator'] > hr {
 	border-top-color: var(--color-border);
 }
 
-/* The editor root fills its pane; the content column is what carries the app's
-   page width, the way every other page surface does. Its horizontal inset matches
-   `DocumentHero`'s, so the document title and the first block share a left edge. */
+/* The content column carries the app's page width, the way every other page surface does.
+   Its inset matches `DocumentHero`'s, so the title and the first block share a left edge. */
 .editor > .block-list {
 	max-width: var(--page-max-width, 1200px);
 	margin: 0 auto;
