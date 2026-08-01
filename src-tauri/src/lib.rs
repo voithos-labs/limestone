@@ -1,5 +1,6 @@
 use serde_json::Value;
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
+use serde::Serialize;
 use std::sync::RwLock;
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
@@ -31,7 +32,9 @@ pub async fn create_pool(
         .await?;
     }
     sqlx::raw_sql(SCHEMA).execute(&pool).await?;
-    sqlx::raw_sql(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
+    sqlx::raw_sql(AssertSqlSafe(format!(
+        "PRAGMA user_version = {SCHEMA_VERSION}"
+    )))
         .execute(&pool)
         .await?;
     Ok(pool)
@@ -42,6 +45,12 @@ pub struct AppData {
     pub settings: RwLock<Value>,
     pub db: SqlitePool,
     pub bulk: services::BulkRunner,
+}
+
+#[derive(Serialize, Clone)]
+pub(crate) struct Reconciled<'a> {
+    pub source_id: &'a str,
+    pub skipped: usize,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -194,14 +203,20 @@ pub fn run() {
                         tasks.push(tauri::async_runtime::spawn(async move {
                             let source_id = source.id.to_string();
                             // reconcile returns changes for deep indexing (FTS, in-body tags, etc.)
-                            let changed =
+                            let (changed, skipped) =
                                 services::reconcile_source(&source, &pool, &["md"], fm_buf_size)
                                     .await
                                     .unwrap_or_else(|e| {
                                         eprintln!("Reconciliation failed: {e}");
-                                        Vec::new()
+                                        Default::default()
                                     });
-                            let _ = app_handle.emit("source-reconciled", &source_id);
+                            let _ = app_handle.emit(
+                                "source-reconciled",
+                                Reconciled {
+                                    source_id: &source_id,
+                                    skipped,
+                                },
+                            );
                             if let Err(e) = services::index_fts(&pool, &source, changed).await {
                                 eprintln!("FTS indexing failed: {e}");
                             }
@@ -231,6 +246,8 @@ pub fn run() {
             commands::source_commands::set_default_source,
             commands::source_commands::list_dirs,
             commands::source_commands::make_dir,
+            commands::source_commands::create_folder,
+            commands::source_commands::move_folder,
             commands::settings_commands::get_app_info,
             commands::settings_commands::get_setting,
             commands::settings_commands::get_all_settings,

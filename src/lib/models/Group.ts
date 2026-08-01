@@ -20,7 +20,9 @@
  * 		I mean we kind of have this on full reload but ya know, prob want it to work while in the app
  */
 
+import { invoke } from '@tauri-apps/api/core';
 import { select, execute } from '$lib/services/db';
+import { remapFolderIdsInSavedViews } from '$lib/models/View.svelte';
 
 function folderGroupId(sourceId: string, path: string): string {
 	return `folder:${sourceId}:${path}`;
@@ -64,50 +66,6 @@ class Group {
 		this.accessedAt = new Date(row.accessed_at);
 		this.parentGroupId = row.parent_group_id ?? undefined;
 		this.sourceId = row.source_id ?? undefined;
-	}
-
-	/**
-	 * Create a new group
-	 */
-	private static async create(
-		id: string,
-		slug: string,
-		sourceId: string | undefined,
-		groupType: GroupType,
-		parentGroupId: string | undefined
-	): Promise<Group> {
-		await execute(
-			`INSERT INTO groups (id, source_id, slug, group_type, parent_group_id)
-             VALUES (?1, ?2, ?3, ?4, ?5)`,
-			[id, sourceId, slug, groupType, parentGroupId ?? null]
-		);
-
-		const [row] = await select<GroupRow>(
-			`SELECT *
-             FROM groups
-             WHERE id = ?1`,
-			[id]
-		);
-
-		return new Group(row);
-	}
-
-	/**
-	 * Create a folder group
-	 */
-	static async createFolder(
-		slug: string,
-		sourceId: string,
-		parent?: { id: string; path: string }
-	): Promise<Group> {
-		const path = parent ? `${parent.path}/${slug}` : slug;
-		return Group.create(
-			folderGroupId(sourceId, path),
-			slug,
-			sourceId,
-			GroupType.Folder,
-			parent?.id
-		);
 	}
 
 	static async list(): Promise<Group[]> {
@@ -164,6 +122,65 @@ class Group {
 			slugs
 		);
 		return rows.map((r) => new Group(r));
+	}
+
+	// ── FOLDERS ─────────────────────────────────────────────────────────────────────────
+
+	/**
+	 * Create a folder group
+	 */
+	static async createFolder(
+		slug: string,
+		sourceId: string,
+		parent?: { id: string; path: string }
+	): Promise<Group> {
+		const path = parent ? `${parent.path}/${slug}` : slug;
+		const id: string = await invoke('create_folder', { sourceId, relDir: path });
+		return Group.fromID(id);
+	}
+
+	/**
+	 * PARAMS
+	 *
+	 * e :: the error
+	 *
+	 * fallback :: fallback handle generic case, unknown failures, with this er message
+	 */
+	static describeOpError(e: unknown, fallback: string): string {
+		const err = e as { kind?: string; name?: string };
+		switch (err?.kind) {
+			case 'already_exists':
+				return err.name
+					? `A folder named "${err.name}" is already there.`
+					: 'A folder with that name is already there.';
+			case 'into_itself':
+				return "A folder can't be moved inside itself.";
+			case 'invalid_name':
+				return err.name
+					? `"${err.name}" can't be used as a folder name.`
+					: "That name can't be used for a folder.";
+			case 'not_found':
+				return "That folder couldn't be found. It may have been moved or deleted outside Limestone.";
+			case 'source_missing':
+				return 'The source folder is unavailable. Check that the drive or folder is connected.';
+			case 'locked':
+				return 'A file in that folder is open in another app. Close it and try again.';
+			case 'permission':
+				return "That folder is read-only or you don't have permission to change it.";
+			case 'no_space':
+				return 'Your disk is out of space.';
+			default:
+				return fallback;
+		}
+	}
+
+	static async moveFolder(sourceId: string, oldPath: string, newPath: string): Promise<string> {
+		await invoke('move_folder', { sourceId, oldRelDir: oldPath, newRelDir: newPath });
+		const newId = folderGroupId(sourceId, newPath);
+		await remapFolderIdsInSavedViews(folderGroupId(sourceId, oldPath), newId);
+		const moved = await Group.fromID(newId);
+		await moved.touch();
+		return newId;
 	}
 }
 

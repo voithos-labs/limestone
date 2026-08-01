@@ -49,7 +49,7 @@
 		Copy,
 		Check,
 		FolderPlus,
-		Folders,
+		Notebook,
 		EllipsisVertical,
 		X,
 		Keyboard,
@@ -122,7 +122,7 @@
 			icon: c.id === 'appearance' ? Palette : undefined
 		})),
 		{ value: SHORTCUTS, label: 'Shortcuts', icon: Keyboard },
-		{ value: SOURCES, label: 'Sources', icon: Folders }
+		{ value: SOURCES, label: 'Sources', icon: Notebook }
 	];
 
 	function sectionLabel(id: string): string {
@@ -855,7 +855,7 @@
 							<div class="source-card">
 								<div class="src-main">
 									<div class="src-title-row">
-										<Folders size={13} />
+										<Notebook size={13} />
 										<span class="src-title">{sourceName(s)}</span>
 										{#if s.id === defaultSourceId}
 											<span class="src-default">Default</span>

@@ -39,6 +39,7 @@
 		{anchor}
 		value={typeof value === 'string' ? value : null}
 		{sourceId}
+		manage
 		onChange={(id, dir) => {
 			onChange(id, dir);
 			open = false;

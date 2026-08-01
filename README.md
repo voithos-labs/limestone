@@ -1,7 +1,8 @@
 # <img width="3840" height="1020" alt="image" src="https://github.com/user-attachments/assets/e64a6afd-2b98-4d51-8e6c-654694027855" />
 
 > [!WARNING]
-> Limestone is still in pre-release state, expect bugs. Also, the editor migration is still underway to Daniel's aragonite in-house editor.
+> Limestone is still in pre-release state, expect bugs. The editor migration is still underway, swapping over to Daniel's in-house aragonite editor.
+> <img width="1120" height="469" alt="image" src="https://github.com/user-attachments/assets/92ee945e-a479-4681-9a4d-5247ebfb85f2" />
 
 Note taking etc., built for people who think clearly when their tools get out of the way.
 

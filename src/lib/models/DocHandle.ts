@@ -462,6 +462,10 @@ class DocHandle {
 	get relPath() {
 		return this._relPath;
 	}
+
+	get isDraft(): boolean {
+		return !this.hasFile;
+	}
 }
 
 export default DocHandle;

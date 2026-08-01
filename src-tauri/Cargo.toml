@@ -33,7 +33,7 @@ tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 jwalk = "0.8"
 rayon = "1"
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }
 serde_yml = "0.0.13"
 globset = "0.4.18"
 tauri-plugin-store = "2.4.2"
@@ -41,4 +41,12 @@ tauri-plugin-store = "2.4.2"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
 

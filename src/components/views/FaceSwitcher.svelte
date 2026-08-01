@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { flip } from 'svelte/animate';
 	import type { Component } from 'svelte';
 	import {
 		ChevronDown,
@@ -14,8 +15,8 @@
 		Trash2,
 		Plus,
 		ArrowLeft,
-		ChevronUp,
 		NotebookText,
+		FileText,
 		LayoutGrid,
 		ArrowUpAZ,
 		ArrowDownAZ,
@@ -49,12 +50,17 @@
 		kanban: Columns3,
 		list: List,
 		grid: LayoutGrid,
+		doc: FileText,
 		calendar: Calendar,
 		pinned: Pin,
 		journal: NotebookText
 	};
 	const faceIcon = (t: ViewFaceType) => FACE_ICON[t] ?? Table;
 	const SwitchIcon = $derived(faceIcon(face.type));
+
+	// A journal is a day navigator around a body face, so the options that belong to
+	// what's actually drawn (fields, sort, grouping) act on the body.
+	const target = $derived(face.type === 'journal' ? (face.body ?? face) : face);
 
 	let anchorEl: HTMLButtonElement | null = $state(null);
 	let popEl: HTMLDivElement | null = $state(null);
@@ -72,19 +78,19 @@
 	// ── Fields (columns shown in this face) ───────────────────────────────────
 	let fieldsEl: HTMLButtonElement | null = $state(null);
 	let fieldsOpen = $state(false);
-	const shownCount = $derived(face.display_field_ids.length);
+	const shownCount = $derived(target.display_field_ids.length);
 
 	function toggleColumn(id: string) {
-		if (face.display_field_ids.includes(id)) {
-			face.display_field_ids = face.display_field_ids.filter((fid: string) => fid !== id);
+		if (target.display_field_ids.includes(id)) {
+			target.display_field_ids = target.display_field_ids.filter((fid: string) => fid !== id);
 		} else {
-			face.display_field_ids = [...face.display_field_ids, id];
+			target.display_field_ids = [...target.display_field_ids, id];
 		}
 	}
 
 	function addField(type: ViewFieldType): ViewField {
 		const field = view.addFieldOfType(type);
-		face.display_field_ids = [...face.display_field_ids, field.id];
+		target.display_field_ids = [...target.display_field_ids, field.id];
 		return field;
 	}
 
@@ -96,12 +102,12 @@
 		view.renameField(f, newName).catch((e) => console.error('rename field failed', e));
 	}
 
-	// ── List / grid face options (sort) ──────────────────────────────────────
+	// ── List / grid / doc face options (sort) ────────────────────────────────
 	let sortEl: HTMLButtonElement | null = $state(null);
 	let sortOpen = $state(false);
 
-	const sortFieldId = $derived(face.sort[0]?.field_id ?? '');
-	const sortDir = $derived(face.sort[0]?.direction ?? 'desc');
+	const sortFieldId = $derived(target.sort[0]?.field_id ?? '');
+	const sortDir = $derived(target.sort[0]?.direction ?? 'desc');
 	const sortLabel = $derived.by(() => {
 		const f = view.fields.find((ff) => ff.id === sortFieldId);
 		return f ? fieldLabel(f) : 'Default';
@@ -127,15 +133,15 @@
 
 	const bodyValue = $derived(face.body?.type ?? 'doc');
 	const BODY_ITEMS = [
-		{ value: 'doc', label: 'Document', icon: NotebookText },
+		{ value: 'doc', label: 'Document', icon: FileText },
 		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
 		{ value: 'table', label: 'Table', icon: Table }
 	];
 	const bodyLabel = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.label ?? 'Document');
-	const BodyIcon = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.icon ?? NotebookText);
+	const BodyIcon = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.icon ?? FileText);
 
 	function setBody(v: string) {
-		if (v !== bodyValue) view.setFaceBody(face, v === 'doc' ? null : (v as ViewFaceType));
+		if (v !== bodyValue) view.setFaceBody(face, v as ViewFaceType);
 		bodyOpen = false;
 	}
 
@@ -159,25 +165,7 @@
 		dateFieldOpen = false;
 	}
 
-	let daySortEl: HTMLButtonElement | null = $state(null);
-	let daySortOpen = $state(false);
-
-	const daySortBy = $derived((face.config.sort_by as string) ?? 'created_at');
-	const DAY_SORT_ITEMS = [
-		{ value: 'created_at', label: 'Created' },
-		{ value: 'updated_at', label: 'Updated' },
-		{ value: 'title', label: 'Title' }
-	];
-	const daySortLabel = $derived(
-		DAY_SORT_ITEMS.find((i) => i.value === daySortBy)?.label ?? 'Created'
-	);
-
-	function setDaySort(v: string) {
-		face.config.sort_by = v;
-		daySortOpen = false;
-	}
-
-	const showActivity = $derived(face.config.show_activity !== false);
+	const showActivity = $derived(face.config.show_activity === true);
 
 	function toggleActivity() {
 		face.config.show_activity = !showActivity;
@@ -187,10 +175,10 @@
 		if (v.startsWith('dir:')) {
 			const dir = v.slice(4) as 'asc' | 'desc';
 			const fid = sortFieldId || view.fields.find((f) => f.type === 'updated_at')?.id;
-			if (fid) face.sort = [{ field_id: fid, direction: dir }];
+			if (fid) target.sort = [{ field_id: fid, direction: dir }];
 			return;
 		}
-		face.sort = [{ field_id: v, direction: sortDir }];
+		target.sort = [{ field_id: v, direction: sortDir }];
 	}
 
 	const faceFilterCount = $derived(
@@ -201,7 +189,13 @@
 		for (const n of view.filter.children) {
 			if (!('field_id' in n)) continue;
 			const f = view.fields.find((ff) => ff.id === n.field_id);
-			if (f?.type === 'source' && n.op === 'eq' && typeof n.value === 'string') return n.value;
+			if (
+				f?.type === 'folder' &&
+				n.op === 'in' &&
+				typeof n.value === 'string' &&
+				!n.value.startsWith('folder:')
+			)
+				return n.value;
 		}
 		return undefined;
 	});
@@ -211,7 +205,7 @@
 			(f: ViewField) => f.type === 'select' || f.type === 'multiselect' || f.type === 'boolean'
 		)
 	);
-	const groupById = $derived((face.config.group_by ?? null) as string | null);
+	const groupById = $derived((target.config.group_by ?? null) as string | null);
 	const groupLabel = $derived.by(() => {
 		if (!groupById) return 'None';
 		const f = view.fields.find((ff) => ff.id === groupById);
@@ -230,14 +224,16 @@
 	let closeOnSwapLeave = false;
 
 	function selectFace(id: string) {
+		if (justDragged) return;
 		view.state.active_face_id = id;
 		closeOnSwapLeave = true;
 	}
 
 	function onPopLeave() {
+		if (dragId) return;
 		if (!closeOnSwapLeave) return;
 		if (groupOpen || addFaceOpen || renamingId || confirmFor || fieldsOpen) return;
-		if (sortOpen || bodyOpen || dateFieldOpen || daySortOpen) return;
+		if (sortOpen || bodyOpen || dateFieldOpen) return;
 		open = false;
 	}
 
@@ -247,6 +243,7 @@
 		{ value: 'table', label: 'Table', icon: Table },
 		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
 		{ value: 'list', label: 'List', icon: List },
+		{ value: 'doc', label: 'Document', icon: FileText },
 		{ value: 'journal', label: 'Journal', icon: NotebookText }
 	];
 
@@ -270,14 +267,86 @@
 		confirmFor = null;
 	}
 
-	function moveFace(id: string, dir: -1 | 1) {
-		const idx = view.faces.findIndex((f) => f.id === id);
-		const next = idx + dir;
-		if (idx < 0 || next < 0 || next >= view.faces.length) return;
-		const arr = [...view.faces];
-		const [f] = arr.splice(idx, 1);
-		arr.splice(next, 0, f);
-		view.faces = arr;
+	const DRAG_PX = 4;
+	let dragArm: { id: string; x: number; y: number } | null = null;
+	let dragId: string | null = $state(null);
+	let dragOrder: string[] | null = $state(null);
+	let justDragged = false;
+
+	const displayFaces = $derived.by(() => {
+		if (!dragOrder) return view.faces;
+		return dragOrder
+			.map((id) => view.faces.find((f) => f.id === id))
+			.filter((f): f is ViewFace => !!f);
+	});
+
+	function armDrag(e: PointerEvent, id: string) {
+		if (e.button !== 0) return;
+		if (renamingId || confirmFor) return;
+		if ((e.target as HTMLElement).closest('.icon-btn, .confirm-btn, input')) return;
+		dragArm = { id, x: e.clientX, y: e.clientY };
+		window.addEventListener('pointermove', onDragMove);
+		window.addEventListener('pointerup', onDragUp);
+		window.addEventListener('keydown', onDragKey, true);
+	}
+
+	function onDragMove(e: PointerEvent) {
+		if (!dragArm) return;
+		if (!dragId) {
+			if (Math.hypot(e.clientX - dragArm.x, e.clientY - dragArm.y) < DRAG_PX) return;
+			dragId = dragArm.id;
+			dragOrder = view.faces.map((f) => f.id);
+		}
+		if (!dragOrder) return;
+		const rows = popEl ? Array.from(popEl.querySelectorAll<HTMLElement>('.list > .row')) : [];
+		const cur = dragOrder.indexOf(dragId);
+		if (cur < 0 || rows.length !== dragOrder.length) return;
+		let next = cur;
+		for (let i = 0; i < rows.length; i++) {
+			const r = rows[i].getBoundingClientRect();
+			const mid = r.top + r.height / 2;
+			if (i < cur && e.clientY < mid) {
+				next = i;
+				break;
+			}
+			if (i > cur && e.clientY > mid) next = i;
+		}
+		if (next !== cur) {
+			const order = [...dragOrder];
+			order.splice(cur, 1);
+			order.splice(next, 0, dragId);
+			dragOrder = order;
+		}
+	}
+
+	function onDragUp() {
+		if (dragId && dragOrder) {
+			const order = dragOrder;
+			if (order.some((id, i) => view.faces[i]?.id !== id))
+				view.faces = order
+					.map((id) => view.faces.find((f) => f.id === id))
+					.filter((f): f is ViewFace => !!f);
+			justDragged = true;
+			setTimeout(() => (justDragged = false), 0);
+		}
+		dragCleanup();
+	}
+
+	function onDragKey(e: KeyboardEvent) {
+		if (e.key === 'Escape' && dragId) {
+			e.stopPropagation();
+			e.preventDefault();
+			dragCleanup();
+		}
+	}
+
+	function dragCleanup() {
+		dragArm = null;
+		dragId = null;
+		dragOrder = null;
+		window.removeEventListener('pointermove', onDragMove);
+		window.removeEventListener('pointerup', onDragUp);
+		window.removeEventListener('keydown', onDragKey, true);
 	}
 
 	function startRename(f: ViewFace) {
@@ -296,7 +365,7 @@
 	}
 
 	function setGroup(id: string) {
-		face.config.group_by = id || null;
+		target.config.group_by = id || null;
 		groupOpen = false;
 	}
 
@@ -328,7 +397,6 @@
 			sortOpen ||
 			bodyOpen ||
 			dateFieldOpen ||
-			daySortOpen ||
 			!!renamingId ||
 			!!confirmFor
 		);
@@ -400,7 +468,10 @@
 				document.removeEventListener('keydown', onKey);
 			};
 		}
-		if (!open) wasOpen = false;
+		if (!open) {
+			wasOpen = false;
+			dragCleanup();
+		}
 	});
 </script>
 
@@ -421,12 +492,14 @@
 		tabindex="-1"
 	>
 		<div class="pop-label">View Faces</div>
-		<div class="list">
-			{#each view.faces as f, i (f.id)}
+		<div class="list" class:dragging={!!dragId}>
+			{#each displayFaces as f (f.id)}
 				<div
 					class="row"
 					class:active={f.id === view.state.active_face_id}
 					class:confirming={confirmFor === f.id}
+					class:drag-src={dragId === f.id}
+					animate:flip={{ duration: 160 }}
 				>
 					{#if renamingId === f.id}
 						<span class="name as-input">
@@ -453,6 +526,7 @@
 							class="name"
 							type="button"
 							data-nav
+							onpointerdown={(e) => armDrag(e, f.id)}
 							onclick={() => selectFace(f.id)}
 							ondblclick={() => startRename(f)}
 						>
@@ -474,24 +548,6 @@
 							>Confirm</button
 						>
 					{:else}
-						<button
-							class="icon-btn"
-							type="button"
-							aria-label="Move up"
-							disabled={i === 0}
-							onclick={() => moveFace(f.id, -1)}
-						>
-							<ChevronUp size={14} strokeWidth={2} />
-						</button>
-						<button
-							class="icon-btn"
-							type="button"
-							aria-label="Move down"
-							disabled={i === view.faces.length - 1}
-							onclick={() => moveFace(f.id, 1)}
-						>
-							<ChevronDown size={14} strokeWidth={2} />
-						</button>
 						<button
 							class="icon-btn"
 							type="button"
@@ -554,21 +610,23 @@
 
 		<div class="divider"></div>
 
-		<button
-			class="action group-toggle"
-			type="button"
-			data-nav
-			data-flyout
-			bind:this={fieldsEl}
-			onclick={() => (fieldsOpen = !fieldsOpen)}
-		>
-			<Columns3Cog size={14} strokeWidth={1.75} />
-			<span>Fields</span>
-			<span class="trailing">{shownCount} shown</span>
-			<ChevronRight size={13} strokeWidth={2} />
-		</button>
+		{#if target.type !== 'doc'}
+			<button
+				class="action group-toggle"
+				type="button"
+				data-nav
+				data-flyout
+				bind:this={fieldsEl}
+				onclick={() => (fieldsOpen = !fieldsOpen)}
+			>
+				<Columns3Cog size={14} strokeWidth={1.75} />
+				<span>Fields</span>
+				<span class="trailing">{shownCount} shown</span>
+				<ChevronRight size={13} strokeWidth={2} />
+			</button>
+		{/if}
 
-		{#if face.type === 'table'}
+		{#if target.type === 'table'}
 			<button
 				class="action group-toggle"
 				type="button"
@@ -582,7 +640,7 @@
 				<span class="trailing">{groupLabel}</span>
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
-		{:else if face.type === 'list' || face.type === 'grid'}
+		{:else}
 			<button
 				class="action group-toggle"
 				type="button"
@@ -596,7 +654,9 @@
 				<span class="trailing">{sortLabel}</span>
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
-		{:else if face.type === 'journal'}
+		{/if}
+
+		{#if face.type === 'journal'}
 			<button
 				class="action group-toggle"
 				type="button"
@@ -625,22 +685,6 @@
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 
-			{#if !face.body}
-				<button
-					class="action group-toggle"
-					type="button"
-					data-nav
-					data-flyout
-					bind:this={daySortEl}
-					onclick={() => (daySortOpen = !daySortOpen)}
-				>
-					<ArrowDownUp size={14} strokeWidth={1.75} />
-					<span>Sort day by</span>
-					<span class="trailing">{daySortLabel}</span>
-					<ChevronRight size={13} strokeWidth={2} />
-				</button>
-			{/if}
-
 			<button class="action group-toggle" type="button" data-nav onclick={toggleActivity}>
 				{#if showActivity}
 					<ScanLine size={14} strokeWidth={1.75} />
@@ -664,7 +708,7 @@
 		bind:open={fieldsOpen}
 		anchor={fieldsEl}
 		fields={view.fields}
-		shownIds={face.display_field_ids}
+		shownIds={target.display_field_ids}
 		canAddFields={!view.temporary}
 		placement="right"
 		onToggleVisible={toggleColumn}
@@ -673,7 +717,7 @@
 		onRename={renameField}
 	/>
 
-	{#if face.type === 'table'}
+	{#if target.type === 'table'}
 		<Menu
 			bind:open={groupOpen}
 			anchor={groupEl}
@@ -683,7 +727,7 @@
 			minWidth={170}
 			placement="right"
 		/>
-	{:else if face.type === 'list' || face.type === 'grid'}
+	{:else}
 		<Menu
 			bind:open={sortOpen}
 			anchor={sortEl}
@@ -694,7 +738,9 @@
 			minWidth={170}
 			placement="right"
 		/>
-	{:else if face.type === 'journal'}
+	{/if}
+
+	{#if face.type === 'journal'}
 		<Menu
 			bind:open={bodyOpen}
 			anchor={bodyEl}
@@ -711,15 +757,6 @@
 			selected={dateFieldKey}
 			onSelect={setDateField}
 			minWidth={160}
-			placement="right"
-		/>
-		<Menu
-			bind:open={daySortOpen}
-			anchor={daySortEl}
-			items={DAY_SORT_ITEMS}
-			selected={daySortBy}
-			onSelect={setDaySort}
-			minWidth={150}
 			placement="right"
 		/>
 	{/if}
@@ -829,6 +866,25 @@
 	.row.active,
 	.row:hover {
 		background: var(--menu-item-hover);
+	}
+
+	.list.dragging,
+	.list.dragging * {
+		cursor: grabbing;
+	}
+
+	.list.dragging .row:hover {
+		background: transparent;
+	}
+
+	.list.dragging .row:hover .icon-btn {
+		opacity: 0;
+	}
+
+	.row.drag-src,
+	.list.dragging .row.drag-src:hover {
+		background: var(--menu-item-hover);
+		opacity: 0.65;
 	}
 
 	.name {

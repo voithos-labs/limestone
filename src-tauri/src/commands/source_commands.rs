@@ -50,29 +50,47 @@ pub(crate) fn find_source(app: &AppHandle, id: Uuid) -> Result<Source, String> {
         .ok_or_else(|| "source not found".to_string())
 }
 
-fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
-    let pool = app_data.db.clone();
-    let source = source.clone();
-    let app_handle = app.clone();
+fn frontmatter_buffer_size(app_data: &AppData) -> usize {
     let settings = app_data.settings.read().unwrap();
-    let fm_buf_size = dot_get(&settings, "indexing.frontmatter_read_buffer_size")
+    dot_get(&settings, "indexing.frontmatter_read_buffer_size")
         .and_then(|v| v.as_u64())
-        .unwrap_or(512) as usize;
-    drop(settings);
-    tauri::async_runtime::spawn(async move {
-        let source_id = source.id.to_string();
-        let changed = services::reconcile_source(&source, &pool, &["md"], fm_buf_size)
-            .await
-            .unwrap_or_else(|e| {
-                eprintln!("reconcile failed: {e}");
-                Vec::new()
-            });
-        let _ = app_handle.emit("source-reconciled", &source_id);
-        if let Err(e) = services::index_fts(&pool, &source, changed).await {
-            eprintln!("FTS indexing failed: {e}");
-        }
-        let _ = app_handle.emit("source-indexed", &source_id);
-    });
+        .unwrap_or(512) as usize
+}
+
+async fn run_reconcile(
+    app_handle: AppHandle,
+    source: Source,
+    pool: sqlx::SqlitePool,
+    fm_buf_size: usize,
+) {
+    let source_id = source.id.to_string();
+    let (changed, skipped) = services::reconcile_source(&source, &pool, &["md"], fm_buf_size)
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("reconcile failed: {e}");
+            Default::default()
+        });
+    let _ = app_handle.emit(
+        "source-reconciled",
+        crate::Reconciled {
+            source_id: &source_id,
+            skipped,
+        },
+    );
+    if let Err(e) = services::index_fts(&pool, &source, changed).await {
+        eprintln!("FTS indexing failed: {e}");
+    }
+    let _ = app_handle.emit("source-indexed", &source_id);
+}
+
+fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
+    let fm_buf_size = frontmatter_buffer_size(app_data);
+    tauri::async_runtime::spawn(run_reconcile(
+        app.clone(),
+        source.clone(),
+        app_data.db.clone(),
+        fm_buf_size,
+    ));
 }
 
 fn save_sources_file(app: &AppHandle, data: &Sources) -> Result<(), String> {
@@ -278,6 +296,120 @@ fn collect_dirs(root: &Path, dir: &Path, depth: usize, out: &mut Vec<String>) {
         }
         collect_dirs(root, &p, depth + 1, out);
     }
+}
+
+#[derive(serde::Serialize)]
+pub struct FolderOpError {
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+}
+
+impl FolderOpError {
+    fn new(kind: &str) -> Self {
+        Self {
+            kind: kind.to_string(),
+            name: None,
+        }
+    }
+
+    fn named(kind: &str, name: &str) -> Self {
+        Self {
+            kind: kind.to_string(),
+            name: Some(name.to_string()),
+        }
+    }
+
+    fn io(e: &std::io::Error) -> Self {
+        Self::new(&crate::services::bulk_ops::classify_io(e))
+    }
+}
+
+fn folder_leaf(rel_dir: &str) -> &str {
+    rel_dir.rsplit('/').next().unwrap_or(rel_dir)
+}
+
+fn validate_folder_path(rel_dir: &str) -> Result<(), FolderOpError> {
+    match rel_dir
+        .split('/')
+        .find(|s| s.is_empty() || s.starts_with('.'))
+    {
+        Some(seg) => Err(FolderOpError::named("invalid_name", seg)),
+        None => Ok(()),
+    }
+}
+
+#[tauri::command]
+pub async fn create_folder(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    source_id: String,
+    rel_dir: String,
+) -> Result<String, FolderOpError> {
+    validate_folder_path(&rel_dir)?;
+    let root = source_root(&app, &source_id).map_err(|_| FolderOpError::new("source_missing"))?;
+    let full = resolve_in_source(&root, &rel_dir)
+        .map_err(|_| FolderOpError::named("invalid_name", folder_leaf(&rel_dir)))?;
+    std::fs::create_dir_all(&full).map_err(|e| FolderOpError::io(&e))?;
+
+    let mut tx = app_data
+        .db
+        .begin()
+        .await
+        .map_err(|_| FolderOpError::new("other"))?;
+    let mut id = String::new();
+    let mut path_acc = String::new();
+    for seg in rel_dir.split('/') {
+        if !path_acc.is_empty() {
+            path_acc.push('/');
+        }
+        path_acc.push_str(seg);
+        id = services::upsert_folder_group(&mut tx, &source_id, &path_acc)
+            .await
+            .map_err(|_| FolderOpError::new("other"))?;
+    }
+    tx.commit().await.map_err(|_| FolderOpError::new("other"))?;
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn move_folder(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    source_id: String,
+    old_rel_dir: String,
+    new_rel_dir: String,
+) -> Result<(), FolderOpError> {
+    validate_folder_path(&new_rel_dir)?;
+    if new_rel_dir == old_rel_dir || new_rel_dir.starts_with(&format!("{old_rel_dir}/")) {
+        return Err(FolderOpError::new("into_itself"));
+    }
+    let root = source_root(&app, &source_id).map_err(|_| FolderOpError::new("source_missing"))?;
+    let old_full = resolve_in_source(&root, &old_rel_dir)
+        .map_err(|_| FolderOpError::named("not_found", folder_leaf(&old_rel_dir)))?;
+    let new_full = resolve_in_source(&root, &new_rel_dir)
+        .map_err(|_| FolderOpError::named("invalid_name", folder_leaf(&new_rel_dir)))?;
+    if !old_full.is_dir() {
+        return Err(FolderOpError::named("not_found", folder_leaf(&old_rel_dir)));
+    }
+    // case-only change should still pass exists guard
+    let case_only = old_rel_dir.eq_ignore_ascii_case(&new_rel_dir);
+    if new_full.exists() && !case_only {
+        return Err(FolderOpError::named(
+            "already_exists",
+            folder_leaf(&new_rel_dir),
+        ));
+    }
+    if !new_full.parent().is_some_and(|p| p.is_dir()) {
+        return Err(FolderOpError::new("not_found"));
+    }
+    std::fs::rename(&old_full, &new_full).map_err(|e| FolderOpError::io(&e))?;
+
+    let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
+    let source = find_source(&app, uuid).map_err(|_| FolderOpError::new("source_missing"))?;
+    let fm_buf_size = frontmatter_buffer_size(&app_data);
+    run_reconcile(app.clone(), source, app_data.db.clone(), fm_buf_size).await;
+    Ok(())
 }
 
 #[tauri::command]

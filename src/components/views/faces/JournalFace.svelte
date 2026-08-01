@@ -2,33 +2,31 @@
 	import { untrack } from 'svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, FilterNode } from '$lib/models/View.svelte';
+	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import { rawStatefulValue } from '$lib/views/fieldValue';
 	import { wallClockToMs } from '$lib/views/dateFormat';
-	import { TabState } from '$lib/models/EditorState.svelte.js';
-	import DocHandle from '$lib/models/DocHandle';
-	import { getDefaultSourceId, listSources, pickCreationSource } from '$lib/models/Source';
-	import { deriveCreateContext, folderPath, folderLinkChain } from '$lib/views/createDefaults';
-	import Group, { GroupType } from '$lib/models/Group';
-	import Menu from '../Menu.svelte';
-	import type { MenuEntry } from '$lib/views/menuTypes';
+	import type { DocPicker } from '$lib/views/docPicker.svelte';
 	import DateValueEditor from '../DateValueEditor.svelte';
-	import DocumentEditor from '../../editor/DocumentEditor.svelte';
-	import TableFace from './TableFace.svelte';
+	import DocFace from './DocFace.svelte';
 	import ListFace from './ListFace.svelte';
-	import { ChevronDown, Plus } from '@lucide/svelte';
+	import TableFace from './TableFace.svelte';
 
 	let {
 		view,
 		face,
 		flow = false,
 		onOpenRow,
-		createSignal = 0
+		createSignal = 0,
+		docPicker,
+		tab
 	}: {
 		view: View;
 		face: ViewFace;
 		flow?: boolean;
 		onOpenRow?: (rowId: string) => void;
 		createSignal?: number;
+		docPicker?: DocPicker;
+		tab?: TabState;
 	} = $props();
 
 	const DAY_SIZE = 46;
@@ -110,7 +108,13 @@
 		return isNaN(d.getTime()) ? null : startOfDay(d);
 	}
 
+	// The rows are only the activity timeline's input: which days have entries. The
+	// body face runs its own scoped query for the selected day.
 	async function loadRows() {
+		if (!showActivity) {
+			rows = [];
+			return;
+		}
 		const perfT0 = performance.now();
 		try {
 			rows = await view.getMembers({ face, limit: 5000 });
@@ -140,45 +144,9 @@
 		return set;
 	});
 
-	const sortBy = $derived((face.config.sort_by as string) ?? 'created_at');
-
-	const dayRows = $derived.by(() => {
-		const out = rows.filter((r) => {
-			const d = rowDate(r);
-			return d && sameDay(d, selected);
-		});
-		if (sortBy === 'title') {
-			out.sort((a, b) => String(a.title ?? '').localeCompare(String(b.title ?? '')));
-		} else if (sortBy === 'updated_at') {
-			out.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-		} else {
-			out.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-		}
-		return out;
-	});
-
-	let dayDocId = $state<string | null>(null);
-
-	$effect(() => {
-		void selected;
-		dayDocId = null;
-	});
-
-	const selectedRow = $derived(dayRows.find((r) => r.id === dayDocId) ?? dayRows[0] ?? null);
-
-	let pickOpen = $state(false);
-	let pickEl: HTMLElement | null = $state(null);
-
-	const NEW_DOC = '::new-doc';
-
-	const dayDocItems = $derived.by((): MenuEntry[] => [
-		...dayRows.map((r) => ({ value: r.id, label: String(r.title ?? 'untitled') })),
-		{ kind: 'divider' },
-		{ value: NEW_DOC, label: 'New document', icon: Plus }
-	]);
-
-	// ── Compound body (table / grid) ──────────────────────────────────────────
-
+	// ── Compound body (doc / table / grid) ────────────────────────────────────
+	// A journal is only ever the day navigator around a nested face. Its scope (the
+	// journal's own filters AND the selected day) is passed down as a value.
 	const bodyFace = $derived(face.body);
 
 	const bodyScope = $derived.by((): FilterNode => {
@@ -197,33 +165,7 @@
 		return { op: 'and', children };
 	});
 
-	let docTab: TabState | null = $state(null);
-	$effect(() => {
-		if (bodyFace) {
-			docTab = null;
-			return;
-		}
-		const row = selectedRow;
-		if (!row) {
-			docTab = null;
-			return;
-		}
-		let cancelled = false;
-		DocHandle.fromID(row.id)
-			.then((h) => {
-				if (cancelled) return;
-				const t = TabState.forDoc(h);
-				const prevScroll = docTab?.state.scrollTop;
-				if (prevScroll !== undefined) t.state.scrollTop = prevScroll;
-				docTab = t;
-			})
-			.catch((e) => console.error('open journal doc failed', e));
-		return () => {
-			cancelled = true;
-		};
-	});
-
-	const showActivity = $derived(face.config.show_activity !== false);
+	const showActivity = $derived(face.config.show_activity === true);
 	let jumpOpen = $state(false);
 
 	function onJumpDate(v: string | null) {
@@ -554,67 +496,12 @@
 		return `${d.getFullYear()}-${m}-${day}`;
 	}
 
-	function entryName(d: Date): string {
-		return `${isoDay(d)} ${d.toLocaleDateString(undefined, { weekday: 'long' })}`;
-	}
-
-	let folders = $state<Group[]>([]);
-	Group.list()
-		.then((gs) => (folders = gs.filter((g) => g.groupType === GroupType.Folder)))
-		.catch(() => {});
-
-	let creating = $state(false);
-	async function createEntry(title?: string) {
-		if (creating) return;
-		creating = true;
-		try {
-			const ctx = deriveCreateContext(view, face, folders);
-			const folderId = ctx.folderGroupId;
-			const sources = await listSources();
-			let source = ctx.sourceId ? sources.find((s) => s.id === ctx.sourceId) : undefined;
-			if (!source && folderId) {
-				const g = folders.find((f) => f.id === folderId);
-				source = g?.sourceId ? sources.find((s) => s.id === g.sourceId) : undefined;
-			}
-			source = source ?? pickCreationSource(sources, await getDefaultSourceId());
-			if (!source) return;
-
-			const dir = folderId ? folderPath(folderId, folders) : '';
-			const groupIds = [
-				...(folderId ? folderLinkChain(folderId, folders) : []),
-				...ctx.tagGroupIds
-			];
-			const values: Record<string, unknown> = { ...ctx.fieldValues };
-			const key = dateFieldKey;
-			if (key !== 'created_at' && key !== 'updated_at') {
-				const field = view.fields.find((f) => f.id === key);
-				if (field) values[field.name] = isoDay(selected);
-			}
-			const properties = Object.keys(values).length ? { views: { [view.slug]: values } } : {};
-
-			const doc = await DocHandle.createFromTitle(source, {
-				title: title?.trim() || entryName(selected),
-				dir,
-				groupIds,
-				properties
-			});
-			if (source.use_frontmatter) {
-				if (key === 'created_at') await doc.saveMeta({ createdAt: selected });
-				else if (key === 'updated_at') await doc.saveMeta({ updatedAt: selected });
-			}
-			if (folderId)
-				folders
-					.find((f) => f.id === folderId)
-					?.touch()
-					.catch(() => {});
-			await loadRows();
-			dayDocId = doc.id;
-		} catch (e) {
-			console.error('create entry failed', e);
-		} finally {
-			creating = false;
-		}
-	}
+	// a doc body creates the day's entry itself; it just borrows the journal's naming
+	const docLabels = $derived({
+		newTitle: `${isoDay(selected)} ${selected.toLocaleDateString(undefined, { weekday: 'long' })}`,
+		empty: 'No entry for this day',
+		create: 'Create entry'
+	});
 </script>
 
 <div class="journal" class:flow>
@@ -709,64 +596,32 @@
 		</div>
 	</div>
 
-	<div class="entry" class:doc-body={!bodyFace}>
+	<div class="entry">
 		{#if bodyFace}
-			<div class="body-face">
+			<div class="body-face" class:doc={bodyFace.type === 'doc'}>
 				{#key bodyFace.id}
-					{#if bodyFace.type === 'list' || bodyFace.type === 'grid'}
+					{#if bodyFace.type === 'doc'}
+						<DocFace
+							{view}
+							face={bodyFace}
+							{flow}
+							scope={bodyScope}
+							labels={docLabels}
+							picker={docPicker}
+							{tab}
+							onCreated={loadRows}
+						/>
+					{:else if bodyFace.type === 'list' || bodyFace.type === 'grid'}
 						<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
 					{:else}
 						<TableFace {view} face={bodyFace} {onOpenRow} {flow} scope={bodyScope} />
 					{/if}
 				{/key}
 			</div>
-		{:else}
-			{#if dayRows.length > 0}
-				<button
-					class="doc-pick"
-					class:multi={dayRows.length > 1}
-					type="button"
-					title="Documents on this day"
-					bind:this={pickEl}
-					onclick={() => (pickOpen = !pickOpen)}
-				>
-					<ChevronDown size={15} strokeWidth={2} />
-				</button>
-			{/if}
-			{#if docTab}
-				{#key docTab.id}
-					<DocumentEditor tab={docTab} {flow} />
-				{/key}
-			{:else}
-				<div class="entry-empty">
-					<p>No entry for this day</p>
-					<button
-						class="create-entry"
-						type="button"
-						disabled={creating}
-						onclick={() => createEntry()}>Create entry</button
-					>
-				</div>
-			{/if}
 		{/if}
 	</div>
 </div>
 
-<Menu
-	bind:open={pickOpen}
-	anchor={pickEl}
-	items={dayDocItems}
-	onSelect={(id) => {
-		pickOpen = false;
-		if (id === NEW_DOC) createEntry();
-		else dayDocId = id;
-	}}
-	onCreate={(title) => createEntry(title)}
-	selected={selectedRow?.id}
-	searchable
-	placeholder="Search this day…"
-	minWidth={220}
-/>
 <DateValueEditor
 	bind:open={jumpOpen}
 	anchor={pickerAnchor}
@@ -871,10 +726,6 @@
 		min-height: 0;
 	}
 
-	.journal.flow .entry.doc-body {
-		min-height: calc(100vh - 180px);
-	}
-
 	.entry {
 		position: relative;
 	}
@@ -884,73 +735,9 @@
 		margin: 24px -24px 0;
 	}
 
-	.doc-pick {
-		position: absolute;
-		top: 5px;
-		left: -23px;
-		z-index: 2;
-		display: inline-flex;
-		align-items: center;
-		gap: 1px;
-		padding: 3px;
-		border: none;
-		border-radius: 5px;
-		background: transparent;
-		color: var(--color-ui-dulled);
-		font-family: var(--font-ui);
-		font-size: 11px;
-		cursor: pointer;
-		opacity: 0;
-		transition: opacity 120ms ease;
-	}
-
-	.journal:not(.flow) .doc-pick {
-		top: 39px;
-		left: 3px;
-	}
-
-	.entry:hover .doc-pick,
-	.doc-pick.multi {
-		opacity: 1;
-	}
-
-	.doc-pick:hover {
-		color: var(--color-text-primary);
-	}
-
-	.entry-empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		padding-top: 40px;
-		color: var(--color-ui-muted);
-	}
-
-	.entry-empty p {
-		margin: 0;
-		font-size: 13px;
-	}
-
-	.create-entry {
-		padding: 7px 14px;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		background: transparent;
-		color: var(--color-text-secondary);
-		font-family: var(--font-ui);
-		font-size: 13px;
-		cursor: pointer;
-	}
-
-	.create-entry:hover {
-		color: var(--color-text-primary);
-		background: var(--chip-bg);
-	}
-
-	.create-entry:disabled {
-		opacity: 0.5;
-		cursor: default;
+	/* a document body reads as the day itself, so it sits tight under the strip */
+	.body-face.doc {
+		margin-top: 8px;
 	}
 
 	.controls {

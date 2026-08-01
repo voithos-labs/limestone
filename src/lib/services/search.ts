@@ -38,10 +38,12 @@ interface FtsRow extends DocRow {
 
 export async function searchDocuments(query: string, scope?: SearchScope): Promise<SearchResult[]> {
 	const q = query.trim();
-	const docs = q.length === 0 ? await recents(scope) : await hybrid(query, q, scope);
-	if (scope) return docs;
+	if (scope) return q.length === 0 ? recents(scope) : hybrid(query, q, scope);
 
-	const containers = await containerMatches(q);
+	const [docs, containers] = await Promise.all([
+		q.length === 0 ? recents() : hybrid(query, q),
+		containerMatches(q)
+	]);
 	return [...containers, ...docs];
 }
 
@@ -278,19 +280,21 @@ async function containerMatches(q: string): Promise<SearchResult[]> {
 	if (q.length < CONTAINER_PREFIX_MIN_CHARS) return [];
 	const like = q.toLowerCase() + '%';
 	const matchLen = [...q].length;
-	const sources = await select<{ id: string; title: string }>(
-		'SELECT id, title FROM sources WHERE lower(title) LIKE ? ORDER BY length(title) ASC, title ASC LIMIT ?',
-		[like, CONTAINER_MAX_RESULTS]
-	);
-	const groups = await select<{
-		id: string;
-		slug: string;
-		group_type: string;
-		source_id: string | null;
-	}>(
-		'SELECT id, slug, group_type, source_id FROM groups WHERE lower(slug) LIKE ? ORDER BY length(slug) ASC, slug ASC LIMIT ?',
-		[like, CONTAINER_MAX_RESULTS]
-	);
+	const [sources, groups] = await Promise.all([
+		select<{ id: string; title: string }>(
+			'SELECT id, title FROM sources WHERE lower(title) LIKE ? ORDER BY length(title) ASC, title ASC LIMIT ?',
+			[like, CONTAINER_MAX_RESULTS]
+		),
+		select<{
+			id: string;
+			slug: string;
+			group_type: string;
+			source_id: string | null;
+		}>(
+			"SELECT id, slug, group_type, source_id FROM groups WHERE lower(slug) LIKE ? ORDER BY (group_type = 'folder') ASC, length(slug) ASC, slug ASC LIMIT ?",
+			[like, CONTAINER_MAX_RESULTS]
+		)
+	]);
 	return [
 		...sources.map((s) => container(s.id, s.title, 'source', matchLen)),
 		...groups.map((g) => container(g.id, g.slug, 'group', matchLen, g.group_type, g.source_id))

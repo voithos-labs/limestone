@@ -13,7 +13,7 @@
 		Box,
 		Hash,
 		Folder,
-		Folders,
+		Notebook,
 		X,
 		Plus,
 		TextSearch,
@@ -29,14 +29,21 @@
 
 	function viewTabIcon(view: View) {
 		const typesById = new Map(view.fields.map((f) => [f.id, f.type]));
-		const scoped = new Set(
-			view.filter.children
-				.filter((n) => 'field_id' in n)
-				.map((n) => typesById.get((n as { field_id: string }).field_id))
-		);
-		if (scoped.has('tags')) return Hash;
-		if (scoped.has('folder')) return Folder;
-		if (scoped.has('source')) return Folders;
+		let hasTags = false;
+		let hasFolder = false;
+		let hasSource = false;
+		for (const n of view.filter.children) {
+			if (!('field_id' in n)) continue;
+			const t = typesById.get(n.field_id);
+			if (t === 'tags') hasTags = true;
+			else if (t === 'folder') {
+				if (typeof n.value === 'string' && !n.value.startsWith('folder:')) hasSource = true;
+				else hasFolder = true;
+			}
+		}
+		if (hasTags) return Hash;
+		if (hasFolder) return Folder;
+		if (hasSource) return Notebook;
 		return Box;
 	}
 

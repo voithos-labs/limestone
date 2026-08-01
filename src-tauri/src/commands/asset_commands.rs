@@ -5,7 +5,7 @@ use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use crate::commands::source_commands::find_source;
-use crate::services::fs::{atomic_write, clean_location, resolve_in_source, validate_new_name};
+use crate::services::fs::{atomic_write, clean_location, resolve_in_source, validate_file_name};
 
 fn decode_base64(data: &str) -> Result<Vec<u8>, String> {
     base64::engine::general_purpose::STANDARD
@@ -78,7 +78,7 @@ fn source_import(
         resolve_in_source(&source.path, &loc).map_err(|e| e.to_string())?
     };
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    validate_new_name(stem).map_err(|e| e.to_string())?;
+    validate_file_name(stem).map_err(|e| e.to_string())?;
     let ext = clean_ext(ext)?;
     let dest = unique_dest(&dir, stem, &ext);
     atomic_write(&dest, bytes).map_err(|e| e.to_string())?;

@@ -12,6 +12,8 @@
 	import TableFace from '../views/faces/TableFace.svelte';
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
+	import DocFace from '../views/faces/DocFace.svelte';
+	import { DocPicker } from '$lib/views/docPicker.svelte';
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import Menu from '../views/Menu.svelte';
 	import CoverSourceDialog from '../CoverSourceDialog.svelte';
@@ -28,6 +30,22 @@
 	const bodyFlow = true;
 	let bodyEl: HTMLDivElement | null = $state(null);
 
+	// the doc face draws the document, the header's search bar picks which one
+	// fyi fab=floating action button
+	const docPicker = new DocPicker();
+	docPicker.activeId = (tab?.state.picked_doc as string | undefined) ?? null;
+	$effect(() => {
+		const id = docPicker.activeId;
+		if (tab && id) tab.state.picked_doc = id;
+	});
+
+	// a doc face makes its own entry, and a journal's card bodies get the fab back
+	const showNewFab = $derived(
+		activeFace?.type === 'journal'
+			? activeFace.body?.type === 'grid' || activeFace.body?.type === 'list'
+			: activeFace?.type !== 'doc'
+	);
+
 	let faceInit = false;
 	$effect(() => {
 		const id = activeFace?.id;
@@ -36,25 +54,52 @@
 			faceInit = true;
 			return;
 		}
+		endScrollRestore();
 		bodyEl.scrollTop = 0;
 		if (tab) tab.state.scrollTop = 0;
 	});
 
 	function bodyScroll() {
+		if (restoreTarget !== null) return;
 		if (tab && bodyEl) tab.state.scrollTop = bodyEl.scrollTop;
 	}
 
 	let didRestoreScroll = false;
+	let restoreTarget: number | null = null;
+	let restoringScroll = $state(false);
+	let restoreRO: ResizeObserver | null = null;
+	let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function endScrollRestore() {
+		restoreTarget = null;
+		restoringScroll = false;
+		restoreRO?.disconnect();
+		restoreRO = null;
+		if (restoreTimer) clearTimeout(restoreTimer);
+		restoreTimer = null;
+		bodyEl?.removeEventListener('wheel', endScrollRestore);
+		bodyEl?.removeEventListener('pointerdown', endScrollRestore);
+	}
+
 	$effect(() => {
 		if (!bodyEl || didRestoreScroll) return;
 		didRestoreScroll = true;
 		const el = bodyEl;
 		const st = tab?.state.scrollTop;
-		if (typeof st === 'number' && st > 0) {
-			requestAnimationFrame(() => {
-				el.scrollTop = st;
-			});
-		}
+		if (typeof st !== 'number' || st <= 0) return;
+		restoreTarget = st;
+		restoringScroll = true;
+		const attempt = () => {
+			if (restoreTarget === null) return;
+			el.scrollTop = restoreTarget;
+			if (Math.abs(el.scrollTop - restoreTarget) < 1) endScrollRestore();
+		};
+		requestAnimationFrame(attempt);
+		restoreRO = new ResizeObserver(attempt);
+		for (const child of el.children) restoreRO.observe(child);
+		el.addEventListener('wheel', endScrollRestore, { passive: true });
+		el.addEventListener('pointerdown', endScrollRestore);
+		restoreTimer = setTimeout(endScrollRestore, 1500);
 	});
 
 	const FB_SNAP_TOP = 20;
@@ -169,6 +214,7 @@
 	});
 
 	onDestroy(() => {
+		endScrollRestore();
 		if (fbSnapTimer) clearTimeout(fbSnapTimer);
 		if (saveTimer && !view.temporary) view.save().catch(() => {});
 	});
@@ -192,12 +238,15 @@
 	});
 
 	onMount(async () => {
-		const sourceField = view.fields.find((f) => f.type === 'source');
-		if (!sourceField) return;
+		const locationField = view.fields.find((f) => f.type === 'folder');
+		if (!locationField) return;
 		const leaf = view.filter.children.find(
-			(n): n is FilterLeaf => 'field_id' in n && n.field_id === sourceField.id && n.op === 'eq'
+			(n): n is FilterLeaf => 'field_id' in n && n.field_id === locationField.id && n.op === 'in'
 		);
-		const sid = leaf && typeof leaf.value === 'string' ? leaf.value : undefined;
+		const sid =
+			leaf && typeof leaf.value === 'string' && !leaf.value.startsWith('folder:')
+				? leaf.value
+				: undefined;
 		if (!sid) return;
 		const sources = await listSources();
 		sourceRemoved = !sources.some((s) => s.id === sid);
@@ -267,11 +316,11 @@
 	const moreItems = $derived.by(() => {
 		const items: MenuEntry[] = [];
 		if (!view.cover) items.push({ value: 'add-cover', label: 'Add cover', icon: ImageUp });
-		items.push({ value: 'duplicate', label: 'Duplicate', icon: Copy });
+		items.push({ value: 'duplicate', label: 'Duplicate view', icon: Copy });
 		items.push(
 			confirmingDelete
 				? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
-				: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
+				: { value: 'delete', label: 'Delete view', icon: Trash2, keepOpen: true }
 		);
 		return items;
 	});
@@ -340,6 +389,7 @@
 		<div
 			class="view-body"
 			class:flow={bodyFlow}
+			class:restoring={restoringScroll}
 			bind:this={bodyEl}
 			onwheel={queueFilterBarSnap}
 			onscroll={bodyScroll}
@@ -401,6 +451,7 @@
 					<ViewHeader
 						{view}
 						hasCover={!!view.cover}
+						{docPicker}
 						onMore={(anchor) => {
 							moreAnchor = anchor;
 							moreOpen = true;
@@ -409,7 +460,17 @@
 				</div>
 
 				{#if activeFace?.type === 'journal'}
-					<JournalFace {view} face={activeFace} flow={true} {onOpenRow} {createSignal} />
+					<JournalFace
+						{view}
+						face={activeFace}
+						flow={true}
+						{onOpenRow}
+						{createSignal}
+						{docPicker}
+						{tab}
+					/>
+				{:else if activeFace?.type === 'doc'}
+					<DocFace {view} face={activeFace} flow={bodyFlow} picker={docPicker} {tab} />
 				{:else if activeFace?.type === 'list' || activeFace?.type === 'grid'}
 					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{:else}
@@ -420,7 +481,7 @@
 
 		<ScrollThumb scroller={bodyEl} top={20} />
 
-		{#if activeFace?.type !== 'journal' || activeFace?.body?.type === 'grid' || activeFace?.body?.type === 'list'}
+		{#if showNewFab}
 			<button class="new-fab" type="button" title="New note" onclick={() => createSignal++}>
 				<Plus size={18} strokeWidth={2} />
 			</button>
@@ -501,6 +562,10 @@
 
 	.view-body:not(.flow) {
 		overflow: hidden;
+	}
+
+	.view-body.restoring {
+		opacity: 0;
 	}
 
 	.view-body.flow {

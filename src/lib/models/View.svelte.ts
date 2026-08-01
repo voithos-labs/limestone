@@ -68,7 +68,8 @@ import { wallClockToMs } from '$lib/views/dateFormat';
  * faces: table, list, kanban, calendar, pinned doc
  *
  */
-export type ViewFaceType = 'table' | 'list' | 'grid' | 'kanban' | 'calendar' | 'pinned' | 'journal';
+export type ViewFaceType =
+	'table' | 'list' | 'grid' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
 
 interface ViewFaceJSON {
 	id: string;
@@ -85,6 +86,7 @@ const FACE_TYPE_LABEL: Record<ViewFaceType, string> = {
 	table: 'Table',
 	list: 'List',
 	grid: 'Grid',
+	doc: 'Document',
 	kanban: 'Board',
 	calendar: 'Calendar',
 	pinned: 'Pinned',
@@ -100,7 +102,9 @@ export class ViewFace {
 	sort: SortKey[] = $state([]);
 	config: Record<string, any> = $state({});
 	// A compound face (journal) renders another face as its body; the parent owns
-	// the body's additive_filter to scope it (e.g. to the selected day).
+	// the body's additive_filter to scope it (e.g. to the selected day). A journal
+	// always has one: a face saved before the doc face existed (body: null) meant
+	// "show the day's document", which is now a doc body.
 	body: ViewFace | null = $state(null);
 
 	constructor(json: ViewFaceJSON) {
@@ -113,7 +117,9 @@ export class ViewFace {
 		this.config = json.config;
 		this.body = json.body
 			? new ViewFace({ ...json.body, additive_filter: { op: 'and', children: [] } })
-			: null;
+			: json.type === 'journal'
+				? ViewFace.create('doc')
+				: null;
 	}
 
 	get label(): string {
@@ -183,7 +189,6 @@ export class ViewFace {
 const BUILTIN_FIELD_TYPES = [
 	'title',
 	'id',
-	'source',
 	'tags',
 	'folder',
 	'path',
@@ -326,7 +331,6 @@ export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	// BUILT-INS
 	title: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
 	id: ['eq', 'neq'],
-	source: ['eq', 'neq'],
 	tags: ['has_any', 'has_all', 'has_none'],
 	folder: ['in', 'not_in'],
 	path: ['contains', 'not_contains', 'starts_with'],
@@ -357,7 +361,6 @@ export const VIEW_FIELD_SORTABLE: ReadonlySet<ViewFieldType> = new Set([
 	'select',
 	'title',
 	'id',
-	'source',
 	'path',
 	'created_at',
 	'updated_at'
@@ -401,8 +404,6 @@ function resolveColumn(fieldType: ViewFieldType, fieldName: string, viewSlug: st
 			return 'd.id';
 		case 'title':
 			return 'd.title';
-		case 'source':
-			return 'd.source_id';
 		case 'path':
 			return 'd.rel_path';
 		case 'created_at':
@@ -420,7 +421,11 @@ function resolveColumn(fieldType: ViewFieldType, fieldName: string, viewSlug: st
 function compileFolderLeaf(op: string, value: unknown): CompiledFilter {
 	// docs carry every ancestor folder as a group includes children without recursive lookup
 	// (done at index time)
-	const exists = `EXISTS (SELECT 1 FROM document_groups dg WHERE dg.document_id = d.id AND dg.group_id = ?)`;
+	// a value without the folder: prefix is a source id (source root)
+	const exists =
+		typeof value === 'string' && !value.startsWith('folder:')
+			? `d.source_id = ?`
+			: `EXISTS (SELECT 1 FROM document_groups dg WHERE dg.document_id = d.id AND dg.group_id = ?)`;
 	switch (op) {
 		case 'in':
 			return { sql: exists, params: [value] };
@@ -749,6 +754,25 @@ export async function isViewSaved(id: string): Promise<boolean> {
 	return (await listSavedViewJSON()).some((v) => v.id === id);
 }
 
+export async function remapFolderIdsInSavedViews(oldId: string, newId: string): Promise<void> {
+	const remap = (v: unknown): unknown => {
+		if (typeof v === 'string') {
+			if (v === oldId) return newId;
+			if (v.startsWith(oldId + '/')) return newId + v.slice(oldId.length);
+			return v;
+		}
+		if (Array.isArray(v)) return v.map(remap);
+		if (v && typeof v === 'object') {
+			return Object.fromEntries(Object.entries(v).map(([k, val]) => [k, remap(val)]));
+		}
+		return v;
+	};
+	const s = await getViewStore();
+	const all = (await s.get<ViewJSON[]>('views')) ?? [];
+	await s.set('views', remap(all));
+	await s.save();
+}
+
 export async function isViewSlugTaken(slug: string, excludeId: string): Promise<boolean> {
 	return (await listSavedViewJSON()).some((v) => v.id !== excludeId && v.slug === slug);
 }
@@ -858,11 +882,11 @@ class View {
 	static createFromSource(source: Source): View {
 		const view = View.create(sourceName(source));
 		view.state.origin_id = source.id;
-		const sourceFieldId = view.fields.find((f) => f.type == 'source')!.id;
+		const locationFieldId = view.fields.find((f) => f.type == 'folder')!.id;
 
 		view.addBasicFilter({
-			field_id: sourceFieldId,
-			op: 'eq',
+			field_id: locationFieldId,
+			op: 'in',
 			value: source.id
 		});
 
@@ -893,9 +917,9 @@ class View {
 		return face;
 	}
 
-	// swap a compound face's body (null = the face's own native body)
-	setFaceBody(face: ViewFace, type: ViewFaceType | null): void {
-		face.body = type ? ViewFace.create(type, this.defaultFaceFieldIds()) : null;
+	// swap a compound face's body
+	setFaceBody(face: ViewFace, type: ViewFaceType): void {
+		face.body = ViewFace.create(type, this.defaultFaceFieldIds());
 	}
 
 	// copy an existing face (columns, filters, sort, config) under a new id

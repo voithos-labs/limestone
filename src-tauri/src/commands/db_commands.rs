@@ -1,5 +1,5 @@
 use serde_json::Value;
-use sqlx::{Column, Row, TypeInfo, ValueRef};
+use sqlx::{AssertSqlSafe, Column, Row, TypeInfo, ValueRef};
 use tauri::State;
 
 use crate::AppData;
@@ -66,7 +66,7 @@ pub async fn sql_select(
     query: String,
     params: Vec<Value>,
 ) -> Result<Vec<Value>, String> {
-    let q = sqlx::query(&query);
+    let q = sqlx::query(AssertSqlSafe(query));
     let q = bind_json!(q, &params);
     let rows = q.fetch_all(&app_data.db).await.map_err(|e| e.to_string())?;
     rows.iter().map(row_to_json).collect()
@@ -78,7 +78,7 @@ pub async fn sql_execute(
     query: String,
     params: Vec<Value>,
 ) -> Result<Value, String> {
-    let q = sqlx::query(&query);
+    let q = sqlx::query(AssertSqlSafe(query));
     let q = bind_json!(q, &params);
     let result = q.execute(&app_data.db).await.map_err(|e| e.to_string())?;
     Ok(serde_json::json!({

@@ -12,9 +12,9 @@
 	import DocProperties from './views/DocProperties.svelte';
 	import {
 		Hash,
-		Ellipsis,
+		EllipsisVertical,
 		Trash2,
-		Folders,
+		Notebook,
 		Plus,
 		Copy,
 		SlidersHorizontal,
@@ -90,14 +90,22 @@
 
 	const currentFolderId = $derived.by(() => {
 		const dir = folderDir(relPath);
-		if (!dir) return null;
-		return (
-			folders.find((f) => f.sourceId === source.id && folderPath(f.id, folders) === dir)?.id ?? null
-		);
+
+		// EXAMPLE: this is shit code I wrote that was making it walk the damn entire folder tree, noticable
+		// first open delay. DNR.
+		// if (!dir) return null;
+		// return (
+		// 		folders.find((f) => f.sourceId === source.id && folderPath(f.id, folders) === dir)?.id ?? null
+		// );
+
+		return dir ? `folder:${source.id}:${dir}` : null;
 	});
 
 	// ── Title rename ───────────────────────────────────────────────────────────
+	let titleInput: HTMLInputElement | null = $state(null);
 	let titleTaken = $state(false);
+	// catch & display os-level errors, etc.
+	let titleFailed = $state(false);
 	let titleCheckToken = 0;
 	const titleIllegal = $derived(title.trim() !== '' && !isValidSegment(`${title.trim()}${ext}`));
 
@@ -134,6 +142,7 @@
 		} catch (e) {
 			console.error('rename failed', e);
 			title = handle.title;
+			titleFailed = true;
 		}
 	}
 
@@ -148,42 +157,20 @@
 	}
 
 	// ── Move flow ──────────────────────────────────────────────────────────────
-	// Clicking the path crumbs → folder picker scoped to the current source.
-	// Clicking the source chip → source dropdown, then a scoped folder picker for
-	// the chosen source. Nothing moves until a folder (or "Source root") is picked.
-	let sourceMenuOpen = $state(false);
-	let sourceAnchor: HTMLElement | null = $state(null);
+	// One location chip unscoped folder picker (sources are selectable roots).
+	// Nothing moves until a folder or source is picked.
 	let folderOpen = $state(false);
 	let pickAnchor: HTMLElement | null = $state(null);
-	let pendingSource = $state<Source | null>(null);
 
-	const sourceItems: MenuEntry[] = $derived(
-		sources.map((s) => ({ value: s.id, label: sourceName(s), icon: Folders }))
-	);
-	const folderPickerValue = $derived(
-		pendingSource && pendingSource.id === source.id ? currentFolderId : null
-	);
-
-	function openSourceMenu() {
-		sourceMenuOpen = !sourceMenuOpen;
-	}
-
-	function openCurrentSourceFolder() {
-		pendingSource = source;
-		pickAnchor = pathAnchorEl;
-		folderOpen = true;
-	}
-
-	function onSelectSource(id: string) {
-		sourceMenuOpen = false;
-		pendingSource = sources.find((s) => s.id === id) ?? source;
-		pickAnchor = sourceAnchor;
-		folderOpen = true;
-	}
+	const folderPickerValue = $derived(currentFolderId ?? source.id);
 
 	async function onPickFolder(groupId: string, path?: string) {
-		const target = pendingSource ?? source;
-		const dir = groupId ? (path ?? folderPath(groupId, folders)) : '';
+		const isFolder = groupId.startsWith('folder:');
+		const targetSourceId = isFolder
+			? (folders.find((f) => f.id === groupId)?.sourceId ?? groupId.split(':')[1])
+			: groupId;
+		const target = sources.find((s) => s.id === targetSourceId) ?? source;
+		const dir = isFolder ? (path ?? folderPath(groupId, folders)) : '';
 		const file = fileName(relPath);
 		const newRel = dir ? `${dir}/${file}` : file;
 		if (target.id === source.id && newRel === relPath) return;
@@ -204,7 +191,6 @@
 	// ── Kebab menu ─────────────────────────────────────────────────────────────
 	let menuOpen = $state(false);
 	let menuAnchor: HTMLElement | null = $state(null);
-	let pathAnchorEl: HTMLElement | null = $state(null);
 	let confirmingDelete = $state(false);
 
 	// Properties panel: the toggle lives in the meta bar, the panel renders below.
@@ -216,11 +202,11 @@
 	});
 
 	const menuItems: MenuEntry[] = $derived([
-		{ value: 'duplicate', label: 'Duplicate', icon: Copy },
+		{ value: 'duplicate', label: 'Duplicate document', icon: Copy },
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
 		confirmingDelete
 			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
-			: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
+			: { value: 'delete', label: 'Delete document', icon: Trash2, keepOpen: true }
 	]);
 
 	async function duplicateDoc() {
@@ -266,6 +252,10 @@
 	}
 
 	onMount(() => {
+		if (handle.isDraft) {
+			titleInput?.focus();
+			titleInput?.select();
+		}
 		Group.list()
 			.then((gs) => (allGroups = gs))
 			.catch(() => {});
@@ -283,7 +273,7 @@
 			title="More"
 			onclick={() => (menuOpen = !menuOpen)}
 		>
-			<Ellipsis size={15} strokeWidth={1.75} />
+			<EllipsisVertical size={15} strokeWidth={1.75} />
 		</button>
 
 		<div class="head-row">
@@ -292,8 +282,10 @@
 					<span class="title-ghost">{title || ' '}</span>
 					<input
 						class="title-input"
-						class:invalid={titleTaken || titleIllegal}
+						class:invalid={titleTaken || titleIllegal || titleFailed}
+						bind:this={titleInput}
 						bind:value={title}
+						oninput={() => (titleFailed = false)}
 						onblur={commitTitle}
 						onkeydown={onTitleKeydown}
 						spellcheck="false"
@@ -303,32 +295,19 @@
 			</span>
 
 			<div class="meta-row">
-				<span class="path-crumb">
-					<button
-						class="src-chip"
-						bind:this={sourceAnchor}
-						title="Move to another source"
-						onclick={openSourceMenu}
-					>
-						<Folders size={12} />{srcName}
-					</button>
-					<button
-						class="crumb-path"
-						bind:this={pathAnchorEl}
-						title="Move within this source"
-						onclick={openCurrentSourceFolder}
-					>
-						{#if dirParts.length}
-							{#each dirParts as part}
-								<span class="crumb-sep">/</span>
-								<span class="crumb-part">{part}</span>
-							{/each}
-						{:else}
-							<span class="crumb-sep">/</span>
-							<span class="crumb-root">root</span>
-						{/if}
-					</button>
-				</span>
+				<button
+					class="loc-chip"
+					bind:this={pickAnchor}
+					title="Move document"
+					onclick={() => (folderOpen = !folderOpen)}
+				>
+					<Notebook size={12} />
+					<span class="loc-part src">{srcName}</span>
+					{#each dirParts as part}
+						<span class="crumb-sep">/</span>
+						<span class="loc-part">{part}</span>
+					{/each}
+				</button>
 				{#if source.use_frontmatter}
 					<span class="meta-div"></span>
 					<button
@@ -377,21 +356,11 @@
 	onSelect={onMenuSelect}
 	minWidth={140}
 />
-<Menu
-	bind:open={sourceMenuOpen}
-	anchor={sourceAnchor}
-	items={sourceItems}
-	onSelect={onSelectSource}
-	minWidth={180}
-	searchable
-	placeholder="Search sources…"
-/>
 <FolderValueEditor
 	bind:open={folderOpen}
 	anchor={pickAnchor}
 	value={folderPickerValue}
-	sourceId={pendingSource?.id}
-	rootOption
+	manage
 	onChange={onPickFolder}
 />
 <Menu
@@ -424,7 +393,7 @@
 	}
 
 	/* Meta sits inline with the title; when the row can't give it its basis width
-	   it wraps to its own line, which is the old two-row layout. */
+       it wraps to its own line, which is the old two-row layout. */
 	.head-row {
 		display: flex;
 		flex-wrap: wrap;
@@ -497,9 +466,9 @@
 	}
 
 	/* Out of flow so the meta can wrap under the title without dragging it along.
-	   Sized to the metadata row, not the title. */
+       Sized to the metadata row, not the title. */
 	/* The 22px button matches the title's line box, so it centres on the title line
-	   by simply starting where the row does. */
+       by simply starting where the row does. */
 	.kebab {
 		position: absolute;
 		top: 34px;
@@ -546,67 +515,42 @@
 		color: var(--color-ui-muted);
 	}
 
-	.path-crumb {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		min-width: 0;
-	}
-
-	.src-chip {
+	.loc-chip {
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		padding: 2px 8px;
-		border: none;
-		border-radius: 6px;
-		background: var(--chip-bg);
-		color: var(--color-text-secondary);
-		font-family: var(--font-ui);
-		font-size: 12px;
-		white-space: nowrap;
-		cursor: pointer;
-	}
-
-	.src-chip:hover {
-		color: var(--color-text-primary);
-	}
-
-	.src-chip :global(svg) {
-		color: var(--color-ui-muted);
-	}
-
-	.crumb-path {
-		display: flex;
-		align-items: center;
-		gap: 4px;
 		min-width: 0;
-		padding: 2px 6px;
+		padding: 2px 8px;
 		border: none;
 		border-radius: 6px;
 		background: transparent;
 		color: var(--color-ui-muted);
 		font-family: var(--font-ui);
 		font-size: 12px;
+		white-space: nowrap;
 		cursor: pointer;
 	}
 
-	.crumb-path:hover {
+	.loc-chip:hover {
 		background: var(--chip-bg);
+	}
+
+	.loc-chip :global(svg) {
+		color: var(--color-ui-muted);
+		flex-shrink: 0;
+	}
+
+	.loc-part {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.loc-part.src {
+		color: var(--color-text-secondary);
 	}
 
 	.crumb-sep {
 		opacity: 0.5;
-	}
-
-	.crumb-part {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.crumb-root {
-		opacity: 0.7;
 	}
 
 	.meta-div {

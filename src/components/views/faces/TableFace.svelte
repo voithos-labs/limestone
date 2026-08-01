@@ -55,7 +55,7 @@
 		SquareArrowOutUpRight,
 		SquareCheck,
 		Folder,
-		Database,
+		Notebook,
 		Ellipsis,
 		Hash,
 		X
@@ -212,8 +212,6 @@
 				return 200;
 			case 'id':
 				return 220;
-			case 'source':
-				return 160;
 			case 'select':
 				return 150;
 			case 'folder':
@@ -1756,7 +1754,7 @@
 									{#if folderDirLabel}
 										<Folder size={13} strokeWidth={1.75} />
 									{:else}
-										<Database size={13} strokeWidth={1.75} />
+										<Notebook size={13} strokeWidth={1.75} />
 									{/if}
 									<span class="nr-float-label">
 										{needsFolderChoice
@@ -2004,6 +2002,7 @@
 	anchor={folderAnchor}
 	value={effectiveFolderId}
 	sourceId={createCtx.sourceId ?? undefined}
+	manage
 	onChange={(id, dir) => {
 		folderOverride = id;
 		folderOverrideDir = dir ?? null;
