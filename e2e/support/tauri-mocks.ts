@@ -38,6 +38,8 @@ export interface MockOptions {
 	 * an asynchronously loading properties panel — a header that settles after the first paint.
 	 */
 	propertyFields: string[];
+	/** 1-based asset-import call ordinals that reject, the way a failed Rust import would. */
+	failAssetImports: number[];
 }
 
 /** The backend's settings tree, shaped only as far as a spec needs to address it. */
@@ -61,9 +63,16 @@ export interface AssetImport {
 	relPath: string;
 }
 
+/** An asset the app released, having imported it into a paste that never landed. */
+export interface AssetDeletion {
+	sourceId: string;
+	relPath: string;
+}
+
 export interface MockState {
 	writes: DocumentWrite[];
 	assetImports: AssetImport[];
+	deletions: AssetDeletion[];
 	/** Every command in the order it was invoked, so a spec can assert ordering. */
 	calls: string[];
 	/** Commands with no handler. Non-empty means the mock layer needs extending. */
@@ -91,6 +100,7 @@ export async function getMockState(page: Page): Promise<MockState> {
 		return {
 			writes: state.writes.map((write) => ({ ...write })),
 			assetImports: state.assetImports.map((each) => ({ ...each })),
+			deletions: state.deletions.map((each) => ({ ...each })),
 			calls: [...state.calls],
 			unhandledCommands: [...state.unhandledCommands]
 		};
@@ -107,8 +117,10 @@ function installMockInternals({
 	settings: overrides,
 	tabState,
 	propertyFields,
+	failAssetImports,
 	defaults: shippedDefaults
 }: MockOptions & { defaults: Settings }): void {
+	let assetImportCalls = 0;
 	const SOURCE = {
 		id: 'mock-source',
 		title: 'Mock source',
@@ -124,7 +136,13 @@ function installMockInternals({
 	const APP_VERSION = '0.0.0-mock';
 
 	const files: Record<string, string> = { ...docs };
-	const state: MockState = { writes: [], assetImports: [], calls: [], unhandledCommands: [] };
+	const state: MockState = {
+		writes: [],
+		assetImports: [],
+		deletions: [],
+		calls: [],
+		unhandledCommands: []
+	};
 
 	function clone<T>(value: T): T {
 		return JSON.parse(JSON.stringify(value)) as T;
@@ -380,6 +398,8 @@ function installMockInternals({
 				return null;
 			}
 			case 'import_source_asset_bytes': {
+				assetImportCalls += 1;
+				if (failAssetImports.includes(assetImportCalls)) throw new Error('mock: import failed');
 				// As the Rust command does: the bytes land in the source's asset folder under a
 				// generated name, and the path comes back relative to the source.
 				const relPath = `${SOURCE.asset_location}/Pasted image ${state.assetImports.length + 1}.${args.ext}`;
@@ -390,6 +410,10 @@ function installMockInternals({
 					relPath
 				});
 				return relPath;
+			}
+			case 'delete_source_asset': {
+				state.deletions.push({ sourceId: args.sourceId, relPath: args.relPath });
+				return null;
 			}
 			case 'delete_document':
 				delete files[args.relPath];

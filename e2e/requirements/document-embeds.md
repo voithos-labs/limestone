@@ -23,6 +23,15 @@ itself: a broken image has no height, and clicking one or reading its size needs
 - Pasting an image imports it into the source and inserts the embed the importer's path yields,
   rendered immediately. What reaches the importer is asserted, not just that it was called: the
   source, the extension, and the bytes' length.
+- A paste that lands releases nothing: the source keeps every asset the document now references.
+- An import that fails mid-paste is limestone's own error: the clipboard error it becomes must
+  not release the sibling import whose embed landed, and the rest of the paste still lands.
+  (The editor-internal failure shapes, where release does fire, are pinned by the ledger's unit
+  tests — no e2e gesture reaches them honestly.)
+  This is the reachable half of the orphan contract. Its other half — a paste whose insertion
+  fails, whose imported assets are deleted, and the failed-import case that must NOT delete the
+  siblings that did land — is editor-internal and has no honest gesture from here; the ledger's
+  unit tests (`src/components/editor/paste-imports.test.ts`) pin it.
 
 ## Editing an embed keeps it an embed
 

@@ -17,6 +17,8 @@ export interface BootOptions {
 	tabState?: Record<string, Record<string, unknown>>;
 	/** Property names a saved view gives every seeded doc, which grows the document header. */
 	propertyFields?: string[];
+	/** 1-based asset-import call ordinals the mock backend rejects. */
+	failAssetImports?: number[];
 }
 
 /** What the page complained about while booting, so a spec can assert it came up clean. */
@@ -60,7 +62,8 @@ export async function bootApp(page: Page, opts: BootOptions = {}): Promise<BootR
 		frontmatter: opts.frontmatter ?? false,
 		settings: opts.settings ?? {},
 		tabState: opts.tabState ?? {},
-		propertyFields: opts.propertyFields ?? []
+		propertyFields: opts.propertyFields ?? [],
+		failAssetImports: opts.failAssetImports ?? []
 	});
 	await page.goto('/');
 	await page.locator('.content-area').waitFor();

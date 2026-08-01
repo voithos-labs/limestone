@@ -134,9 +134,44 @@ test('a pasted image is imported into the source and embedded', async ({ page })
 
 	await expect(widget(page).locator('img')).toBeVisible();
 	await expect.poll(() => saved(page)).toBe('Notes.![[assets/Pasted image 1.png]]\n');
-	expect((await getMockState(page)).assetImports).toEqual([
+	const { assetImports, deletions } = await getMockState(page);
+	expect(assetImports).toEqual([
 		{ sourceId: 'mock-source', ext: 'png', byteLength: 78, relPath: 'assets/Pasted image 1.png' }
 	]);
+	// The reachable half of the release contract: a paste that landed releases nothing. Asserted
+	// after the save so a release racing the insertion would still be seen.
+	expect(deletions).toEqual([]);
+});
+
+// Pins the own-failure wiring end to end: the throw becomes a clipboard error the release
+// handler must recognize as limestone's own, or it would delete the import that landed.
+test('an import that fails mid-paste releases nothing, and the rest still lands', async ({
+	page
+}) => {
+	await serveAssets(page);
+	// The SECOND import fails: the error then fires with the first already recorded but not yet
+	// inserted, the one ordering where an ungated release would delete a referenced asset.
+	const report = await bootApp(page, { docs: { [NOTE]: 'Notes.\n' }, failAssetImports: [2] });
+	await page.locator('.editor .text-editable-block').first().click();
+	await page.keyboard.press('End');
+
+	await page.evaluate(async (base64) => {
+		const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+		const data = new DataTransfer();
+		data.items.add(new File([bytes], 'one.png', { type: 'image/png' }));
+		data.items.add(new File([bytes], 'two.png', { type: 'image/png' }));
+		document.activeElement?.dispatchEvent(
+			new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+		);
+	}, PNG_BASE64);
+
+	await expect.poll(() => saved(page)).toBe('Notes.![[assets/Pasted image 1.png]]\n');
+	const { assetImports, deletions } = await getMockState(page);
+	expect(assetImports).toHaveLength(1);
+	expect(deletions).toEqual([]);
+	// The error genuinely fired — without this, a paste path that stopped reporting would
+	// pass the two assertions above for the wrong reason.
+	expect(report.consoleErrors.join('\n')).toContain('clipboard');
 });
 
 // An embed is a built-in image to every read path, and the built-in inverse writes GFM — so

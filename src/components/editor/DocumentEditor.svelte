@@ -7,9 +7,10 @@
 	import './editor-tokens.css';
 	import { EDITOR_PLUGINS } from './editor-plugins';
 	import { isImageTarget } from './image-targets';
+	import { createPasteImportLedger } from './paste-imports';
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import { openUrl } from '@tauri-apps/plugin-opener';
-	import { importSourceAssetBytes } from '$lib/services/assets';
+	import { deleteSourceAsset, importSourceAssetBytes } from '$lib/services/assets';
 	import { currentThemeType } from '$lib/services/theme.svelte';
 	import { getSetting } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
@@ -175,13 +176,24 @@
 		// whole wire-up — listeners, restore and all — on every keystroke.
 		savedBody = untrack(() => instance?.getSource() ?? null);
 		const events = instance.getEvents();
-		const offEdit = events.on('edit', scheduleSave);
+		// Any edit commits, not just the paste's own: an unrelated one landing between the import
+		// and its insertion clears the ledger, which errs toward keeping a file over deleting a
+		// referenced one.
+		const offEdit = events.on('edit', () => {
+			pasteImports.commit();
+			scheduleSave();
+		});
 		const offSelection = events.on('selectionChange', (selection) => {
 			if (restored && selection) tab.state.selection = structuredClone(selection);
 		});
-		const offError = events.on('error', (err) =>
-			console.error('[editor]', err.origin, err.error, err.context)
-		);
+		const offError = events.on('error', (err) => {
+			console.error('[editor]', err.origin, err.error, err.context);
+			// A clipboard failure that is not limestone's own import throw means the paste's
+			// markdown never landed, so whatever it imported is an orphan in the source.
+			if (err.origin === 'clipboard' && !pasteImports.isOwnFailure(err.error)) {
+				void pasteImports.release();
+			}
+		});
 
 		const el = wrapperEl?.querySelector<HTMLElement>('.editor') ?? null;
 		scrollEl = el;
@@ -269,13 +281,30 @@
 		'image/avif': 'avif'
 	};
 
+	// Entries still uncommitted at teardown are deliberately left on disk: a tab closing
+	// mid-gesture cannot tell an insertion that failed from one whose markdown has landed.
+	const pasteImports = createPasteImportLedger({
+		deleteAsset: async (relPath) => {
+			if (handle) await deleteSourceAsset(handle.source.id, relPath);
+		}
+	});
+
 	async function onPasteImage(image: PastedImage): Promise<string | null> {
 		if (!handle) return null;
-		const relPath = await importSourceAssetBytes(
-			handle.source.id,
-			await image.blob.arrayBuffer(),
-			MIME_EXTS[image.mimeType] ?? 'png'
-		);
+		let relPath: string;
+		try {
+			relPath = await importSourceAssetBytes(
+				handle.source.id,
+				await image.blob.arrayBuffer(),
+				MIME_EXTS[image.mimeType] ?? 'png'
+			);
+		} catch (e) {
+			// The editor reports this on the same `clipboard` channel as a failed insertion, and
+			// the gesture's other images still land — so the error handler must not release on it.
+			pasteImports.markOwnFailure(e);
+			throw e;
+		}
+		pasteImports.record(relPath);
 		return `![[${relPath}]]`;
 	}
 
