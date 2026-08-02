@@ -19,6 +19,8 @@ export interface BootOptions {
 	propertyFields?: string[];
 	/** 1-based asset-import call ordinals the mock backend rejects. */
 	failAssetImports?: number[];
+	/** Open a journal view showing a seeded note as the day's entry, instead of the notes' tabs. */
+	journal?: boolean;
 }
 
 /** What the page complained about while booting, so a spec can assert it came up clean. */
@@ -63,7 +65,8 @@ export async function bootApp(page: Page, opts: BootOptions = {}): Promise<BootR
 		settings: opts.settings ?? {},
 		tabState: opts.tabState ?? {},
 		propertyFields: opts.propertyFields ?? [],
-		failAssetImports: opts.failAssetImports ?? []
+		failAssetImports: opts.failAssetImports ?? [],
+		journal: opts.journal ?? false
 	});
 	await page.goto('/');
 	await page.locator('.content-area').waitFor();

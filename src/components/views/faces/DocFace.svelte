@@ -24,6 +24,7 @@
 		labels = {},
 		picker,
 		tab,
+		findBarAnchor,
 		onCreated
 	}: {
 		view: View;
@@ -33,6 +34,8 @@
 		labels?: { newTitle?: string; empty?: string; create?: string };
 		picker?: DocPicker;
 		tab?: TabState;
+		/** The page's own box for the find bar, which the document editor draws into. */
+		findBarAnchor?: HTMLElement | null;
 		onCreated?: (rowId: string) => void;
 	} = $props();
 
@@ -220,7 +223,7 @@
 >
 	{#if docTab}
 		{#key docTab.id}
-			<DocumentEditor bind:this={docEditor} tab={docTab} {flow} />
+			<DocumentEditor bind:this={docEditor} tab={docTab} {flow} {findBarAnchor} />
 		{/key}
 	{:else}
 		<div class="doc-empty">

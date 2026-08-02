@@ -40,6 +40,12 @@ export interface MockOptions {
 	propertyFields: string[];
 	/** 1-based asset-import call ordinals that reject, the way a failed Rust import would. */
 	failAssetImports: number[];
+	/**
+	 * Opens a journal view instead of the seeded documents' own tabs. The journal shows one of them
+	 * as the day's entry, in the page that scrolls the document rather than letting it scroll
+	 * itself.
+	 */
+	journal: boolean;
 }
 
 /** The backend's settings tree, shaped only as far as a spec needs to address it. */
@@ -118,6 +124,7 @@ function installMockInternals({
 	tabState,
 	propertyFields,
 	failAssetImports,
+	journal,
 	defaults: shippedDefaults
 }: MockOptions & { defaults: Settings }): void {
 	let assetImportCalls = 0;
@@ -195,15 +202,17 @@ function installMockInternals({
 		};
 	}
 
-	// Two queries answered, each matched on the shape only it has: the document-by-id join and a
-	// view's membership lookup. Anything else reads as an empty table. Matching loosely (any
-	// `FROM documents d`) would answer queries this was never written for — the way a mock stops
-	// standing for the backend.
+	// Three queries answered, each matched on the shape only it has: the document-by-id join, a
+	// view's membership lookup by id, and the list a view loads when it is just showing what it
+	// holds. Anything else reads as an empty table. Matching loosely (any `FROM documents d`)
+	// would answer queries this was never written for — the way a mock stops standing for the
+	// backend.
 	function runSelect(query: string, params: unknown[]): unknown[] {
 		if (!query.includes('FROM documents d')) return [];
 		const seeded = params.filter((p): p is string => typeof p === 'string' && p in files);
 		if (query.includes('JOIN sources s')) return seeded.slice(0, 1).map(documentRow);
-		return query.includes('d.id IN (') ? seeded.map(documentRow) : [];
+		if (query.includes('d.id IN (')) return seeded.map(documentRow);
+		return query.includes('ORDER BY') ? Object.keys(files).map(documentRow) : [];
 	}
 
 	// ── Stores ─────────────────────────────────────────
@@ -214,12 +223,43 @@ function installMockInternals({
 		state: tabState[relPath] ?? {},
 		pinned: false
 	}));
+	// A journal with a document body, which is the app's one page that scrolls the document for
+	// it. Its day has no date field to filter on, so the day's entry is simply the newest note.
+	const JOURNAL_ID = 'mock-journal';
+	const emptyFace = {
+		display_field_ids: [],
+		additive_filter: { op: 'and', children: [] },
+		sort: []
+	};
+	const journalView = {
+		id: JOURNAL_ID,
+		slug: 'journal',
+		created_at: '2026-01-01T00:00:00.000Z',
+		updated_at: '2026-01-01T00:00:00.000Z',
+		fields: [],
+		filter: { op: 'and', children: [] },
+		faces: [
+			{
+				id: 'mock-journal-face',
+				type: 'journal',
+				config: {},
+				...emptyFace,
+				body: { id: 'mock-journal-body', type: 'doc', config: {}, ...emptyFace }
+			}
+		],
+		state: {}
+	};
+
+	const openTabs = journal
+		? [{ type: 'view-ref', viewId: JOURNAL_ID, state: {}, pinned: false }]
+		: restoredTabs;
+	const openTabIds = journal ? [JOURNAL_ID] : restoredTabs.map((tab) => tab.handleId);
 	const restoredEditors: Record<string, unknown>[] = [];
-	if (restoredTabs.length > 0) {
-		const focus = { kind: 'tab', id: restoredTabs[0].handleId };
+	if (openTabs.length > 0) {
+		const focus = { kind: 'tab', id: openTabIds[0] };
 		restoredEditors.push({
-			tabs: restoredTabs,
-			tabAccessOrderById: restoredTabs.map((tab) => tab.handleId),
+			tabs: openTabs,
+			tabAccessOrderById: openTabIds,
 			focusOrder: [focus],
 			focused: focus
 		});
@@ -243,7 +283,10 @@ function installMockInternals({
 		// wipes the store, taking the seeded tabs with it.
 		'state.json': { version: 1, activeTheme: 'default-dark', editors: restoredEditors },
 		'themes.json': {},
-		'views.json': { version: 1, views: propertyFields.length > 0 ? [propsView] : [] }
+		'views.json': {
+			version: 1,
+			views: [...(propertyFields.length > 0 ? [propsView] : []), ...(journal ? [journalView] : [])]
+		}
 	};
 	const storePaths: string[] = [];
 

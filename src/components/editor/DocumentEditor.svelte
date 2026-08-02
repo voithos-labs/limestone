@@ -23,8 +23,15 @@
 	let {
 		tab,
 		editor,
-		flow = false
-	}: { tab: TabState; editor?: EditorStateModel; flow?: boolean } = $props();
+		flow = false,
+		findBarAnchor
+	}: {
+		tab: TabState;
+		editor?: EditorStateModel;
+		flow?: boolean;
+		/** Where the editor should draw its find bar, for a page that scrolls the document itself. */
+		findBarAnchor?: HTMLElement | null;
+	} = $props();
 
 	let handle = $derived(tab.handle);
 	let instance = $state<EditorInstance>();
@@ -422,6 +429,7 @@
 			theme={currentThemeType()}
 			presentationMode={mode}
 			blockDragHandles={false}
+			searchBarAnchor={flow ? findBarAnchor : undefined}
 			plugins={EDITOR_PLUGINS}
 			{resolveImageUrl}
 			{onLinkActivate}
