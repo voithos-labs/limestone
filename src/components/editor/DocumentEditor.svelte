@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { Editor, parse } from 'aragonite';
+	import { Editor } from 'aragonite';
 	import type { EditorInstance, EditorSelection, PastedImage, PresentationMode } from 'aragonite';
 	import 'aragonite/styles/editor-theme.css';
 	// yes you must load editor-tokens.css after aragonite's editor-theme.css
@@ -265,16 +265,11 @@
 	}
 
 	/**
-	 * Puts the caret at the end of the document, for a click in the empty space below a flow entry
-	 * that the editor itself never sees. The instance hands out no parsed document, hence the
-	 * re-parse to count blocks; an over-large offset is clamped by the editor.
+	 * The editor's caret-from-a-point door, opened up for the page around it: the page answers the
+	 * clicks on blank space the editor never sees, and the editor decides where the caret lands.
 	 */
-	export async function focusEntryEnd(): Promise<boolean> {
-		if (!instance) return false;
-		const last = parse(instance.getSource()).children.length - 1;
-		if (last < 0) return false;
-		const end = { path: [last], offset: Number.MAX_SAFE_INTEGER };
-		return instance.setSelection({ anchor: end, focus: end });
+	export function placeCaretAtPoint(x: number, y: number): boolean {
+		return instance?.placeCaretAtPoint(x, y) ?? false;
 	}
 
 	// ── Services the editor delegates to the app ────────────────────────────────────────

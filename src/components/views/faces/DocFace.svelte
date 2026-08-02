@@ -218,7 +218,9 @@
 		if (!flow || e.target !== e.currentTarget) return;
 		const editorEl = (e.currentTarget as HTMLElement).querySelector('.editor');
 		if (editorEl && e.clientY <= editorEl.getBoundingClientRect().bottom) return;
-		void docEditor?.focusEntryEnd();
+		// The point goes over as clicked. The check above leaves it below every block, which is
+		// how the editor is asked for the end of the document.
+		docEditor?.placeCaretAtPoint(e.clientX, e.clientY);
 	}}
 >
 	{#if docTab}
