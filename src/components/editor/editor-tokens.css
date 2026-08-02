@@ -55,8 +55,8 @@
 	padding: 0 24px;
 }
 
-/* In flow mode the hero sits outside the editor and the face already supplies the side padding,
-   so adding it again here would push the body right of the title. */
+/* The page scrolls the entry in flow mode, so the room above and below is the editor's to give.
+   The side padding stays here: a click in that strip has to reach the line beside it. */
 .doc-editor.flow .editor > .block-list {
-	padding: 4px 0 48px;
+	padding: 4px 24px 48px;
 }
