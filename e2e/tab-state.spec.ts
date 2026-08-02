@@ -169,11 +169,9 @@ const blocksTop = (page: Page) =>
 /** Resolves once the diagram has actually rendered, so the late growth the pin needs has happened. */
 async function waitForDiagram(page: Page) {
 	await expect(page.locator('.editor .mermaid-block')).toBeVisible();
-	await expect
-		.poll(() =>
-			page.locator('.editor .mermaid-block').evaluate((el) => el.getBoundingClientRect().height)
-		)
-		.toBeGreaterThan(60);
+	// The drawn picture, never the block's height: a diagram still rendering is a small box, not
+	// an absent one. The wait is long because the first diagram on a page loads the drawing tool.
+	await expect(page.locator('.editor .mermaid-block svg')).toBeVisible({ timeout: 15_000 });
 }
 
 test('a diagram that renders late leaves the remembered scroll where it was', async ({ page }) => {
