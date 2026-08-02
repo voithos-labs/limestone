@@ -14,8 +14,8 @@
 	import DocumentEditor from '../components/editor/DocumentEditor.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
-	import { actionForKey, keyCapture, specFromEvent } from '$lib/actions';
-	import { inEditorContent, isEditorReservedChord } from '$lib/editor-chords';
+	import { actionForKey, keyCapture } from '$lib/actions';
+	import { editorTakesKey } from '$lib/editor-chords';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
 	import { toasts } from '$lib/toasts.svelte';
 
@@ -102,7 +102,7 @@
 		if (!session || e.repeat || e.defaultPrevented || keyCapture.active) return;
 		// Before the lookup: this handler captures, so anything it takes never reaches the
 		// document, even a shortcut the reader has bound to an app action.
-		if (inEditorContent(e) && isEditorReservedChord(specFromEvent(e))) return;
+		if (editorTakesKey(e)) return;
 		const action = actionForKey(e, session.settings);
 		if (!action) return;
 		e.preventDefault();

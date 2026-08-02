@@ -14,6 +14,7 @@
 	import { currentThemeType } from '$lib/services/theme.svelte';
 	import { getSetting } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
+	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import DocumentHero from '../DocumentHero.svelte';
@@ -146,6 +147,11 @@
 	}
 
 	// ── Wire-up: events, scroll tracking, and the restore of where you left off ─────────
+
+	// The app's window handler asks the editor which keys it takes, so it has to be able to reach it.
+	$effect(() => {
+		if (instance) return registerDocumentEditor(instance);
+	});
 
 	/**
 	 * Height of the header the editor draws above the blocks. Scroll position is stored relative
@@ -324,18 +330,16 @@
 	// ── UI the editor doesn't provide: zoom and the mode toggle ─────────────────────────
 
 	function onKeydown(e: KeyboardEvent) {
-		if (!(e.ctrlKey || e.metaKey)) return;
+		// The same match the window handler stands down on, so the two cannot disagree.
+		const shortcut = appEditorShortcut(e);
+		if (!shortcut) return;
 		// The hero's title input sits inside the editor's header, so without this, typing a rename
 		// would flip the mode. Blocks are contenteditable, not form fields, so they are unaffected.
 		if ((e.target as HTMLElement | null)?.closest('input, textarea, select')) return;
-		if (e.key === '=' || e.key === '+') {
-			e.preventDefault();
-			setZoom(zoom + 1);
-		} else if (e.key === '-') {
-			e.preventDefault();
-			setZoom(zoom - 1);
-		} else if (e.key.toLowerCase() === 'e' && !e.shiftKey && !e.altKey) {
-			e.preventDefault();
+		e.preventDefault();
+		if (shortcut === 'zoom-in') setZoom(zoom + 1);
+		else if (shortcut === 'zoom-out') setZoom(zoom - 1);
+		else {
 			cycleMode();
 			// Reading mode is read-only, so focus falls to <body>, outside this wrapper's handler.
 			// Take it back after the re-render or the shortcut cannot cycle out again.

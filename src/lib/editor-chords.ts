@@ -1,102 +1,74 @@
 /**
- * Keyboard shortcuts the document editor uses, so the app's window-level handler can leave them
- * alone. That handler captures and swallows what it takes, so without this list the app quietly
- * wins every clash (Mod+I opened settings instead of italicizing).
- *
- * Both halves are copied from aragonite by hand: it publishes no shortcut list, and its idea of
- * "focus is in the editor" is not something the app can ask it at runtime.
+ * Which keystrokes a focused document takes, so the app's window-level handler can leave them
+ * alone. That handler captures and swallows what it takes, so without this the app quietly wins
+ * every clash (Mod+I opened settings instead of italicizing).
  */
 
-// ── Chords the editor claims ─────────────────────────────────────────────────
+import type { EditorInstance } from 'aragonite';
 
-/**
- * Copied by hand from aragonite 0.9.36, the plugins limestone mounts, and this file's companion
- * shortcuts in `DocumentEditor.svelte`. Re-check it when the aragonite dependency moves.
- *
- * Chords with a modifier only: an app shortcut on a bare typing key is lost inside a document
- * whatever this list says. Listing too many only costs an app shortcut while a document has
- * focus, listing too few loses an editor feature, so err long.
- *
- * On macOS aragonite treats Ctrl and Cmd as one modifier and `specFromEvent` does not. Why that
- * is not fixed here is recorded in `e2e/requirements/keybindings.md`.
- */
-const RESERVED = new Set([
-	// Inline formatting and heading level
-	'mod+b',
-	'mod+i',
-	'mod+0',
-	'mod+1',
-	'mod+2',
-	'mod+3',
-	'mod+4',
-	'mod+5',
-	'mod+6',
-	// Undo and redo
-	'mod+z',
-	'mod+y',
-	'mod+shift+z',
-	// Find and replace
-	'mod+f',
-	'mod+h',
-	// Block selection and its clipboard
-	'mod+a',
-	'mod+c',
-	'mod+x',
-	'mod+shift+end',
-	'mod+shift+home',
-	// Block motion and hard line breaks
-	'alt+arrowup',
-	'alt+arrowdown',
-	'shift+enter',
-	'shift+tab',
-	// Table rows, columns, alignment, and moving the table itself
-	'mod+enter',
-	'mod+shift+enter',
-	'mod+shift+backspace',
-	'mod+shift+a',
-	'alt+arrowleft',
-	'alt+arrowright',
-	'alt+shift+arrowleft',
-	'alt+shift+arrowright',
-	'alt+shift+backspace',
-	'mod+alt+arrowup',
-	'mod+alt+arrowdown',
-	// Plugin shortcuts: admonition kind, mermaid focus
-	'mod+7',
-	'mod+m',
-	// Added by DocumentEditor: mode toggle and zoom
-	'mod+e',
-	'mod+=',
-	'mod+-'
-]);
+// ── The editors on screen ────────────────────────────────────────────────────
 
-/** Takes whatever `specFromEvent` returns, null included, so a lone modifier is not a chord. */
-export function isEditorReservedChord(spec: string | null): boolean {
-	return spec !== null && RESERVED.has(spec);
+const mounted = new Set<EditorInstance>();
+
+/** DocumentEditor registers its editor while it is on screen; the result unregisters it. */
+export function registerDocumentEditor(instance: EditorInstance): () => void {
+	mounted.add(instance);
+	return () => {
+		mounted.delete(instance);
+	};
 }
 
-// ── Where the editor claims them ─────────────────────────────────────────────
+// ── Shortcuts the app adds inside a document ─────────────────────────────────
+
+export type AppEditorShortcut = 'zoom-in' | 'zoom-out' | 'cycle-mode';
 
 /**
- * aragonite's own class names, neither of them a promised API (aragonite avoids relying on
- * `.editor-header` itself, since a host app could add an element by that name). `.editor` is
- * depended on a second time, by the `EDITABLE` selector in `+page.svelte`.
+ * Zoom and the mode toggle, which DocumentEditor handles itself and runs from this same answer.
+ * The editor knows nothing about them, so they are the only keys the app still spells out.
+ */
+export function appEditorShortcut(e: KeyboardEvent): AppEditorShortcut | null {
+	if (!(e.ctrlKey || e.metaKey)) return null;
+	if (e.key === '=' || e.key === '+') return 'zoom-in';
+	if (e.key === '-') return 'zoom-out';
+	if (e.key.toLowerCase() === 'e' && !e.shiftKey && !e.altKey) return 'cycle-mode';
+	return null;
+}
+
+// ── The answer ───────────────────────────────────────────────────────────────
+
+/**
+ * Whether a focused document takes this keystroke. The editor is asked about its own shortcuts
+ * rather than the app keeping a copy of them, so the answer moves when the editor does.
+ */
+export function editorTakesKey(e: KeyboardEvent): boolean {
+	if (!inEditorContent(e)) return false;
+	if (appEditorShortcut(e)) return true;
+	for (const instance of mounted) {
+		if (instance.claimsChord(e)) return true;
+	}
+	return false;
+}
+
+// ── Where the editor takes them ──────────────────────────────────────────────
+
+/**
+ * Two of aragonite's own class names. Neither is promised API, but focus has to be tested against
+ * something. `.editor` is depended on a second time, by the `EDITABLE` selector in `+page.svelte`.
  */
 const EDITOR_ROOT = '.editor';
-const HOST_CHROME = '.editor-header';
+const EDITOR_HEADER = '.editor-header';
 
 /**
  * Whether focus is somewhere the editor handles shortcuts: inside its root but outside the header
- * slot, which is where aragonite draws the line too, so renaming a document in the title field
- * keeps the app's shortcuts. Narrower than `inEditable` on purpose: reserving these in every text
- * field would take them from quick search, the settings pane and the view editors.
+ * the app draws there, so renaming a document in the title field keeps the app's shortcuts.
+ * Narrower than `inEditable` on purpose: standing down in every text field would take these keys
+ * from quick search, the settings pane and the view editors.
  */
-export function inEditorContent(e: KeyboardEvent): boolean {
+function inEditorContent(e: KeyboardEvent): boolean {
 	const target = e.target instanceof Element ? e.target : null;
-	const active = document.activeElement;
-	return isEditorContent(target) || isEditorContent(active);
+	return isEditorContent(target) || isEditorContent(document.activeElement);
 }
 
 function isEditorContent(el: Element | null): boolean {
-	return !!el?.closest(EDITOR_ROOT) && !el.closest(HOST_CHROME);
+	return !!el?.closest(EDITOR_ROOT) && !el.closest(EDITOR_HEADER);
 }

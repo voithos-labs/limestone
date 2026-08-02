@@ -2,8 +2,9 @@
 
 Covers `keybindings.spec.ts`. The window handler in `+page.svelte` runs in the capture phase, so
 whatever it claims never reaches the editor. The policy: an app chord keeps working while you type
-— closing a tab mid-sentence is exactly when you want it — except for the chords the editor itself
-binds, which pass through untouched when focus is in the document.
+— closing a tab mid-sentence is exactly when you want it — except for the keys the editor itself
+uses, which pass through untouched when focus is in the document. The app asks the editor which
+keys those are rather than keeping a list of them.
 
 ## Happy paths
 
@@ -54,9 +55,9 @@ binds, which pass through untouched when focus is in the document.
   it — neither is a text field, so only the `.editor` entry in the `EDITABLE` selector suppresses
   it. No scenario separates that from the browser's native arrow-scroll: both are a scroll of the
   same element in the same direction, and a scroll position cannot say which produced it.
-- macOS reads Ctrl+B as bold in the editor but as a distinct chord in the app, so a Mac reader who
-  rebinds an app action onto Ctrl+B takes it from the editor. Windows is the tested platform and
-  the two agree there.
-- The editor's zoom-in chord is reserved as Mod+= alone. The adapter also accepts the shifted and
-  numpad plus, so a reader who rebinds an app action onto Mod+Shift+= takes zoom-in from the
-  editor. Nothing binds either today.
+- On macOS the editor treats Ctrl and Cmd as the same modifier, and since it answers for itself the
+  app follows it either way. One case still disagrees, upstream: the editor says it uses
+  Mod+Shift+Home and Mod+Shift+End but only acts on the Ctrl form, so on a Mac the app stands down
+  for a Cmd+Shift+Home the editor will not act on (aragonite issue #69). It errs the safe way: an
+  app binding loses, an editing key never does. Windows is the tested platform and has neither
+  case.
