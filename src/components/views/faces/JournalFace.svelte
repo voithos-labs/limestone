@@ -496,6 +496,16 @@
 		return `${d.getFullYear()}-${m}-${day}`;
 	}
 
+	async function onDocPicked(id: string) {
+		try {
+			const [r] = await view.getMembers({ face, ids_in: [id] });
+			const d = r ? rowDate(r) : null;
+			if (d && !sameDay(d, selected)) selectDay(d);
+		} catch (e) {
+			console.error('journal pick failed', e);
+		}
+	}
+
 	// a doc body creates the day's entry itself; it just borrows the journal's naming
 	const docLabels = $derived({
 		newTitle: `${isoDay(selected)} ${selected.toLocaleDateString(undefined, { weekday: 'long' })}`,
@@ -606,10 +616,12 @@
 							face={bodyFace}
 							{flow}
 							scope={bodyScope}
+							queryScope={face.additive_filter}
 							labels={docLabels}
 							picker={docPicker}
 							{tab}
 							onCreated={loadRows}
+							onPicked={onDocPicked}
 						/>
 					{:else if bodyFace.type === 'list' || bodyFace.type === 'grid'}
 						<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />

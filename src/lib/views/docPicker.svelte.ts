@@ -7,9 +7,11 @@ export class DocPicker {
 	results: SearchResult[] = $state([]);
 	activeId: string | null = $state(null);
 	create: ((title?: string) => void) | null = $state(null);
+	onPick: ((id: string) => void) | null = $state(null);
 
 	pick(id: string): void {
 		this.activeId = id;
 		this.open = false;
+		this.onPick?.(id);
 	}
 }

@@ -501,7 +501,14 @@
 					const pos = Math.min(initialCursorPos, view.state.doc.length);
 					view.dispatch({ selection: { anchor: pos } });
 				}
-				if ((!flow || initialCursorPos !== undefined) && !handle?.isDraft)
+				const active = document.activeElement;
+				const typingElsewhere =
+					active instanceof HTMLElement &&
+					!container.contains(active) &&
+					(active instanceof HTMLInputElement ||
+						active instanceof HTMLTextAreaElement ||
+						active.isContentEditable);
+				if ((!flow || initialCursorPos !== undefined) && !handle?.isDraft && !typingElsewhere)
 					view.contentDOM.focus({ preventScroll: true });
 				if (initialScrollTop !== undefined && scrollEl) {
 					scrollEl.scrollTop = initialScrollTop;

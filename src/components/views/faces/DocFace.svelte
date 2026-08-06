@@ -12,34 +12,41 @@
 	} from '$lib/views/createDefaults';
 	import Group, { GroupType } from '$lib/models/Group';
 	import type { DocPicker } from '$lib/views/docPicker.svelte';
-	import { searchDocuments, type SearchScope } from '$lib/services/search';
+	import { searchDocuments } from '$lib/services/search';
 	import type { SearchResult } from '$lib/types/SearchResult';
 	import MarkdownEditor from '../../editor/MarkdownEditor.svelte';
+	import { untrack } from 'svelte';
 
 	let {
 		view,
 		face,
 		flow = false,
 		scope = null,
+		queryScope,
 		labels = {},
 		picker,
 		tab,
-		onCreated
+		onCreated,
+		onPicked
 	}: {
 		view: View;
 		face: ViewFace;
 		flow?: boolean;
 		scope?: FilterNode | null;
+		queryScope?: FilterNode | null;
 		labels?: { newTitle?: string; empty?: string; create?: string };
 		picker?: DocPicker;
 		tab?: TabState;
 		onCreated?: (rowId: string) => void;
+		onPicked?: (rowId: string) => void | Promise<void>;
 	} = $props();
 
 	const query = $derived((view.state.search as string | undefined) ?? '');
 
 	let rows = $state<SearchResult[]>([]);
 	let rowsLoaded = $state(false);
+	let searchRows = $state<SearchResult[]>([]);
+	let loadGen = 0;
 
 	function asResult(row: MemberRow): SearchResult {
 		return {
@@ -54,13 +61,13 @@
 		};
 	}
 
-	// Idle lists the scope in the face's own sort order; a query hands off to FTS, which
-	// searches the whole scope rather than whatever the idle list happened to load.
-	async function load(q = query.trim(), searchScope?: SearchScope) {
+	// Idle lists the scope in the face's own sort order.
+	async function load() {
+		const gen = ++loadGen;
 		try {
-			rows = q
-				? await searchDocuments(q, searchScope ?? view.searchScope({ face, scope }))
-				: (await view.getMembers({ face, scope, limit: 100 })).map(asResult);
+			const next = (await view.getMembers({ face, scope, limit: 100 })).map(asResult);
+			if (gen !== loadGen) return;
+			rows = next;
 			rowsLoaded = true;
 		} catch (e) {
 			console.error('doc face load failed', e);
@@ -70,32 +77,92 @@
 	let loadTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Compiling the scope up front is also how this subscribes: it reads the view filter,
-	// the face filter and the scope, and face.sort orders the idle list. Only typing waits.
+	// the face filter and the scope, and face.sort orders the list.
 	$effect(() => {
-		const q = query.trim();
-		const args = { q, searchScope: view.searchScope({ face, scope }), sort: face.sort };
+		void view.searchScope({ face, scope });
+		void face.sort;
 		if (loadTimer) clearTimeout(loadTimer);
-		loadTimer = setTimeout(() => load(args.q, args.searchScope), q ? 120 : 0);
+		loadTimer = setTimeout(load, 0);
 		return () => {
 			if (loadTimer) clearTimeout(loadTimer);
 		};
 	});
 
-	// a pick that falls out of scope (the journal moving day) drops back to the first row
+	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// a query hands off to FTS, which searches the whole scope rather than whatever the
+	// idle list happened to load
+	$effect(() => {
+		const q = query.trim();
+		if (searchTimer) clearTimeout(searchTimer);
+		if (!q) {
+			searchRows = [];
+			return;
+		}
+		const searchScope = view.searchScope({
+			face,
+			scope: queryScope === undefined ? scope : queryScope
+		});
+		searchTimer = setTimeout(async () => {
+			try {
+				const next = await searchDocuments(q, searchScope);
+				if (query.trim() === q) searchRows = next;
+			} catch (e) {
+				console.error('doc face search failed', e);
+			}
+		}, 120);
+		return () => {
+			if (searchTimer) clearTimeout(searchTimer);
+		};
+	});
+
 	const pickedId = $derived(picker?.activeId ?? null);
-	const activeRow = $derived(rows.find((r) => r.id === pickedId) ?? rows[0] ?? null);
+	const activeDocId = $derived(pickedId ?? (rowsLoaded ? (rows[0]?.id ?? null) : null));
+	let pickPinned = $state(false);
 
 	$effect(() => {
 		if (!picker) return;
-		picker.results = rows.slice(0, 25);
+		picker.results = (query.trim() ? searchRows : rows).slice(0, 25);
 	});
 
 	// Nothing is picked until you pick something, but a document is on screen the whole
-	// time. Resolving the fallback back into the picker is what marks it as current.
+	// time. Resolving the fallback back into the picker is what marks it as current. A
+	// pick that falls out of scope (the journal moving day) drops back to the first row.
 	$effect(() => {
-		if (!picker || !rowsLoaded) return;
-		const id = activeRow?.id ?? null;
-		if (picker.activeId !== id) picker.activeId = id;
+		if (!picker || !rowsLoaded || query.trim()) return;
+		const id = picker.activeId;
+		if (id && rows.some((r) => r.id === id)) {
+			pickPinned = false;
+			return;
+		}
+		if (id && pickPinned) {
+			const gen = loadGen;
+			view.getMembers({ face, scope, ids_in: [id] })
+				.then((members) => {
+					if (gen !== loadGen || picker.activeId !== id) return;
+					if (members.length === 0) {
+						pickPinned = false;
+						picker.activeId = rows[0]?.id ?? null;
+					}
+				})
+				.catch(() => {});
+			return;
+		}
+		const first = rows[0]?.id ?? null;
+		if (picker.activeId !== first) picker.activeId = first;
+	});
+
+	$effect(() => {
+		if (!picker) return;
+		picker.onPick = (id: string) => {
+			if (!rows.some((r) => r.id === id)) pickPinned = true;
+			Promise.resolve(onPicked?.(id)).finally(() => {
+				if (view.state.search) view.state.search = '';
+			});
+		};
+		return () => {
+			picker.onPick = null;
+		};
 	});
 
 	$effect(() => {
@@ -118,13 +185,14 @@
 	}
 
 	$effect(() => {
-		const target = activeRow;
-		if (!target) {
+		const id = activeDocId;
+		if (!id) {
 			docTab = null;
 			return;
 		}
+		if (untrack(() => docTab)?.handle?.id === id) return;
 		let cancelled = false;
-		DocHandle.fromID(target.id)
+		DocHandle.fromID(id)
 			.then((h) => {
 				if (cancelled) return;
 				docTab = new TabState({ type: 'markdown', handle: h }, docStateFor(h.id));
