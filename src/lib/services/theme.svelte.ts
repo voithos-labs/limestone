@@ -1,5 +1,7 @@
 const DEFAULT_FONT = 'Inter, system-ui, sans-serif';
 
+// ── Themes ──────────────────────────────────────────────────────────────────────────
+
 export interface Theme {
 	name: string;
 	type: 'dark' | 'light';
@@ -92,6 +94,8 @@ export const BUILTIN_THEMES: Record<string, Theme> = {
 	'soft-light': SOFT_LIGHT
 };
 
+// ── Accents ─────────────────────────────────────────────────────────────────────────
+
 export interface AccentPreset {
 	name: string;
 	light: string;
@@ -149,6 +153,19 @@ export function resolveAccent(
 	return null;
 }
 
+// ── Applying to the document ────────────────────────────────────────────────────────
+
+/**
+ * Reactive copy of `root.dataset.themeType`, for anything needing the mode as a value rather
+ * than a CSS selector. Starts light, not at DEFAULT_THEME: before applyTheme runs the attribute
+ * is unset and the document renders app.css's `:root` block, which is the light palette.
+ */
+let themeType = $state<'dark' | 'light'>('light');
+
+export function currentThemeType(): 'dark' | 'light' {
+	return themeType;
+}
+
 export function applyAccent(setting: string | null, type: 'dark' | 'light') {
 	if (!setting || setting === 'default') return;
 	const resolved = resolveAccent(setting, type);
@@ -164,8 +181,8 @@ export function applyTheme(theme: Theme) {
 	for (const [key, value] of Object.entries(theme.variables)) {
 		root.style.setProperty(`--${key}`, value);
 	}
-	// The theme's own accent, preserved so the "default" accent swatch can show it
-	// even while a preset override has replaced --color-accent
+	// Preserved so the "default" accent swatch can show it while a preset override has
+	// replaced --color-accent.
 	root.style.setProperty('--color-accent-default', theme.variables['color-accent'] ?? '#567b67');
 	root.style.setProperty(
 		'--color-accent-contrast',
@@ -173,6 +190,7 @@ export function applyTheme(theme: Theme) {
 	);
 	root.style.setProperty('--font-ui', theme.fontFamily ?? DEFAULT_FONT);
 	root.dataset.themeType = theme.type;
+	themeType = theme.type;
 	root.style.background = theme.variables['color-backdrop'] ?? '';
 	document.body.style.background = '';
 }

@@ -272,6 +272,7 @@ pub fn run() {
             commands::asset_commands::import_global_asset_bytes,
             commands::asset_commands::import_source_asset,
             commands::asset_commands::import_source_asset_bytes,
+            commands::asset_commands::delete_source_asset,
             commands::history_commands::storage_load,
             commands::history_commands::storage_save,
             commands::history_commands::storage_remove,

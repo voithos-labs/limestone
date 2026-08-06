@@ -147,8 +147,7 @@
 		const sibs = childrenByParent.get(destKey) ?? [];
 		if (
 			sibs.some(
-				(o) =>
-					o.id !== f.id && !isSrcNode(o.id) && o.slug.toLowerCase() === f.slug.toLowerCase()
+				(o) => o.id !== f.id && !isSrcNode(o.id) && o.slug.toLowerCase() === f.slug.toLowerCase()
 			)
 		)
 			return `A folder named "${f.slug}" is already there`;
@@ -321,9 +320,7 @@
 		creating = true;
 		try {
 			const parent =
-				focusId && !isSrcNode(focusId)
-					? { id: focusId, path: folderPath(focusId, folders) }
-					: null;
+				focusId && !isSrcNode(focusId) ? { id: focusId, path: folderPath(focusId, folders) } : null;
 			const g = onCreateFolder
 				? await onCreateFolder(name, parent)
 				: await Group.createFolder(name, createSourceId!, parent ?? undefined);
@@ -1034,11 +1031,8 @@
 					</div>
 				{/each}
 				{#if showCreate}
-					<div
-						class="folder-row create"
-						class:active={activeIndex === searchMatches.length}
-					>
-												<button
+					<div class="folder-row create" class:active={activeIndex === searchMatches.length}>
+						<button
 							class="folder-name"
 							type="button"
 							tabindex="-1"
@@ -1219,9 +1213,7 @@
 						{:else}
 							<div class="empty">
 								{#if focusFolder && (!movingId || !moveBlockReason(focusId))}
-									<span
-										>{movingId ? 'No folders to move into,' : 'No folders inside,'}</span
-									>
+									<span>{movingId ? 'No folders to move into,' : 'No folders inside,'}</span>
 									<button class="empty-link" type="button" onclick={() => focusId && pick(focusId)}>
 										{movingId
 											? 'place it here?'

@@ -1,0 +1,63 @@
+# Feature: which keystrokes the app claims while a document is focused
+
+Covers `keybindings.spec.ts`. The window handler in `+page.svelte` runs in the capture phase, so
+whatever it claims never reaches the editor. The policy: an app chord keeps working while you type
+— closing a tab mid-sentence is exactly when you want it — except for the keys the editor itself
+uses, which pass through untouched when focus is in the document. The app asks the editor which
+keys those are rather than keeping a list of them.
+
+## Happy paths
+
+- Mod+B with a word selected in a block bolds it. The chord reaches the editor rather than being
+  swallowed on its way there.
+- Mod+I italicizes rather than opening settings. Its old app binding made italic unreachable while
+  typing, which is the whole reason the policy exists.
+- Mod+, opens settings, from a focused document as readily as from anywhere else. Settings moved
+  off Mod+I and has to stay reachable without leaving the document first, so its replacement is a
+  chord the editor does not claim.
+- Mod+F opens the editor's find bar with the caret in a block. Verified here, unconfirmed in the
+  packaged app: Ctrl+F is on the same WebView2 accelerator list as Ctrl+Plus (see Accepted below).
+- Mod+W closes the tab while typing. An app chord the editor does not bind is untouched by the
+  policy.
+
+## Edge cases
+
+- A shortcut the reader rebound onto Mod+B loses to the editor while the caret is in a document:
+  the word bolds and the rebound action does not run. The editor's claim outranks a user binding,
+  not just a default one.
+- The same rebinding fires while renaming the document in the title field. That field rides inside
+  the editor's root but is the app's own chrome, and the editor hands its keystrokes back whole —
+  renaming is not editing the document, and closing the tab from the title bar has to work.
+- The same rebinding fires from the library, where quick search holds focus and no editor is
+  mounted. Focus in a field is the point: the chord is only the editor's where the editor can act
+  on it, not in every text field the app has.
+- ArrowDown inside a wrapped paragraph moves the caret and does not page the document. A caret
+  crossing into the next block is the editor's own and never reaches the window's scroll fallback,
+  so only a move within one block leaves the fallback free to claim the key.
+
+## Accepted
+
+- Mod+I and Mod+B act at a bare caret too, as of aragonite 0.9.36: the toggle inserts an empty
+  marker pair and lands the caret between its halves, so the next character typed is formatted; a
+  second press (or one undo) removes the pair. Every scenario above selects first, so the suite
+  does not pin the collapsed-caret contract — it is aragonite's, exercised by its own battery.
+- A whole class of chords may never reach the page in the packaged Windows app: WebView2 runs its
+  browser-accelerator handling _before_ the web content, and Tauri leaves it enabled (no config
+  option; tauri-runtime-wry never sets wry's flag). The listed keys — Ctrl+F, Ctrl+P, Ctrl+R, F5,
+  Ctrl+Plus, Ctrl+Minus, Ctrl+Shift+C, F12 — reach a JS listener only if the browser declines
+  them, so the app's claim on Mod+F and the zoom pair is untested outside this harness. Playwright
+  dispatches past that stage, so every scenario here passes either way. Mod+E, Mod+B, Mod+I,
+  Mod+W and Mod+, are not on the list.
+
+## Not pinned by a scenario
+
+- The scroll fallback also stands down when focus is on the editor's own root or on chrome inside
+  it — neither is a text field, so only the `.editor` entry in the `EDITABLE` selector suppresses
+  it. No scenario separates that from the browser's native arrow-scroll: both are a scroll of the
+  same element in the same direction, and a scroll position cannot say which produced it.
+- On macOS the editor treats Ctrl and Cmd as the same modifier, and since it answers for itself the
+  app follows it either way. One case still disagrees, upstream: the editor says it uses
+  Mod+Shift+Home and Mod+Shift+End but only acts on the Ctrl form, so on a Mac the app stands down
+  for a Cmd+Shift+Home the editor will not act on (aragonite issue #69). It errs the safe way: an
+  app binding loses, an editing key never does. Windows is the tested platform and has neither
+  case.

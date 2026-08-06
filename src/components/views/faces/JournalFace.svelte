@@ -18,7 +18,8 @@
 		onOpenRow,
 		createSignal = 0,
 		docPicker,
-		tab
+		tab,
+		findBarAnchor
 	}: {
 		view: View;
 		face: ViewFace;
@@ -27,6 +28,8 @@
 		createSignal?: number;
 		docPicker?: DocPicker;
 		tab?: TabState;
+		/** The page's own box for the find bar, passed on to a day's entry. */
+		findBarAnchor?: HTMLElement | null;
 	} = $props();
 
 	const DAY_SIZE = 46;
@@ -609,6 +612,7 @@
 							labels={docLabels}
 							picker={docPicker}
 							{tab}
+							{findBarAnchor}
 							onCreated={loadRows}
 						/>
 					{:else if bodyFace.type === 'list' || bodyFace.type === 'grid'}

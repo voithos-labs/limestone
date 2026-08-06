@@ -117,7 +117,8 @@ export const actions: Action[] = [
 		id: 'tab.prev',
 		title: 'Previous tab',
 		category: 'tabs',
-		defaultKeys: ['ctrl+shift+tab', 'mod+alt+arrowleft', 'ctrl+,'],
+		// No `ctrl+,` alias: settings took it, the way it reads on every other desktop app.
+		defaultKeys: ['ctrl+shift+tab', 'mod+alt+arrowleft'],
 		run: (session) => session.editors[0].focusAdjacentTab(-1)
 	},
 	{
@@ -159,7 +160,9 @@ export const actions: Action[] = [
 		id: 'nav.settings',
 		title: 'Open settings',
 		category: 'navigation',
-		defaultKeys: ['mod+i'],
+		// Not Mod+I: the editor uses it for italic, and a key the editor takes never reaches this
+		// handler while a document has focus. Any replacement has to be one the editor leaves alone.
+		defaultKeys: ['mod+,'],
 		run: (session) => session.editors[0].focusTab({ kind: 'settings' })
 	}
 ];

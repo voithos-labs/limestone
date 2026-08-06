@@ -1,0 +1,62 @@
+/**
+ * Points aragonite's editor variables at limestone's theme variables.
+ * Load this file after `aragonite/styles/editor-theme.css` or aragonite's own values win.
+ * `inherit` below means "take whatever the app set on the parent" (naming the same variable
+ * would just point it at itself), so no ancestor of the editor may carry the
+ * `.aragonite-editor-theme` class, or those lines pick up aragonite's colors instead.
+ */
+.editor {
+	--color-bg: var(--color-surface);
+	--color-text: var(--color-text-secondary);
+	--color-danger: var(--color-error);
+	/* aragonite hovers its table menu with this. The app's own menu hover is the same thing,
+	   and unlike aragonite's value it follows the limestone theme. */
+	--color-ui-faint: var(--menu-item-hover);
+	--color-border: inherit;
+	--color-text-primary: inherit;
+	--color-ui-dulled: inherit;
+	--color-ui-muted: inherit;
+	--color-accent: inherit;
+	--syntax-heading: inherit;
+	--syntax-emphasis: inherit;
+	--syntax-link: inherit;
+	--syntax-url: inherit;
+	--syntax-quote: inherit;
+	--syntax-code: inherit;
+	--syntax-comment: inherit;
+	--syntax-list: inherit;
+	--syntax-separator: inherit;
+	--syntax-task: inherit;
+	--syntax-task-done: inherit;
+	/* No fallbacks above: the app's variables are unset until applyTheme runs, which is fine
+	   (aragonite's own reads carry fallbacks), and a literal color would pin one of light/dark
+	   into a file that has to serve both. Anything aragonite declares that limestone has no
+	   equivalent for is left at aragonite's default, --font-editor included. */
+
+	/* aragonite sets this on `.editor` itself, which beats anything inherited from our wrapper,
+	   so pull the wrapper's zoom in by hand. Keep the px unit: a bare number makes the
+	   font-size rule it feeds invalid, and zoom stops working. */
+	--editor-font-size: var(--ls-zoom, 16px);
+}
+
+/* --syntax-separator colors the `---` characters where they sit in a line of text. Painted
+   across a full-width rule the same color shouts. Fixed on the rule rather than by changing
+   the variable, so the rest of the syntax colors keep their meaning. */
+.editor .thematic-break-block[role='separator'] > hr {
+	border-top-color: var(--color-border);
+}
+
+/* The same page width every other page uses, and the same side padding as DocumentHero, so
+   the document title and the first block line up on the left. */
+.editor > .block-list {
+	max-width: var(--page-max-width, 1200px);
+	margin: 0 auto;
+	width: 100%;
+	padding: 0 24px;
+}
+
+/* The page scrolls the entry in flow mode, so the room above and below is the editor's to give.
+   The side padding stays here: a click in that strip has to reach the line beside it. */
+.doc-editor.flow .editor > .block-list {
+	padding: 4px 24px 48px;
+}

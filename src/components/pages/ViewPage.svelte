@@ -29,6 +29,7 @@
 
 	const bodyFlow = true;
 	let bodyEl: HTMLDivElement | null = $state(null);
+	let findBarAnchor: HTMLDivElement | null = $state(null);
 
 	// the doc face draws the document, the header's search bar picks which one
 	// fyi fab=floating action button
@@ -468,9 +469,17 @@
 						{createSignal}
 						{docPicker}
 						{tab}
+						{findBarAnchor}
 					/>
 				{:else if activeFace?.type === 'doc'}
-					<DocFace {view} face={activeFace} flow={bodyFlow} picker={docPicker} {tab} />
+					<DocFace
+						{view}
+						face={activeFace}
+						flow={bodyFlow}
+						picker={docPicker}
+						{tab}
+						{findBarAnchor}
+					/>
 				{:else if activeFace?.type === 'list' || activeFace?.type === 'grid'}
 					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{:else}
@@ -478,6 +487,10 @@
 				{/if}
 			</div>
 		</div>
+
+		<!-- Where a document on this page draws its find bar. Outside the scroller, so it stays at
+		     the page's top right while the document scrolls under it. -->
+		<div class="find-bar-anchor" bind:this={findBarAnchor}></div>
 
 		<ScrollThumb scroller={bodyEl} top={20} />
 
@@ -581,6 +594,17 @@
 	.view-inner {
 		max-width: var(--page-max-width, none);
 		margin: 0 auto;
+	}
+
+	/* No size of its own: the bar hangs off this corner, and an empty box would otherwise sit
+	   over the page swallowing clicks. Clear of the scroll thumb's 14px rail on the right. */
+	.find-bar-anchor {
+		position: absolute;
+		top: 0;
+		right: 8px;
+		z-index: 5;
+		width: 0;
+		height: 0;
 	}
 
 	.new-fab {

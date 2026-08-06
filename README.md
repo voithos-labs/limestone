@@ -4,8 +4,6 @@
 > Limestone is still in pre-release state, expect bugs. The editor migration is still underway, swapping over to Daniel's in-house aragonite editor.
 > <img width="1120" height="469" alt="image" src="https://github.com/user-attachments/assets/92ee945e-a479-4681-9a4d-5247ebfb85f2" />
 
-
-
 Note taking etc., built for people who think clearly when their tools get out of the way.
 
 <img width="1019" height="691" alt="image" src="https://github.com/user-attachments/assets/254cff31-24d8-49ac-b3a2-16051cc4634e" />
@@ -16,13 +14,35 @@ Good entry point to explore the code base is Session ([see file](https://github.
 
 ---
 
-Run dev app ( you may need to install deps first, e.g. `npm i` )
+Currently, the editor library is not on the npm registry. Thus we have to do a bit of setup for local dev:
+
+```bash
+git clone https://github.com/voithos-labs/aragonite.git ../aragonite
+cd ../aragonite
+npm i && npm run package
+cd ../limestone
+npm i
+```
+
+Then:
 
 ```bash
 npm run tauri dev
 ```
 
-Format
+Since aragonite is also actively under dev, so sometimes you have to rebuild it with `npm run package` after new changes. To pick up on the new build, run:
+
+```bash
+npm run editor:sync
+```
+
+Also, if you are developing both limestone and aragonite on the same machine, note that aragonite's showcase dev server also uses port 1420. So, if you are stupid enough to run both the showcase dev server and limestone's npm test at the same time, try to avoid port collision with:
+
+```bash
+PORT=1425 npm test
+```
+
+Formating:
 
 ```bash
 npm run format

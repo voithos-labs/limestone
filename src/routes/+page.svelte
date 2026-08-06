@@ -11,10 +11,11 @@
 	import ViewPage from '../components/pages/ViewPage.svelte';
 	import NewTabPage from '../components/pages/NewTabPage.svelte';
 	import LicensesPage from '../components/pages/LicensesPage.svelte';
-	import MarkdownEditor from '../components/editor/MarkdownEditor.svelte';
+	import DocumentEditor from '../components/editor/DocumentEditor.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import { actionForKey, keyCapture } from '$lib/actions';
+	import { editorTakesKey } from '$lib/editor-chords';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
 	import { toasts } from '$lib/toasts.svelte';
 
@@ -99,6 +100,9 @@
 
 	function onKeydown(e: KeyboardEvent) {
 		if (!session || e.repeat || e.defaultPrevented || keyCapture.active) return;
+		// Before the lookup: this handler captures, so anything it takes never reaches the
+		// document, even a shortcut the reader has bound to an app action.
+		if (editorTakesKey(e)) return;
 		const action = actionForKey(e, session.settings);
 		if (!action) return;
 		e.preventDefault();
@@ -107,8 +111,12 @@
 	}
 
 	const SCROLL_STEP = 48;
+	// `.editor` is aragonite's own class, not a promised API, but it earns its place: focus can
+	// rest on the editor root, which is neither a form field nor contenteditable, and without it
+	// arrow keys would scroll the page while the reader is only moving the caret. `$lib/editor-chords`
+	// depends on it too.
 	const EDITABLE =
-		'input, textarea, select, [contenteditable=""], [contenteditable="true"], .cm-editor';
+		'input, textarea, select, [contenteditable=""], [contenteditable="true"], .editor';
 
 	function inEditable(e: KeyboardEvent): boolean {
 		const t = e.target as HTMLElement | null;
@@ -172,7 +180,7 @@
 					{#if tab.content.type === 'view'}
 						<ViewPage view={tab.content.view} {tab} {editor} />
 					{:else if tab.content.type === 'markdown'}
-						<MarkdownEditor {tab} {editor} />
+						<DocumentEditor {tab} {editor} />
 					{:else if tab.content.type === 'new'}
 						<NewTabPage {tab} {editor} />
 					{:else if tab.content.type === 'licenses'}
