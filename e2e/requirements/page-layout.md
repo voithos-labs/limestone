@@ -1,8 +1,9 @@
 # Feature: how large the document renders
 
-Covers `page-layout.spec.ts`. Two app-owned measurements reach the embedded editor through
-`src/components/editor/editor-tokens.css`: the width of the page column every limestone surface
-shares, and the reader's own zoom. Colour is the other half of that bridge and lives in
+Covers `page-layout.spec.ts`. Two app-owned measurements reach the embedded editor: the width of
+the page column every limestone surface shares, from
+`src/components/editor/editor-tokens.css`, and the reader's own zoom, which `DocumentEditor`
+declares on the wrapper as the type-scale root aragonite sizes everything off. Colour lives in
 `theming.md`.
 
 ## Happy paths

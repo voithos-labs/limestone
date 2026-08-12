@@ -1,22 +1,14 @@
 /**
- * Points aragonite's editor variables at limestone's theme variables.
- * Load this file after `aragonite/styles/editor-theme.css` or aragonite's own values win.
- * `inherit` below means "take whatever the app set on the parent" (naming the same variable
- * would just point it at itself), so no ancestor of the editor may carry the
- * `.aragonite-editor-theme` class, or those lines pick up aragonite's colors instead.
+ * Points the editor variables aragonite still defaults on `.editor` at limestone's theme. Its
+ * host-contract names are absent on purpose: those default behind an opt-in class the app never
+ * sets, so limestone's own `:root` reaches the editor unbridged. `inherit` means "take what the
+ * app set on the parent", so no ancestor may carry `.aragonite-editor-theme` — these lines would
+ * pick up aragonite's colors instead. Load after `aragonite/styles/editor-theme.css`.
  */
 .editor {
-	--color-bg: var(--color-surface);
-	--color-text: var(--color-text-secondary);
-	--color-danger: var(--color-error);
 	/* aragonite hovers its table menu with this. The app's own menu hover is the same thing,
 	   and unlike aragonite's value it follows the limestone theme. */
 	--color-ui-faint: var(--menu-item-hover);
-	--color-border: inherit;
-	--color-text-primary: inherit;
-	--color-ui-dulled: inherit;
-	--color-ui-muted: inherit;
-	--color-accent: inherit;
 	--syntax-heading: inherit;
 	--syntax-emphasis: inherit;
 	--syntax-link: inherit;
@@ -28,15 +20,8 @@
 	--syntax-separator: inherit;
 	--syntax-task: inherit;
 	--syntax-task-done: inherit;
-	/* No fallbacks above: the app's variables are unset until applyTheme runs, which is fine
-	   (aragonite's own reads carry fallbacks), and a literal color would pin one of light/dark
-	   into a file that has to serve both. Anything aragonite declares that limestone has no
-	   equivalent for is left at aragonite's default, --font-editor included. */
-
-	/* aragonite sets this on `.editor` itself, which beats anything inherited from our wrapper,
-	   so pull the wrapper's zoom in by hand. Keep the px unit: a bare number makes the
-	   font-size rule it feeds invalid, and zoom stops working. */
-	--editor-font-size: var(--ls-zoom, 16px);
+	/* No fallbacks: the app's variables are unset until applyTheme runs (aragonite's own reads
+	   carry fallbacks), and a literal color would pin one mode into a file that serves both. */
 }
 
 /* --syntax-separator colors the `---` characters where they sit in a line of text. Painted

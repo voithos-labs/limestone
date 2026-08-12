@@ -23,6 +23,9 @@ export const DEFAULT_DARK: Theme = {
 		'color-accent': '#567B67',
 		'color-accent-primary': '#567B67',
 		'color-error': '#ff5f57',
+		// A var(), not the accent's literal: applyAccent rewrites --color-accent at runtime, and
+		// the editor mixes its selection and search washes over this, so they follow the reader.
+		'color-selection': 'var(--color-accent)',
 		'radius-ui': '4px',
 		'radius-surface': '8px'
 	}
@@ -42,6 +45,7 @@ export const DEFAULT_LIGHT: Theme = {
 		'color-accent': '#567B67',
 		'color-accent-primary': '#567B67',
 		'color-error': '#d03025',
+		'color-selection': 'var(--color-accent)',
 		'radius-ui': '4px',
 		'radius-surface': '8px'
 	}
@@ -61,6 +65,7 @@ export const SOFT_DARK: Theme = {
 		'color-accent': '#567B67',
 		'color-accent-primary': '#567B67',
 		'color-error': '#ff5f57',
+		'color-selection': 'var(--color-accent)',
 		'radius-ui': '4px',
 		'radius-surface': '8px'
 	}
@@ -80,6 +85,7 @@ export const SOFT_LIGHT: Theme = {
 		'color-accent': '#567B67',
 		'color-accent-primary': '#567B67',
 		'color-error': '#d03025',
+		'color-selection': 'var(--color-accent)',
 		'radius-ui': '4px',
 		'radius-surface': '8px'
 	}

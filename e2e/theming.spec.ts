@@ -69,7 +69,7 @@ async function watchFirstPaint(page: Page) {
 					const editor = node.matches('.editor') ? node : node.querySelector('.editor');
 					if (!editor) continue;
 					(window as FirstPaintWindow).__firstPaint = [
-						getComputedStyle(editor).getPropertyValue('--color-bg').trim(),
+						getComputedStyle(editor).getPropertyValue('--color-surface').trim(),
 						getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim()
 					];
 					observer.disconnect();
@@ -99,7 +99,8 @@ test('the editor reads the app’s palette, from its first frame on', async ({ p
 	expect(firstPaint?.[1], 'the app had a palette before the editor mounted').not.toBe('');
 	expect(firstPaint?.[0], 'the editor mounted carrying it').toBe(firstPaint?.[1]);
 
-	const bridged = await tokens(page, [
+	const shared = await tokens(page, [
+		'--color-surface',
 		'--color-border',
 		'--color-text-primary',
 		'--color-ui-muted',
@@ -108,37 +109,33 @@ test('the editor reads the app’s palette, from its first frame on', async ({ p
 		'--syntax-link',
 		'--syntax-code'
 	]);
-	for (const [name, [editor, root]] of Object.entries(bridged)) {
+	for (const [name, [editor, root]] of Object.entries(shared)) {
 		expect(root, `${name} is declared by the app`).not.toBe('');
 		expect(editor, `${name} on the editor`).toBe(root);
 	}
-
-	// The one name that differs on each side: the editor's surfaces paint on the app's.
-	const surface = await tokens(page, ['--color-bg', '--color-surface']);
-	expect(surface['--color-bg'][0]).toBe(surface['--color-surface'][1]);
 });
 
 test('a theme of the same mode repaints the editor without touching its mode', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
-	const before = await token(page, '--color-bg');
+	const before = await token(page, '--color-surface');
 	await expect(page.locator('.editor')).toHaveAttribute('data-editor-theme', 'dark');
 
 	await chooseTheme(page, 'soft-dark');
 
-	expect(await token(page, '--color-bg')).not.toBe(before);
+	expect(await token(page, '--color-surface')).not.toBe(before);
 	await expect(page.locator('.editor')).toHaveAttribute('data-editor-theme', 'dark');
 });
 
 test('a light theme flips the mode the editor keys its own defaults on', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
-	const dark = await token(page, '--color-bg');
+	const dark = await token(page, '--color-surface');
 
 	await chooseTheme(page, 'default-light');
 
 	await expect(page.locator('.editor')).toHaveAttribute('data-editor-theme', 'light');
-	const surface = await tokens(page, ['--color-bg', '--color-surface']);
-	expect(surface['--color-bg'][0]).not.toBe(dark);
-	expect(surface['--color-bg'][0]).toBe(surface['--color-surface'][1]);
+	const surface = await tokens(page, ['--color-surface']);
+	expect(surface['--color-surface'][0]).not.toBe(dark);
+	expect(surface['--color-surface'][0]).toBe(surface['--color-surface'][1]);
 });
 
 test('the thematic break paints the app’s border, not the syntax palette', async ({ page }) => {
@@ -170,16 +167,16 @@ test('the editor’s faint wash takes the app’s menu hover, and follows the mo
 	);
 });
 
-test('a palette missing a bridged variable leaves the token unset, not the editor’s own', async ({
+test('a palette missing a host variable leaves the token unset, not the editor’s own', async ({
 	page
 }) => {
 	await bootApp(page, { docs: DOCS });
 	await expect(page.locator('.editor')).toBeVisible();
-	expect(await token(page, '--color-danger')).not.toBe('');
+	expect(await token(page, '--color-error')).not.toBe('');
 
-	// A theme that declares no error color. The bridge shadows the editor's own `--color-danger`,
-	// so the token goes unset rather than silently falling back to the editor's red.
+	// A theme that declares no error color. aragonite's own default sits behind an opt-in class
+	// the app never sets, so the token goes unset rather than falling back to the editor's red.
 	await page.evaluate(() => document.documentElement.style.removeProperty('--color-error'));
 
-	expect(await token(page, '--color-danger')).toBe('');
+	expect(await token(page, '--color-error')).toBe('');
 });

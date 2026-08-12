@@ -402,11 +402,13 @@
 	</div>
 {/snippet}
 
+<!-- The zoom is aragonite's own type-scale root, so it inherits into the editor from here. The
+	 px unit is load-bearing: a bare number makes the font-size rule it feeds invalid. -->
 <div
 	class="doc-editor"
 	class:flow
 	bind:this={wrapperEl}
-	style="--ls-zoom: {zoom}px"
+	style="--editor-font-size: {zoom}px"
 	onkeydowncapture={onKeydown}
 	role="presentation"
 >
