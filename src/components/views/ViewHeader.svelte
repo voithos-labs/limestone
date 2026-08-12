@@ -102,9 +102,7 @@
 		}
 		return undefined;
 	});
-	const sourceScopeId: string | undefined = $derived(
-		sourceScopeLeaf?.value as string | undefined
-	);
+	const sourceScopeId: string | undefined = $derived(sourceScopeLeaf?.value as string | undefined);
 
 	let groupNames: Record<string, string> = $state({});
 	let sourceNames: Record<string, string> = $state({});

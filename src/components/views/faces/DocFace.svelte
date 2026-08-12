@@ -137,7 +137,8 @@
 		}
 		if (id && pickPinned) {
 			const gen = loadGen;
-			view.getMembers({ face, scope, ids_in: [id] })
+			view
+				.getMembers({ face, scope, ids_in: [id] })
 				.then((members) => {
 					if (gen !== loadGen || picker.activeId !== id) return;
 					if (members.length === 0) {
