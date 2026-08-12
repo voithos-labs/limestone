@@ -2,7 +2,8 @@
  * todo: this is only for native documents (md), will need to be expanded and seperated for
  * handling other document types including virtual documents
  *
- *
+ * for history handling, I can't simply do it on save because watcher + recc can send updates from
+ * disk that do not trigger saves, so I need maybe an authoritative flag
  *
  */
 
