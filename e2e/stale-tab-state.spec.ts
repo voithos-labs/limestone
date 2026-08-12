@@ -60,7 +60,9 @@ test('a remembered caret the document no longer has leaves it typable all the sa
 
 	await page.keyboard.type('Typed. ');
 
-	await expect.poll(() => lastWrite(page)).toBe(`Typed. ${SHORT}`);
+	// The fallback caret sits at the first visible position: live mode hides the `# `, so the
+	// text joins the heading rather than landing before its marker.
+	await expect.poll(() => lastWrite(page)).toBe('# Typed. Hello\n\nBody text here.\n');
 	expect(
 		await page.evaluate(() => !!document.activeElement?.closest('.editor')),
 		'something inside the editor holds focus'
