@@ -30,8 +30,9 @@ test('typing into a freshly opened document needs no click first', async ({ page
 
 	await page.keyboard.type('Typed blind. ');
 
-	// The caret lands at the very start of the first block, markers included.
-	await expect.poll(() => lastWrite(page)).toBe('Typed blind. # Hello\n\nBody text here.\n');
+	// The caret lands at the block's first visible position. Live mode hides the `# `, and a
+	// caret cannot sit before a marker that paints nothing, so the text joins the heading.
+	await expect.poll(() => lastWrite(page)).toBe('# Typed blind. Hello\n\nBody text here.\n');
 });
 
 test('an empty document is typable on open', async ({ page }) => {

@@ -8,6 +8,8 @@ document-write command.
 
 - Opening a document places a caret: typing with no click at all reaches the document, and the
   edit is written back. The editor is usable the moment a note opens, the way a text field is.
+  The caret sits at the first visible position — in live mode a hidden marker paints nothing and
+  cannot be typed in front of, so blind text joins the heading rather than landing before its `#`.
 - A document whose metadata lives in YAML frontmatter round-trips it: the editor edits the body
   alone, and the saved file still carries the frontmatter block and its custom keys.
 
