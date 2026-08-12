@@ -16,6 +16,7 @@
 	import type { SearchResult } from '$lib/types/SearchResult';
 	import MarkdownEditor from '../../editor/MarkdownEditor.svelte';
 	import { untrack } from 'svelte';
+	import { onSourceReconciled } from '$lib/models/Source';
 
 	let {
 		view,
@@ -73,6 +74,8 @@
 			console.error('doc face load failed', e);
 		}
 	}
+
+	$effect(() => onSourceReconciled(() => load()));
 
 	let loadTimer: ReturnType<typeof setTimeout> | null = null;
 

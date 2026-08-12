@@ -143,3 +143,28 @@ export async function startWatching(): Promise<UnlistenFn> {
 		reconcileTimers.clear();
 	};
 }
+
+export function onFsChanged(cb: (e: FsChanged) => void): () => void {
+	const unlisten = listen<FsChanged>('fs-changed', (e) => cb(e.payload));
+	return () => {
+		unlisten.then((f) => f());
+	};
+}
+
+export function onDocChanged(
+	doc: { source: Pick<Source, 'id'>; relPath: string },
+	cb: () => void
+): () => void {
+	return onFsChanged((e) => {
+		if (e.source_id === doc.source.id && e.rel_paths.includes(doc.relPath)) cb();
+	});
+}
+
+export function onSourceReconciled(cb: (sourceId: string) => void): () => void {
+	const unlisten = listen<{ source_id: string; skipped: number }>('source-reconciled', (e) =>
+		cb(e.payload.source_id)
+	);
+	return () => {
+		unlisten.then((f) => f());
+	};
+}

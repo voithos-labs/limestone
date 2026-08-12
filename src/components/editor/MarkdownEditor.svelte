@@ -22,6 +22,7 @@
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import { getSetting } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
+	import { onDocChanged } from '$lib/models/Source';
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 
@@ -84,6 +85,19 @@
 		handle?.loadContent().then((c) => {
 			content = c;
 			loaded = true;
+		});
+	});
+
+	// todo: needs to work with doc history well
+	// this is grabbing external changes from the fs
+	$effect(() => {
+		const h = handle;
+		if (!h) return;
+		return onDocChanged(h, () => {
+			if (saveTimer) return;
+			h.loadContent().then((c) => {
+				content = c;
+			});
 		});
 	});
 
