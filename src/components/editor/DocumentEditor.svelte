@@ -6,6 +6,7 @@
 	// yes you must load editor-tokens.css after aragonite's editor-theme.css
 	import './editor-tokens.css';
 	import { EDITOR_PLUGINS } from './editor-plugins';
+	import { MODES, normalizeMode } from './editor-modes';
 	import { isImageTarget } from './image-targets';
 	import { createPasteImportLedger } from './paste-imports';
 	import { convertFileSrc } from '@tauri-apps/api/core';
@@ -116,23 +117,6 @@
 	function setZoom(next: number) {
 		zoom = Math.max(10, Math.min(40, next));
 		tab.state.zoom = zoom;
-	}
-
-	const MODES: readonly { value: PresentationMode; label: string }[] = [
-		{ value: 'source', label: 'Source' },
-		{ value: 'live', label: 'Live' },
-		{ value: 'reading', label: 'Reading' }
-	];
-
-	/** aragonite's preview rungs stay unoffered here. */
-	function isOfferedMode(value: unknown): value is PresentationMode {
-		return MODES.some((m) => m.value === value);
-	}
-
-	/** Documents saved before the swap remember the old middle mode; it reads as the new one. */
-	function normalizeMode(value: unknown): PresentationMode | undefined {
-		const v = value === 'preview-inline' ? 'live' : value;
-		return isOfferedMode(v) ? v : undefined;
 	}
 
 	// A tab only remembers a mode once the reader picks one; until then the global setting

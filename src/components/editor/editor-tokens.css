@@ -1,9 +1,9 @@
 /**
  * Points the editor variables aragonite still defaults on `.editor` at limestone's theme. Its
  * host-contract names are absent on purpose: those default behind an opt-in class the app never
- * sets, so limestone's own `:root` reaches the editor unbridged. `inherit` means "take what the
- * app set on the parent", so no ancestor may carry `.aragonite-editor-theme` — these lines would
- * pick up aragonite's colors instead. Load after `aragonite/styles/editor-theme.css`.
+ * sets, so limestone's own `:root` reaches the editor unbridged. No ancestor may carry
+ * `.aragonite-editor-theme`, or the inherited lines pick up aragonite's colors instead. Load
+ * after `aragonite/styles/editor-theme.css`.
  */
 .editor {
 	/* aragonite hovers its table menu with this. The app's own menu hover is the same thing,

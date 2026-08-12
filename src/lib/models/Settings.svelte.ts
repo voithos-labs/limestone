@@ -205,8 +205,8 @@ export class SettingsState {
 		if (import.meta.env.DEV) this.validateRegistry();
 	}
 
-	// The middle editor mode was renamed. Rewriting it here rather than reading around it keeps
-	// the settings page from showing a stored name it has no option for.
+	// Rewriting the renamed middle mode keeps the settings page from showing a stored name it has
+	// no option for. Delete once no settings store predating the live-mode swap is left in the wild.
 	private async migrateEditorMode(): Promise<void> {
 		const key = 'appearance.default_editor_mode';
 		if (this.get(key) === 'preview-inline') await this.set(key, 'live');

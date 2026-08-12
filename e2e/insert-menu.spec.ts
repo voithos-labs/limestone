@@ -38,16 +38,37 @@ test('the + menu inserts a table at the caret as one undo step', async ({ page }
 	await expect.poll(() => lastWrite(page)).toBe('Alpha.\n');
 });
 
-// Details is the one entry written as HTML rather than a fence or a directive, so it is the one
-// whose snippet could parse into a lookalike box instead of the kind the editor registered.
-test('the details entry inserts the disclosure the editor parses', async ({ page }) => {
-	await bootApp(page, { docs: DOCS });
-	await caretAtEnd(page);
+/** Every menu entry, beside the class its block renders under and the bytes the file gets. */
+const ENTRIES: readonly { label: string; block: string; md: string }[] = [
+	{ label: 'Table', block: '.table-block', md: '| Column | Column |\n| --- | --- |\n|  |  |\n' },
+	{ label: 'Code block', block: '.code-block', md: '```\n\n```\n' },
+	{ label: 'Callout', block: '.admonition', md: ':::note\n\n:::\n' },
+	{
+		label: 'Details',
+		block: '.details-block',
+		md: '<details>\n<summary>Summary</summary>\n\n</details>\n'
+	},
+	// An empty formula has nothing to render, so the block stays in its source form.
+	{ label: 'Math block', block: '.math-block-source', md: '$$\n\n$$\n' },
+	{ label: 'Diagram', block: '.mermaid-block', md: '```mermaid\n\n```\n' },
+	{ label: 'Divider', block: '.thematic-break-block', md: '---\n' }
+];
 
-	await insert(page, 'Details');
+// A snippet that parses into a lookalike box, or into plain paragraphs, still looks inserted. The
+// class says which kind the editor actually built; the bytes say the file got the snippet whole.
+for (const { label, block, md } of ENTRIES) {
+	test(`the ${label.toLowerCase()} entry lands its own block and saves the snippet`, async ({
+		page
+	}) => {
+		await bootApp(page, { docs: DOCS });
+		await caretAtEnd(page);
 
-	await expect(page.locator('.editor .details-block')).toBeVisible();
-});
+		await insert(page, label);
+
+		await expect(page.locator(`.editor ${block}`).first()).toBeVisible();
+		await expect.poll(() => lastWrite(page)).toBe(`Alpha.\n\n${md}`);
+	});
+}
 
 test('source and reading modes carry no insert menu', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });

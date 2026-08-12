@@ -14,6 +14,7 @@ import themeService from '../../lib/services/theme.svelte.ts?raw';
 
 /** Host-contract variables limestone declares itself, so they reach the editor with no bridge. */
 const HOST_NATIVE = new Set([
+	// same stack on both sides since the extraction; flows through now
 	'--font-editor',
 	// Declared on the editor wrapper by DocumentEditor, from the reader's zoom.
 	'--editor-font-size',

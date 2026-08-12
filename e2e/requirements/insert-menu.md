@@ -9,10 +9,9 @@ something the reader has no way to see the shape of before typing it.
 
 - The `+` sits beside the mode toggle whenever the document is in live mode.
 - Clicking it opens the app's menu, listing one entry per structure.
-- Choosing Table drops a canonical table at the caret and it renders as a table, not as the
-  pipes and dashes it is written with.
-- Choosing Details drops the HTML disclosure the editor actually parses, so the reader gets a
-  real details block rather than a lookalike box.
+- Every entry drops its structure at the caret and it renders as that structure, not as the
+  characters it is written with. Each is pinned twice: by the class its block renders under, so a
+  snippet parsing into a lookalike box is caught, and by the bytes the save writes.
 - An insert is one undo step: once it has been saved, a single `Ctrl+Z` puts the file back to the
   byte it started at. Undone inside the save window it writes nothing at all, which is the same
   outcome by a shorter road.

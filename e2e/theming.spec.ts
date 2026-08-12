@@ -105,6 +105,7 @@ test('the editor reads the app’s palette, from its first frame on', async ({ p
 		'--color-text-primary',
 		'--color-ui-muted',
 		'--color-accent',
+		'--color-selection',
 		'--syntax-heading',
 		'--syntax-link',
 		'--syntax-code'
