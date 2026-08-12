@@ -10,6 +10,7 @@
 	import DocFace from './DocFace.svelte';
 	import ListFace from './ListFace.svelte';
 	import TableFace from './TableFace.svelte';
+	import { onSourceReconciled } from '$lib/models/Source';
 
 	let {
 		view,
@@ -134,6 +135,8 @@
 	$effect(() => {
 		loadRows();
 	});
+
+	$effect(() => onSourceReconciled(() => loadRows()));
 
 	const entries = $derived.by(() => {
 		const set = new Set<string>();

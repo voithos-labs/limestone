@@ -30,6 +30,7 @@
 	import { readTextFile } from '@tauri-apps/plugin-fs';
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import { onMount, untrack } from 'svelte';
+	import { onSourceReconciled } from '$lib/models/Source';
 
 	let {
 		view,
@@ -61,6 +62,8 @@
 	let sources: Source[] = $state([]);
 	let folders: Group[] = $state([]);
 	let defaultSourceId: string | null = $state(null);
+
+	$effect(() => onSourceReconciled(() => load(true)));
 
 	async function load(silent = false) {
 		const token = ++loadToken;

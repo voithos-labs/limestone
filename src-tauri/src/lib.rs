@@ -174,6 +174,7 @@ pub fn run() {
                 db: pool.clone(),
                 bulk: bulk.clone(),
             });
+            app.manage(commands::watch_commands::Watchers::default());
 
             // ── Not Blocking!1 ───────────────────────────────────────────────────────
 
@@ -248,6 +249,8 @@ pub fn run() {
             commands::source_commands::make_dir,
             commands::source_commands::create_folder,
             commands::source_commands::move_folder,
+            commands::source_commands::reconcile_source,
+            commands::watch_commands::set_watched_paths,
             commands::settings_commands::get_app_info,
             commands::settings_commands::get_setting,
             commands::settings_commands::get_all_settings,

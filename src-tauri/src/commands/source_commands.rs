@@ -93,6 +93,17 @@ fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
     ));
 }
 
+#[tauri::command]
+pub fn reconcile_source(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    id: Uuid,
+) -> Result<(), String> {
+    let source = find_source(&app, id)?;
+    spawn_reconcile(&app, &source, &app_data);
+    Ok(())
+}
+
 fn save_sources_file(app: &AppHandle, data: &Sources) -> Result<(), String> {
     sources_store(app).save(data).map_err(|e| e.to_string())
 }

@@ -82,6 +82,7 @@
 	import FolderCrumb from '../FolderCrumb.svelte';
 	import LeanScroll from '../LeanScroll.svelte';
 	import { onMount } from 'svelte';
+	import { onSourceReconciled } from '$lib/models/Source';
 
 	let {
 		view,
@@ -400,6 +401,8 @@
 		if (faceChanged) load(true);
 		else reloadTimer = setTimeout(() => load(true), 100);
 	});
+
+	$effect(() => onSourceReconciled(() => load(true)));
 
 	function startResize(e: PointerEvent, col: ColumnDef) {
 		e.preventDefault();

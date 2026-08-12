@@ -17,6 +17,7 @@
 	import { actionForKey, keyCapture } from '$lib/actions';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
 	import { toasts } from '$lib/toasts.svelte';
+	import { startWatching } from '$lib/models/Source';
 
 	let session = $state<Session>();
 	let tab: TabState | undefined = $state();
@@ -88,12 +89,19 @@
 			}
 			await win.destroy();
 		});
+		// startup scan
 		const unlistenScan = listen<{ source_id: string; skipped: number }>('source-reconciled', (e) =>
 			reportScanSkips(e.payload.skipped)
 		);
+		// running watcher, watching for external changes
+		const unlistenWatch = startWatching().catch((err) => {
+			console.error('file watching failed to start', err);
+			return () => {};
+		});
 		return () => {
 			unlisten.then((f) => f());
 			unlistenScan.then((f) => f());
+			unlistenWatch.then((f) => f());
 		};
 	});
 
