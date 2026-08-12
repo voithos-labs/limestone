@@ -37,10 +37,10 @@ keys those are rather than keeping a list of them.
 
 ## Accepted
 
-- Mod+I and Mod+B act at a bare caret too, as of aragonite 0.9.36: the toggle inserts an empty
-  marker pair and lands the caret between its halves, so the next character typed is formatted; a
-  second press (or one undo) removes the pair. Every scenario above selects first, so the suite
-  does not pin the collapsed-caret contract — it is aragonite's, exercised by its own battery.
+- Mod+I and Mod+B act at a bare caret too: the toggle inserts an empty marker pair and lands the
+  caret between its halves, so the next character typed is formatted; a second press (or one undo)
+  removes the pair. Every scenario above selects first, so the suite does not pin the
+  collapsed-caret contract — it is aragonite's, exercised by its own battery.
 - A whole class of chords may never reach the page in the packaged Windows app: WebView2 runs its
   browser-accelerator handling _before_ the web content, and Tauri leaves it enabled (no config
   option; tauri-runtime-wry never sets wry's flag). The listed keys — Ctrl+F, Ctrl+P, Ctrl+R, F5,
