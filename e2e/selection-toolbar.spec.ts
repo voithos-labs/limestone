@@ -6,6 +6,7 @@ const NOTE = 'notes/hello.md';
 const DOCS = { [NOTE]: 'Alpha beta gamma.\n' };
 
 const bar = (page: Page) => page.locator('.selection-toolbar');
+const lastWrite = async (page: Page) => (await getMockState(page)).writes.at(-1)?.content;
 
 /**
  * Selects the word `beta` by hand. The click only buys focus — where in the word it lands depends
@@ -26,23 +27,56 @@ async function floatAbove(toolbar: Locator, anchor: Locator): Promise<number> {
 	return anchorBox.y - toolbarBox.y;
 }
 
-test('a live selection floats the bar, and Bold wraps the selected bytes', async ({ page }) => {
+test('a live selection floats the bar over its own line, and collapsing takes it away', async ({
+	page
+}) => {
 	await bootApp(page, { docs: DOCS });
 	const block = page.locator('.editor .text-editable-block', { hasText: 'Alpha beta gamma.' });
 	await selectBeta(page);
+
 	await expect(bar(page)).toBeVisible();
 	// Visibility alone passes a bar pinned to a corner of the window, which is the failure a
 	// re-rooted `position: fixed` produces. The gap says it is drawn over the line it belongs to.
 	expect(await floatAbove(bar(page), block)).toBeGreaterThan(0);
 	expect(await floatAbove(bar(page), block)).toBeLessThan(60);
 
-	await bar(page).locator('button[aria-label="Bold"]').click();
-	await expect
-		.poll(async () => (await getMockState(page)).writes.at(-1)?.content)
-		.toContain('**beta**');
-
 	await page.keyboard.press('ArrowRight');
 	await expect(bar(page)).toHaveCount(0);
+});
+
+/** Every wrapping button, beside the bytes its toggle writes around the selected word. */
+const TOGGLES = [
+	{ label: 'Bold', wrapped: '**beta**' },
+	{ label: 'Italic', wrapped: '*beta*' },
+	{ label: 'Strikethrough', wrapped: '~~beta~~' },
+	{ label: 'Code', wrapped: '`beta`' }
+];
+
+// The document is the proof, not the button's own state: a toggle that lights up and writes the
+// wrong marker still looks like it worked to anyone reading the bar.
+for (const { label, wrapped } of TOGGLES) {
+	test(`${label} wraps the selection in the bytes the save writes`, async ({ page }) => {
+		await bootApp(page, { docs: DOCS });
+		await selectBeta(page);
+
+		await bar(page).locator(`button[aria-label="${label}"]`).click();
+
+		await expect.poll(() => lastWrite(page)).toBe(`Alpha ${wrapped} gamma.\n`);
+	});
+}
+
+// Link writes nothing on its own: it hands the range to the editor's card, which is where the URL
+// comes from. Reaching the card is the whole contract this button owes.
+test("Link opens the editor's own link card over the selection", async ({ page }) => {
+	await bootApp(page, { docs: DOCS });
+	const card = page.locator('.md-link-card-anchor');
+	await selectBeta(page);
+
+	await bar(page).locator('button[aria-label="Link"]').click();
+
+	await expect(card).toHaveCount(1);
+	await page.keyboard.press('Escape');
+	await expect(card).toHaveCount(0);
 });
 
 test('source and reading modes never float the bar', async ({ page }) => {
@@ -69,40 +103,20 @@ test('a selection inside a table cell floats no bar', async ({ page }) => {
 	await expect(bar(page)).toHaveCount(0);
 });
 
-/**
- * The same two-paragraph range, selected from each end. Two arrow presses are what it takes to
- * leave the first paragraph: the first only reaches that paragraph's own far edge.
- */
-const DIRECTIONS = [
-	{
-		name: 'forward',
-		from: 'First para here.',
-		keys: ['Home', 'Shift+ArrowDown', 'Shift+ArrowDown', 'Shift+End']
-	},
-	{
-		name: 'backward',
-		from: 'Second para here.',
-		keys: ['End', 'Shift+ArrowUp', 'Shift+ArrowUp', 'Shift+Home']
-	}
-] as const;
+// Every format command declines a range that crosses blocks, so a bar there is dead buttons. The
+// bar is pinned before the crossing, so the absence cannot pass on a selection that never crossed.
+test('a selection across two blocks floats no bar', async ({ page }) => {
+	await bootApp(page, { docs: { [NOTE]: 'First para here.\n\nSecond para here.\n' } });
+	await page.locator('.editor .text-editable-block', { hasText: 'First para here.' }).click();
+	await page.keyboard.press('Home');
+	await page.keyboard.press('Shift+ArrowDown');
+	await expect(bar(page)).toBeVisible();
 
-// Dragged backwards, the end the reader finished on is the earlier one. Only that direction can
-// tell a bar that reads document order from one that takes whichever end it was handed first.
-for (const { name, from, keys } of DIRECTIONS) {
-	test(`a ${name} cross-block selection anchors the bar to the first block`, async ({ page }) => {
-		await bootApp(page, { docs: { [NOTE]: 'First para here.\n\nSecond para here.\n' } });
-		const first = page.locator('.editor .text-editable-block', { hasText: 'First para here.' });
-		await page.locator('.editor .text-editable-block', { hasText: from }).click();
-		for (const key of keys) await page.keyboard.press(key);
+	await page.keyboard.press('Shift+ArrowDown');
+	await page.keyboard.press('Shift+End');
 
-		await expect(bar(page)).toBeVisible();
-		// Anchored to the second paragraph instead, the bar sits a whole block lower and drops out
-		// of this bracket.
-		const gap = await floatAbove(bar(page), first);
-		expect(gap).toBeGreaterThan(20);
-		expect(gap).toBeLessThan(60);
-	});
-}
+	await expect(bar(page)).toHaveCount(0);
+});
 
 // The journal has no mode control, so its entries sit in live mode and stay editable. That makes
 // the bar as useful there as anywhere, and the gate is the mode rather than the surface.

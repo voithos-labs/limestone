@@ -26,8 +26,8 @@ something the reader has no way to see the shape of before typing it.
 
 ## Accepted
 
-- Flow and journal surfaces render no chrome row, so they carry no insert menu. Their entries are
-  short by design and the mode control they do have is reading, not live.
+- Flow and journal surfaces render no chrome row, so they carry no insert menu. Their documents
+  still run live and stay editable; the missing menu is the missing row, not a mode.
 - The shared menu closes before it runs the chosen action, so a declined insert cannot leave the
   menu hanging open. The reader sees the menu dismiss either way and reads the document, not the
   menu, to know whether anything landed.

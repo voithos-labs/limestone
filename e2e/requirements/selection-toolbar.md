@@ -12,8 +12,10 @@ Every button asks the editor to run a command it already owns. Nothing here fake
 - Selecting text in live mode floats the bar above the selection's first line. Pinned twice: that
   the bar is on screen, and that it sits near the top of the block that was selected — visibility
   alone would pass a bar anchored to the wrong corner of the window.
-- Bold wraps the selection, and the `**`s land in the bytes the save writes. The document is the
-  proof, not the button's own state.
+- Every button is pinned. The four wrapping toggles each put their own markers around the selected
+  word in the bytes the save writes, and Link reaches the editor's link card. The document is the
+  proof, not the button's own state: a toggle that lights up and writes the wrong marker still
+  looks like it worked.
 - Collapsing the selection takes the bar away, so it is only ever up while there is something for
   it to act on.
 
@@ -24,11 +26,11 @@ Every button asks the editor to run a command it already owns. Nothing here fake
   coordinates rather than the text the reader highlighted.
 - Pressing a button keeps the document's selection alive, so the wrap lands on what was selected
   rather than on nothing. The bar takes no focus on the way down.
-- A selection running across two blocks anchors the bar to the first block of the range, not to
-  whichever end the reader happened to finish on. Both drag directions are covered, and the
-  backward one is the test that can tell the difference: dragged upward, the end the reader
-  finished on is the earlier one, so a bar that simply took the starting endpoint lands a block low.
-  Crossing out of a paragraph takes two arrow presses, the first reaching only its own far edge.
+- A selection running across two blocks floats no bar. The editor's format commands decline a
+  painted range that crosses blocks, the chord included, so every button there would be dead. The
+  bar is pinned while the selection is still inside the first paragraph so the absence cannot pass
+  on a selection that never crossed: leaving a paragraph takes two arrow presses, the first
+  reaching only its own far edge. Anchoring returns if cross-block formatting lands upstream.
 
 ## Accepted
 

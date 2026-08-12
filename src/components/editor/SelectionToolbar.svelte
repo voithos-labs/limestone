@@ -3,12 +3,7 @@
 	 * A formatting bar that exists only while a live-mode selection does. Live paints no syntax, so
 	 * this is where bold and friends become clickable.
 	 */
-	import {
-		SELECTION_END,
-		type EditorInstance,
-		type EditorSelection,
-		type SelectionPoint
-	} from 'aragonite';
+	import type { EditorInstance, EditorSelection } from 'aragonite';
 	import { createEditorFormatActions } from './editor-command-adapter';
 	import { Bold, Code, Italic, Link, Strikethrough } from '@lucide/svelte';
 
@@ -30,31 +25,15 @@
 		// flagged, so the flag misses it and the focused element is the only thing that can say.
 		if (document.activeElement?.closest('.table-block')) return null;
 
-		const samePath = selection.anchor.path.join('.') === selection.focus.path.join('.');
-		let rects: DOMRect[];
-		if (samePath) {
-			const lo = Math.min(selection.anchor.offset, selection.focus.offset);
-			const hi = Math.max(selection.anchor.offset, selection.focus.offset);
-			if (lo === hi) return null;
-			rects = instance.getRects().rangeRects(selection.focus.path, lo, hi);
-		} else {
-			const start = startPoint(selection);
-			rects = instance.getRects().rangeRects(start.path, start.offset, SELECTION_END);
-		}
-		return rects.length ? { x: rects[0].left, y: Math.max(4, rects[0].top - 38) } : null;
-	}
+		// Every format command declines a range that crosses blocks, on the chord path and the
+		// command door alike, so a bar there is dead buttons. Anchoring returns if aragonite#157 lands.
+		if (selection.anchor.path.join('.') !== selection.focus.path.join('.')) return null;
 
-	/** The endpoint earlier in the document: compare paths, then offsets. */
-	function startPoint(selection: EditorSelection): SelectionPoint {
-		const { anchor, focus } = selection;
-		const shared = Math.min(anchor.path.length, focus.path.length);
-		for (let i = 0; i < shared; i++) {
-			if (anchor.path[i] !== focus.path[i]) return anchor.path[i] < focus.path[i] ? anchor : focus;
-		}
-		if (anchor.path.length !== focus.path.length) {
-			return anchor.path.length < focus.path.length ? anchor : focus;
-		}
-		return anchor.offset <= focus.offset ? anchor : focus;
+		const lo = Math.min(selection.anchor.offset, selection.focus.offset);
+		const hi = Math.max(selection.anchor.offset, selection.focus.offset);
+		if (lo === hi) return null;
+		const rects = instance.getRects().rangeRects(selection.focus.path, lo, hi);
+		return rects.length ? { x: rects[0].left, y: Math.max(4, rects[0].top - 38) } : null;
 	}
 
 	const BUTTONS = [
