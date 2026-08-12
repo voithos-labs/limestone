@@ -21,6 +21,7 @@
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import InsertMenu from './InsertMenu.svelte';
+	import SelectionToolbar from './SelectionToolbar.svelte';
 
 	let {
 		tab,
@@ -429,6 +430,9 @@
 	{/if}
 	{#if !flow}
 		<ScrollThumb scroller={scrollEl} top={THUMB_TOP_PX} />
+	{/if}
+	{#if mode === 'live'}
+		<SelectionToolbar {instance} />
 	{/if}
 </div>
 
