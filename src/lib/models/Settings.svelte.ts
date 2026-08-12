@@ -69,7 +69,7 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				description: 'How a document presents when it is opened for the first time.',
 				options: [
 					{ value: 'source', label: 'Source' },
-					{ value: 'preview-inline', label: 'Live preview' },
+					{ value: 'live', label: 'Live' },
 					{ value: 'reading', label: 'Reading' }
 				]
 			},
@@ -201,7 +201,15 @@ export class SettingsState {
 		const [defaults, values] = await Promise.all([getDefaultSettings(), getAllSettings()]);
 		this.defaults = defaults;
 		this.values = values;
+		await this.migrateEditorMode();
 		if (import.meta.env.DEV) this.validateRegistry();
+	}
+
+	// The middle editor mode was renamed. Rewriting it here rather than reading around it keeps
+	// the settings page from showing a stored name it has no option for.
+	private async migrateEditorMode(): Promise<void> {
+		const key = 'appearance.default_editor_mode';
+		if (this.get(key) === 'preview-inline') await this.set(key, 'live');
 	}
 
 	get<T extends SettingValue>(key: string): T | null {

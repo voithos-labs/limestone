@@ -119,26 +119,30 @@
 
 	const MODES: readonly { value: PresentationMode; label: string }[] = [
 		{ value: 'source', label: 'Source' },
-		{ value: 'preview-inline', label: 'Live' },
+		{ value: 'live', label: 'Live' },
 		{ value: 'reading', label: 'Reading' }
 	];
 
-	/** aragonite has a fourth mode, `preview-block`; limestone deliberately doesn't offer it. */
+	/** aragonite's preview rungs stay unoffered here. */
 	function isOfferedMode(value: unknown): value is PresentationMode {
 		return MODES.some((m) => m.value === value);
+	}
+
+	/** Documents saved before the swap remember the old middle mode; it reads as the new one. */
+	function normalizeMode(value: unknown): PresentationMode | undefined {
+		const v = value === 'preview-inline' ? 'live' : value;
+		return isOfferedMode(v) ? v : undefined;
 	}
 
 	// A tab only remembers a mode once the reader picks one; until then the global setting
 	// supplies it. That is why setMode is the only thing that writes tab.state.presentationMode.
 	let mode = $state<PresentationMode>(
-		untrack(() => {
-			const remembered = tab.state.presentationMode;
-			return isOfferedMode(remembered) ? remembered : 'preview-inline';
-		})
+		untrack(() => normalizeMode(tab.state.presentationMode) ?? 'live')
 	);
 	if (untrack(() => tab.state.presentationMode) === undefined) {
 		getSetting<string>('appearance.default_editor_mode').then((v) => {
-			if (tab.state.presentationMode === undefined && isOfferedMode(v)) mode = v;
+			const m = normalizeMode(v);
+			if (tab.state.presentationMode === undefined && m) mode = m;
 		});
 	}
 

@@ -15,20 +15,19 @@ const opensIn = (value: string) => ({
 	appearance: { default_editor_mode: value, editor_font_size: 16, max_page_width: 900 }
 });
 
-test('a document opens in live preview, showing markers only under the caret', async ({ page }) => {
+test('a document opens in live, and markers stay hidden even under the caret', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
 	const editor = page.locator('.editor');
 	await expect(editor).toBeVisible();
-	expect(await mode(page)).toBe('preview-inline');
+	expect(await mode(page)).toBe('live');
 
 	// Rendered text throughout, not the DOM's: a collapsed marker is still in `textContent`.
-	// Opening places the caret in the first block, and live preview reveals the block it is in.
-	await expect(editor).toContainText('# Hello', { useInnerText: true });
-
-	await editor.locator('.text-editable-block', { hasText: 'Body text here.' }).click();
-
-	await expect(editor).not.toContainText('# Hello', { useInnerText: true });
+	// Opening lands the caret in the heading block; live still shows no `#`.
 	await expect(editor).toContainText('Hello', { useInnerText: true });
+	await expect(editor).not.toContainText('# Hello', { useInnerText: true });
+
+	await editor.locator('.text-editable-block', { hasText: 'Hello' }).first().click();
+	await expect(editor).not.toContainText('# Hello', { useInnerText: true });
 });
 
 test('source mode shows the markers the document is written with', async ({ page }) => {
@@ -72,12 +71,33 @@ test('a tab that remembers a mode keeps it over the setting', async ({ page }) =
 	expect(await mode(page)).toBe('reading');
 });
 
+test('a tab that remembered preview-inline opens in live', async ({ page }) => {
+	await bootApp(page, { docs: DOCS, tabState: { [NOTE]: { presentationMode: 'preview-inline' } } });
+	await expect(page.locator('.editor')).toBeVisible();
+
+	expect(await mode(page)).toBe('live');
+});
+
+test('a default mode setting of preview-inline reads as live', async ({ page }) => {
+	await bootApp(page, { docs: DOCS, settings: opensIn('preview-inline') });
+	await expect(page.locator('.editor')).toBeVisible();
+
+	await expect.poll(() => mode(page)).toBe('live');
+
+	// The stored value is rewritten too, not just read around: settings shows a value its list
+	// doesn't offer as the bare string, so the reader would be left looking at `preview-inline`.
+	await page.keyboard.press('Control+Comma');
+	await page.locator('.settings-page .search-input').fill('editor mode');
+	const modeSetting = page.locator('.setting-item', { hasText: 'Default Editor Mode' });
+	await expect(modeSetting.locator('.select-value')).toHaveText('Live');
+});
+
 test('Mod+E steps through the three modes and comes back round', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
 	const editor = page.locator('.editor');
 	await expect(editor).toBeVisible();
 	await editor.locator('.text-editable-block', { hasText: 'Body text here.' }).click();
-	expect(await mode(page)).toBe('preview-inline');
+	expect(await mode(page)).toBe('live');
 
 	await page.keyboard.press('Control+e');
 	expect(await mode(page)).toBe('reading');
@@ -86,14 +106,14 @@ test('Mod+E steps through the three modes and comes back round', async ({ page }
 	expect(await mode(page)).toBe('source');
 
 	await page.keyboard.press('Control+e');
-	expect(await mode(page)).toBe('preview-inline');
+	expect(await mode(page)).toBe('live');
 });
 
 test('the step follows the mode the reader is in, however they got there', async ({ page }) => {
 	await bootApp(page, { docs: DOCS });
 	await expect(page.locator('.editor')).toBeVisible();
 	// Reading mode reached by the button, not the chord: the step out of it is the same one
-	// either way, where a chord that undid its own last trip would go back to live preview.
+	// either way, where a chord that undid its own last trip would go back to live.
 	await page.locator('.mode-toggle button', { hasText: 'Reading' }).click();
 	expect(await mode(page)).toBe('reading');
 
@@ -109,19 +129,20 @@ test('a tab keeps its mode over leaving the document, and the cycle goes on from
 	await expect(page.locator('.editor')).toBeVisible();
 	await page.locator('.mode-toggle button', { hasText: 'Source' }).click();
 	await page.keyboard.press('Control+e');
-	expect(await mode(page)).toBe('preview-inline');
+	expect(await mode(page)).toBe('live');
 
 	await page.keyboard.press('Control+l');
 	await expect(page.locator('.library-page')).toBeVisible();
 	await clickTab(page, 'hello');
 	await expect(page.locator('.editor')).toBeVisible();
-	expect(await mode(page)).toBe('preview-inline');
+	expect(await mode(page)).toBe('live');
 
 	await page.keyboard.press('Control+e');
 	expect(await mode(page)).toBe('reading');
 });
 
-test('Mod+E keeps the reader where they were reading', async ({ page }) => {
+// The flip out of reading re-seats the banked caret through a scroll (aragonite #155).
+test.fixme('Mod+E keeps the reader where they were reading', async ({ page }) => {
 	const long = Array.from({ length: 80 }, (_, i) => `Paragraph number ${i + 1}.`).join('\n\n');
 	await bootApp(page, { docs: { [NOTE]: `${long}\n` } });
 	const editor = page.locator('.editor');
@@ -151,6 +172,6 @@ test('renaming a document does not flip the mode', async ({ page }) => {
 	await page.keyboard.press('Control+e');
 	await page.keyboard.press('Control+Equal');
 
-	expect(await mode(page)).toBe('preview-inline');
+	expect(await mode(page)).toBe('live');
 	expect(await fontSize()).toBe('14px');
 });
