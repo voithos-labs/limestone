@@ -19,6 +19,7 @@
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
+	import InsertMenu from './InsertMenu.svelte';
 
 	let {
 		tab,
@@ -390,15 +391,20 @@
 			bind:propsOpen
 		/>
 	{/if}
-	<div class="mode-toggle" role="group" aria-label="Editor mode">
-		{#each MODES as { value, label } (value)}
-			<button
-				type="button"
-				class:active={mode === value}
-				aria-pressed={mode === value}
-				onclick={() => setMode(value)}>{label}</button
-			>
-		{/each}
+	<div class="mode-toggle">
+		{#if mode === 'live'}
+			<InsertMenu {instance} />
+		{/if}
+		<span class="mode-group" role="group" aria-label="Editor mode">
+			{#each MODES as { value, label } (value)}
+				<button
+					type="button"
+					class:active={mode === value}
+					aria-pressed={mode === value}
+					onclick={() => setMode(value)}>{label}</button
+				>
+			{/each}
+		</span>
 	</div>
 {/snippet}
 
@@ -481,6 +487,11 @@
 		max-width: var(--page-max-width, 1200px);
 		margin: 0 auto;
 		padding: 0 24px;
+	}
+
+	.mode-group {
+		display: flex;
+		gap: 2px;
 	}
 
 	.mode-toggle button {
