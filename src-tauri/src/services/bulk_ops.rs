@@ -14,6 +14,7 @@
 
 use crate::services::frontmatter;
 use crate::services::fs::{atomic_write, resolve_in_source};
+use crate::services::source::tag_group_id;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -62,48 +63,98 @@ struct BulkProgress {
 
 /// A resumable structural op, recoverable from these args
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct BulkOp {
+    source_id: String,
+    #[serde(default)]
+    rel_paths: Option<Vec<String>>,
+    action: BulkAction,
+}
+
+impl BulkOp {
+    pub(crate) fn new(source_id: impl Into<String>, action: BulkAction) -> Self {
+        Self {
+            source_id: source_id.into(),
+            rel_paths: None,
+            action,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum JournaledOp {
+pub(crate) enum BulkAction {
     SetViewField {
-        source_id: String,
         view_slug: String,
         field_name: String,
         value: Value,
         doc_ids: Vec<String>,
     },
     RenameViewField {
-        source_id: String,
         view_slug: String,
         old_name: String,
         new_name: String,
     },
     RemoveViewField {
-        source_id: String,
         view_slug: String,
         field_name: String,
     },
     RenameViewOption {
-        source_id: String,
         view_slug: String,
         field_name: String,
         old_value: String,
         new_value: String,
     },
     RenameView {
-        source_id: String,
         old_slug: String,
         new_slug: String,
     },
+    RenameTag {
+        old_slug: String,
+        new_slug: String,
+    },
+    RemoveTag {
+        slug: String,
+    },
 }
 
-impl JournaledOp {
-    fn source_id(&self) -> &str {
+impl BulkAction {
+    fn validate(&self) -> Result<(), String> {
         match self {
-            JournaledOp::SetViewField { source_id, .. }
-            | JournaledOp::RenameViewField { source_id, .. }
-            | JournaledOp::RemoveViewField { source_id, .. }
-            | JournaledOp::RenameViewOption { source_id, .. }
-            | JournaledOp::RenameView { source_id, .. } => source_id,
+            BulkAction::SetViewField {
+                view_slug,
+                field_name,
+                ..
+            }
+            | BulkAction::RemoveViewField {
+                view_slug,
+                field_name,
+            }
+            | BulkAction::RenameViewOption {
+                view_slug,
+                field_name,
+                ..
+            } => {
+                validate_ident(view_slug, "view slug")?;
+                validate_ident(field_name, "field name")
+            }
+            BulkAction::RenameViewField {
+                view_slug,
+                old_name,
+                new_name,
+            } => {
+                validate_ident(view_slug, "view slug")?;
+                validate_ident(old_name, "field name")?;
+                validate_ident(new_name, "new field name")
+            }
+            BulkAction::RenameView { old_slug, new_slug } => {
+                validate_ident(old_slug, "view slug")?;
+                validate_ident(new_slug, "new view slug")
+            }
+            BulkAction::RenameTag { old_slug, new_slug } => {
+                validate_tag(old_slug)?;
+                validate_tag(new_slug)
+            }
+            BulkAction::RemoveTag { slug } => validate_tag(slug),
         }
     }
 }
@@ -116,7 +167,7 @@ struct Journal {
     #[serde(default)]
     version: u32,
     #[serde(default)]
-    ops: Vec<JournaledOp>,
+    ops: Vec<BulkOp>,
 }
 
 #[derive(Clone)]
@@ -139,128 +190,16 @@ impl BulkRunner {
         }
     }
 
-    pub async fn set_view_field(
-        &self,
-        db: &SqlitePool,
-        app: &AppHandle,
-        source_id: &str,
-        source_path: &Path,
-        view_slug: &str,
-        field_name: &str,
-        value: Value,
-        doc_ids: Vec<String>,
-    ) -> Result<BulkResult, String> {
-        validate_ident(view_slug, "view slug")?;
-        validate_ident(field_name, "field name")?;
-        if doc_ids.is_empty() {
-            return Ok(BulkResult {
-                touched: 0,
-                failed: 0,
-                failures: Vec::new(),
-                source_unreachable: false,
-            });
-        }
-        let op = JournaledOp::SetViewField {
-            source_id: source_id.to_string(),
-            view_slug: view_slug.to_string(),
-            field_name: field_name.to_string(),
-            value,
-            doc_ids,
-        };
-        self.run_journaled(db, app, source_path, op).await
-    }
-
-    pub async fn rename_view_field(
-        &self,
-        db: &SqlitePool,
-        app: &AppHandle,
-        source_id: &str,
-        source_path: &Path,
-        view_slug: &str,
-        old_name: &str,
-        new_name: &str,
-    ) -> Result<BulkResult, String> {
-        validate_ident(view_slug, "view slug")?;
-        validate_ident(old_name, "field name")?;
-        validate_ident(new_name, "new field name")?;
-        let op = JournaledOp::RenameViewField {
-            source_id: source_id.to_string(),
-            view_slug: view_slug.to_string(),
-            old_name: old_name.to_string(),
-            new_name: new_name.to_string(),
-        };
-        self.run_journaled(db, app, source_path, op).await
-    }
-
-    pub async fn remove_view_field(
-        &self,
-        db: &SqlitePool,
-        app: &AppHandle,
-        source_id: &str,
-        source_path: &Path,
-        view_slug: &str,
-        field_name: &str,
-    ) -> Result<BulkResult, String> {
-        validate_ident(view_slug, "view slug")?;
-        validate_ident(field_name, "field name")?;
-        let op = JournaledOp::RemoveViewField {
-            source_id: source_id.to_string(),
-            view_slug: view_slug.to_string(),
-            field_name: field_name.to_string(),
-        };
-        self.run_journaled(db, app, source_path, op).await
-    }
-
-    pub async fn rename_view(
-        &self,
-        db: &SqlitePool,
-        app: &AppHandle,
-        source_id: &str,
-        source_path: &Path,
-        old_slug: &str,
-        new_slug: &str,
-    ) -> Result<BulkResult, String> {
-        validate_ident(old_slug, "view slug")?;
-        validate_ident(new_slug, "new view slug")?;
-        let op = JournaledOp::RenameView {
-            source_id: source_id.to_string(),
-            old_slug: old_slug.to_string(),
-            new_slug: new_slug.to_string(),
-        };
-        self.run_journaled(db, app, source_path, op).await
-    }
-
-    pub async fn rename_view_option(
-        &self,
-        db: &SqlitePool,
-        app: &AppHandle,
-        source_id: &str,
-        source_path: &Path,
-        view_slug: &str,
-        field_name: &str,
-        old_value: &str,
-        new_value: &str,
-    ) -> Result<BulkResult, String> {
-        validate_ident(view_slug, "view slug")?;
-        validate_ident(field_name, "field name")?;
-        let op = JournaledOp::RenameViewOption {
-            source_id: source_id.to_string(),
-            view_slug: view_slug.to_string(),
-            field_name: field_name.to_string(),
-            old_value: old_value.to_string(),
-            new_value: new_value.to_string(),
-        };
-        self.run_journaled(db, app, source_path, op).await
-    }
-
-    async fn run_journaled(
+    pub(crate) async fn run(
         &self,
         db: &SqlitePool,
         app: &AppHandle,
         source_path: &Path,
-        op: JournaledOp,
+        mut op: BulkOp,
     ) -> Result<BulkResult, String> {
+        op.action.validate()?;
         let _guard = self.inner.lock.lock().await;
+        op.rel_paths = Some(fetch_rel_paths(db, &op).await?);
         self.journal_add(&op);
         let result = execute(db, app, source_path, &op).await;
         self.journal_remove(&op);
@@ -276,7 +215,7 @@ impl BulkRunner {
     ) {
         let ops = self.journal_read();
         for op in &ops {
-            let Some(path) = source_paths.get(op.source_id()) else {
+            let Some(path) = source_paths.get(&op.source_id) else {
                 continue;
             };
             let _guard = self.inner.lock.lock().await;
@@ -288,7 +227,7 @@ impl BulkRunner {
         }
     }
 
-    fn journal_read(&self) -> Vec<JournaledOp> {
+    fn journal_read(&self) -> Vec<BulkOp> {
         let journal: Journal = std::fs::read_to_string(&self.inner.journal_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
@@ -299,7 +238,7 @@ impl BulkRunner {
         journal.ops
     }
 
-    fn journal_write(&self, ops: &[JournaledOp]) {
+    fn journal_write(&self, ops: &[BulkOp]) {
         let journal = Journal {
             version: JOURNAL_VERSION,
             ops: ops.to_vec(),
@@ -309,16 +248,62 @@ impl BulkRunner {
         }
     }
 
-    fn journal_add(&self, op: &JournaledOp) {
+    fn journal_add(&self, op: &BulkOp) {
         let mut ops = self.journal_read();
         ops.push(op.clone());
         self.journal_write(&ops);
     }
 
-    fn journal_remove(&self, op: &JournaledOp) {
+    fn journal_remove(&self, op: &BulkOp) {
         let mut ops = self.journal_read();
         ops.retain(|o| o != op);
         self.journal_write(&ops);
+    }
+}
+
+async fn fetch_rel_paths(db: &SqlitePool, op: &BulkOp) -> Result<Vec<String>, String> {
+    let source_id = &op.source_id;
+    match &op.action {
+        BulkAction::SetViewField { doc_ids, .. } => fetch_paths_by_id(db, source_id, doc_ids).await,
+        BulkAction::RenameViewField {
+            view_slug,
+            old_name,
+            ..
+        } => fetch_paths_with_field(db, source_id, &json_path(view_slug, old_name)).await,
+        BulkAction::RemoveViewField {
+            view_slug,
+            field_name,
+        } => fetch_paths_with_field(db, source_id, &json_path(view_slug, field_name)).await,
+        BulkAction::RenameViewOption {
+            view_slug,
+            field_name,
+            old_value,
+            ..
+        } => {
+            // candidates = the old value or an array contains it
+            let rows: Vec<(String,)> = sqlx::query_as(
+                "SELECT rel_path FROM documents
+                 WHERE source_id = ?1 AND deleted_at IS NULL
+                   AND (json_extract(properties, ?2) = ?3
+                        OR EXISTS (SELECT 1 FROM json_each(properties, ?2) WHERE value = ?3))",
+            )
+            .bind(source_id)
+            .bind(json_path(view_slug, field_name))
+            .bind(old_value)
+            .fetch_all(db)
+            .await
+            .map_err(|e| e.to_string())?;
+            Ok(rows.into_iter().map(|(p,)| p).collect())
+        }
+        BulkAction::RenameView { old_slug, .. } => {
+            fetch_paths_with_field(db, source_id, &json_view_path(old_slug)).await
+        }
+        BulkAction::RenameTag { old_slug, .. } => {
+            fetch_paths_with_tag(db, source_id, &tag_group_id(old_slug)).await
+        }
+        BulkAction::RemoveTag { slug } => {
+            fetch_paths_with_tag(db, source_id, &tag_group_id(slug)).await
+        }
     }
 }
 
@@ -326,47 +311,47 @@ async fn execute(
     db: &SqlitePool,
     app: &AppHandle,
     source_path: &Path,
-    op: &JournaledOp,
+    op: &BulkOp,
 ) -> Result<BulkResult, String> {
-    match op {
-        JournaledOp::SetViewField {
-            source_id,
+    let source_id = &op.source_id;
+    let rel_paths = op.rel_paths.clone().unwrap_or_default();
+    match &op.action {
+        BulkAction::SetViewField {
             view_slug,
             field_name,
             value,
             doc_ids,
         } => {
-            let path = json_path(view_slug, field_name);
-            let placeholders = doc_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            let sql = format!(
-                "UPDATE documents SET properties = json_set(properties, ?, json(?))
-                 WHERE source_id = ? AND id IN ({placeholders})"
-            );
-            let mut q = sqlx::query(AssertSqlSafe(sql))
-                .bind(&path)
-                .bind(serde_json::to_string(value).map_err(|e| e.to_string())?)
-                .bind(source_id);
-            for id in doc_ids {
-                q = q.bind(id);
+            if !doc_ids.is_empty() {
+                let path = json_path(view_slug, field_name);
+                let placeholders = doc_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                let sql = format!(
+                    "UPDATE documents SET properties = json_set(properties, ?, json(?))
+                     WHERE source_id = ? AND id IN ({placeholders})"
+                );
+                let mut q = sqlx::query(AssertSqlSafe(sql))
+                    .bind(&path)
+                    .bind(serde_json::to_string(value).map_err(|e| e.to_string())?)
+                    .bind(source_id);
+                for id in doc_ids {
+                    q = q.bind(id);
+                }
+                q.execute(db).await.map_err(|e| e.to_string())?;
             }
-            q.execute(db).await.map_err(|e| e.to_string())?;
 
-            let rel_paths = fetch_paths_by_id(db, source_id, doc_ids).await?;
             let (slug, field, value) = (view_slug.clone(), field_name.clone(), value.clone());
             write_files(app, source_path, rel_paths, move |fm| {
                 frontmatter::set_view_field(fm, &slug, &field, value.clone());
             })
             .await
         }
-        JournaledOp::RenameViewField {
-            source_id,
+        BulkAction::RenameViewField {
             view_slug,
             old_name,
             new_name,
         } => {
             let old_path = json_path(view_slug, old_name);
             let new_path = json_path(view_slug, new_name);
-            let rel_paths = fetch_paths_with_field(db, source_id, &old_path).await?;
             sqlx::query(
                 "UPDATE documents
                  SET properties = json_remove(json_set(properties, ?1, json_extract(properties, ?2)), ?2)
@@ -385,13 +370,11 @@ async fn execute(
             })
             .await
         }
-        JournaledOp::RemoveViewField {
-            source_id,
+        BulkAction::RemoveViewField {
             view_slug,
             field_name,
         } => {
             let path = json_path(view_slug, field_name);
-            let rel_paths = fetch_paths_with_field(db, source_id, &path).await?;
             sqlx::query(
                 "UPDATE documents
                  SET properties = json_remove(properties, ?1)
@@ -409,29 +392,13 @@ async fn execute(
             })
             .await
         }
-        JournaledOp::RenameViewOption {
-            source_id,
+        BulkAction::RenameViewOption {
             view_slug,
             field_name,
             old_value,
             new_value,
         } => {
             let path = json_path(view_slug, field_name);
-            // candidates = the scalar equals the old value or an array contains it
-            let rows: Vec<(String, String)> = sqlx::query_as(
-                "SELECT id, rel_path FROM documents
-                 WHERE source_id = ?1 AND deleted_at IS NULL
-                   AND (json_extract(properties, ?2) = ?3
-                        OR EXISTS (SELECT 1 FROM json_each(properties, ?2) WHERE value = ?3))",
-            )
-            .bind(source_id)
-            .bind(&path)
-            .bind(old_value)
-            .fetch_all(db)
-            .await
-            .map_err(|e| e.to_string())?;
-
-            let rel_paths: Vec<String> = rows.iter().map(|(_, p)| p.clone()).collect();
             sqlx::query(
                 "UPDATE documents
                  SET properties = json_set(properties, ?1, ?2)
@@ -456,14 +423,9 @@ async fn execute(
             })
             .await
         }
-        JournaledOp::RenameView {
-            source_id,
-            old_slug,
-            new_slug,
-        } => {
+        BulkAction::RenameView { old_slug, new_slug } => {
             let old_path = json_view_path(old_slug);
             let new_path = json_view_path(new_slug);
-            let rel_paths = fetch_paths_with_field(db, source_id, &old_path).await?;
             sqlx::query(
                 "UPDATE documents
                  SET properties = json_remove(json_set(properties, ?1, json_extract(properties, ?2)), ?2)
@@ -479,6 +441,86 @@ async fn execute(
             let (from, to) = (old_slug.clone(), new_slug.clone());
             write_files(app, source_path, rel_paths, move |fm| {
                 frontmatter::rename_view(fm, &from, &to);
+            })
+            .await
+        }
+        BulkAction::RenameTag { old_slug, new_slug } => {
+            let old_id = tag_group_id(old_slug);
+            let new_id = tag_group_id(new_slug);
+            sqlx::query(
+                "INSERT OR IGNORE INTO groups (id, slug, group_type)
+                 SELECT ?1, ?2, 'tag'
+                 WHERE EXISTS (SELECT 1 FROM document_groups dg
+                                        JOIN documents d ON d.id = dg.document_id
+                               WHERE dg.group_id = ?3 AND d.source_id = ?4)",
+            )
+            .bind(&new_id)
+            .bind(new_slug)
+            .bind(&old_id)
+            .bind(source_id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+            sqlx::query(
+                "UPDATE OR IGNORE document_groups SET group_id = ?1
+                 WHERE group_id = ?2
+                   AND document_id IN (SELECT id FROM documents WHERE source_id = ?3)",
+            )
+            .bind(&new_id)
+            .bind(&old_id)
+            .bind(source_id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+            sqlx::query(
+                "DELETE FROM document_groups
+                 WHERE group_id = ?1
+                   AND document_id IN (SELECT id FROM documents WHERE source_id = ?2)",
+            )
+            .bind(&old_id)
+            .bind(source_id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+            sqlx::query(
+                "DELETE FROM groups
+                 WHERE id = ?1 AND id NOT IN (SELECT group_id FROM document_groups)",
+            )
+            .bind(&old_id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let (from, to) = (old_slug.clone(), new_slug.clone());
+            write_files(app, source_path, rel_paths, move |fm| {
+                frontmatter::rename_tag(fm, &from, &to);
+            })
+            .await
+        }
+        BulkAction::RemoveTag { slug } => {
+            let id = tag_group_id(slug);
+            sqlx::query(
+                "DELETE FROM document_groups
+                 WHERE group_id = ?1
+                   AND document_id IN (SELECT id FROM documents WHERE source_id = ?2)",
+            )
+            .bind(&id)
+            .bind(source_id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+            sqlx::query(
+                "DELETE FROM groups
+                 WHERE id = ?1 AND id NOT IN (SELECT group_id FROM document_groups)",
+            )
+            .bind(&id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let slug = slug.clone();
+            write_files(app, source_path, rel_paths, move |fm| {
+                frontmatter::remove_tag(fm, &slug);
             })
             .await
         }
@@ -578,12 +620,40 @@ async fn fetch_paths_by_id(
     Ok(rows.into_iter().map(|(p,)| p).collect())
 }
 
+async fn fetch_paths_with_tag(
+    db: &SqlitePool,
+    source_id: &str,
+    group_id: &str,
+) -> Result<Vec<String>, String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT d.rel_path FROM documents d
+                  JOIN document_groups dg ON dg.document_id = d.id
+         WHERE d.source_id = ? AND d.deleted_at IS NULL AND dg.group_id = ?",
+    )
+    .bind(source_id)
+    .bind(group_id)
+    .fetch_all(db)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
+}
+
 fn json_path(view_slug: &str, field: &str) -> String {
     format!("$.views.\"{view_slug}\".\"{field}\"")
 }
 
 fn json_view_path(view_slug: &str) -> String {
     format!("$.views.\"{view_slug}\"")
+}
+
+fn validate_tag(s: &str) -> Result<(), String> {
+    if s.trim().is_empty() {
+        return Err("tag is empty".into());
+    }
+    if s.chars().any(|c| c.is_control()) {
+        return Err(format!("tag has unsafe characters: {s}"));
+    }
+    Ok(())
 }
 
 fn validate_ident(s: &str, what: &str) -> Result<(), String> {
