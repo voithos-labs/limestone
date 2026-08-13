@@ -153,6 +153,15 @@ pub fn rename_view_option(fm: &mut Value, slug: &str, field: &str, from: &str, t
                     *item = Value::String(to.to_string());
                 }
             }
+            let mut seen: Vec<Value> = Vec::with_capacity(arr.len());
+            arr.retain(|v| {
+                if seen.contains(v) {
+                    false
+                } else {
+                    seen.push(v.clone());
+                    true
+                }
+            });
         }
         _ => {}
     }
@@ -175,6 +184,40 @@ pub fn remove_view_field(fm: &mut Value, slug: &str, field: &str) {
     }
     if views.is_empty() {
         root.remove("views");
+    }
+}
+
+pub fn rename_tag(fm: &mut Value, from: &str, to: &str) {
+    let Some(arr) = fm
+        .as_object_mut()
+        .and_then(|r| r.get_mut("tags"))
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    let mut out: Vec<Value> = Vec::with_capacity(arr.len());
+    for item in arr.iter() {
+        let next = match item.as_str() {
+            Some(s) if s == from => Value::String(to.to_string()),
+            _ => item.clone(),
+        };
+        if !out.contains(&next) {
+            out.push(next);
+        }
+    }
+    *arr = out;
+}
+
+pub fn remove_tag(fm: &mut Value, slug: &str) {
+    let Some(root) = fm.as_object_mut() else {
+        return;
+    };
+    let Some(arr) = root.get_mut("tags").and_then(Value::as_array_mut) else {
+        return;
+    };
+    arr.retain(|v| v.as_str() != Some(slug));
+    if arr.is_empty() {
+        root.remove("tags");
     }
 }
 

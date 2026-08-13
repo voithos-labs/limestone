@@ -754,11 +754,15 @@ export async function isViewSaved(id: string): Promise<boolean> {
 	return (await listSavedViewJSON()).some((v) => v.id === id);
 }
 
-export async function remapFolderIdsInSavedViews(oldId: string, newId: string): Promise<void> {
+export async function remapIdsInSavedViews(
+	oldId: string,
+	newId: string,
+	subpaths = false
+): Promise<void> {
 	const remap = (v: unknown): unknown => {
 		if (typeof v === 'string') {
 			if (v === oldId) return newId;
-			if (v.startsWith(oldId + '/')) return newId + v.slice(oldId.length);
+			if (subpaths && v.startsWith(oldId + '/')) return newId + v.slice(oldId.length);
 			return v;
 		}
 		if (Array.isArray(v)) return v.map(remap);
@@ -1105,19 +1109,8 @@ class View {
 		const oldSlug = this.slug;
 		if (!isValidName(newSlug) || newSlug === oldSlug) return;
 		if (await isViewSlugTaken(newSlug, this.id)) return;
-		const sources = await listSources();
-		const results: BulkResult[] = [];
-		for (const s of sources) {
-			results.push(
-				await invoke<BulkResult>('bulk_rename_view', {
-					sourceId: s.id,
-					oldSlug,
-					newSlug
-				})
-			);
-		}
+		await bulkPerSource('bulk_rename_view', { oldSlug, newSlug });
 		this.slug = newSlug;
-		toastBulkFailures(results);
 	}
 
 	/** Rename a stateful field, moving its stored values to the new key, then update the model */
@@ -1125,37 +1118,17 @@ class View {
 		const oldName = field.name;
 		if (!isValidName(newName) || newName === oldName) return;
 		this.fields = this.fields.map((f) => (f.id === field.id ? { ...f, name: newName } : f));
-		const sources = await listSources();
-		const results: BulkResult[] = [];
-		for (const s of sources) {
-			results.push(
-				await invoke<BulkResult>('bulk_rename_view_field', {
-					sourceId: s.id,
-					viewSlug: this.slug,
-					oldName,
-					newName
-				})
-			);
-		}
-		toastBulkFailures(results);
+		await bulkPerSource('bulk_rename_view_field', { viewSlug: this.slug, oldName, newName });
 	}
 
 	/** Rename a select/multiselect option value across all stored documents */
 	async renameOption(field: ViewField, oldValue: string, newValue: string): Promise<void> {
-		const sources = await listSources();
-		const results: BulkResult[] = [];
-		for (const s of sources) {
-			results.push(
-				await invoke<BulkResult>('bulk_rename_view_option', {
-					sourceId: s.id,
-					viewSlug: this.slug,
-					fieldName: field.name,
-					oldValue,
-					newValue
-				})
-			);
-		}
-		toastBulkFailures(results);
+		await bulkPerSource('bulk_rename_view_option', {
+			viewSlug: this.slug,
+			fieldName: field.name,
+			oldValue,
+			newValue
+		});
 	}
 
 	/** Write a stateful field value onto the given documents in a source */
@@ -1210,15 +1183,30 @@ export function describeBulkFailure(r: BulkResult): string {
 	}
 }
 
+export async function bulkPerSource(
+	cmd: string,
+	args: Record<string, unknown>,
+	opts: { frontmatterOnly?: boolean; silent?: boolean } = {}
+): Promise<{ source: Source; result: BulkResult }[]> {
+	const sources = (await listSources()).filter((s) => !opts.frontmatterOnly || s.use_frontmatter);
+	const results: { source: Source; result: BulkResult }[] = [];
+	for (const s of sources) {
+		results.push({ source: s, result: await invoke<BulkResult>(cmd, { sourceId: s.id, ...args }) });
+	}
+	if (!opts.silent) toastBulkFailures(results.map((r) => r.result));
+	return results;
+}
+
 export function toastBulkFailures(results: BulkResult[]): void {
-	const failures = results.flatMap((r) => r.failures);
-	if (failures.length === 0) return;
+	const failed = results.reduce((n, r) => n + r.failed, 0);
+	const source_unreachable = results.some((r) => r.source_unreachable);
+	if (failed === 0 && !source_unreachable) return;
 	toasts.push(
 		describeBulkFailure({
 			touched: results.reduce((n, r) => n + r.touched, 0),
-			failed: failures.length,
-			failures,
-			source_unreachable: results.some((r) => r.source_unreachable)
+			failed,
+			failures: results.flatMap((r) => r.failures),
+			source_unreachable
 		})
 	);
 }

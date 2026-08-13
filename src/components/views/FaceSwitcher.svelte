@@ -983,6 +983,7 @@
 	.dot {
 		width: 5px;
 		height: 5px;
+		flex-shrink: 0;
 		border-radius: 50%;
 		background: var(--color-accent);
 	}

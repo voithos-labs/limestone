@@ -22,7 +22,10 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { select, execute } from '$lib/services/db';
-import { remapFolderIdsInSavedViews } from '$lib/models/View.svelte';
+import { bulkPerSource, remapIdsInSavedViews, type BulkResult } from '$lib/models/View.svelte';
+import { sourceName, type Source } from '$lib/models/Source';
+import { toasts } from '$lib/toasts.svelte';
+import { flushAll } from '$lib/util/flush';
 
 function folderGroupId(sourceId: string, path: string): string {
 	return `folder:${sourceId}:${path}`;
@@ -100,20 +103,6 @@ class Group {
 		);
 	}
 
-	async updateSlug(newSlug: string): Promise<void> {
-		//todo: this has to actually find and replace all slugs in documents too
-		const now = Date.now();
-		await execute(
-			`UPDATE groups
-             SET slug = ?1,
-                 updated_at = ?3
-             WHERE id = ?2`,
-			[newSlug, this.id, now]
-		);
-		(this as { slug: string }).slug = newSlug;
-		this.updatedAt = new Date(now);
-	}
-
 	static async fromSlugs(slugs: string[]): Promise<Group[]> {
 		if (slugs.length === 0) return [];
 		const placeholders = slugs.map((_, i) => `?${i + 1}`).join(', ');
@@ -122,6 +111,45 @@ class Group {
 			slugs
 		);
 		return rows.map((r) => new Group(r));
+	}
+
+	// ── TAGS ────────────────────────────────────────────────────────────────────────────
+
+	private static toastSkippedSources(
+		results: { source: Source; result: BulkResult }[],
+		action: string
+	) {
+		for (const { source, result } of results) {
+			if (result.source_unreachable) {
+				toasts.push(
+					`The ${sourceName(source)} source folder is not present, associated notes have not had their tags ${action}.`
+				);
+			}
+		}
+	}
+
+	static async renameTag(tag: Group, newSlug: string): Promise<string> {
+		const newId = `tag:${newSlug}`;
+		if (newId === tag.id) return newId;
+		await flushAll();
+		const results = await bulkPerSource(
+			'bulk_rename_tag',
+			{ oldSlug: tag.slug, newSlug },
+			{ frontmatterOnly: true, silent: true }
+		);
+		Group.toastSkippedSources(results, 'renamed');
+		await remapIdsInSavedViews(tag.id, newId);
+		return newId;
+	}
+
+	static async deleteTag(tag: Group): Promise<void> {
+		await flushAll();
+		const results = await bulkPerSource(
+			'bulk_remove_tag',
+			{ slug: tag.slug },
+			{ frontmatterOnly: true, silent: true }
+		);
+		Group.toastSkippedSources(results, 'removed');
 	}
 
 	// ── FOLDERS ─────────────────────────────────────────────────────────────────────────
@@ -177,7 +205,7 @@ class Group {
 	static async moveFolder(sourceId: string, oldPath: string, newPath: string): Promise<string> {
 		await invoke('move_folder', { sourceId, oldRelDir: oldPath, newRelDir: newPath });
 		const newId = folderGroupId(sourceId, newPath);
-		await remapFolderIdsInSavedViews(folderGroupId(sourceId, oldPath), newId);
+		await remapIdsInSavedViews(folderGroupId(sourceId, oldPath), newId, true);
 		const moved = await Group.fromID(newId);
 		await moved.touch();
 		return newId;

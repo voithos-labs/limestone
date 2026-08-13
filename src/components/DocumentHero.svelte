@@ -8,6 +8,7 @@
 	import { isValidSegment } from '$lib/util/paths';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import Menu from './views/Menu.svelte';
+	import TagMenu from './views/TagMenu.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
 	import DocProperties from './views/DocProperties.svelte';
 	import {
@@ -53,29 +54,20 @@
 	let tagMenuOpen = $state(false);
 	let tagAnchor: HTMLElement | null = $state(null);
 
-	const tagItems = $derived(
-		allGroups
-			.filter((g) => g.groupType === GroupType.Tag)
-			.map((g) => ({ value: g.id, label: g.slug, icon: Hash }))
-	);
-
 	async function createTag(q: string) {
 		const slug = q.trim();
 		if (!slug || tagList.some((t) => t.slug === slug)) return;
 		try {
 			await handle.setTags([...tagList.map((t) => t.slug), slug]);
 			tagList = handle.tags;
-			allGroups = await Group.list();
 		} catch (e) {
 			console.error('create tag failed', e);
 		}
 	}
 
-	async function toggleTag(id: string) {
-		const has = tagList.some((t) => t.id === id);
-		const next = has
-			? tagList.filter((t) => t.id !== id)
-			: [...tagList, allGroups.find((g) => g.id === id)!].filter(Boolean);
+	async function toggleTag(tag: Group) {
+		const has = tagList.some((t) => t.id === tag.id);
+		const next = has ? tagList.filter((t) => t.id !== tag.id) : [...tagList, tag];
 		tagList = next;
 		try {
 			await handle.setTags(next.map((t) => t.slug));
@@ -83,6 +75,15 @@
 		} catch (e) {
 			console.error('set tags failed', e);
 			tagList = handle.tags;
+		}
+	}
+
+	async function tagsMutated() {
+		try {
+			await handle.fetchGroups();
+			tagList = handle.tags;
+		} catch (e) {
+			console.error('refresh tags failed', e);
 		}
 	}
 
@@ -374,17 +375,13 @@
 	manage
 	onChange={onPickFolder}
 />
-<Menu
+<TagMenu
 	bind:open={tagMenuOpen}
 	anchor={tagAnchor}
-	items={tagItems}
-	multiple
-	selectedValues={tagList.map((t) => t.id)}
-	onSelect={toggleTag}
+	selectedIds={tagList.map((t) => t.id)}
+	onToggle={toggleTag}
 	onCreate={createTag}
-	searchable
-	placeholder="Search or create…"
-	minWidth={180}
+	onMutated={tagsMutated}
 />
 
 <style>

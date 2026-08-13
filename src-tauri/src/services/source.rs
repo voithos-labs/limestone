@@ -701,7 +701,7 @@ pub async fn apply_plan(
 }
 
 /// Ensure folder groups exist for a document's path and link the document to all ancestors
-fn tag_group_id(slug: &str) -> String {
+pub(crate) fn tag_group_id(slug: &str) -> String {
     format!("tag:{slug}")
 }
 

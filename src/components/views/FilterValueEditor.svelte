@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
 	import type { ViewField } from '$lib/models/View.svelte';
-	import Group, { GroupType } from '$lib/models/Group';
 	import { SquareCheck, Square } from '@lucide/svelte';
 	import Menu from './Menu.svelte';
+	import TagMenu from './TagMenu.svelte';
 	import InputPopover from './InputPopover.svelte';
 	import FolderValueEditor from './FolderValueEditor.svelte';
 	import DateValueEditor from './DateValueEditor.svelte';
@@ -41,24 +41,6 @@
 		else arr.push(v);
 		onChange(arr);
 	}
-
-	let tagItems: MenuItem[] = $state([]);
-	let tagsLoaded = false;
-
-	$effect(() => {
-		if (!open) return;
-		if (field.type === 'tags' && !tagsLoaded) {
-			tagsLoaded = true;
-			Group.list()
-				.then(
-					(gs) =>
-						(tagItems = gs
-							.filter((g) => g.groupType === GroupType.Tag)
-							.map((g) => ({ value: g.id, label: g.slug })))
-				)
-				.catch(() => {});
-		}
-	});
 
 	const optionItems: MenuItem[] = $derived.by(() => {
 		const opts = (field.config?.options ?? []) as Array<{ value: string; label?: string }>;
@@ -148,15 +130,11 @@
 		searchable={optionItems.length > 7}
 	/>
 {:else if field.type === 'tags'}
-	<Menu
+	<TagMenu
 		bind:open
 		{anchor}
-		items={tagItems}
-		multiple
-		selectedValues={Array.isArray(value) ? (value as string[]) : []}
-		onSelect={toggleTag}
-		searchable
-		placeholder="Search tags…"
+		selectedIds={Array.isArray(value) ? (value as string[]) : []}
+		onToggle={(t) => toggleTag(t.id)}
 	/>
 {:else if field.type === 'folder'}
 	<FolderValueEditor

@@ -76,6 +76,8 @@
 	let view: EditorView;
 	let internalUpdate = false;
 	let initApplied = false;
+	let externalApply = false;
+	let docGen = 0;
 
 	let content: string = $state('');
 	let loaded = $state(false);
@@ -93,11 +95,16 @@
 	$effect(() => {
 		const h = handle;
 		if (!h) return;
-		return onDocChanged(h, () => {
-			if (saveTimer) return;
-			h.loadContent().then((c) => {
-				content = c;
-			});
+		return onDocChanged(h, async () => {
+			if (saveTimer || savePromise) return;
+			const gen = docGen;
+			const c = await h.loadContent();
+			if (saveTimer || savePromise || gen !== docGen || !view) return;
+			const current = view.state.doc.toString();
+			if (c === current) return;
+			externalApply = true;
+			view.dispatch({ changes: { from: 0, to: current.length, insert: c } });
+			externalApply = false;
 		});
 	});
 
@@ -407,12 +414,22 @@
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	const SAVE_DEBOUNCE_MS = 250;
 
+	let savePromise: Promise<void> | null = null;
+
 	function flushSave() {
 		if (saveTimer) {
 			clearTimeout(saveTimer);
 			saveTimer = null;
 		}
-		return handle?.saveContent(content).catch((e) => console.error('saveContent failed', e));
+		if (!handle) return;
+		const p = handle
+			.saveContent(content)
+			.catch((e) => console.error('saveContent failed', e))
+			.finally(() => {
+				if (savePromise === p) savePromise = null;
+			});
+		savePromise = p;
+		return p;
 	}
 
 	const unregisterFlush = registerFlush(() => {
@@ -427,11 +444,12 @@
 	onMount(() => {
 		const updateListener = EditorView.updateListener.of((update) => {
 			if (update.docChanged) {
+				docGen++;
 				internalUpdate = true;
 				content = update.state.doc.toString();
 				onchange?.(content);
 				internalUpdate = false;
-				if (initApplied) scheduleSave();
+				if (initApplied && !externalApply) scheduleSave();
 			}
 			if (update.selectionSet && initApplied) {
 				tab.state.cursorPos = update.state.selection.main.head;

@@ -271,6 +271,8 @@ pub fn run() {
             commands::bulk_ops_commands::bulk_rename_view,
             commands::bulk_ops_commands::bulk_rename_view_option,
             commands::bulk_ops_commands::bulk_remove_view_field,
+            commands::bulk_ops_commands::bulk_rename_tag,
+            commands::bulk_ops_commands::bulk_remove_tag,
             commands::db_commands::sql_select,
             commands::db_commands::sql_execute,
             commands::asset_commands::import_global_asset,
