@@ -40,6 +40,8 @@
 	} = $props();
 
 	let title = $state(untrack(() => handle.title));
+	const wasDraft = untrack(() => handle.isDraft);
+	const draftTitle = untrack(() => handle.title);
 	let relPath = $state(untrack(() => handle.relPath));
 	let source = $state<Source>(untrack(() => handle.source));
 	let allGroups: Group[] = $state([]);
@@ -199,6 +201,15 @@
 
 	$effect(() => {
 		if (!menuOpen) confirmingDelete = false;
+	});
+
+	$effect(() => {
+		if (folderOpen || tagMenuOpen) return;
+		if (!wasDraft || handle.title !== draftTitle) return;
+		const active = document.activeElement;
+		if (active && active !== document.body && active !== pickAnchor && active !== tagAnchor) return;
+		titleInput?.focus();
+		titleInput?.select();
 	});
 
 	const menuItems: MenuEntry[] = $derived([
