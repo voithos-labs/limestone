@@ -19,7 +19,11 @@ Currently, the editor library is not on the npm registry. Thus we have to do a b
 ```bash
 git clone https://github.com/voithos-labs/aragonite.git ../aragonite
 cd ../aragonite
-npm i && npm run package
+git switch dev
+git fetch
+git pull
+npm i
+npm run package
 cd ../limestone
 npm i
 ```
