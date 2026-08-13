@@ -9,7 +9,6 @@
 	} from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import View from '$lib/models/View.svelte';
-	import { listen } from '@tauri-apps/api/event';
 	import { openPath } from '@tauri-apps/plugin-opener';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import ClockHero from '../ClockHero.svelte';
@@ -237,13 +236,8 @@
 
 	onMount(() => {
 		loadRecents();
-		const unlisten = listen('source-reconciled', () => {
-			loadRecents();
-			docsKey++;
-		});
 		window.addEventListener('resize', updatePinnedFade);
 		return () => {
-			unlisten.then((fn) => fn());
 			window.removeEventListener('resize', updatePinnedFade);
 		};
 	});
