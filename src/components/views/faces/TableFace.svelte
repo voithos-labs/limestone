@@ -44,6 +44,7 @@
 	import { select } from '$lib/services/db';
 	import { searchDocuments } from '$lib/services/search';
 	import Menu from '../Menu.svelte';
+	import TagMenu from '../TagMenu.svelte';
 	import IconAddColumnRight from '~icons/material-symbols/add-column-right';
 	import {
 		Plus,
@@ -57,7 +58,6 @@
 		Folder,
 		Notebook,
 		Ellipsis,
-		Hash,
 		X
 	} from '@lucide/svelte';
 	import {
@@ -329,7 +329,6 @@
 		Group.list()
 			.then((gs) => {
 				folders = gs.filter((g) => g.groupType === GroupType.Folder);
-				tagGroups = gs.filter((g) => g.groupType === GroupType.Tag);
 			})
 			.catch(() => {});
 		listSources()
@@ -893,13 +892,10 @@
 	}
 
 	// ── Tags (built-in field, edited like the doc header's tag menu) ────────────
-	let tagGroups: Group[] = $state([]);
 	let rowTags: Record<string, { id: string; slug: string }[]> = $state({});
 	let tagMenuOpen = $state(false);
 	let tagMenuAnchor: HTMLElement | null = $state(null);
 	let tagEditRowId: string | null = $state(null);
-
-	const tagItems = $derived(tagGroups.map((g) => ({ value: g.id, label: g.slug, icon: Hash })));
 
 	// The open menu edits this snapshot, NOT rowTags: a tag edit can drop the row out
 	// of the view (removing the tag a tag-scoped view filters on), and load() then
@@ -957,7 +953,6 @@
 			const tags = doc.tags.map((t) => ({ id: t.id, slug: t.slug }));
 			rowTags = { ...rowTags, [rowId]: tags };
 			if (tagEditRowId === rowId) tagDraft = tags;
-			tagGroups = (await Group.list()).filter((g) => g.groupType === GroupType.Tag);
 			const fid = view.fields.find((f) => f.type === 'tags')?.id;
 			if (fid && fieldAffectsView(fid)) load(true);
 		} catch (e) {
@@ -967,17 +962,14 @@
 		}
 	}
 
-	function toggleRowTag(groupId: string) {
+	function toggleRowTag(tag: Group) {
 		const rowId = tagEditRowId;
 		if (!rowId) return;
 		const cur = tagDraft;
-		const has = cur.some((t) => t.id === groupId);
-		const g = tagGroups.find((t) => t.id === groupId);
+		const has = cur.some((t) => t.id === tag.id);
 		const next = has
-			? cur.filter((t) => t.id !== groupId)
-			: g
-				? [...cur, { id: g.id, slug: g.slug }]
-				: cur;
+			? cur.filter((t) => t.id !== tag.id)
+			: [...cur, { id: tag.id, slug: tag.slug }];
 		tagDraft = next;
 		rowTags = { ...rowTags, [rowId]: next };
 		applyRowTags(
@@ -993,6 +985,13 @@
 		const cur = tagDraft;
 		if (cur.some((t) => t.slug === slug)) return;
 		applyRowTags(rowId, [...cur.map((t) => t.slug), slug]);
+	}
+
+	async function onTagsMutated() {
+		await loadRowTags(rows);
+		if (tagEditRowId) tagDraft = [...(rowTags[tagEditRowId] ?? [])];
+		const fid = view.fields.find((f) => f.type === 'tags')?.id;
+		if (fid && fieldAffectsView(fid)) load(true);
 	}
 
 	const editingField = $derived(
@@ -2049,17 +2048,13 @@
 	minWidth={150}
 />
 
-<Menu
+<TagMenu
 	bind:open={tagMenuOpen}
 	anchor={tagMenuAnchor}
-	items={tagItems}
-	multiple
-	selectedValues={tagSelectedIds}
-	onSelect={toggleRowTag}
+	selectedIds={tagSelectedIds}
+	onToggle={toggleRowTag}
 	onCreate={createRowTag}
-	searchable
-	placeholder="Search or create…"
-	minWidth={180}
+	onMutated={onTagsMutated}
 />
 
 <Menu
