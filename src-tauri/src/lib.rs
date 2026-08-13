@@ -14,8 +14,10 @@ const SCHEMA_VERSION: i64 = 1;
 pub async fn create_pool(
     path: &std::path::Path,
 ) -> Result<SqlitePool, Box<dyn std::error::Error + Send + Sync>> {
-    let url = format!("sqlite:{}?mode=rwc", path.display());
-    let pool = SqlitePool::connect(&url).await?;
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(true);
+    let pool = SqlitePool::connect_with(options).await?;
     let version: i64 = sqlx::query_scalar("PRAGMA user_version")
         .fetch_one(&pool)
         .await?;
