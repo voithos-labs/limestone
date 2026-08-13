@@ -22,6 +22,11 @@ struct FsChanged<'a> {
     rel_paths: &'a [String],
 }
 
+#[derive(Clone, serde::Serialize)]
+struct WatchLost<'a> {
+    source_id: &'a str,
+}
+
 fn watch(
     app: AppHandle,
     source_id: String,
@@ -31,7 +36,18 @@ fn watch(
     let mut debouncer = new_debouncer(
         Duration::from_millis(250),
         move |res: DebounceEventResult| {
-            let Ok(events) = res else { return };
+            let events = match res {
+                Ok(events) => events,
+                Err(_) => {
+                    let _ = app.emit(
+                        "watch-lost",
+                        WatchLost {
+                            source_id: &source_id,
+                        },
+                    );
+                    return;
+                }
+            };
             let mut rel_paths: Vec<String> = events
                 .iter()
                 .filter_map(|e| e.path.strip_prefix(&handler_root).ok())

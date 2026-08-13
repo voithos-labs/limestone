@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export interface Source {
 	id: string;
@@ -112,6 +113,10 @@ export async function reconcileSource(id: string): Promise<void> {
 	await invoke('reconcile_source', { id });
 }
 
+export async function checkSources(): Promise<[string, boolean][]> {
+	return await invoke<[string, boolean][]>('check_sources');
+}
+
 export async function syncWatchers(): Promise<void> {
 	const sources = await listSources();
 	await invoke('set_watched_paths', {
@@ -119,26 +124,74 @@ export async function syncWatchers(): Promise<void> {
 	});
 }
 
+async function rewatchSource(id: string): Promise<void> {
+	const sources = await listSources();
+	const targets = sources.map((s) => ({ id: s.id, path: s.path }));
+	await invoke('set_watched_paths', { targets: targets.filter((t) => t.id !== id) });
+	await invoke('set_watched_paths', { targets });
+}
+
 // in my testing this is long enough to not double-trigger with a git commit
 // lol
 const RECONCILE_DEBOUNCE_MS = 500;
+// on slow machines (e.g. laptop on low battery) this is needed to stop alt tab from giving annoying
+// cpu spike
+const FOCUS_DWELL_MS = 1000;
 const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-export async function startWatching(): Promise<UnlistenFn> {
-	const unlisten = await listen<FsChanged>('fs-changed', (e) => {
-		const id = e.payload.source_id;
-		clearTimeout(reconcileTimers.get(id));
-		reconcileTimers.set(
-			id,
-			setTimeout(() => {
-				reconcileTimers.delete(id);
-				void reconcileSource(id);
-			}, RECONCILE_DEBOUNCE_MS)
-		);
+export function requestReconcile(id: string): void {
+	clearTimeout(reconcileTimers.get(id));
+	reconcileTimers.set(
+		id,
+		setTimeout(() => {
+			reconcileTimers.delete(id);
+			void reconcileSource(id);
+		}, RECONCILE_DEBOUNCE_MS)
+	);
+}
+
+async function reconcileAll(): Promise<void> {
+	for (const s of await listSources()) requestReconcile(s.id);
+}
+
+export async function startWatching(missingSources: Set<string>): Promise<UnlistenFn> {
+	const unlistenFs = await listen<FsChanged>('fs-changed', (e) =>
+		requestReconcile(e.payload.source_id)
+	);
+	const unlistenLost = await listen<{ source_id: string }>('watch-lost', (e) =>
+		requestReconcile(e.payload.source_id)
+	);
+	const unlistenReconciled = await listen<{ source_id: string; unreachable: boolean }>(
+		'source-reconciled',
+		(e) => {
+			const { source_id, unreachable } = e.payload;
+			if (unreachable) {
+				missingSources.add(source_id);
+			} else if (missingSources.delete(source_id)) {
+				void rewatchSource(source_id);
+			}
+		}
+	);
+
+	let dwellTimer: ReturnType<typeof setTimeout> | undefined;
+	const unlistenFocus = await getCurrentWindow().onFocusChanged((e) => {
+		clearTimeout(dwellTimer);
+		if (!e.payload) return;
+		dwellTimer = setTimeout(() => void reconcileAll(), FOCUS_DWELL_MS);
 	});
+
 	await syncWatchers();
+	for (const [id, reachable] of await checkSources()) {
+		if (reachable) missingSources.delete(id);
+		else missingSources.add(id);
+	}
+
 	return () => {
-		unlisten();
+		unlistenFs();
+		unlistenLost();
+		unlistenReconciled();
+		unlistenFocus();
+		clearTimeout(dwellTimer);
 		for (const timer of reconcileTimers.values()) clearTimeout(timer);
 		reconcileTimers.clear();
 	};

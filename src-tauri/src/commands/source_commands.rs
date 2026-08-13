@@ -75,6 +75,7 @@ async fn run_reconcile(
         crate::Reconciled {
             source_id: &source_id,
             skipped,
+            unreachable: !source.path.is_dir(),
         },
     );
     if let Err(e) = services::index_fts(&pool, &source, changed).await {
@@ -178,6 +179,14 @@ pub fn create_source(
 #[tauri::command]
 pub fn get_sources(app: AppHandle) -> Vec<Source> {
     load_sources(&app)
+}
+
+#[tauri::command]
+pub fn check_sources(app: AppHandle) -> Vec<(String, bool)> {
+    load_sources(&app)
+        .into_iter()
+        .map(|s| (s.id.to_string(), s.path.is_dir()))
+        .collect()
 }
 
 #[tauri::command]
