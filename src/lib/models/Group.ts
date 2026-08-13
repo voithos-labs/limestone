@@ -22,7 +22,9 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { select, execute } from '$lib/services/db';
-import { bulkPerSource, remapIdsInSavedViews } from '$lib/models/View.svelte';
+import { bulkPerSource, remapIdsInSavedViews, type BulkResult } from '$lib/models/View.svelte';
+import { sourceName, type Source } from '$lib/models/Source';
+import { toasts } from '$lib/toasts.svelte';
 import { flushAll } from '$lib/util/flush';
 
 function folderGroupId(sourceId: string, path: string): string {
@@ -113,18 +115,41 @@ class Group {
 
 	// ── TAGS ────────────────────────────────────────────────────────────────────────────
 
+	private static toastSkippedSources(
+		results: { source: Source; result: BulkResult }[],
+		action: string
+	) {
+		for (const { source, result } of results) {
+			if (result.source_unreachable) {
+				toasts.push(
+					`The ${sourceName(source)} source folder is not present, associated notes have not had their tags ${action}.`
+				);
+			}
+		}
+	}
+
 	static async renameTag(tag: Group, newSlug: string): Promise<string> {
 		const newId = `tag:${newSlug}`;
 		if (newId === tag.id) return newId;
 		await flushAll();
-		await bulkPerSource('bulk_rename_tag', { oldSlug: tag.slug, newSlug }, { frontmatterOnly: true });
+		const results = await bulkPerSource(
+			'bulk_rename_tag',
+			{ oldSlug: tag.slug, newSlug },
+			{ frontmatterOnly: true, silent: true }
+		);
+		Group.toastSkippedSources(results, 'renamed');
 		await remapIdsInSavedViews(tag.id, newId);
 		return newId;
 	}
 
 	static async deleteTag(tag: Group): Promise<void> {
 		await flushAll();
-		await bulkPerSource('bulk_remove_tag', { slug: tag.slug }, { frontmatterOnly: true });
+		const results = await bulkPerSource(
+			'bulk_remove_tag',
+			{ slug: tag.slug },
+			{ frontmatterOnly: true, silent: true }
+		);
+		Group.toastSkippedSources(results, 'removed');
 	}
 
 	// ── FOLDERS ─────────────────────────────────────────────────────────────────────────

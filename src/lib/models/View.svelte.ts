@@ -1186,25 +1186,27 @@ export function describeBulkFailure(r: BulkResult): string {
 export async function bulkPerSource(
 	cmd: string,
 	args: Record<string, unknown>,
-	opts: { frontmatterOnly?: boolean } = {}
-): Promise<void> {
+	opts: { frontmatterOnly?: boolean; silent?: boolean } = {}
+): Promise<{ source: Source; result: BulkResult }[]> {
 	const sources = (await listSources()).filter((s) => !opts.frontmatterOnly || s.use_frontmatter);
-	const results: BulkResult[] = [];
+	const results: { source: Source; result: BulkResult }[] = [];
 	for (const s of sources) {
-		results.push(await invoke<BulkResult>(cmd, { sourceId: s.id, ...args }));
+		results.push({ source: s, result: await invoke<BulkResult>(cmd, { sourceId: s.id, ...args }) });
 	}
-	toastBulkFailures(results);
+	if (!opts.silent) toastBulkFailures(results.map((r) => r.result));
+	return results;
 }
 
 export function toastBulkFailures(results: BulkResult[]): void {
-	const failures = results.flatMap((r) => r.failures);
-	if (failures.length === 0) return;
+	const failed = results.reduce((n, r) => n + r.failed, 0);
+	const source_unreachable = results.some((r) => r.source_unreachable);
+	if (failed === 0 && !source_unreachable) return;
 	toasts.push(
 		describeBulkFailure({
 			touched: results.reduce((n, r) => n + r.touched, 0),
-			failed: failures.length,
-			failures,
-			source_unreachable: results.some((r) => r.source_unreachable)
+			failed,
+			failures: results.flatMap((r) => r.failures),
+			source_unreachable
 		})
 	);
 }

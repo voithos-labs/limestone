@@ -2,7 +2,6 @@
 	import { untrack } from 'svelte';
 	import { Hash, Search, Plus, Pencil, Trash2, ArrowLeft } from '@lucide/svelte';
 	import Group, { GroupType } from '$lib/models/Group';
-	import { toasts } from '$lib/toasts.svelte';
 
 	let {
 		open = $bindable(false),
@@ -118,7 +117,6 @@
 			onMutated?.();
 		} catch (e) {
 			console.error('rename tag failed', e);
-			toasts.push("The tag couldn't be renamed. Check that its documents are available, then retry.");
 		} finally {
 			busy = false;
 		}
@@ -140,7 +138,6 @@
 			onMutated?.();
 		} catch (e) {
 			console.error('delete tag failed', e);
-			toasts.push("The tag couldn't be deleted. Check that its documents are available, then retry.");
 		} finally {
 			busy = false;
 		}

@@ -199,7 +199,16 @@ impl BulkRunner {
     ) -> Result<BulkResult, String> {
         op.action.validate()?;
         let _guard = self.inner.lock.lock().await;
-        op.rel_paths = Some(fetch_rel_paths(db, &op).await?);
+        let rel_paths = fetch_rel_paths(db, &op).await?;
+        if !rel_paths.is_empty() && std::fs::metadata(source_path).is_err() {
+            return Ok(BulkResult {
+                touched: 0,
+                failed: rel_paths.len(),
+                failures: Vec::new(),
+                source_unreachable: true,
+            });
+        }
+        op.rel_paths = Some(rel_paths);
         self.journal_add(&op);
         let result = execute(db, app, source_path, &op).await;
         self.journal_remove(&op);
