@@ -24,6 +24,7 @@ export const SHORTCUT_CATEGORIES: ShortcutCategory[] = [
 ];
 
 const isMac = navigator.userAgent.includes('Mac');
+const isLinux = navigator.userAgent.includes('Linux');
 
 function matches(e: KeyboardEvent, spec: string): boolean {
 	const parts = spec.split('+');
@@ -103,7 +104,7 @@ export const actions: Action[] = [
 		id: 'tab.new',
 		title: 'New tab',
 		category: 'tabs',
-		defaultKeys: ['ctrl+space', 'mod+t'],
+		defaultKeys: isLinux ? ['mod+t'] : ['ctrl+space', 'mod+t'],
 		run: (session) => session.editors[0].openNewTab()
 	},
 	{
