@@ -251,6 +251,22 @@
 			</div>
 			<div class="search-row">
 				<QuickSearch {editor} />
+				<button
+					class="new-btn"
+					type="button"
+					title="New"
+					bind:this={newMenuAnchor}
+					onclick={() => (newMenuOpen = !newMenuOpen)}
+				>
+					<Plus size={18} strokeWidth={2} />
+				</button>
+				<Menu
+					bind:open={newMenuOpen}
+					anchor={newMenuAnchor}
+					items={newMenuItems}
+					onSelect={onNewMenuSelect}
+					minWidth={170}
+				/>
 			</div>
 			<SourceDialog
 				bind:open={sourceDialogOpen}
@@ -340,28 +356,10 @@
 			</section>
 		</div>
 	</div>
-
-	<button
-		class="new-fab"
-		type="button"
-		title="New"
-		bind:this={newMenuAnchor}
-		onclick={() => (newMenuOpen = !newMenuOpen)}
-	>
-		<Plus size={18} strokeWidth={2} />
-	</button>
-	<Menu
-		bind:open={newMenuOpen}
-		anchor={newMenuAnchor}
-		items={newMenuItems}
-		onSelect={onNewMenuSelect}
-		minWidth={170}
-	/>
 </div>
 
 <style>
 	.library-page {
-		position: relative;
 		height: 100%;
 		overflow: hidden;
 	}
@@ -389,28 +387,24 @@
 	.search-row {
 		display: flex;
 		align-items: center;
+		gap: 10px;
 	}
 
-	/* Bare "+" closing each chip row: no card around it, just the glyph in a square hitbox */
-	.new-fab {
-		position: absolute;
-		bottom: 24px;
-		right: calc(24px + max(0px, (100% - var(--page-max-width, 900px)) / 2));
-		z-index: 5;
+	.new-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 34px;
-		height: 34px;
+		width: 36px;
+		height: 36px;
+		flex-shrink: 0;
 		border: none;
 		border-radius: 10px;
 		background: var(--color-accent);
 		color: var(--color-accent-contrast);
 		cursor: pointer;
-		box-shadow: var(--menu-shadow);
 	}
 
-	.new-fab:hover {
+	.new-btn:hover {
 		filter: brightness(1.08);
 	}
 

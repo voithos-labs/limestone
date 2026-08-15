@@ -571,7 +571,7 @@
 		flex: 1;
 		min-width: 0;
 		line-height: 1.5;
-		transform: translateY(-1px);
+		transform: translateY(1px);
 		user-select: none;
 	}
 
@@ -589,7 +589,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
-		padding-right: 6px;
+		padding-right: 2px;
 		border-radius: 0 6px 6px 0;
 		background: transparent;
 		pointer-events: none;
