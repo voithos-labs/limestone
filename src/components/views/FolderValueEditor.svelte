@@ -17,7 +17,7 @@
 		X
 	} from '@lucide/svelte';
 	import Group, { GroupType } from '$lib/models/Group';
-	import { listSources, sourceName } from '$lib/models/Source';
+	import { getDefaultSourceId, listSources, sourceName } from '$lib/models/Source';
 	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { toasts } from '$lib/toasts.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
@@ -82,6 +82,7 @@
 	let renameDraft = $state('');
 	let renameEl: HTMLInputElement | null = $state(null);
 	let sourceNames: Map<string, string> = $state(new Map());
+	let defaultSourceId: string | null = $state(null);
 	let loadError = $state('');
 	let query = $state('');
 	let focusId: string | null = $state(null);
@@ -268,7 +269,8 @@
 	const createSourceId = $derived.by(() => {
 		if (sourceId) return sourceId;
 		if (focusId) return isSrcNode(focusId) ? focusId.slice(4) : byId.get(focusId)?.sourceId;
-		return new Set(folders.map((f) => f.sourceId)).size === 1 ? folders[0]?.sourceId : undefined;
+		if (new Set(folders.map((f) => f.sourceId)).size === 1) return folders[0]?.sourceId;
+		return sourcesMode ? (defaultSourceId ?? undefined) : undefined;
 	});
 	const canCreate = $derived(!!onCreateFolder || !!createSourceId);
 
@@ -327,8 +329,8 @@
 			folders = [...folders, g];
 			loadError = '';
 			newName = '';
-			focusFolderId(g.id);
-			if (newFolderOpen) queueMicrotask(() => newFolderEl?.focus());
+			newFolderOpen = false;
+			pick(g.id);
 		} catch (e) {
 			loadError = Group.describeOpError(e, "The folder couldn't be created.");
 		} finally {
@@ -701,11 +703,16 @@
 		const load = loadFolders
 			? loadFolders()
 			: Group.list().then((gs) => gs.filter((g) => g.groupType === GroupType.Folder));
-		return Promise.all([load, listSources().catch(() => [])])
-			.then(([fs, ss]) => {
+		return Promise.all([
+			load,
+			listSources().catch(() => []),
+			getDefaultSourceId().catch(() => null)
+		])
+			.then(([fs, ss, defId]) => {
 				folders = fs;
 				sourceNames = new Map(ss.map((s) => [s.id, sourceName(s)]));
 				sourcePaths = new Map(ss.map((s) => [s.id, s.path]));
+				defaultSourceId = defId;
 				loadError = '';
 				ready = true;
 			})
@@ -1031,6 +1038,7 @@
 					</div>
 				{/each}
 				{#if showCreate}
+					{@const createSourceName = createSourceId && sourceNames.get(createSourceId)}
 					<div class="folder-row create" class:active={activeIndex === searchMatches.length}>
 						<button
 							class="folder-name"
@@ -1042,7 +1050,13 @@
 							<FolderPlus size={13} strokeWidth={1.75} />
 							<span class="name-label">Create folder</span>
 							<span class="create-name">{query.trim()}</span>
-							<span class="create-hint">{focusFolder ? `in ${focusFolder.slug}` : 'at root'}</span>
+							<span class="create-hint"
+								>{focusFolder
+									? `in ${focusFolder.slug}`
+									: createSourceName
+										? `in ${createSourceName}`
+										: 'at root'}</span
+							>
 						</button>
 					</div>
 				{:else if searchMatches.length === 0}
