@@ -7,6 +7,7 @@ cute and nice and simple and work well with the other models in this system that
 
 // external
 import { load, type Store } from '@tauri-apps/plugin-store';
+import { SvelteSet } from 'svelte/reactivity';
 
 // internal
 import EditorState, { type EditorJSON } from '$lib/models/EditorState.svelte.js';
@@ -77,6 +78,7 @@ class Session {
 	editors: EditorState[];
 	activeTheme: string = $state(''); // ;;;;;; replace the current theme config here, managed here
 	// sources: Source[];
+	missingSources = new SvelteSet<string>();
 	viewTabs: Map<string, ViewTab> = new Map();
 	settings = new SettingsState();
 

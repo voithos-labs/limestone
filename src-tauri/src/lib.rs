@@ -1,6 +1,6 @@
+use serde::Serialize;
 use serde_json::Value;
 use sqlx::{AssertSqlSafe, SqlitePool};
-use serde::Serialize;
 use std::sync::RwLock;
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
@@ -37,8 +37,8 @@ pub async fn create_pool(
     sqlx::raw_sql(AssertSqlSafe(format!(
         "PRAGMA user_version = {SCHEMA_VERSION}"
     )))
-        .execute(&pool)
-        .await?;
+    .execute(&pool)
+    .await?;
     Ok(pool)
 }
 
@@ -53,6 +53,7 @@ pub struct AppData {
 pub(crate) struct Reconciled<'a> {
     pub source_id: &'a str,
     pub skipped: usize,
+    pub unreachable: bool,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -218,6 +219,7 @@ pub fn run() {
                                 Reconciled {
                                     source_id: &source_id,
                                     skipped,
+                                    unreachable: !source.path.is_dir(),
                                 },
                             );
                             if let Err(e) = services::index_fts(&pool, &source, changed).await {
@@ -252,6 +254,8 @@ pub fn run() {
             commands::source_commands::create_folder,
             commands::source_commands::move_folder,
             commands::source_commands::reconcile_source,
+            commands::source_commands::check_sources,
+            commands::source_commands::update_source_path,
             commands::watch_commands::set_watched_paths,
             commands::settings_commands::get_app_info,
             commands::settings_commands::get_setting,

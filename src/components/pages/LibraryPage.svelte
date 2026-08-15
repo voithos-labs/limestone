@@ -9,7 +9,6 @@
 	} from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import View from '$lib/models/View.svelte';
-	import { listen } from '@tauri-apps/api/event';
 	import { openPath } from '@tauri-apps/plugin-opener';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import ClockHero from '../ClockHero.svelte';
@@ -32,7 +31,7 @@
 	import { fly } from 'svelte/transition';
 	import { onMount } from 'svelte';
 
-	let { editor }: { editor: EditorState } = $props();
+	let { editor, missingSources }: { editor: EditorState; missingSources: Set<string> } = $props();
 
 	let savedViews: View[] = $state([]);
 
@@ -237,13 +236,8 @@
 
 	onMount(() => {
 		loadRecents();
-		const unlisten = listen('source-reconciled', () => {
-			loadRecents();
-			docsKey++;
-		});
 		window.addEventListener('resize', updatePinnedFade);
 		return () => {
-			unlisten.then((fn) => fn());
 			window.removeEventListener('resize', updatePinnedFade);
 		};
 	});
@@ -262,6 +256,7 @@
 				bind:open={sourceDialogOpen}
 				mode={dialogMode}
 				source={dialogSource}
+				missing={!!dialogSource && missingSources.has(dialogSource.id)}
 				onSaved={loadRecents}
 			/>
 			<SourceMenu
@@ -269,6 +264,7 @@
 				anchor={srcMenuAnchor}
 				source={menuSource}
 				{defaultSourceId}
+				missing={!!menuSource && missingSources.has(menuSource.id)}
 				onConfigure={configureSource}
 				onReveal={revealSource}
 				onToggleDefault={toggleDefaultSource}
@@ -307,7 +303,11 @@
 					{/if}
 
 					{#each orderedSources as s, i (s.view.id)}
-						<div class="card-wrap" transition:fly={{ y: 4, duration: 160, delay: i * 25 }}>
+						<div
+							class="card-wrap"
+							class:unavailable={missingSources.has(s.source.id)}
+							transition:fly={{ y: 4, duration: 160, delay: i * 25 }}
+						>
 							<button
 								class="view-card has-menu"
 								onclick={() => !pinnedDragMoved && openSavedView(s.view)}
@@ -558,6 +558,12 @@
 	.card-kebab:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
+	}
+
+	.card-wrap.unavailable .vc-title,
+	.card-wrap.unavailable .view-card :global(svg),
+	.card-wrap.unavailable .card-kebab {
+		opacity: 0.4;
 	}
 
 	/* The list face carries its own 24px side margin (it sits flush in a view page),

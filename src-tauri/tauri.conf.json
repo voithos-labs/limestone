@@ -33,6 +33,7 @@
 		"active": true,
 		"createUpdaterArtifacts": true,
 		"targets": "all",
+		"category": "Productivity",
 		"publisher": "Voithos Labs",
 		"copyright": "© 2026 Voithos Labs",
 		"homepage": "https://limestone.app",
@@ -49,6 +50,14 @@
 				"sidebarImage": "installer/sidebar.bmp",
 				"installerIcon": "icons/icon.ico",
 				"installMode": "currentUser"
+			}
+		},
+		"linux": {
+			"deb": {
+				"depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+			},
+			"rpm": {
+				"depends": ["webkit2gtk4.1", "gtk3"]
 			}
 		}
 	},

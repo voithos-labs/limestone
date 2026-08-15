@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { SlidersHorizontal, ExternalLink, Star, Trash2 } from '@lucide/svelte';
+	import { SlidersHorizontal, ExternalLink, Star, Trash2, TriangleAlert } from '@lucide/svelte';
 	import Menu from './views/Menu.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import type { Source } from '$lib/models/Source';
@@ -9,6 +9,7 @@
 		anchor,
 		source,
 		defaultSourceId,
+		missing = false,
 		minWidth = 190,
 		placement,
 		onConfigure,
@@ -20,6 +21,7 @@
 		anchor: HTMLElement | null;
 		source: Source | null;
 		defaultSourceId: string | null;
+		missing?: boolean;
 		minWidth?: number;
 		placement?: 'bottom' | 'right';
 		onConfigure: (s: Source) => void;
@@ -63,4 +65,38 @@
 	}
 </script>
 
-<Menu bind:open {anchor} {items} {onSelect} {minWidth} {placement} />
+{#snippet unavailableHeader()}
+	<span
+		class="unavailable-note"
+		title="Folder could not be found at {source?.path}. Was the drive it's on removed?"
+	>
+		<TriangleAlert size={13} strokeWidth={1.75} />
+		Source folder unavailable
+	</span>
+{/snippet}
+
+<Menu
+	bind:open
+	{anchor}
+	{items}
+	{onSelect}
+	{minWidth}
+	{placement}
+	header={missing ? unavailableHeader : undefined}
+/>
+
+<style>
+	.unavailable-note {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 4px;
+		font-size: 12px;
+		color: var(--color-ui-muted);
+		cursor: help;
+	}
+
+	.unavailable-note :global(svg) {
+		flex-shrink: 0;
+	}
+</style>

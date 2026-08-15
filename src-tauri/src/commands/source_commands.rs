@@ -75,6 +75,7 @@ async fn run_reconcile(
         crate::Reconciled {
             source_id: &source_id,
             skipped,
+            unreachable: !source.path.is_dir(),
         },
     );
     if let Err(e) = services::index_fts(&pool, &source, changed).await {
@@ -181,6 +182,14 @@ pub fn get_sources(app: AppHandle) -> Vec<Source> {
 }
 
 #[tauri::command]
+pub fn check_sources(app: AppHandle) -> Vec<(String, bool)> {
+    load_sources(&app)
+        .into_iter()
+        .map(|s| (s.id.to_string(), s.path.is_dir()))
+        .collect()
+}
+
+#[tauri::command]
 pub fn is_git_repo(path: String) -> bool {
     let mut dir: Option<&Path> = Some(Path::new(&path));
     while let Some(d) = dir {
@@ -215,6 +224,33 @@ pub fn update_source(
         .ok_or_else(|| "source not found".to_string())?;
     source.note_location = note_location;
     source.asset_location = asset_location;
+    save_sources_file(&app, &data)
+}
+
+#[tauri::command]
+pub fn update_source_path(app: AppHandle, id: Uuid, path: String) -> Result<(), String> {
+    let candidate = PathBuf::from(&path);
+    if !candidate.is_dir() {
+        return Err("folder not found".to_string());
+    }
+    let mut data = load_sources_file(&app);
+    let others: Vec<Source> = data
+        .sources
+        .iter()
+        .filter(|s| s.id != id)
+        .cloned()
+        .collect();
+    check_source_conflict(&candidate, &others)?;
+    let source = data
+        .sources
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "source not found".to_string())?;
+    source.path = candidate;
+    let _ = app.fs_scope().allow_directory(&source.path, true);
+    let _ = app
+        .asset_protocol_scope()
+        .allow_directory(&source.path, true);
     save_sources_file(&app, &data)
 }
 
