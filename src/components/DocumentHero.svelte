@@ -124,6 +124,10 @@
 			titleTaken = !next;
 			return;
 		}
+		if (titleCandidate(next).toLowerCase() === relPath.toLowerCase()) {
+			titleTaken = false;
+			return;
+		}
 		DocHandle.pathTaken(source, titleCandidate(next)).then((taken) => {
 			if (token === titleCheckToken) titleTaken = taken;
 		});
@@ -136,7 +140,8 @@
 			return;
 		}
 		try {
-			if (await DocHandle.pathTaken(source, titleCandidate(next))) {
+			const caseOnly = titleCandidate(next).toLowerCase() === relPath.toLowerCase();
+			if (!caseOnly && (await DocHandle.pathTaken(source, titleCandidate(next)))) {
 				title = handle.title;
 				return;
 			}
