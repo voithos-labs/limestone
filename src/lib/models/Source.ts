@@ -104,6 +104,12 @@ export async function updateSource(id: string, config: SourceConfig): Promise<vo
 	});
 }
 
+export async function updateSourcePath(id: string, path: string): Promise<void> {
+	await invoke('update_source_path', { id, path });
+	await syncWatchers();
+	requestReconcile(id);
+}
+
 export interface FsChanged {
 	source_id: string;
 	rel_paths: string[];

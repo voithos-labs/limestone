@@ -255,6 +255,7 @@ pub fn run() {
             commands::source_commands::move_folder,
             commands::source_commands::reconcile_source,
             commands::source_commands::check_sources,
+            commands::source_commands::update_source_path,
             commands::watch_commands::set_watched_paths,
             commands::settings_commands::get_app_info,
             commands::settings_commands::get_setting,

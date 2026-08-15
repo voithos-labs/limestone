@@ -31,7 +31,7 @@
 	import { fly } from 'svelte/transition';
 	import { onMount } from 'svelte';
 
-	let { editor }: { editor: EditorState } = $props();
+	let { editor, missingSources }: { editor: EditorState; missingSources: Set<string> } = $props();
 
 	let savedViews: View[] = $state([]);
 
@@ -256,6 +256,7 @@
 				bind:open={sourceDialogOpen}
 				mode={dialogMode}
 				source={dialogSource}
+				missing={!!dialogSource && missingSources.has(dialogSource.id)}
 				onSaved={loadRecents}
 			/>
 			<SourceMenu
@@ -263,6 +264,7 @@
 				anchor={srcMenuAnchor}
 				source={menuSource}
 				{defaultSourceId}
+				missing={!!menuSource && missingSources.has(menuSource.id)}
 				onConfigure={configureSource}
 				onReveal={revealSource}
 				onToggleDefault={toggleDefaultSource}
@@ -301,7 +303,11 @@
 					{/if}
 
 					{#each orderedSources as s, i (s.view.id)}
-						<div class="card-wrap" transition:fly={{ y: 4, duration: 160, delay: i * 25 }}>
+						<div
+							class="card-wrap"
+							class:unavailable={missingSources.has(s.source.id)}
+							transition:fly={{ y: 4, duration: 160, delay: i * 25 }}
+						>
 							<button
 								class="view-card has-menu"
 								onclick={() => !pinnedDragMoved && openSavedView(s.view)}
@@ -552,6 +558,12 @@
 	.card-kebab:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
+	}
+
+	.card-wrap.unavailable .vc-title,
+	.card-wrap.unavailable .view-card :global(svg),
+	.card-wrap.unavailable .card-kebab {
+		opacity: 0.4;
 	}
 
 	/* The list face carries its own 24px side margin (it sits flush in a view page),

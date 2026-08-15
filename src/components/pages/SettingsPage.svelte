@@ -850,9 +850,13 @@
 						<button class="source-card add-source-card" onclick={addSource}>
 							<FolderPlus size={14} />
 							<span>Add source</span>
+							<span class="add-ghost" aria-hidden="true">
+								<span class="src-title">&nbsp;</span>
+								<span class="src-path">&nbsp;</span>
+							</span>
 						</button>
 						{#each sources as s (s.id)}
-							<div class="source-card">
+							<div class="source-card" class:unavailable={session.missingSources.has(s.id)}>
 								<div class="src-main">
 									<div class="src-title-row">
 										<Notebook size={13} />
@@ -994,6 +998,7 @@
 	anchor={srcMenuAnchor}
 	source={menuSource}
 	{defaultSourceId}
+	missing={!!menuSource && session.missingSources.has(menuSource.id)}
 	minWidth={180}
 	onConfigure={editSource}
 	onReveal={revealSource}
@@ -1005,6 +1010,7 @@
 	bind:open={dialogOpen}
 	mode={dialogMode}
 	source={dialogSource}
+	missing={!!dialogSource && session.missingSources.has(dialogSource.id)}
 	onSaved={loadSources}
 />
 
@@ -1743,6 +1749,15 @@
 		color: var(--color-ui-muted);
 	}
 
+	.add-ghost {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		width: 0;
+		margin-left: -8px;
+		overflow: hidden;
+	}
+
 	.source-card.add-source-card:hover {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
@@ -1846,6 +1861,11 @@
 	.src-btn:hover {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
+	}
+
+	.source-card.unavailable .src-title-row,
+	.source-card.unavailable .src-btn {
+		opacity: 0.4;
 	}
 
 	.sources-empty {

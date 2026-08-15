@@ -228,6 +228,33 @@ pub fn update_source(
 }
 
 #[tauri::command]
+pub fn update_source_path(app: AppHandle, id: Uuid, path: String) -> Result<(), String> {
+    let candidate = PathBuf::from(&path);
+    if !candidate.is_dir() {
+        return Err("folder not found".to_string());
+    }
+    let mut data = load_sources_file(&app);
+    let others: Vec<Source> = data
+        .sources
+        .iter()
+        .filter(|s| s.id != id)
+        .cloned()
+        .collect();
+    check_source_conflict(&candidate, &others)?;
+    let source = data
+        .sources
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "source not found".to_string())?;
+    source.path = candidate;
+    let _ = app.fs_scope().allow_directory(&source.path, true);
+    let _ = app
+        .asset_protocol_scope()
+        .allow_directory(&source.path, true);
+    save_sources_file(&app, &data)
+}
+
+#[tauri::command]
 pub async fn touch_source(
     app: AppHandle,
     app_data: State<'_, AppData>,

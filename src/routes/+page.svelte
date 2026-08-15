@@ -194,7 +194,7 @@
                     {/if}
                 {/key}
             {:else if editor.focused?.kind === 'search'}
-                <LibraryPage {editor}/>
+                <LibraryPage {editor} missingSources={session.missingSources}/>
             {:else if editor.focused?.kind === 'settings'}
                 <SettingsPage viewTab={session.getViewTab('settings')} {session}/>
             {:else}
