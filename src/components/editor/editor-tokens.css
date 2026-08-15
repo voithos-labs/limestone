@@ -27,7 +27,7 @@
 /* --syntax-separator colors the `---` characters where they sit in a line of text. Painted
    across a full-width rule the same color shouts. Fixed on the rule rather than by changing
    the variable, so the rest of the syntax colors keep their meaning. */
-.editor .thematic-break-block[role='separator'] > hr {
+.editor .thematic-break-block [role='separator'] > hr {
 	border-top-color: var(--color-border);
 }
 

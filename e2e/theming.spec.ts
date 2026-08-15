@@ -141,7 +141,7 @@ test('a light theme flips the mode the editor keys its own defaults on', async (
 
 test('the thematic break paints the app’s border, not the syntax palette', async ({ page }) => {
 	await bootApp(page, { docs: RULE_DOC });
-	const rule = page.locator('.thematic-break-block > hr');
+	const rule = page.locator('.thematic-break-block hr');
 	await expect(rule).toBeVisible();
 
 	await expectRuleTakesTheBorder(page, rule, 'dark');
