@@ -22,16 +22,17 @@ create table if not exists sources (
 
 create table if not exists documents (
     id text primary key not null,
-    source_id text not null references sources(id) on delete cascade,
     document_type text not null default 'md',
-    rel_path text not null,
     title text not null,
     created_at integer not null default (unixepoch() * 1000),
     updated_at integer not null default (unixepoch() * 1000),
     accessed_at integer not null default (unixepoch() * 1000),
+    properties text not null default '{}' check (json_valid(properties)),
+    -- fs
+    source_id text not null references sources(id) on delete cascade,
+    rel_path text not null,
     mtime integer,
-    deleted_at integer,
-    properties text not null default '{}' check (json_valid(properties))
+    deleted_at integer
 ) strict;
 
 create table if not exists groups (

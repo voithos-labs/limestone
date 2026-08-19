@@ -1,9 +1,20 @@
 /**
  * todo: this is only for native documents (md), will need to be expanded and seperated for
+ * ^ okay the time has come
+ *
+ * I kind of need to create a parent Doc type, and let shit do whatever under that.
+ * No matter what I do, it will need a registry for Doc => Svelte Component for a given page.
+ * No good way around it, and there *is* already a registry-ish for view faces so I need to not
+ * write some garbage if possible.
+ *
+ *
  * handling other document types including virtual documents
  *
  * for history handling, I can't simply do it on save because watcher + recc can send updates from
  * disk that do not trigger saves, so I need maybe an authoritative flag
+ *
+ *
+ *
  *
  */
 
@@ -308,6 +319,9 @@ class DocHandle {
 	 * Read file from disk, parse frontmatter, return contents
 	 */
 	async loadContent(): Promise<string> {
+		// console.debug('=== PROPS ===');
+		// console.debug(this.properties);
+
 		let raw: string;
 		try {
 			raw = await readTextFile(`${this.source.path}/${this._relPath}`);
