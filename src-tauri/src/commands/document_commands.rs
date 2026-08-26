@@ -189,7 +189,9 @@ pub async fn rename_document(
         .replace('\\', "/");
     let new_full = resolve_in_source(&root, &new_rel).map_err(|e| e.to_string())?;
 
-    if new_full.exists() {
+    let same_entry = new_full.exists() // check different against actual fs
+        && std::fs::canonicalize(&old_full).ok() == std::fs::canonicalize(&new_full).ok();
+    if new_full.exists() && !same_entry {
         return Err(format!("\"{new_rel}\" already exists"));
     }
     std::fs::rename(&old_full, &new_full).map_err(|e| e.to_string())?;
