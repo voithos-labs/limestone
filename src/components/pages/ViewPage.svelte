@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { onMount, onDestroy } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
 	import View from '$lib/models/View.svelte';
@@ -244,8 +245,8 @@
 			(n): n is FilterLeaf => 'field_id' in n && n.field_id === locationField.id && n.op === 'in'
 		);
 		const sid =
-			leaf && typeof leaf.value === 'string' && !leaf.value.startsWith('folder:')
-				? leaf.value
+			leaf && typeof leaf.value === 'string' && isSourceRoot(leaf.value)
+				? folderIdSource(leaf.value)
 				: undefined;
 		if (!sid) return;
 		const sources = await listSources();

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { Hash, Search, Plus, Pencil, Trash2, ArrowLeft } from '@lucide/svelte';
-	import Group, { GroupType } from '$lib/models/Group';
+	import Tag from '$lib/models/Tag';
 
 	let {
 		open = $bindable(false),
@@ -15,7 +15,7 @@
 		open: boolean;
 		anchor: HTMLElement | null;
 		selectedIds?: string[];
-		onToggle: (tag: Group) => void | Promise<void>;
+		onToggle: (tag: Tag) => void | Promise<void>;
 		onCreate?: (slug: string) => void | Promise<void>;
 		onMutated?: () => void;
 		width?: number;
@@ -25,7 +25,7 @@
 	let searchEl: HTMLInputElement | null = $state(null);
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
 
-	let tags: Group[] = $state([]);
+	let tags: Tag[] = $state([]);
 	let query = $state('');
 	let activeIndex = $state(-1);
 	let busy = $state(false);
@@ -68,7 +68,7 @@
 
 	async function reload() {
 		try {
-			tags = (await Group.list()).filter((g) => g.groupType === GroupType.Tag);
+			tags = await Tag.list();
 			snapshotOrder();
 		} catch (e) {
 			console.error('load tags failed', e);
@@ -87,7 +87,7 @@
 		await reload();
 	}
 
-	function startRename(t: Group) {
+	function startRename(t: Tag) {
 		confirmId = null;
 		renamingId = t.id;
 		renameDraft = t.slug;
@@ -98,13 +98,13 @@
 		node.select();
 	}
 
-	function renameInvalid(t: Group): boolean {
+	function renameInvalid(t: Tag): boolean {
 		const s = renameDraft.trim();
 		if (s === '' || s === t.slug) return false;
 		return tags.some((o) => o.id !== t.id && o.slug === s);
 	}
 
-	async function commitRename(t: Group) {
+	async function commitRename(t: Tag) {
 		if (renamingId !== t.id) return;
 		const s = renameDraft.trim();
 		const invalid = renameInvalid(t);
@@ -112,7 +112,7 @@
 		if (busy || !s || s === t.slug || invalid) return;
 		busy = true;
 		try {
-			await Group.renameTag(t, s);
+			await Tag.rename(t, s);
 			await reload();
 			onMutated?.();
 		} catch (e) {
@@ -122,17 +122,17 @@
 		}
 	}
 
-	function onRenameKey(e: KeyboardEvent, t: Group) {
+	function onRenameKey(e: KeyboardEvent, t: Tag) {
 		e.stopPropagation();
 		if (e.key === 'Enter') commitRename(t);
 		else if (e.key === 'Escape') renamingId = null;
 	}
 
-	async function confirmDelete(t: Group) {
+	async function confirmDelete(t: Tag) {
 		if (busy) return;
 		busy = true;
 		try {
-			await Group.deleteTag(t);
+			await Tag.delete(t);
 			confirmId = null;
 			await reload();
 			onMutated?.();

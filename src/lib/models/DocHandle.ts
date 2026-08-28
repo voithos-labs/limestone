@@ -1,9 +1,20 @@
 /**
  * todo: this is only for native documents (md), will need to be expanded and seperated for
+ * ^ okay the time has come
+ *
+ * I kind of need to create a parent Doc type, and let shit do whatever under that.
+ * No matter what I do, it will need a registry for Doc => Svelte Component for a given page.
+ * No good way around it, and there *is* already a registry-ish for view faces so I need to not
+ * write some garbage if possible.
+ *
+ *
  * handling other document types including virtual documents
  *
  * for history handling, I can't simply do it on save because watcher + recc can send updates from
  * disk that do not trigger saves, so I need maybe an authoritative flag
+ *
+ *
+ *
  *
  */
 
@@ -19,7 +30,7 @@ import * as yaml from 'js-yaml';
 import { select, execute } from '$lib/services/db';
 import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
-import Group, { type GroupRow } from './Group';
+import Tag, { type TagRow } from './Tag';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
@@ -65,7 +76,7 @@ class DocHandle {
 	private hasFile = true;
 
 	title: string;
-	groups: Group[];
+	tags: Tag[];
 	properties: Record<string, unknown>;
 	createdAt: Date;
 	updatedAt: Date;
@@ -77,7 +88,7 @@ class DocHandle {
 		this._relPath = row.rel_path;
 		this.source = source;
 		this.title = row.title;
-		this.groups = [];
+		this.tags = [];
 		this.properties =
 			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
 		this.createdAt = new Date(row.created_at);
@@ -112,10 +123,8 @@ class DocHandle {
 
 		const doc = new DocHandle(row, source);
 		doc.hasFile = false;
-		if (groupIds.length > 0) {
-			let groups = await Group.fromIDs(groupIds);
-			if (!source.use_frontmatter) groups = groups.filter((g) => g.groupType !== 'tag');
-			doc.groups = groups;
+		if (groupIds.length > 0 && source.use_frontmatter) {
+			doc.tags = await Tag.fromIDs(groupIds);
 		}
 		return doc;
 	}
@@ -124,18 +133,17 @@ class DocHandle {
 		type Row = DocumentRow & {
 			source_path: string;
 			source_title: string;
-			groups_json: string | null;
+			tags_json: string | null;
 		};
-		// get doc AND join source and group data
+		// get doc AND join source and tag data
 		const [row] = await select<Row>(
 			`SELECT d.*, s.path as source_path, s.title as source_title,
                 (SELECT json_group_array(json_object(
-                    'id', g.id, 'source_id', g.source_id, 'slug', g.slug,
-                    'group_type', g.group_type, 'parent_group_id', g.parent_group_id,
-                    'created_at', g.created_at, 'updated_at', g.updated_at, 'accessed_at', g.accessed_at
+                    'id', t.id, 'slug', t.slug, 'created_at', t.created_at,
+                    'updated_at', t.updated_at, 'accessed_at', t.accessed_at
                 ))
-                FROM document_groups dg JOIN groups g ON g.id = dg.group_id
-                WHERE dg.document_id = d.id) as groups_json
+                FROM document_tags dt JOIN tags t ON t.id = dt.tag_id
+                WHERE dt.document_id = d.id) as tags_json
              FROM documents d JOIN sources s ON s.id = d.source_id
              WHERE d.id = ?1`,
 			[id]
@@ -143,9 +151,10 @@ class DocHandle {
 		if (!row) throw new Error(`Document not found: ${id}`);
 		const source = await getSource(row.source_id);
 		const doc = new DocHandle(row, source);
-		const groups: GroupRow[] = row.groups_json ? JSON.parse(row.groups_json) : [];
-		doc.groups = groups.filter((r) => r.id !== null).map((r) => new Group(r));
-		if (!source.use_frontmatter) doc.groups = doc.groups.filter((g) => g.groupType !== 'tag');
+		const tags: TagRow[] = row.tags_json ? JSON.parse(row.tags_json) : [];
+		doc.tags = source.use_frontmatter
+			? tags.filter((r) => r.id !== null).map((r) => new Tag(r))
+			: [];
 		return doc;
 	}
 
@@ -221,15 +230,15 @@ class DocHandle {
 
 	// ── Groups ───────────────────────────────────────────────────────────────────────
 
-	async fetchGroups(): Promise<void> {
-		const rows = await select<GroupRow>(
-			`SELECT g.*
-             FROM groups g
-                      JOIN document_groups dg ON dg.group_id = g.id
-             WHERE dg.document_id = ?1`,
+	async fetchTags(): Promise<void> {
+		const rows = await select<TagRow>(
+			`SELECT t.*
+             FROM tags t
+                      JOIN document_tags dt ON dt.tag_id = t.id
+             WHERE dt.document_id = ?1`,
 			[this.id]
 		);
-		this.groups = rows.map((r) => new Group(r));
+		this.tags = rows.map((r) => new Tag(r));
 	}
 
 	async setTags(slugs: string[]): Promise<void> {
@@ -240,17 +249,7 @@ class DocHandle {
 			relPath: this._relPath,
 			tags: slugs
 		});
-		await this.fetchGroups();
-	}
-
-	// UTIL GETTERS
-
-	get tags(): Group[] {
-		return this.groups.filter((g) => g.groupType == 'tag');
-	}
-
-	get folders(): Group[] {
-		return this.groups.filter((g) => g.groupType == 'folder');
+		await this.fetchTags();
 	}
 
 	// ── Serialization ────────────────────────────────────────────────────────────────
@@ -262,7 +261,7 @@ class DocHandle {
 	toFrontmatter(): DocumentFrontmatter {
 		return {
 			id: this.id,
-			tags: this.groups.filter((g) => g.groupType === 'tag').map((g) => g.slug),
+			tags: this.tags.map((t) => t.slug),
 			created_at: this.createdAt,
 			updated_at: this.updatedAt,
 			...this.properties
@@ -308,6 +307,9 @@ class DocHandle {
 	 * Read file from disk, parse frontmatter, return contents
 	 */
 	async loadContent(): Promise<string> {
+		// console.debug('=== PROPS ===');
+		// console.debug(this.properties);
+
 		let raw: string;
 		try {
 			raw = await readTextFile(`${this.source.path}/${this._relPath}`);
@@ -322,10 +324,7 @@ class DocHandle {
 			if (created_at) this.createdAt = new Date(created_at);
 			if (updated_at) this.updatedAt = new Date(updated_at);
 			this.properties = remaining;
-			this.groups = [
-				...this.groups.filter((g) => g.groupType !== 'tag'),
-				...(await Group.fromSlugs(tags))
-			];
+			this.tags = await Tag.fromSlugs(tags);
 		}
 
 		// update accessed_at
@@ -362,10 +361,7 @@ class DocHandle {
 		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
 		this.properties = remaining;
 		if (created_at) this.createdAt = new Date(created_at);
-		this.groups = [
-			...this.groups.filter((g) => g.groupType !== 'tag'),
-			...(await Group.fromSlugs(tags))
-		];
+		this.tags = await Tag.fromSlugs(tags);
 	}
 
 	async saveContent(body: string): Promise<void> {
@@ -401,6 +397,18 @@ class DocHandle {
 	 *
 	 * @param newRelPath Path, relative to source, to move the document to
 	 */
+	async refreshPath(): Promise<boolean> {
+		const [row] = await select<{ rel_path: string }>(
+			`SELECT rel_path
+             FROM documents
+             WHERE id = ?1`,
+			[this.id]
+		);
+		if (!row || row.rel_path === this._relPath) return false;
+		this._relPath = row.rel_path;
+		return true;
+	}
+
 	async moveToPath(newRelPath: string): Promise<void> {
 		await this.ensureFile();
 		await invoke('move_document', {

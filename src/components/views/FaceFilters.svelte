@@ -3,7 +3,8 @@
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, ViewField, FilterLeaf, FilterNode } from '$lib/models/View.svelte';
 	import { VIEW_FIELD_OPS } from '$lib/models/View.svelte';
-	import Group from '$lib/models/Group';
+	import Tag from '$lib/models/Tag';
+	import Folder, { folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { getSource, sourceName } from '$lib/models/Source';
 	import {
 		getFieldIcon,
@@ -35,26 +36,37 @@
 	let sourceNames: Record<string, string> = $state({});
 
 	$effect(() => {
-		const groupIds = new Set<string>();
+		const folderIds = new Set<string>();
+		const tagIds = new Set<string>();
 		const sourceIds = new Set<string>();
 		for (const leaf of leaves) {
 			const field = fieldsById.get(leaf.field_id);
 			if (!field) continue;
 			if (field.type === 'folder') {
 				if (typeof leaf.value === 'string') {
-					if (leaf.value.startsWith('folder:')) groupIds.add(leaf.value);
-					else sourceIds.add(leaf.value);
+					if (isSourceRoot(leaf.value)) sourceIds.add(folderIdSource(leaf.value));
+					else folderIds.add(leaf.value);
 				}
 			} else if (field.type === 'tags') {
 				if (Array.isArray(leaf.value))
-					for (const v of leaf.value) if (typeof v === 'string') groupIds.add(v);
+					for (const v of leaf.value) if (typeof v === 'string') tagIds.add(v);
 			}
 		}
-		for (const id of groupIds) {
+		for (const id of folderIds) {
 			if (id in groupNames) continue;
-			Group.fromID(id)
-				.then((g) => {
-					groupNames = { ...groupNames, [id]: g.slug };
+			Folder.fromID(id)
+				.then((f) => {
+					groupNames = { ...groupNames, [id]: f.slug };
+				})
+				.catch(() => {
+					groupNames = { ...groupNames, [id]: id };
+				});
+		}
+		for (const id of tagIds) {
+			if (id in groupNames) continue;
+			Tag.fromID(id)
+				.then((t) => {
+					groupNames = { ...groupNames, [id]: t.slug };
 				})
 				.catch(() => {
 					groupNames = { ...groupNames, [id]: id };

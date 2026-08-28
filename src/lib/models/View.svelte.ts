@@ -46,7 +46,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
 import type DocHandle from '$lib/models/DocHandle';
-import Group, { GroupType } from '$lib/models/Group';
+import type Tag from '$lib/models/Tag';
+import Folder, { folderId, isSourceRoot } from '$lib/models/Folder';
 import { getSource, listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/services/db';
 import { load, type Store } from '@tauri-apps/plugin-store';
@@ -419,18 +420,20 @@ function resolveColumn(fieldType: ViewFieldType, fieldName: string, viewSlug: st
 }
 
 function compileFolderLeaf(op: string, value: unknown): CompiledFilter {
-	// docs carry every ancestor folder as a group includes children without recursive lookup
-	// (done at index time)
-	// a value without the folder: prefix is a source id (source root)
-	const exists =
-		typeof value === 'string' && !value.startsWith('folder:')
-			? `d.source_id = ?`
-			: `EXISTS (SELECT 1 FROM document_groups dg WHERE dg.document_id = d.id AND dg.group_id = ?)`;
+	// a folder id carries its path, so a subtree is an id range. A child extends its parent
+	// with '/' (0x2F), whose successor is '0' (0x30); the source root has no separator before
+	// its children, so its bound comes from the successor of its trailing ':' (0x3A)
+	const id = String(value);
+	const upper = isSourceRoot(id) ? `${id.slice(0, -1)};` : `${id}0`;
+	const inFolder = {
+		sql: `(d.folder_id IS NOT NULL AND d.folder_id >= ? AND d.folder_id < ?)`,
+		params: [id, upper]
+	};
 	switch (op) {
 		case 'in':
-			return { sql: exists, params: [value] };
+			return inFolder;
 		case 'not_in':
-			return { sql: `NOT ${exists}`, params: [value] };
+			return { sql: `NOT ${inFolder.sql}`, params: inFolder.params };
 		default:
 			throw new Error(`Unsupported op '${op}' for folder`);
 	}
@@ -443,7 +446,7 @@ function compileTagsLeaf(op: string, value: unknown): CompiledFilter {
 		return { sql: '1', params: [] };
 	}
 	const placeholders = ids.map(() => '?').join(', ');
-	const anyExists = `EXISTS (SELECT 1 FROM document_groups dg WHERE dg.document_id = d.id AND dg.group_id IN (${placeholders}))`;
+	const anyExists = `EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = d.id AND dt.tag_id IN (${placeholders}))`;
 	switch (op) {
 		case 'has_any':
 			return { sql: anyExists, params: [...ids] };
@@ -451,7 +454,7 @@ function compileTagsLeaf(op: string, value: unknown): CompiledFilter {
 			return { sql: `NOT ${anyExists}`, params: [...ids] };
 		case 'has_all':
 			return {
-				sql: `(SELECT COUNT(DISTINCT dg.group_id) FROM document_groups dg WHERE dg.document_id = d.id AND dg.group_id IN (${placeholders})) = ?`,
+				sql: `(SELECT COUNT(DISTINCT dt.tag_id) FROM document_tags dt WHERE dt.document_id = d.id AND dt.tag_id IN (${placeholders})) = ?`,
 				params: [...ids, ids.length]
 			};
 		default:
@@ -858,23 +861,23 @@ class View {
 		return view;
 	}
 
-	static createFromGroup(group: Group): View {
-		const view = View.create(group.slug);
-		view.state.origin_id = group.id;
+	static createFromUnit(unit: Tag | Folder): View {
+		const view = View.create(unit.slug);
+		view.state.origin_id = unit.id;
 
-		if (group.groupType === GroupType.Folder) {
+		if (unit instanceof Folder) {
 			const folderFieldId = view.fields.find((f) => f.type == 'folder')!.id;
 			view.addBasicFilter({
 				field_id: folderFieldId,
 				op: 'in',
-				value: group.id
+				value: unit.id
 			});
 		} else {
 			const tagsFieldId = view.fields.find((f) => f.type == 'tags')!.id;
 			view.addBasicFilter({
 				field_id: tagsFieldId,
 				op: 'has_any',
-				value: [group.id]
+				value: [unit.id]
 			});
 		}
 
@@ -891,7 +894,7 @@ class View {
 		view.addBasicFilter({
 			field_id: locationFieldId,
 			op: 'in',
-			value: source.id
+			value: folderId(source.id, '')
 		});
 
 		view.temporary = true;

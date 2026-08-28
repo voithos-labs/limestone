@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isSourceRoot } from '$lib/models/Folder';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { FocusTarget, TabState } from '$lib/models/EditorState.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -37,7 +38,7 @@
 			const t = typesById.get(n.field_id);
 			if (t === 'tags') hasTags = true;
 			else if (t === 'folder') {
-				if (typeof n.value === 'string' && !n.value.startsWith('folder:')) hasSource = true;
+				if (typeof n.value === 'string' && isSourceRoot(n.value)) hasSource = true;
 				else hasFolder = true;
 			}
 		}

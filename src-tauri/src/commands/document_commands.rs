@@ -346,15 +346,15 @@ pub async fn delete_document(
         Err(e) => return Err(e.to_string()),
     }
 
-    let group_ids: Vec<String> =
-        sqlx::query_scalar("SELECT group_id FROM document_groups WHERE document_id = ?1")
+    let tag_ids: Vec<String> =
+        sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")
             .bind(&id)
             .fetch_all(&app_data.db)
             .await
             .map_err(|e| e.to_string())?;
 
-    // Drop the row + its group memberships (folder/tag links) + FTS index
-    sqlx::query("DELETE FROM document_groups WHERE document_id = ?1")
+    // Drop the row + its tag links + FTS index
+    sqlx::query("DELETE FROM document_tags WHERE document_id = ?1")
         .bind(&id)
         .execute(&app_data.db)
         .await
@@ -372,12 +372,12 @@ pub async fn delete_document(
         .await
         .map_err(|e| e.to_string())?;
 
-    for group_id in &group_ids {
+    for tag_id in &tag_ids {
         sqlx::query(
-            "DELETE FROM groups WHERE id = ?1 AND group_type = 'tag'
-             AND id NOT IN (SELECT group_id FROM document_groups)",
+            "DELETE FROM tags WHERE id = ?1
+             AND id NOT IN (SELECT tag_id FROM document_tags)",
         )
-        .bind(group_id)
+        .bind(tag_id)
         .execute(&app_data.db)
         .await
         .map_err(|e| e.to_string())?;
