@@ -4,11 +4,7 @@
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import DocHandle from '$lib/models/DocHandle';
 	import { getDefaultSourceId, listSources, pickCreationSource } from '$lib/models/Source';
-	import {
-		createMetaDate,
-		deriveCreateContext,
-		folderPath,
-	} from '$lib/views/createDefaults';
+	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
 	import Folder from '$lib/models/Folder';
 	import type { DocPicker } from '$lib/views/docPicker.svelte';
 	import { searchDocuments } from '$lib/services/search';

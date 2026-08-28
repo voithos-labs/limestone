@@ -705,9 +705,7 @@
 	}
 
 	function loadData(): Promise<void> {
-		const load = loadFolders
-			? loadFolders()
-			: Folder.list();
+		const load = loadFolders ? loadFolders() : Folder.list();
 		return Promise.all([
 			load,
 			listSources().catch(() => []),

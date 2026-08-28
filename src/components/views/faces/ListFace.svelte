@@ -8,11 +8,7 @@
 		MemberRow
 	} from '$lib/models/View.svelte';
 	import { isLeafActive } from '$lib/models/View.svelte';
-	import {
-		createMetaDate,
-		deriveCreateContext,
-		folderPath
-	} from '$lib/views/createDefaults';
+	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
 	import { select } from '$lib/services/db';
 	import { searchDocuments } from '$lib/services/search';
 	import type { SearchResult } from '$lib/types/SearchResult';

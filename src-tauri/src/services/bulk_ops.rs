@@ -310,9 +310,7 @@ async fn fetch_rel_paths(db: &SqlitePool, op: &BulkOp) -> Result<Vec<String>, St
         BulkAction::RenameTag { old_slug, .. } => {
             fetch_paths_with_tag(db, source_id, &tag_id(old_slug)).await
         }
-        BulkAction::RemoveTag { slug } => {
-            fetch_paths_with_tag(db, source_id, &tag_id(slug)).await
-        }
+        BulkAction::RemoveTag { slug } => fetch_paths_with_tag(db, source_id, &tag_id(slug)).await,
     }
 }
 

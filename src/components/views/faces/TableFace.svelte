@@ -70,11 +70,7 @@
 	import Folder from '$lib/models/Folder';
 	import type Tag from '$lib/models/Tag';
 	import DocHandle from '$lib/models/DocHandle';
-	import {
-		createMetaDate,
-		deriveCreateContext,
-		folderPath
-	} from '$lib/views/createDefaults';
+	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
 	import FolderValueEditor from '../FolderValueEditor.svelte';
 	import CellEditor from '../CellEditor.svelte';
 	import CellTextEditor from '../CellTextEditor.svelte';
@@ -1618,9 +1614,7 @@
 		try {
 			const source = await resolveCreateSource();
 			const dir = folderDirLabel;
-			const groupIds = [
-				...createCtx.tagGroupIds
-			];
+			const groupIds = [...createCtx.tagGroupIds];
 			const props = Object.keys(draft.values).length
 				? { views: { [view.slug]: draft.values } }
 				: {};
