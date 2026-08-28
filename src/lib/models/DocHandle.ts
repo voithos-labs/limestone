@@ -397,6 +397,18 @@ class DocHandle {
 	 *
 	 * @param newRelPath Path, relative to source, to move the document to
 	 */
+	async refreshPath(): Promise<boolean> {
+		const [row] = await select<{ rel_path: string }>(
+			`SELECT rel_path
+             FROM documents
+             WHERE id = ?1`,
+			[this.id]
+		);
+		if (!row || row.rel_path === this._relPath) return false;
+		this._relPath = row.rel_path;
+		return true;
+	}
+
 	async moveToPath(newRelPath: string): Promise<void> {
 		await this.ensureFile();
 		await invoke('move_document', {

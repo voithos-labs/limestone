@@ -1,6 +1,6 @@
 <script lang="ts">
 	import DocHandle from '$lib/models/DocHandle';
-	import { sourceName, listSources, type Source } from '$lib/models/Source';
+	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import type Tag from '$lib/models/Tag';
 	import { formatDateFriendly } from '$lib/views/dateFormat';
@@ -87,6 +87,13 @@
 			console.error('refresh tags failed', e);
 		}
 	}
+
+	$effect(() =>
+		onSourceReconciled(async (sourceId) => {
+			if (sourceId !== source.id) return;
+			if (await handle.refreshPath()) relPath = handle.relPath;
+		})
+	);
 
 	const ext = $derived(relPath.match(/\.[^.]+$/)?.[0] ?? '.md');
 	const srcName = $derived(sourceName(source));

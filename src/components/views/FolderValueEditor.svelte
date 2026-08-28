@@ -96,7 +96,11 @@
 	}
 
 	function nodeValue(id: string): string {
-		return isSrcNode(id) ? folderId(id.slice(4), '') : id;
+		return isSrcNode(id) ? folderId(srcNodeSource(id), '') : id;
+	}
+
+	function srcNodeSource(id: string): string {
+		return id.slice(4);
 	}
 
 	const sourceNodes = $derived.by((): FolderNode[] => {
@@ -268,7 +272,7 @@
 
 	const createSourceId = $derived.by(() => {
 		if (sourceId) return sourceId;
-		if (focusId) return isSrcNode(focusId) ? focusId.slice(4) : byId.get(focusId)?.sourceId;
+		if (focusId) return isSrcNode(focusId) ? srcNodeSource(focusId) : byId.get(focusId)?.sourceId;
 		if (new Set(folders.map((f) => f.sourceId)).size === 1) return folders[0]?.sourceId;
 		return sourcesMode ? (defaultSourceId ?? undefined) : undefined;
 	});
@@ -625,7 +629,7 @@
 		if (destKey) {
 			const d = byId.get(destKey);
 			if (!d) return false;
-			const destSource = isSrcNode(destKey) ? nodeValue(destKey) : d.sourceId;
+			const destSource = isSrcNode(destKey) ? srcNodeSource(destKey) : d.sourceId;
 			if (destSource !== f.sourceId) return false;
 		}
 		return !blockReasonFor(f, destKey);
@@ -656,7 +660,7 @@
 			raw !== '' &&
 			!dragExcluded.has(raw) &&
 			(isSrcNode(raw)
-				? nodeValue(raw) === dragging.sourceId
+				? srcNodeSource(raw) === dragging.sourceId
 				: byId.get(raw)?.sourceId === dragging.sourceId) &&
 			(childrenByParent.get(raw)?.length ?? 0) > 0;
 		if (springable && raw !== focusId) {
