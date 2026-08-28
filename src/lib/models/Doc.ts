@@ -111,7 +111,7 @@ your shit -- or just add a flag for sources that push for flat storage (folders 
  */
 
 import type { Source } from '$lib/models/Source';
-import Group from '$lib/models/Group';
+import type Tag from '$lib/models/Tag';
 
 /**
  * Yes I am using snakecase here, this is what they are in the db
@@ -138,7 +138,7 @@ abstract class Doc {
 	private hasFile = true;
 
 	title: string;
-	groups: Group[];
+	tags: Tag[];
 	properties: Record<string, unknown>;
 	createdAt: Date;
 	updatedAt: Date;
@@ -150,7 +150,7 @@ abstract class Doc {
 		this._relPath = row.rel_path;
 		this.source = source;
 		this.title = row.title;
-		this.groups = [];
+		this.tags = [];
 		this.properties =
 			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
 		this.createdAt = new Date(row.created_at);

@@ -55,7 +55,7 @@
 		ChevronDown,
 		SquareArrowOutUpRight,
 		SquareCheck,
-		Folder,
+		Folder as FolderIcon,
 		Notebook,
 		Ellipsis,
 		X
@@ -67,12 +67,12 @@
 		pickCreationSource,
 		type Source
 	} from '$lib/models/Source';
-	import Group, { GroupType } from '$lib/models/Group';
+	import Folder from '$lib/models/Folder';
+	import type Tag from '$lib/models/Tag';
 	import DocHandle from '$lib/models/DocHandle';
 	import {
 		createMetaDate,
 		deriveCreateContext,
-		folderLinkChain,
 		folderPath
 	} from '$lib/views/createDefaults';
 	import FolderValueEditor from '../FolderValueEditor.svelte';
@@ -317,7 +317,7 @@
 		return face.sort.some((s) => s.field_id === fieldId);
 	}
 
-	let folders: Group[] = $state([]);
+	let folders: Folder[] = $state([]);
 
 	let didInitFocus = false;
 
@@ -326,9 +326,9 @@
 
 	onMount(() => {
 		load();
-		Group.list()
-			.then((gs) => {
-				folders = gs.filter((g) => g.groupType === GroupType.Folder);
+		Folder.list()
+			.then((fs) => {
+				folders = fs;
 			})
 			.catch(() => {});
 		listSources()
@@ -922,11 +922,10 @@
 		try {
 			const ph = list.map(() => '?').join(', ');
 			const hits = await select<{ doc_id: string; id: string; slug: string }>(
-				`SELECT dg.document_id AS doc_id, g.id, g.slug
-                 FROM document_groups dg
-                          JOIN groups g ON g.id = dg.group_id
-                 WHERE g.group_type = 'tag'
-                   AND dg.document_id IN (${ph})`,
+				`SELECT dt.document_id AS doc_id, t.id, t.slug
+                 FROM document_tags dt
+                          JOIN tags t ON t.id = dt.tag_id
+                 WHERE dt.document_id IN (${ph})`,
 				list.map((r) => r.id)
 			);
 			const next: Record<string, { id: string; slug: string }[]> = {};
@@ -962,7 +961,7 @@
 		}
 	}
 
-	function toggleRowTag(tag: Group) {
+	function toggleRowTag(tag: Tag) {
 		const rowId = tagEditRowId;
 		if (!rowId) return;
 		const cur = tagDraft;
@@ -1018,7 +1017,7 @@
 	function folderIdForPath(relPath: string, sourceId: string): string | null {
 		const dir = folderDir(relPath);
 		if (!dir) return null;
-		const match = folders.find((f) => f.sourceId === sourceId && folderPath(f.id, folders) === dir);
+		const match = folders.find((f) => f.sourceId === sourceId && folderPath(f.id) === dir);
 		return match?.id ?? null;
 	}
 
@@ -1330,7 +1329,7 @@
 			folderOverrideDir = knownDir ?? null;
 			return;
 		}
-		const dir = groupId ? (knownDir ?? folderPath(groupId, folders)) : '';
+		const dir = groupId ? (knownDir ?? folderPath(groupId)) : '';
 		const file = fileName(row.rel_path);
 		const newRel = dir ? `${dir}/${file}` : file;
 		if (newRel === row.rel_path) return;
@@ -1402,7 +1401,7 @@
 		if (!effectiveFolderId) return '';
 		if (folderOverride === effectiveFolderId && folderOverrideDir !== null)
 			return folderOverrideDir;
-		return folderPath(effectiveFolderId, folders);
+		return folderPath(effectiveFolderId);
 	});
 
 	// Warn (red border) when the draft title would collide with an existing note
@@ -1620,7 +1619,6 @@
 			const source = await resolveCreateSource();
 			const dir = folderDirLabel;
 			const groupIds = [
-				...(effectiveFolderId ? folderLinkChain(effectiveFolderId, folders) : []),
 				...createCtx.tagGroupIds
 			];
 			const props = Object.keys(draft.values).length
@@ -1754,7 +1752,7 @@
 									onclick={openFolderPicker}
 								>
 									{#if folderDirLabel}
-										<Folder size={13} strokeWidth={1.75} />
+										<FolderIcon size={13} strokeWidth={1.75} />
 									{:else}
 										<Notebook size={13} strokeWidth={1.75} />
 									{/if}

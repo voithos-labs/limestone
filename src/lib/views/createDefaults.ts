@@ -1,7 +1,8 @@
 import type View from '$lib/models/View.svelte';
 import type { FilterNode, FilterLeaf, ViewFace, ViewField } from '$lib/models/View.svelte';
-import type Group from '$lib/models/Group';
+import type Folder from '$lib/models/Folder';
 import { wallClockToMs } from '$lib/views/dateFormat';
+import { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 
 export interface CreateContext {
 	folderGroupId: string | null;
@@ -21,20 +22,20 @@ function conjunctiveLeaves(node: FilterNode, out: FilterLeaf[]): void {
 	}
 }
 
-function ancestorChain(id: string, byId: Map<string, Group>): string[] {
+function ancestorChain(id: string, byId: Map<string, Folder>): string[] {
 	const chain: string[] = [];
 	let g = byId.get(id);
 	let guard = 0;
-	while (g?.parentGroupId && guard++ < 64) {
-		chain.push(g.parentGroupId);
-		g = byId.get(g.parentGroupId);
+	while (g?.parentId && guard++ < 64) {
+		chain.push(g.parentId);
+		g = byId.get(g.parentId);
 	}
 	return chain;
 }
 
 function resolveFolder(
 	folderIds: string[],
-	byId: Map<string, Group>
+	byId: Map<string, Folder>
 ): { id: string | null; ambiguous: boolean } {
 	const ids = [...new Set(folderIds)];
 	if (ids.length === 0) return { id: null, ambiguous: false };
@@ -51,7 +52,7 @@ function resolveFolder(
 export function deriveCreateContext(
 	view: View,
 	face: ViewFace,
-	folders: Group[],
+	folders: Folder[],
 	scope?: FilterNode | null
 ): CreateContext {
 	const leaves: FilterLeaf[] = [];
@@ -84,8 +85,9 @@ export function deriveCreateContext(
 
 		if (field.type === 'folder') {
 			if (leaf.op === 'in' && typeof leaf.value === 'string') {
-				if (leaf.value.startsWith('folder:')) folderIds.push(leaf.value);
-				else if (!folderSourceId) folderSourceId = leaf.value;
+				if (isSourceRoot(leaf.value)) {
+					if (!folderSourceId) folderSourceId = folderIdSource(leaf.value);
+				} else folderIds.push(leaf.value);
 			}
 		} else if (field.type === 'tags') {
 			if ((leaf.op === 'has_any' || leaf.op === 'has_all') && Array.isArray(leaf.value)) {
@@ -156,22 +158,6 @@ function collectFieldDefault(
 	if (leaf.op === 'eq') out[field.name] = leaf.value;
 }
 
-export function folderLinkChain(groupId: string, folders: Group[]): string[] {
-	const byId = new Map(folders.map((g) => [g.id, g]));
-	return [groupId, ...ancestorChain(groupId, byId)];
-}
-
-export function folderPath(
-	groupId: string,
-	folders: Pick<Group, 'id' | 'slug' | 'parentGroupId'>[]
-): string {
-	const byId = new Map(folders.map((g) => [g.id, g]));
-	const parts: string[] = [];
-	let g = byId.get(groupId);
-	let guard = 0;
-	while (g && guard++ < 64) {
-		parts.unshift(g.slug);
-		g = g.parentGroupId ? byId.get(g.parentGroupId) : undefined;
-	}
-	return parts.join('/');
+export function folderPath(groupId: string): string {
+	return folderIdPath(groupId);
 }

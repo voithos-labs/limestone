@@ -100,7 +100,7 @@
 		return {
 			id: rel,
 			slug: parts[parts.length - 1],
-			parentGroupId: parts.length > 1 ? parts.slice(0, -1).join('/') : undefined,
+			parentId: parts.length > 1 ? parts.slice(0, -1).join('/') : undefined,
 			accessedAt: new Date(0)
 		};
 	}

@@ -9,7 +9,7 @@ mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 pub async fn create_pool(
     path: &std::path::Path,
@@ -25,8 +25,11 @@ pub async fn create_pool(
         // rebuild db on schema version change
         sqlx::raw_sql(
             "DROP TABLE IF EXISTS documents_fts;
+             DROP TABLE IF EXISTS document_tags;
              DROP TABLE IF EXISTS document_groups;
              DROP TABLE IF EXISTS documents;
+             DROP TABLE IF EXISTS folders;
+             DROP TABLE IF EXISTS tags;
              DROP TABLE IF EXISTS groups;
              DROP TABLE IF EXISTS sources;",
         )
@@ -231,7 +234,7 @@ pub fn run() {
                     for task in tasks {
                         let _ = task.await;
                     }
-                    if let Err(e) = services::cleanup_orphan_tag_groups(&pool).await {
+                    if let Err(e) = services::cleanup_orphan_tags(&pool).await {
                         eprintln!("tag cleanup failed: {e}");
                     }
                 });

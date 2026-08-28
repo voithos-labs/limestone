@@ -8,9 +8,8 @@
 		createMetaDate,
 		deriveCreateContext,
 		folderPath,
-		folderLinkChain
 	} from '$lib/views/createDefaults';
-	import Group, { GroupType } from '$lib/models/Group';
+	import Folder from '$lib/models/Folder';
 	import type { DocPicker } from '$lib/views/docPicker.svelte';
 	import { searchDocuments } from '$lib/services/search';
 	import type { SearchResult } from '$lib/types/SearchResult';
@@ -212,9 +211,9 @@
 		if (tab && typeof z === 'number' && tab.state.doc_zoom !== z) tab.state.doc_zoom = z;
 	});
 
-	let folders = $state<Group[]>([]);
-	Group.list()
-		.then((gs) => (folders = gs.filter((g) => g.groupType === GroupType.Folder)))
+	let folders = $state<Folder[]>([]);
+	Folder.list()
+		.then((fs) => (folders = fs))
 		.catch(() => {});
 
 	let creating = $state(false);
@@ -233,11 +232,8 @@
 			source = source ?? pickCreationSource(sources, await getDefaultSourceId());
 			if (!source) return;
 
-			const dir = folderId ? folderPath(folderId, folders) : '';
-			const groupIds = [
-				...(folderId ? folderLinkChain(folderId, folders) : []),
-				...ctx.tagGroupIds
-			];
+			const dir = folderId ? folderPath(folderId) : '';
+			const groupIds = [...ctx.tagGroupIds];
 			const properties = Object.keys(ctx.fieldValues).length
 				? { views: { [view.slug]: ctx.fieldValues } }
 				: {};

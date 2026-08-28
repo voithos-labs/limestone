@@ -3,7 +3,7 @@
 	import { fly } from 'svelte/transition';
 	import {
 		Search,
-		Folder,
+		Folder as FolderIcon,
 		FolderOpen,
 		FolderInput,
 		FolderPlus,
@@ -16,7 +16,7 @@
 		Pencil,
 		X
 	} from '@lucide/svelte';
-	import Group, { GroupType } from '$lib/models/Group';
+	import Folder, { folderId, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { getDefaultSourceId, listSources, sourceName } from '$lib/models/Source';
 	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { toasts } from '$lib/toasts.svelte';
@@ -27,7 +27,7 @@
 	type FolderNode = {
 		id: string;
 		slug: string;
-		parentGroupId?: string;
+		parentId?: string;
 		sourceId?: string;
 		accessedAt: Date;
 		touch?: () => Promise<void>;
@@ -96,7 +96,7 @@
 	}
 
 	function nodeValue(id: string): string {
-		return isSrcNode(id) ? id.slice(4) : id;
+		return isSrcNode(id) ? folderId(id.slice(4), '') : id;
 	}
 
 	const sourceNodes = $derived.by((): FolderNode[] => {
@@ -111,7 +111,7 @@
 	const byId = $derived(new Map([...scoped, ...sourceNodes].map((f) => [f.id, f])));
 
 	function parentKey(f: FolderNode): string | null {
-		if (f.parentGroupId && byId.has(f.parentGroupId)) return f.parentGroupId;
+		if (f.parentId && byId.has(f.parentId)) return f.parentId;
 		if (sourcesMode && !isSrcNode(f.id) && f.sourceId) return `src:${f.sourceId}`;
 		return null;
 	}
@@ -322,17 +322,17 @@
 		creating = true;
 		try {
 			const parent =
-				focusId && !isSrcNode(focusId) ? { id: focusId, path: folderPath(focusId, folders) } : null;
+				focusId && !isSrcNode(focusId) ? { id: focusId, path: folderPath(focusId) } : null;
 			const g = onCreateFolder
 				? await onCreateFolder(name, parent)
-				: await Group.createFolder(name, createSourceId!, parent ?? undefined);
+				: await Folder.create(name, createSourceId!, parent ?? undefined);
 			folders = [...folders, g];
 			loadError = '';
 			newName = '';
 			newFolderOpen = false;
 			pick(g.id);
 		} catch (e) {
-			loadError = Group.describeOpError(e, "The folder couldn't be created.");
+			loadError = Folder.describeOpError(e, "The folder couldn't be created.");
 		} finally {
 			creating = false;
 		}
@@ -380,16 +380,16 @@
 		if (!f.sourceId || movingBusy || blockReasonFor(f, destKey)) return null;
 		if (destKey && subtreeOf(f.id).has(destKey)) return null;
 		const src = f.sourceId;
-		const oldPath = folderPath(f.id, folders);
-		const destDir = destKey && !isSrcNode(destKey) ? folderPath(destKey, folders) : '';
+		const oldPath = folderPath(f.id);
+		const destDir = destKey && !isSrcNode(destKey) ? folderPath(destKey) : '';
 		const newPath = destDir ? `${destDir}/${f.slug}` : f.slug;
 		movingBusy = true;
 		try {
-			const newId = await Group.moveFolder(src, oldPath, newPath);
+			const newId = await Folder.move(src, oldPath, newPath);
 			await loadData();
 			return newId;
 		} catch (e) {
-			toasts.push(Group.describeOpError(e, "The folder couldn't be moved."), {
+			toasts.push(Folder.describeOpError(e, "The folder couldn't be moved."), {
 				action: { label: 'Retry', run: () => performMove(f, destKey) }
 			});
 			return null;
@@ -443,17 +443,17 @@
 		const invalid = renameInvalid(f);
 		renamingId = null;
 		if (!f.sourceId || s === f.slug || s === '' || invalid || !validFolderName(s)) return;
-		const oldPath = folderPath(f.id, folders);
+		const oldPath = folderPath(f.id);
 		const dir = oldPath.split('/').slice(0, -1).join('/');
 		doRename(f.sourceId, oldPath, dir ? `${dir}/${s}` : s);
 	}
 
 	async function doRename(src: string, oldPath: string, newPath: string) {
 		try {
-			await Group.moveFolder(src, oldPath, newPath);
+			await Folder.move(src, oldPath, newPath);
 			await loadData();
 		} catch (e) {
-			toasts.push(Group.describeOpError(e, "The folder couldn't be renamed."), {
+			toasts.push(Folder.describeOpError(e, "The folder couldn't be renamed."), {
 				action: { label: 'Retry', run: () => doRename(src, oldPath, newPath) }
 			});
 		}
@@ -468,7 +468,7 @@
 	function revealFolder(f: FolderNode) {
 		const root = f.sourceId ? sourcePaths.get(f.sourceId) : undefined;
 		if (!root) return;
-		revealItemInDir(`${root}/${folderPath(f.id, folders)}`).catch(() => {});
+		revealItemInDir(`${root}/${folderPath(f.id)}`).catch(() => {});
 	}
 
 	function folderCtxItems(f: FolderNode): CtxEntry[] | null {
@@ -517,7 +517,7 @@
 				.get(id)
 				?.touch?.()
 				.catch(() => {});
-		onChange(id, id ? folderPath(id, folders) : '');
+		onChange(id, id ? folderPath(id) : '');
 		open = false;
 	}
 
@@ -551,7 +551,8 @@
 		if (!value) return;
 		const target = folders.find((g) => g.id === value);
 		if (target) focusId = parentKey(target);
-		else if (byId.has(`src:${value}`)) focusId = `src:${value}`;
+		else if (isSourceRoot(value) && byId.has(`src:${folderIdSource(value)}`))
+			focusId = `src:${folderIdSource(value)}`;
 		else return;
 		const i = navEntries.findIndex((n) => n.kind === 'folder' && nodeValue(n.folder.id) === value);
 		if (i >= 0) activeIndex = i;
@@ -702,7 +703,7 @@
 	function loadData(): Promise<void> {
 		const load = loadFolders
 			? loadFolders()
-			: Group.list().then((gs) => gs.filter((g) => g.groupType === GroupType.Folder));
+			: Folder.list();
 		return Promise.all([
 			load,
 			listSources().catch(() => []),
@@ -920,7 +921,7 @@
 										onclick={() => pick(folder.id)}
 										onmouseenter={() => (recentsIndex = i)}
 									>
-										<Folder size={13} strokeWidth={1.75} />
+										<FolderIcon size={13} strokeWidth={1.75} />
 										<span class="name-label">{folder.slug}</span>
 										{#if folder.id === value}
 											<Check size={13} strokeWidth={2} />
@@ -1014,7 +1015,7 @@
 								<span class="row-icon"><Notebook size={13} strokeWidth={1.75} /></span>
 								<span class="row-icon open"><BookOpen size={13} strokeWidth={1.75} /></span>
 							{:else}
-								<span class="row-icon"><Folder size={13} strokeWidth={1.75} /></span>
+								<span class="row-icon"><FolderIcon size={13} strokeWidth={1.75} /></span>
 								<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
 							{/if}
 							<span class="name-label">{folder.slug}</span>
@@ -1181,7 +1182,7 @@
 							>
 								{#if renamingId === folder.id}
 									<div class="folder-name new-edit">
-										<Folder size={13} strokeWidth={1.75} />
+										<FolderIcon size={13} strokeWidth={1.75} />
 										<input
 											class="new-input"
 											class:invalid={renameInvalid(folder)}
@@ -1204,7 +1205,7 @@
 											<span class="row-icon"><Notebook size={13} strokeWidth={1.75} /></span>
 											<span class="row-icon open"><BookOpen size={13} strokeWidth={1.75} /></span>
 										{:else}
-											<span class="row-icon"><Folder size={13} strokeWidth={1.75} /></span>
+											<span class="row-icon"><FolderIcon size={13} strokeWidth={1.75} /></span>
 											<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
 										{/if}
 										<span class="name-label">{folder.slug}</span>
@@ -1256,7 +1257,7 @@
 			style:top="{dragPos.y + 14}px"
 			style:left="{dragPos.x + 12}px"
 		>
-			<Folder size={12} strokeWidth={1.75} />
+			<FolderIcon size={12} strokeWidth={1.75} />
 			<span>{dragging.slug}</span>
 		</div>
 	{/if}

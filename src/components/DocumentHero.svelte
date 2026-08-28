@@ -1,7 +1,8 @@
 <script lang="ts">
 	import DocHandle from '$lib/models/DocHandle';
 	import { sourceName, listSources, type Source } from '$lib/models/Source';
-	import Group, { GroupType } from '$lib/models/Group';
+	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
+	import type Tag from '$lib/models/Tag';
 	import { formatDateFriendly } from '$lib/views/dateFormat';
 	import { folderDir, fileName } from '$lib/views/fieldValue';
 	import { folderPath } from '$lib/views/createDefaults';
@@ -45,11 +46,11 @@
 	const draftTitle = untrack(() => handle.title);
 	let relPath = $state(untrack(() => handle.relPath));
 	let source = $state<Source>(untrack(() => handle.source));
-	let allGroups: Group[] = $state([]);
+	let folderList: Folder[] = $state([]);
 	let sources: Source[] = $state([]);
-	let tagList: Group[] = $state(untrack(() => handle.tags));
+	let tagList: Tag[] = $state(untrack(() => handle.tags));
 
-	const folders = $derived(allGroups.filter((g) => g.groupType === GroupType.Folder));
+	const folders = $derived(folderList);
 
 	let tagMenuOpen = $state(false);
 	let tagAnchor: HTMLElement | null = $state(null);
@@ -65,7 +66,7 @@
 		}
 	}
 
-	async function toggleTag(tag: Group) {
+	async function toggleTag(tag: Tag) {
 		const has = tagList.some((t) => t.id === tag.id);
 		const next = has ? tagList.filter((t) => t.id !== tag.id) : [...tagList, tag];
 		tagList = next;
@@ -80,7 +81,7 @@
 
 	async function tagsMutated() {
 		try {
-			await handle.fetchGroups();
+			await handle.fetchTags();
 			tagList = handle.tags;
 		} catch (e) {
 			console.error('refresh tags failed', e);
@@ -98,10 +99,10 @@
 		// first open delay. DNR.
 		// if (!dir) return null;
 		// return (
-		// 		folders.find((f) => f.sourceId === source.id && folderPath(f.id, folders) === dir)?.id ?? null
+		// 		folders.find((f) => f.sourceId === source.id && folderPath(f.id) === dir)?.id ?? null
 		// );
 
-		return dir ? `folder:${source.id}:${dir}` : null;
+		return folderId(source.id, dir);
 	});
 
 	// ── Title rename ───────────────────────────────────────────────────────────
@@ -170,15 +171,12 @@
 	let folderOpen = $state(false);
 	let pickAnchor: HTMLElement | null = $state(null);
 
-	const folderPickerValue = $derived(currentFolderId ?? source.id);
+	const folderPickerValue = $derived(currentFolderId);
 
 	async function onPickFolder(groupId: string, path?: string) {
-		const isFolder = groupId.startsWith('folder:');
-		const targetSourceId = isFolder
-			? (folders.find((f) => f.id === groupId)?.sourceId ?? groupId.split(':')[1])
-			: groupId;
+		const targetSourceId = folderIdSource(groupId);
 		const target = sources.find((s) => s.id === targetSourceId) ?? source;
-		const dir = isFolder ? (path ?? folderPath(groupId, folders)) : '';
+		const dir = path ?? folderIdPath(groupId);
 		const file = fileName(relPath);
 		const newRel = dir ? `${dir}/${file}` : file;
 		if (target.id === source.id && newRel === relPath) return;
@@ -190,7 +188,7 @@
 				source = target;
 			}
 			relPath = newRel;
-			allGroups = await Group.list();
+			folderList = await Folder.list();
 		} catch (e) {
 			console.error('move failed', e);
 		}
@@ -238,7 +236,7 @@
 				source,
 				newTitle,
 				newRel,
-				handle.groups.map((g) => g.id),
+				handle.tags.map((t) => t.id),
 				JSON.parse(JSON.stringify(handle.properties))
 			);
 			await copy.saveContent(body);
@@ -273,8 +271,8 @@
 			titleInput?.focus();
 			titleInput?.select();
 		}
-		Group.list()
-			.then((gs) => (allGroups = gs))
+		Folder.list()
+			.then((fs) => (folderList = fs))
 			.catch(() => {});
 		listSources()
 			.then((ss) => (sources = ss))

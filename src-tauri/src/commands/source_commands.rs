@@ -297,7 +297,7 @@ pub async fn delete_source(
         .await
         .map_err(|e| e.to_string())?;
 
-    services::cleanup_orphan_tag_groups(&app_data.db)
+    services::cleanup_orphan_tags(&app_data.db)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -411,7 +411,7 @@ pub async fn create_folder(
             path_acc.push('/');
         }
         path_acc.push_str(seg);
-        id = services::upsert_folder_group(&mut tx, &source_id, &path_acc)
+        id = services::upsert_folder(&mut tx, &source_id, &path_acc)
             .await
             .map_err(|_| FolderOpError::new("other"))?;
     }

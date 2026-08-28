@@ -14,7 +14,7 @@
 
 use crate::services::frontmatter;
 use crate::services::fs::{atomic_write, resolve_in_source};
-use crate::services::source::tag_group_id;
+use crate::services::source::tag_id;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -308,10 +308,10 @@ async fn fetch_rel_paths(db: &SqlitePool, op: &BulkOp) -> Result<Vec<String>, St
             fetch_paths_with_field(db, source_id, &json_view_path(old_slug)).await
         }
         BulkAction::RenameTag { old_slug, .. } => {
-            fetch_paths_with_tag(db, source_id, &tag_group_id(old_slug)).await
+            fetch_paths_with_tag(db, source_id, &tag_id(old_slug)).await
         }
         BulkAction::RemoveTag { slug } => {
-            fetch_paths_with_tag(db, source_id, &tag_group_id(slug)).await
+            fetch_paths_with_tag(db, source_id, &tag_id(slug)).await
         }
     }
 }
@@ -454,14 +454,14 @@ async fn execute(
             .await
         }
         BulkAction::RenameTag { old_slug, new_slug } => {
-            let old_id = tag_group_id(old_slug);
-            let new_id = tag_group_id(new_slug);
+            let old_id = tag_id(old_slug);
+            let new_id = tag_id(new_slug);
             sqlx::query(
-                "INSERT OR IGNORE INTO groups (id, slug, group_type)
-                 SELECT ?1, ?2, 'tag'
-                 WHERE EXISTS (SELECT 1 FROM document_groups dg
-                                        JOIN documents d ON d.id = dg.document_id
-                               WHERE dg.group_id = ?3 AND d.source_id = ?4)",
+                "INSERT OR IGNORE INTO tags (id, slug)
+                 SELECT ?1, ?2
+                 WHERE EXISTS (SELECT 1 FROM document_tags dt
+                                        JOIN documents d ON d.id = dt.document_id
+                               WHERE dt.tag_id = ?3 AND d.source_id = ?4)",
             )
             .bind(&new_id)
             .bind(new_slug)
@@ -471,8 +471,8 @@ async fn execute(
             .await
             .map_err(|e| e.to_string())?;
             sqlx::query(
-                "UPDATE OR IGNORE document_groups SET group_id = ?1
-                 WHERE group_id = ?2
+                "UPDATE OR IGNORE document_tags SET tag_id = ?1
+                 WHERE tag_id = ?2
                    AND document_id IN (SELECT id FROM documents WHERE source_id = ?3)",
             )
             .bind(&new_id)
@@ -482,8 +482,8 @@ async fn execute(
             .await
             .map_err(|e| e.to_string())?;
             sqlx::query(
-                "DELETE FROM document_groups
-                 WHERE group_id = ?1
+                "DELETE FROM document_tags
+                 WHERE tag_id = ?1
                    AND document_id IN (SELECT id FROM documents WHERE source_id = ?2)",
             )
             .bind(&old_id)
@@ -492,8 +492,8 @@ async fn execute(
             .await
             .map_err(|e| e.to_string())?;
             sqlx::query(
-                "DELETE FROM groups
-                 WHERE id = ?1 AND id NOT IN (SELECT group_id FROM document_groups)",
+                "DELETE FROM tags
+                 WHERE id = ?1 AND id NOT IN (SELECT tag_id FROM document_tags)",
             )
             .bind(&old_id)
             .execute(db)
@@ -507,10 +507,10 @@ async fn execute(
             .await
         }
         BulkAction::RemoveTag { slug } => {
-            let id = tag_group_id(slug);
+            let id = tag_id(slug);
             sqlx::query(
-                "DELETE FROM document_groups
-                 WHERE group_id = ?1
+                "DELETE FROM document_tags
+                 WHERE tag_id = ?1
                    AND document_id IN (SELECT id FROM documents WHERE source_id = ?2)",
             )
             .bind(&id)
@@ -519,8 +519,8 @@ async fn execute(
             .await
             .map_err(|e| e.to_string())?;
             sqlx::query(
-                "DELETE FROM groups
-                 WHERE id = ?1 AND id NOT IN (SELECT group_id FROM document_groups)",
+                "DELETE FROM tags
+                 WHERE id = ?1 AND id NOT IN (SELECT tag_id FROM document_tags)",
             )
             .bind(&id)
             .execute(db)
@@ -632,15 +632,15 @@ async fn fetch_paths_by_id(
 async fn fetch_paths_with_tag(
     db: &SqlitePool,
     source_id: &str,
-    group_id: &str,
+    tag_id: &str,
 ) -> Result<Vec<String>, String> {
     let rows: Vec<(String,)> = sqlx::query_as(
         "SELECT d.rel_path FROM documents d
-                  JOIN document_groups dg ON dg.document_id = d.id
-         WHERE d.source_id = ? AND d.deleted_at IS NULL AND dg.group_id = ?",
+                  JOIN document_tags dt ON dt.document_id = d.id
+         WHERE d.source_id = ? AND d.deleted_at IS NULL AND dt.tag_id = ?",
     )
     .bind(source_id)
-    .bind(group_id)
+    .bind(tag_id)
     .fetch_all(db)
     .await
     .map_err(|e| e.to_string())?;
