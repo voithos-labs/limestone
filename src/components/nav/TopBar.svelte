@@ -3,6 +3,8 @@
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { FocusTarget, TabState } from '$lib/models/EditorState.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
+	import WindowControls from './WindowControls.svelte';
+	import { resolveWindowStyle } from '$lib/services/platform';
 
 	import {
 		Settings,
@@ -18,6 +20,7 @@
 		X,
 		Plus,
 		TextSearch,
+		GripVertical,
 		TextAlignStart,
 		Pin,
 		PinOff,
@@ -175,46 +178,12 @@
 	}
 
 	// ── Window controls ─────────────────────────────────────────────────────────
-	// todo:
-	//  - move this into another component
-	//  - macOS version, adjustable in settings on linux
+	// Platform decides where the logo and the controls sit; the setting overrides it
+	// so a style can be forced (and previewed) on any host.
+	let windowStyle = $derived(resolveWindowStyle(settings.get<string>('appearance.window_style')));
+	let isMac = $derived(windowStyle === 'macos');
+
 	const appWindow = getCurrentWindow();
-	const isWindows = navigator.userAgent.includes('Windows');
-	let isMaximized = $state(false);
-
-	// Check initial maximized state
-	appWindow.isMaximized().then((v) => (isMaximized = v));
-
-	// Track state changes from every path (drag-restore, snap, Win+arrows)
-	let maxCheckTimer: ReturnType<typeof setTimeout> | null = null;
-	$effect(() => {
-		let unlisten: (() => void) | undefined;
-		appWindow
-			.onResized(() => {
-				if (maxCheckTimer) clearTimeout(maxCheckTimer);
-				maxCheckTimer = setTimeout(async () => {
-					isMaximized = await appWindow.isMaximized();
-				}, 80);
-			})
-			.then((u) => (unlisten = u));
-		return () => {
-			if (maxCheckTimer) clearTimeout(maxCheckTimer);
-			unlisten?.();
-		};
-	});
-
-	async function minimize() {
-		await appWindow.minimize();
-	}
-
-	async function toggleMaximize() {
-		await appWindow.toggleMaximize();
-		isMaximized = await appWindow.isMaximized();
-	}
-
-	async function close() {
-		await appWindow.close();
-	}
 
 	function handleDrag(e: MouseEvent) {
 		// Don't drag if clicking on interactive elements
@@ -224,14 +193,19 @@
 	}
 </script>
 
-<nav class="nav-bar" onmousedown={handleDrag}>
-	<!-- Drag handle -->
-	<div class="drag-handle">
-		<svg width="16" height="16" viewBox="0 0 588 588" xmlns="http://www.w3.org/2000/svg">
-			<path d="M196 0 L196 588 L0 588 L196 392 L0 392 L0 196 Z" fill="#C7BDC2" />
-			<path d="M196 0 L392 0 L392 196 L196 392 L588 392 L392 588 L196 588 Z" fill="white" />
-		</svg>
+{#snippet grip()}
+	<div class="drag-handle" class:trailing={isMac}>
+		<GripVertical size={16} />
 	</div>
+{/snippet}
+
+<nav class="nav-bar" class:mac={isMac} onmousedown={handleDrag}>
+	<!-- Leading: traffic lights on macOS, the logo drag handle elsewhere -->
+	{#if isMac}
+		<WindowControls style={windowStyle} />
+	{:else}
+		{@render grip()}
+	{/if}
 
 	<!-- Pinned icon tabs -->
 	<div
@@ -326,45 +300,12 @@
 		</button>
 	</div>
 
-	<!-- Window controls -->
-	<div class="window-controls">
-		<button class="caption-btn" title="Minimize" tabindex="-1" onclick={minimize}>
-			{#if isWindows}
-				<span class="caption-icon">&#xE921;</span>
-			{:else}
-				<svg aria-hidden="true" role="img" width="12" height="12" viewBox="0 0 12 12">
-					<rect fill="currentColor" width="10" height="1" x="1" y="6"></rect>
-				</svg>
-			{/if}
-		</button>
-		<button
-			class="caption-btn"
-			title={isMaximized ? 'Restore' : 'Maximize'}
-			tabindex="-1"
-			onclick={toggleMaximize}
-		>
-			{#if isWindows}
-				<span class="caption-icon">{isMaximized ? '\uE923' : '\uE922'}</span>
-			{:else}
-				<svg aria-hidden="true" role="img" width="12" height="12" viewBox="0 0 12 12">
-					<rect width="9" height="9" x="1.5" y="1.5" fill="none" stroke="currentColor"></rect>
-				</svg>
-			{/if}
-		</button>
-		<button class="caption-btn close" title="Close" tabindex="-1" onclick={close}>
-			{#if isWindows}
-				<span class="caption-icon">&#xE8BB;</span>
-			{:else}
-				<svg aria-hidden="true" role="img" width="12" height="12" viewBox="0 0 12 12">
-					<polygon
-						fill="currentColor"
-						fill-rule="evenodd"
-						points="11 1.576 6.583 6 11 10.424 10.424 11 6 6.583 1.576 11 1 10.424 5.417 6 1 1.576 1.576 1 6 5.417 10.424 1"
-					></polygon>
-				</svg>
-			{/if}
-		</button>
-	</div>
+	<!-- Trailing: the logo is right-justified on macOS, controls elsewhere -->
+	{#if isMac}
+		{@render grip()}
+	{:else}
+		<WindowControls style={windowStyle} />
+	{/if}
 </nav>
 
 <style>
@@ -386,11 +327,21 @@
 		justify-content: center;
 		width: 24px;
 		height: 32px;
-		padding-left: 4px;
 		margin-bottom: 4px;
 		flex-shrink: 0;
 		color: var(--color-ui-muted);
 		cursor: grab;
+	}
+
+	/* macOS: the logo trades places with the window controls */
+	.drag-handle.trailing {
+		width: auto;
+		padding: 0 14px 0 10px;
+		margin-left: auto;
+	}
+
+	.nav-bar.mac {
+		padding-left: 12px;
 	}
 
 	/* ── Divider ── */
@@ -630,49 +581,5 @@
 
 	.close-btn:hover {
 		color: var(--color-text-primary);
-	}
-
-	/* ── Window controls ── */
-	.window-controls {
-		display: flex;
-		flex-shrink: 0;
-		height: 100%;
-		margin-left: auto;
-	}
-
-	.caption-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 46px;
-		height: 100%;
-		border: none;
-		background: transparent;
-		color: var(--color-ui-dulled);
-		cursor: pointer;
-	}
-
-	.caption-btn:hover {
-		background: rgba(0, 0, 0, 0.06);
-	}
-
-	.caption-btn:active {
-		background: rgba(0, 0, 0, 0.1);
-	}
-
-	.caption-btn.close:hover {
-		background: #c42b1c;
-		color: white;
-	}
-
-	.caption-btn.close:active {
-		background: #b32a1b;
-		color: white;
-	}
-
-	.caption-icon {
-		font-family: 'Segoe MDL2 Assets', 'Segoe Fluent Icons', sans-serif;
-		font-size: 10px;
-		line-height: 1;
 	}
 </style>

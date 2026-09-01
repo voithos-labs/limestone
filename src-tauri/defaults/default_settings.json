@@ -2,6 +2,7 @@
 	"version": 1,
 	"appearance": {
 		"accent": "default",
+		"window_style": "auto",
 		"compact_tabs": true,
 		"compact_doc_header": false,
 		"collapse_pinned_tabs": true,
