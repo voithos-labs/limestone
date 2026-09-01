@@ -8,7 +8,8 @@
 		settingEquals,
 		type AppInfo,
 		type SettingCategory,
-		type SettingDef
+		type SettingDef,
+		type SettingValue
 	} from '$lib/models/Settings.svelte';
 	import { ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent } from '$lib/services/theme';
 	import {
@@ -401,7 +402,7 @@
 		if (spec) draftSpec = spec;
 	}
 
-	function setValue(def: SettingDef, value: boolean | number) {
+	function setValue(def: SettingDef, value: SettingValue) {
 		settings.set(def.key, value);
 	}
 
@@ -430,7 +431,7 @@
 		}
 		customKeys = customKeys.filter((k) => k !== def.key);
 		const option = def.options?.find((o) => String(o.value) === v);
-		if (option) setValue(def, option.value as number);
+		if (option) setValue(def, option.value);
 	}
 
 	// ── App-styled dropdowns (native <select> option lists can't match our menus) ─

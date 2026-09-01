@@ -7,7 +7,7 @@ export interface Settings {
 	[key: string]: SettingValue;
 }
 
-export type SettingType = 'boolean' | 'number';
+export type SettingType = 'boolean' | 'number' | 'string';
 export type SettingControl = 'toggle' | 'stepper' | 'select';
 
 export interface SettingOption {
@@ -40,6 +40,20 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 		id: 'appearance',
 		label: 'Appearance',
 		settings: [
+			{
+				key: 'appearance.window_style',
+				type: 'string',
+				control: 'select',
+				label: 'Window Style',
+				description:
+					'Where the window controls and logo sit in the top bar. Detected from your platform unless you pick one.',
+				options: [
+					{ value: 'auto', label: 'Automatic' },
+					{ value: 'windows', label: 'Windows' },
+					{ value: 'macos', label: 'macOS' },
+					{ value: 'linux', label: 'Linux' }
+				]
+			},
 			{
 				key: 'appearance.compact_tabs',
 				type: 'boolean',
