@@ -31,7 +31,7 @@ uuid = { version = "1.19.0", features = ["v4"] }
 chrono = { version = "0.4.42", features = ["serde"] }
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
-jwalk = "0.8"
+jwalk = "0.9"
 rayon = "1"
 sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }
 serde_yml = "0.0.13"
