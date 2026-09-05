@@ -23,6 +23,7 @@
 	import { getSetting } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
 	import { onDocChanged } from '$lib/models/Source';
+	import DocHandle from '$lib/models/DocHandle';
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 
