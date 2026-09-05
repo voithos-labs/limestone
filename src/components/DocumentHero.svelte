@@ -20,7 +20,10 @@
 		Plus,
 		Copy,
 		SlidersHorizontal,
-		ExternalLink
+		ExternalLink,
+		TriangleAlert,
+		FileText,
+		RefreshCw
 	} from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -32,14 +35,34 @@
 		onDelete,
 		onDuplicated,
 		compact = false,
+		frontmatterError = null,
+		onFrontmatterFix,
 		propsOpen = $bindable(false)
 	}: {
 		handle: DocHandle;
 		onDelete?: () => void;
 		onDuplicated?: (copy: DocHandle) => void;
 		compact?: boolean;
+		frontmatterError?: string | null;
+		onFrontmatterFix?: (mode: 'keep' | 'rebuild') => void;
 		propsOpen?: boolean;
 	} = $props();
+
+	let fmMenuOpen = $state(false);
+	let fmAnchor: HTMLElement | null = $state(null);
+
+	const fmItems: MenuEntry[] = [
+		{ value: 'keep', label: 'Keep as text', icon: FileText },
+		{ value: 'rebuild', label: 'Discard and rebuild', icon: RefreshCw, danger: true },
+		{ kind: 'divider' },
+		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink }
+	];
+
+	function onFmSelect(value: string) {
+		fmMenuOpen = false;
+		if (value === 'reveal') revealDoc();
+		else onFrontmatterFix?.(value as 'keep' | 'rebuild');
+	}
 
 	let title = $state(untrack(() => handle.title));
 	const wasDraft = untrack(() => handle.isDraft);
@@ -348,7 +371,18 @@
 						{/if}
 					</button>
 				{/if}
-				{#if propCount > 0}
+				{#if source.use_frontmatter && frontmatterError}
+					<span class="meta-div"></span>
+					<button
+						class="props-chip fm-error"
+						class:open={fmMenuOpen}
+						bind:this={fmAnchor}
+						title="Frontmatter couldn't be parsed"
+						onclick={() => (fmMenuOpen = !fmMenuOpen)}
+					>
+						<TriangleAlert size={12} strokeWidth={1.75} />
+					</button>
+				{:else if propCount > 0}
 					<span class="meta-div"></span>
 					<button
 						class="props-chip"
@@ -378,6 +412,19 @@
 	onSelect={onMenuSelect}
 	minWidth={140}
 />
+
+<Menu bind:open={fmMenuOpen} anchor={fmAnchor} items={fmItems} onSelect={onFmSelect} minWidth={220}>
+	{#snippet header()}
+		<div class="fm-error-head">
+			<span class="fm-error-title">Frontmatter couldn't be parsed</span>
+			<span class="fm-error-msg">{frontmatterError}</span>
+			<span class="fm-error-msg"
+				>Fix it in place, keep it as text under new frontmatter, or rebuild from what the app has
+				(tags and properties in the block are not recovered).</span
+			>
+		</div>
+	{/snippet}
+</Menu>
 <FolderValueEditor
 	bind:open={folderOpen}
 	anchor={pickAnchor}
@@ -602,6 +649,37 @@
 	.props-chip.open {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
+	}
+
+	.props-chip.fm-error {
+		color: var(--error-fg);
+	}
+
+	.props-chip.fm-error:hover,
+	.props-chip.fm-error.open {
+		background: var(--error-bg);
+		color: var(--error-fg);
+	}
+
+	.fm-error-head {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 2px 6px;
+		max-width: 260px;
+	}
+
+	.fm-error-title {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--color-text-primary);
+	}
+
+	.fm-error-msg {
+		font-size: 11px;
+		line-height: 1.35;
+		color: var(--color-ui-muted);
+		overflow-wrap: anywhere;
 	}
 
 	.props-count {

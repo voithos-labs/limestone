@@ -23,6 +23,7 @@
 	import { getSetting } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
 	import { onDocChanged } from '$lib/models/Source';
+	import DocHandle from '$lib/models/DocHandle';
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 
@@ -81,30 +82,51 @@
 
 	let content: string = $state('');
 	let loaded = $state(false);
+	let fmError: string | null = $state(null);
 
 	$effect(() => {
 		loaded = false;
 		handle?.loadContent().then((c) => {
 			content = c;
 			loaded = true;
+			fmError = handle.frontmatterError;
 		});
 	});
+
+	async function fixFrontmatter(mode: 'keep' | 'rebuild') {
+		if (!handle || !view) return;
+		if (mode === 'rebuild') {
+			const current = view.state.doc.toString();
+			const next = DocHandle.stripFence(current);
+			if (next !== current) {
+				view.dispatch({ changes: { from: 0, to: current.length, insert: next } });
+			}
+		}
+		await flushSave(true);
+	}
+
+	async function reloadFromDisk() {
+		const h = handle;
+		if (!h) return;
+		const gen = docGen;
+		const c = await h.loadContent();
+		if (saveTimer || savePromise || gen !== docGen || !view) return;
+		fmError = h.frontmatterError;
+		const current = view.state.doc.toString();
+		if (c === current) return;
+		externalApply = true;
+		view.dispatch({ changes: { from: 0, to: current.length, insert: c } });
+		externalApply = false;
+	}
 
 	// todo: needs to work with doc history well
 	// this is grabbing external changes from the fs
 	$effect(() => {
 		const h = handle;
 		if (!h) return;
-		return onDocChanged(h, async () => {
+		return onDocChanged(h, () => {
 			if (saveTimer || savePromise) return;
-			const gen = docGen;
-			const c = await h.loadContent();
-			if (saveTimer || savePromise || gen !== docGen || !view) return;
-			const current = view.state.doc.toString();
-			if (c === current) return;
-			externalApply = true;
-			view.dispatch({ changes: { from: 0, to: current.length, insert: c } });
-			externalApply = false;
+			reloadFromDisk();
 		});
 	});
 
@@ -416,19 +438,20 @@
 
 	let savePromise: Promise<void> | null = null;
 
-	function flushSave() {
+	function flushSave(rebuildFrontmatter = false) {
 		if (saveTimer) {
 			clearTimeout(saveTimer);
 			saveTimer = null;
 		}
 		if (!handle) return;
 		const p = handle
-			.saveContent(content)
+			.saveContent(content, { rebuildFrontmatter })
 			.catch((e) => console.error('saveContent failed', e))
 			.finally(() => {
 				if (savePromise === p) savePromise = null;
 			});
 		savePromise = p;
+		if (fmError) p.then(() => reloadFromDisk());
 		return p;
 	}
 
@@ -572,6 +595,8 @@
 				onDelete={deleteDoc}
 				onDuplicated={(d) => editor?.openDoc(d)}
 				compact={flow}
+				frontmatterError={fmError}
+				onFrontmatterFix={fixFrontmatter}
 				bind:propsOpen
 			/>
 		{/if}
