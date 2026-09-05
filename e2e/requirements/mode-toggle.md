@@ -37,8 +37,7 @@ a collapsed marker stays in `textContent`, so only `innerText` says what the rea
   forget it — and the next Mod+E goes on from there.
 - Changing the mode changes only the mode. A reader deep in a long entry stays exactly where they
   were reading, both ways through the trip — a mode toggle that lost their place would be worse
-  than no toggle on an entry long enough to need one. Pinned but skipped for now: stepping out of
-  reading scrolls the reader back to the caret (aragonite #155).
+  than no toggle on an entry long enough to need one.
 
 ## Edge cases
 

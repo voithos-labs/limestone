@@ -4,8 +4,14 @@
  * `wiki-image-embeds.spec.ts` loads it through that server.
  */
 import { mount } from 'svelte';
-import { Editor, installPlugins, parse, type EditorInstance, type InlineNode } from 'aragonite';
-import { computeInlineContent } from 'aragonite/plugin';
+import {
+	Editor,
+	installPlugins,
+	parse,
+	type EditorInstance,
+	type InlineNode
+} from '@voithos-labs/aragonite';
+import { computeInlineContent } from '@voithos-labs/aragonite/plugin';
 import { EDITOR_PLUGINS } from './editor-plugins';
 
 /** 1x1 transparent PNG, so a resolved embed loads rather than reporting itself broken. */

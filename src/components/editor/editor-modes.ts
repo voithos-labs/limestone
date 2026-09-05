@@ -1,6 +1,6 @@
 /** Owns which of aragonite's presentation modes limestone offers, and what a stored one reads as. */
 
-import type { PresentationMode } from 'aragonite';
+import type { PresentationMode } from '@voithos-labs/aragonite';
 
 export const MODES: readonly { value: PresentationMode; label: string }[] = [
 	{ value: 'source', label: 'Source' },

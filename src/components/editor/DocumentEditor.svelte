@@ -1,8 +1,13 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { Editor } from 'aragonite';
-	import type { EditorInstance, EditorSelection, PastedImage, PresentationMode } from 'aragonite';
-	import 'aragonite/styles/editor-theme.css';
+	import { Editor } from '@voithos-labs/aragonite';
+	import type {
+		EditorInstance,
+		EditorSelection,
+		PastedImage,
+		PresentationMode
+	} from '@voithos-labs/aragonite';
+	import '@voithos-labs/aragonite/styles/editor-theme.css';
 	// yes you must load editor-tokens.css after aragonite's editor-theme.css
 	import './editor-tokens.css';
 	import { EDITOR_PLUGINS } from './editor-plugins';

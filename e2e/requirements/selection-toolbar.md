@@ -22,25 +22,26 @@ Every button asks the editor to run a command it already owns. Nothing here fake
 ## Edge cases
 
 - Source and reading modes float no bar at all. Both already show the syntax or refuse the edit.
-- An intra-table cell selection floats no bar. The commands would fire against a cell's own
-  coordinates rather than the text the reader highlighted.
+- A selection spanning table cells floats no bar. The commands would fire against the cells' own
+  coordinates rather than the text the reader highlighted. Text selected inside one cell is prose
+  to the commands, so it floats the bar like a paragraph, and Bold wraps that text in place.
 - Pressing a button keeps the document's selection alive, so the wrap lands on what was selected
   rather than on nothing. The bar takes no focus on the way down.
-- A selection running across two blocks floats no bar. The editor's format commands decline a
-  painted range that crosses blocks, the chord included, so every button there would be dead. The
-  bar is pinned while the selection is still inside the first paragraph so the absence cannot pass
-  on a selection that never crossed: leaving a paragraph takes two arrow presses, the first
-  reaching only its own far edge. Anchoring returns if cross-block formatting lands upstream.
+- A selection running across two blocks keeps the bar, anchored to the first block's line. A format
+  toggle there marks every block the range touches (pinned on the bytes: both paragraphs come back
+  bold), while Link greys out, since a link card cannot span blocks. Greyed, not hidden: the reader
+  sees the affordance exists and that this selection cannot take it.
+- A selection already inside a bold run shows Bold pressed, and the press lifts the selected word out
+  of the run. The pressed paint and the press read the same bytes, so the two cannot disagree.
 
 ## Accepted
 
 - The bar re-anchors when the selection changes, not while the document scrolls. A selection
   scrolled off-screen carries its bar off with it rather than pinning to the edge; re-anchoring on
   scroll would cost a measurement per frame to fix a position the reader has already left.
-- The intra-table exclusion reads whether the focused element sits inside a table. The flag on a
-  selection endpoint cannot answer this on its own: an intra-table selection shares the table's
-  path and carries cell-valued offsets on endpoints that are never flagged. This stands until the
-  editor offers a way to ask what kind of block a path holds.
+- The intra-table exclusion asks the editor what kind of block the selection starts in. The flag on
+  a selection endpoint cannot answer this on its own: an intra-table selection shares the table's
+  path and carries cell-valued offsets on endpoints that are never flagged.
 - Journal and flow entries do float the bar, unlike the insert menu, which cannot appear there
   because it is drawn inside a header row those surfaces never render. The gate here is the mode
   alone, and those entries are live and editable, so the formatting they offer is worth reaching.

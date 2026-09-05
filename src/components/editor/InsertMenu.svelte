@@ -3,7 +3,7 @@
 	 * A quiet + beside the mode toggle: pick a structure and it lands at the caret. Live mode only,
 	 * where the markers are hidden and there is nothing on screen to copy the syntax from.
 	 */
-	import type { EditorInstance } from 'aragonite';
+	import type { EditorInstance } from '@voithos-labs/aragonite';
 	import { contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { Plus } from '@lucide/svelte';
 

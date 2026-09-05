@@ -23,6 +23,6 @@ export default defineConfig({
 		// aragonite ships extensionless relative imports and uncompiled `.svelte`, neither of
 		// which node's own resolver takes; inlining routes the package through vite as the dev
 		// server already does.
-		server: { deps: { inline: ['aragonite'] } }
+		server: { deps: { inline: ['@voithos-labs/aragonite'] } }
 	}
 });

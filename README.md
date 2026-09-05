@@ -14,31 +14,14 @@ Good entry point to explore the code base is Session ([see file](https://github.
 
 ---
 
-Currently, the editor library is not on the npm registry. Thus we have to do a bit of setup for local dev:
+The editor is [aragonite](https://github.com/voithos-labs/aragonite), installed from npm as `@voithos-labs/aragonite`. Its consumer guide ships in the package, under `node_modules/@voithos-labs/aragonite/docs/guide/`.
 
 ```bash
-git clone https://github.com/voithos-labs/aragonite.git ../aragonite
-cd ../aragonite
-git switch dev
-git fetch
-git pull
 npm i
-npm run package
-cd ../limestone
-npm i
-```
-
-Then:
-
-```bash
 npm run tauri dev
 ```
 
-Since aragonite is also actively under dev, so sometimes you have to rebuild it with `npm run package` after new changes. To pick up on the new build, run:
-
-```bash
-npm run editor:sync
-```
+To try an unreleased aragonite build, run `npm run package` in a checkout of it and then, here, `npm i --install-links ../aragonite` (the flag installs a copy; a symlink puts a second Svelte on the type path). Leave the resulting `package.json` and lockfile changes out of your commit.
 
 Also, if you are developing both limestone and aragonite on the same machine, note that aragonite's showcase dev server also uses port 1420. So, if you are stupid enough to run both the showcase dev server and limestone's npm test at the same time, try to avoid port collision with:
 

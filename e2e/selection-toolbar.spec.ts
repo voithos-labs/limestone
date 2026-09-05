@@ -91,31 +91,74 @@ test('source and reading modes never float the bar', async ({ page }) => {
 	await expect(bar(page)).toHaveCount(0);
 });
 
-// The commands address a cell's own coordinates here, not the highlighted text, so the bar has to
-// stay away. A selection endpoint's own flag cannot report this, which is why it is worth a test.
-test('a selection inside a table cell floats no bar', async ({ page }) => {
-	await bootApp(page, { docs: { [NOTE]: '| Head | Head |\n| --- | --- |\n| one | two |\n' } });
-	const cell = page.locator('.editor .table-cell', { hasText: 'one' });
-	await cell.click();
-	await page.keyboard.press('Home');
-	for (let i = 0; i < 3; i++) await page.keyboard.press('Shift+ArrowRight');
+const TABLE = '| Head | Head |\n| --- | --- |\n| one | two |\n';
+
+// A selection spanning cells addresses the cells' own coordinates, not the highlighted text, so the
+// bar has to stay away. A selection endpoint's own flag cannot report this; the block's kind can.
+test('a selection spanning table cells floats no bar', async ({ page }) => {
+	await bootApp(page, { docs: { [NOTE]: TABLE } });
+	await page.locator('.editor .table-cell', { hasText: 'one' }).click();
+	// The second Mod+A widens the cell's text selection to the whole table.
+	await page.keyboard.press('Control+a');
+	await page.keyboard.press('Control+a');
 
 	await expect(bar(page)).toHaveCount(0);
 });
 
-// Every format command declines a range that crosses blocks, so a bar there is dead buttons. The
-// bar is pinned before the crossing, so the absence cannot pass on a selection that never crossed.
-test('a selection across two blocks floats no bar', async ({ page }) => {
+// Text inside one cell is ordinary prose to the format commands, so the bar is as useful there as
+// in a paragraph.
+test('a selection of text inside one cell floats the bar, and Bold wraps that text', async ({
+	page
+}) => {
+	await bootApp(page, { docs: { [NOTE]: TABLE } });
+	await page.locator('.editor .table-cell', { hasText: 'one' }).click();
+	await page.keyboard.press('Home');
+	for (let i = 0; i < 3; i++) await page.keyboard.press('Shift+ArrowRight');
+	await expect(bar(page)).toBeVisible();
+
+	await bar(page).locator('button[aria-label="Bold"]').click();
+
+	await expect
+		.poll(() => lastWrite(page))
+		.toBe('| Head | Head |\n| --- | --- |\n| **one** | two |\n');
+});
+
+// A format toggle over a range that crosses blocks marks every block it touches, so the bar stays
+// up there. The link card cannot span blocks, and that button alone goes grey rather than dead.
+test('a selection across two blocks keeps the bar, greys Link, and Bold wraps both blocks', async ({
+	page
+}) => {
 	await bootApp(page, { docs: { [NOTE]: 'First para here.\n\nSecond para here.\n' } });
 	await page.locator('.editor .text-editable-block', { hasText: 'First para here.' }).click();
 	await page.keyboard.press('Home');
-	await page.keyboard.press('Shift+ArrowDown');
+	// The editor's own extend-to-document-end chord; a plain Shift+End stops at the block edge.
+	await page.keyboard.press('Control+Shift+End');
+
 	await expect(bar(page)).toBeVisible();
+	await expect(bar(page).locator('button[aria-label="Link"]')).toBeDisabled();
+	await expect(bar(page).locator('button[aria-label="Bold"]')).toBeEnabled();
 
-	await page.keyboard.press('Shift+ArrowDown');
-	await page.keyboard.press('Shift+End');
+	await bar(page).locator('button[aria-label="Bold"]').click();
 
-	await expect(bar(page)).toHaveCount(0);
+	await expect.poll(() => lastWrite(page)).toBe('**First para here.**\n\n**Second para here.**\n');
+});
+
+// The pressed paint reads the same bytes the toggle rewrites, so a selection already inside a bold
+// run shows Bold down, and the press then lifts the word out of the run rather than nesting a pair.
+test('a selection inside bold shows Bold pressed, and pressing it unwraps', async ({ page }) => {
+	await bootApp(page, { docs: { [NOTE]: '**Alpha beta gamma.**\n' } });
+	await selectBeta(page);
+
+	const bold = bar(page).locator('button[aria-label="Bold"]');
+	await expect(bold).toHaveAttribute('aria-pressed', 'true');
+	await expect(bar(page).locator('button[aria-label="Italic"]')).toHaveAttribute(
+		'aria-pressed',
+		'false'
+	);
+
+	await bold.click();
+
+	await expect.poll(() => lastWrite(page)).toBe('**Alpha** beta **gamma.**\n');
 });
 
 // The journal has no mode control, so its entries sit in live mode and stay editable. That makes

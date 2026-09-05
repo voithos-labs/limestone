@@ -141,8 +141,7 @@ test('a tab keeps its mode over leaving the document, and the cycle goes on from
 	expect(await mode(page)).toBe('reading');
 });
 
-// The flip out of reading re-seats the banked caret through a scroll (aragonite #155).
-test.fixme('Mod+E keeps the reader where they were reading', async ({ page }) => {
+test('Mod+E keeps the reader where they were reading', async ({ page }) => {
 	const long = Array.from({ length: 80 }, (_, i) => `Paragraph number ${i + 1}.`).join('\n\n');
 	await bootApp(page, { docs: { [NOTE]: `${long}\n` } });
 	const editor = page.locator('.editor');

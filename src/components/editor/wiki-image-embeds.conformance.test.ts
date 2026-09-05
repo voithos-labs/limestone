@@ -7,10 +7,13 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { installPlugins } from 'aragonite';
-import { INLINE_PRIORITIES } from 'aragonite/plugin';
-import { resetPluginPlatformForTests, runInlineKindConformance } from 'aragonite/testing';
-import type { InlineConformanceProfile } from 'aragonite/testing';
+import { installPlugins } from '@voithos-labs/aragonite';
+import { INLINE_PRIORITIES } from '@voithos-labs/aragonite/plugin';
+import {
+	resetPluginPlatformForTests,
+	runInlineKindConformance
+} from '@voithos-labs/aragonite/testing';
+import type { InlineConformanceProfile } from '@voithos-labs/aragonite/testing';
 import { wikiImageEmbedsPlugin } from './wiki-image-embeds-plugin';
 import { OPEN } from './wiki-image-embeds-scan';
 

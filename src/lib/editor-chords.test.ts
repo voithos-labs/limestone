@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { EditorInstance } from 'aragonite';
+import type { EditorInstance } from '@voithos-labs/aragonite';
 import { appEditorShortcut, editorTakesKey, registerDocumentEditor } from './editor-chords';
 
 /** Stands in for the real editor: it takes Mod+B, the way aragonite takes it for bold. */

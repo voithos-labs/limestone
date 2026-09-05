@@ -1,5 +1,9 @@
-import { definePlugin, registerInlineSyntax, INLINE_PRIORITIES } from 'aragonite/plugin';
-import type { EditorPlugin, ImageFields, InlineNode } from 'aragonite/plugin';
+import {
+	definePlugin,
+	registerInlineSyntax,
+	INLINE_PRIORITIES
+} from '@voithos-labs/aragonite/plugin';
+import type { EditorPlugin, ImageFields, InlineNode } from '@voithos-labs/aragonite/plugin';
 import { OPEN, recognizeWikiImageEmbed } from './wiki-image-embeds-scan';
 
 /**

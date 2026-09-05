@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import aragoniteTheme from 'aragonite/styles/editor-theme.css?raw';
+import aragoniteTheme from '@voithos-labs/aragonite/styles/editor-theme.css?raw';
 import bridge from './editor-tokens.css?raw';
 import appCss from '../../app.css?raw';
 import themeService from '../../lib/services/theme.svelte.ts?raw';

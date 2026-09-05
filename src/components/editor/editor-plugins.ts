@@ -1,15 +1,15 @@
-import { admonitionsPlugin } from 'aragonite/plugins/admonitions';
-import { detailsPlugin } from 'aragonite/plugins/details';
-import { emojiPlugin } from 'aragonite/plugins/emoji';
-import { footnotesPlugin } from 'aragonite/plugins/footnotes';
-import { latexPlugin } from 'aragonite/plugins/latex';
-import { katexRenderer } from 'aragonite/plugins/latex/renderer';
-import { mermaidPlugin } from 'aragonite/plugins/mermaid';
-import { mermaidRenderer } from 'aragonite/plugins/mermaid/renderer';
-import { tocPlugin } from 'aragonite/plugins/toc';
-import { highlightOccurrencesPlugin } from 'aragonite/plugins/highlight-occurrences';
+import { admonitionsPlugin } from '@voithos-labs/aragonite/plugins/admonitions';
+import { detailsPlugin } from '@voithos-labs/aragonite/plugins/details';
+import { emojiPlugin } from '@voithos-labs/aragonite/plugins/emoji';
+import { footnotesPlugin } from '@voithos-labs/aragonite/plugins/footnotes';
+import { latexPlugin } from '@voithos-labs/aragonite/plugins/latex';
+import { katexRenderer } from '@voithos-labs/aragonite/plugins/latex/renderer';
+import { mermaidPlugin } from '@voithos-labs/aragonite/plugins/mermaid';
+import { mermaidRenderer } from '@voithos-labs/aragonite/plugins/mermaid/renderer';
+import { tocPlugin } from '@voithos-labs/aragonite/plugins/toc';
+import { highlightOccurrencesPlugin } from '@voithos-labs/aragonite/plugins/highlight-occurrences';
 import { wikiImageEmbedsPlugin } from './wiki-image-embeds-plugin';
-import type { EditorPluginEntry } from 'aragonite';
+import type { EditorPluginEntry } from '@voithos-labs/aragonite';
 
 /**
  * Built once here, not per mount: aragonite registers plugins once for the whole process and

@@ -4,7 +4,7 @@
  * every clash (Mod+I opened settings instead of italicizing).
  */
 
-import type { EditorInstance } from 'aragonite';
+import type { EditorInstance } from '@voithos-labs/aragonite';
 
 // ── The editors on screen ────────────────────────────────────────────────────
 
