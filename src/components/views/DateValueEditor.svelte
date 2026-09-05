@@ -157,13 +157,16 @@
 			s = (s.slice(0, timeMatch.index) + s.slice(timeMatch.index! + timeMatch[0].length)).trim();
 		}
 
-		const withTime = (y: number, m: number, d: number) => ({
-			y,
-			m,
-			d,
-			hh: th !== null ? Math.max(0, Math.min(23, th)) : null,
-			mm: Math.max(0, Math.min(59, tm))
-		});
+		const withTime = (y: number, m: number, d: number) =>
+			y < 1 || y > 9999
+				? null
+				: {
+						y,
+						m,
+						d,
+						hh: th !== null ? Math.max(0, Math.min(23, th)) : null,
+						mm: Math.max(0, Math.min(59, tm))
+					};
 
 		// Relative keywords
 		if (s === '' && th !== null) return withTime(n.getFullYear(), n.getMonth(), n.getDate());
