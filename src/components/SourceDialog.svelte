@@ -8,10 +8,11 @@
 		setDefaultSource,
 		sourceName,
 		updateSource,
+		updateSourcePath,
 		type Source
 	} from '$lib/models/Source';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
-	import { ChevronDown, Folder, GitBranch } from '@lucide/svelte';
+	import { ChevronDown, Folder, GitBranch, TriangleAlert } from '@lucide/svelte';
 	import Toggle from './Toggle.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
 
@@ -19,11 +20,13 @@
 		open = $bindable(false),
 		mode,
 		source = null,
+		missing = false,
 		onSaved
 	}: {
 		open: boolean;
 		mode: 'create' | 'edit';
 		source?: Source | null;
+		missing?: boolean;
 		onSaved: () => void;
 	} = $props();
 
@@ -72,6 +75,21 @@
 		}
 	}
 
+	async function relocate() {
+		const sel = await openDialog({ directory: true, multiple: false });
+		if (typeof sel !== 'string' || !source) return;
+		error = '';
+		busy = true;
+		try {
+			await updateSourcePath(source.id, sel);
+			folderPath = sel;
+			onSaved();
+		} catch (e) {
+			error = String(e);
+		}
+		busy = false;
+	}
+
 	let noteMenuOpen = $state(false);
 	let noteMenuAnchor: HTMLElement | null = $state(null);
 	let assetMenuOpen = $state(false);
@@ -82,7 +100,7 @@
 		return {
 			id: rel,
 			slug: parts[parts.length - 1],
-			parentGroupId: parts.length > 1 ? parts.slice(0, -1).join('/') : undefined,
+			parentId: parts.length > 1 ? parts.slice(0, -1).join('/') : undefined,
 			accessedAt: new Date(0)
 		};
 	}
@@ -146,6 +164,22 @@
 				{mode === 'create' ? 'Add source' : sourceName(source ?? { path: '', title: '' })}
 			</h3>
 
+			{#if mode === 'edit' && missing}
+				<div class="missing-card">
+					<TriangleAlert size={15} strokeWidth={1.75} />
+					<div class="mc-body">
+						<span class="mc-title">Source folder unavailable</span>
+						<span class="mc-text">
+							The folder couldn't be found. If it moved, point this source at its new location; your
+							notes stay indexed either way.
+						</span>
+						<button class="btn mc-btn" type="button" disabled={busy} onclick={relocate}>
+							Update location…
+						</button>
+					</div>
+				</div>
+			{/if}
+
 			<label class="field">
 				<span class="label">Folder</span>
 				{#if mode === 'create'}
@@ -170,9 +204,7 @@
 					onclick={() => (noteMenuOpen = true)}
 				>
 					<Folder size={14} />
-					<span class="folder-text grow" class:placeholder={!noteLocation}
-						>{noteLocation || '(source root)'}</span
-					>
+					<span class="folder-text grow">{noteLocation || '(source root)'}</span>
 					<ChevronDown size={14} />
 				</button>
 			</label>
@@ -280,6 +312,45 @@
 		font-size: 16px;
 		font-weight: 600;
 		color: var(--color-text-primary);
+	}
+
+	.missing-card {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		margin-bottom: 16px;
+		padding: 10px 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		color: var(--color-ui-muted);
+	}
+
+	.missing-card > :global(svg) {
+		flex-shrink: 0;
+		margin-top: 2px;
+	}
+
+	.mc-body {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		min-width: 0;
+	}
+
+	.mc-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.mc-text {
+		font-size: 12px;
+		line-height: 1.4;
+	}
+
+	.mc-btn {
+		align-self: flex-start;
+		margin-top: 6px;
 	}
 
 	.field {

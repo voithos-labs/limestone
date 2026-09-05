@@ -4,7 +4,8 @@
 	import type { SearchResult } from '$lib/types/SearchResult';
 	import { getSource, touchSource, listSources, type Source } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
-	import Group from '$lib/models/Group';
+	import Tag from '$lib/models/Tag';
+	import Folder from '$lib/models/Folder';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
 	import { searchDocuments } from '$lib/services/search';
 	import SearchResultRow from './SearchResultRow.svelte';
@@ -109,14 +110,17 @@
 			return;
 		}
 		if (result.kind === 'group') {
-			const group = await Group.fromID(result.id);
+			const group =
+				result.group_type === 'folder'
+					? await Folder.fromID(result.id)
+					: await Tag.fromID(result.id);
 			group.touch();
 			const existing = findViewTabByOrigin(group.id);
 			if (existing) {
 				editor.focusTab({ kind: 'tab', id: existing.id });
 				return;
 			}
-			openInTab(TabState.forView(View.createFromGroup(group)));
+			openInTab(TabState.forView(View.createFromUnit(group)));
 			return;
 		}
 		if (result.kind === 'source') {

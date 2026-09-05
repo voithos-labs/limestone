@@ -1,6 +1,6 @@
+use serde::Serialize;
 use serde_json::Value;
 use sqlx::{AssertSqlSafe, SqlitePool};
-use serde::Serialize;
 use std::sync::RwLock;
 use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
@@ -9,13 +9,15 @@ mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 pub async fn create_pool(
     path: &std::path::Path,
 ) -> Result<SqlitePool, Box<dyn std::error::Error + Send + Sync>> {
-    let url = format!("sqlite:{}?mode=rwc", path.display());
-    let pool = SqlitePool::connect(&url).await?;
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(true);
+    let pool = SqlitePool::connect_with(options).await?;
     let version: i64 = sqlx::query_scalar("PRAGMA user_version")
         .fetch_one(&pool)
         .await?;
@@ -23,8 +25,11 @@ pub async fn create_pool(
         // rebuild db on schema version change
         sqlx::raw_sql(
             "DROP TABLE IF EXISTS documents_fts;
+             DROP TABLE IF EXISTS document_tags;
              DROP TABLE IF EXISTS document_groups;
              DROP TABLE IF EXISTS documents;
+             DROP TABLE IF EXISTS folders;
+             DROP TABLE IF EXISTS tags;
              DROP TABLE IF EXISTS groups;
              DROP TABLE IF EXISTS sources;",
         )
@@ -35,8 +40,8 @@ pub async fn create_pool(
     sqlx::raw_sql(AssertSqlSafe(format!(
         "PRAGMA user_version = {SCHEMA_VERSION}"
     )))
-        .execute(&pool)
-        .await?;
+    .execute(&pool)
+    .await?;
     Ok(pool)
 }
 
@@ -51,6 +56,7 @@ pub struct AppData {
 pub(crate) struct Reconciled<'a> {
     pub source_id: &'a str,
     pub skipped: usize,
+    pub unreachable: bool,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -174,6 +180,7 @@ pub fn run() {
                 db: pool.clone(),
                 bulk: bulk.clone(),
             });
+            app.manage(commands::watch_commands::Watchers::default());
 
             // ── Not Blocking!1 ───────────────────────────────────────────────────────
 
@@ -215,6 +222,7 @@ pub fn run() {
                                 Reconciled {
                                     source_id: &source_id,
                                     skipped,
+                                    unreachable: !source.path.is_dir(),
                                 },
                             );
                             if let Err(e) = services::index_fts(&pool, &source, changed).await {
@@ -226,7 +234,7 @@ pub fn run() {
                     for task in tasks {
                         let _ = task.await;
                     }
-                    if let Err(e) = services::cleanup_orphan_tag_groups(&pool).await {
+                    if let Err(e) = services::cleanup_orphan_tags(&pool).await {
                         eprintln!("tag cleanup failed: {e}");
                     }
                 });
@@ -248,6 +256,10 @@ pub fn run() {
             commands::source_commands::make_dir,
             commands::source_commands::create_folder,
             commands::source_commands::move_folder,
+            commands::source_commands::reconcile_source,
+            commands::source_commands::check_sources,
+            commands::source_commands::update_source_path,
+            commands::watch_commands::set_watched_paths,
             commands::settings_commands::get_app_info,
             commands::settings_commands::get_setting,
             commands::settings_commands::get_all_settings,
@@ -266,6 +278,8 @@ pub fn run() {
             commands::bulk_ops_commands::bulk_rename_view,
             commands::bulk_ops_commands::bulk_rename_view_option,
             commands::bulk_ops_commands::bulk_remove_view_field,
+            commands::bulk_ops_commands::bulk_rename_tag,
+            commands::bulk_ops_commands::bulk_remove_tag,
             commands::db_commands::sql_select,
             commands::db_commands::sql_execute,
             commands::asset_commands::import_global_asset,

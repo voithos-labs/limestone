@@ -594,14 +594,14 @@ pub async fn apply_plan(
 
     let mut tx = db.begin().await?;
 
-    let mut unlinked_groups: Vec<String> = Vec::new();
+    let mut unlinked_tags: Vec<String> = Vec::new();
     for id in &plan.delete_ids {
-        let group_ids: Vec<String> =
-            sqlx::query_scalar("SELECT group_id FROM document_groups WHERE document_id = ?1")
+        let tag_ids: Vec<String> =
+            sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")
                 .bind(id)
                 .fetch_all(&mut *tx)
                 .await?;
-        unlinked_groups.extend(group_ids);
+        unlinked_tags.extend(tag_ids);
         sqlx::query(
             "DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = ?1)",
         )
@@ -687,12 +687,12 @@ pub async fn apply_plan(
         }
     }
 
-    for group_id in &unlinked_groups {
+    for id in &unlinked_tags {
         sqlx::query(
-            "DELETE FROM groups WHERE id = ?1 AND group_type = 'tag'
-             AND id NOT IN (SELECT group_id FROM document_groups)",
+            "DELETE FROM tags WHERE id = ?1
+             AND id NOT IN (SELECT tag_id FROM document_tags)",
         )
-        .bind(group_id)
+        .bind(id)
         .execute(&mut *tx)
         .await?;
     }
@@ -700,23 +700,22 @@ pub async fn apply_plan(
     tx.commit().await
 }
 
-/// Ensure folder groups exist for a document's path and link the document to all ancestors
-fn tag_group_id(slug: &str) -> String {
+pub(crate) fn tag_id(slug: &str) -> String {
     format!("tag:{slug}")
 }
 
-fn folder_group_id(source_id: &str, path: &str) -> String {
+fn folder_id(source_id: &str, path: &str) -> String {
     format!("folder:{source_id}:{path}")
 }
 
+/// Point a document at its folder, creating the folder chain if the walk has not yet.
 pub(crate) async fn sync_folders(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     source_id: &str,
     doc_id: &str,
     rel_path: &str,
 ) -> sqlx::Result<()> {
-    let path = Path::new(rel_path);
-    let segments: Vec<&str> = path
+    let segments: Vec<&str> = Path::new(rel_path)
         .parent()
         .map(|p| {
             p.components()
@@ -725,77 +724,22 @@ pub(crate) async fn sync_folders(
         })
         .unwrap_or_default();
 
-    if segments.is_empty() {
-        return Ok(());
-    }
-
-    // Clear existing folder associations for this document
-    sqlx::query(
-        "DELETE FROM document_groups WHERE document_id = ?1 AND group_id IN (SELECT id FROM groups WHERE source_id = ?2 AND group_type = 'folder')",
-    )
-    .bind(doc_id)
-    .bind(source_id)
-    .execute(&mut **tx)
-    .await?;
-
-    let mut parent_id: Option<String> = None;
+    // every ancestor has to exist before the leaf can reference it as a parent
     let mut path_acc = String::new();
-
+    let mut id = upsert_folder(tx, source_id, "").await?;
     for slug in &segments {
         if !path_acc.is_empty() {
             path_acc.push('/');
         }
         path_acc.push_str(slug);
-        let existing: Option<String> = match &parent_id {
-            Some(pid) => {
-                sqlx::query_scalar(
-                    "SELECT id FROM groups WHERE source_id = ?1 AND slug = ?2 AND group_type = 'folder' AND parent_group_id = ?3",
-                )
-                .bind(source_id)
-                .bind(slug)
-                .bind(pid)
-                .fetch_optional(&mut **tx)
-                .await?
-            }
-            None => {
-                sqlx::query_scalar(
-                    "SELECT id FROM groups WHERE source_id = ?1 AND slug = ?2 AND group_type = 'folder' AND parent_group_id IS NULL",
-                )
-                .bind(source_id)
-                .bind(slug)
-                .fetch_optional(&mut **tx)
-                .await?
-            }
-        };
-
-        let group_id = match existing {
-            Some(id) => id,
-            None => {
-                let id = folder_group_id(source_id, &path_acc);
-                sqlx::query(
-                    "INSERT INTO groups (id, source_id, slug, group_type, parent_group_id) VALUES (?1, ?2, ?3, 'folder', ?4)",
-                )
-                .bind(&id)
-                .bind(source_id)
-                .bind(slug)
-                .bind(parent_id.as_deref())
-                .execute(&mut **tx)
-                .await?;
-                id
-            }
-        };
-
-        sqlx::query(
-            "INSERT OR IGNORE INTO document_groups (document_id, group_id) VALUES (?1, ?2)",
-        )
-        .bind(doc_id)
-        .bind(&group_id)
-        .execute(&mut **tx)
-        .await?;
-
-        parent_id = Some(group_id);
+        id = upsert_folder(tx, source_id, &path_acc).await?;
     }
 
+    sqlx::query("UPDATE documents SET folder_id = ?1 WHERE id = ?2")
+        .bind(&id)
+        .bind(doc_id)
+        .execute(&mut **tx)
+        .await?;
     Ok(())
 }
 
@@ -804,12 +748,11 @@ const ORPHAN_TAG_GRACE_MS: i64 = 60_000;
 // age guard: never collect tags younger than the grace window (may be mid-creation in the UI)
 // todo: with new routing this can basically only happen when the app first opens, barely worth the
 // extra code
-pub async fn cleanup_orphan_tag_groups(db: &SqlitePool) -> sqlx::Result<()> {
+pub async fn cleanup_orphan_tags(db: &SqlitePool) -> sqlx::Result<()> {
     let cutoff = Utc::now().timestamp_millis() - ORPHAN_TAG_GRACE_MS;
     sqlx::query(
-        "DELETE FROM groups WHERE group_type = 'tag'
-         AND created_at < ?1
-         AND id NOT IN (SELECT group_id FROM document_groups)",
+        "DELETE FROM tags WHERE created_at < ?1
+         AND id NOT IN (SELECT tag_id FROM document_tags)",
     )
     .bind(cutoff)
     .execute(db)
@@ -820,21 +763,22 @@ pub async fn cleanup_orphan_tag_groups(db: &SqlitePool) -> sqlx::Result<()> {
 fn folder_parent_and_slug(path: &str) -> (Option<&str>, &str) {
     match path.rsplit_once('/') {
         Some((parent, slug)) => (Some(parent), slug),
-        None => (None, path),
+        None if path.is_empty() => (None, path), // the source root, the only parentless folder
+        None => (Some(""), path),
     }
 }
 
-pub(crate) async fn upsert_folder_group(
+pub(crate) async fn upsert_folder(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     source_id: &str,
     path: &str,
 ) -> sqlx::Result<String> {
-    let id = folder_group_id(source_id, path);
+    let id = folder_id(source_id, path);
     let (parent, slug) = folder_parent_and_slug(path);
-    let parent_id = parent.map(|p| folder_group_id(source_id, p));
+    let parent_id = parent.map(|p| folder_id(source_id, p));
     sqlx::query(
-        "INSERT INTO groups (id, source_id, slug, group_type, parent_group_id)
-         VALUES (?1, ?2, ?3, 'folder', ?4)
+        "INSERT INTO folders (id, source_id, slug, parent_id)
+         VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT DO NOTHING",
     )
     .bind(&id)
@@ -846,26 +790,26 @@ pub(crate) async fn upsert_folder_group(
     Ok(id)
 }
 
-/// Reconcile this source's folder groups against the walked directory set (disk is truth).
+/// Reconcile this source's folders against the walked directory set (disk is truth).
 /// `dirs` must be ordered parent-before-child.
 pub(crate) async fn sync_folder_dirs(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     source_id: &str,
     dirs: &[String],
 ) -> sqlx::Result<()> {
-    let mut expected: HashSet<String> = HashSet::with_capacity(dirs.len());
+    let mut expected: HashSet<String> = HashSet::with_capacity(dirs.len() + 1);
+    expected.insert(upsert_folder(tx, source_id, "").await?);
     for path in dirs {
-        expected.insert(upsert_folder_group(tx, source_id, path).await?);
+        expected.insert(upsert_folder(tx, source_id, path).await?);
     }
 
-    let existing: Vec<String> =
-        sqlx::query_scalar("SELECT id FROM groups WHERE source_id = ?1 AND group_type = 'folder'")
-            .bind(source_id)
-            .fetch_all(&mut **tx)
-            .await?;
+    let existing: Vec<String> = sqlx::query_scalar("SELECT id FROM folders WHERE source_id = ?1")
+        .bind(source_id)
+        .fetch_all(&mut **tx)
+        .await?;
     for id in existing {
         if !expected.contains(&id) {
-            sqlx::query("DELETE FROM groups WHERE id = ?1")
+            sqlx::query("DELETE FROM folders WHERE id = ?1")
                 .bind(&id)
                 .execute(&mut **tx)
                 .await?;
@@ -875,56 +819,44 @@ pub(crate) async fn sync_folder_dirs(
     Ok(())
 }
 
-/// Sync tags from frontmatter into groups (tags are global, source_id is null)
+/// Sync tags from frontmatter into the tags table (tags are global)
 pub(crate) async fn sync_tags(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     doc_id: &str,
     tags: &[String],
 ) -> sqlx::Result<()> {
-    let old_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT group_id FROM document_groups WHERE document_id = ?1 AND group_id IN (SELECT id FROM groups WHERE source_id IS NULL AND group_type = 'tag')",
-    )
-    .bind(doc_id)
-    .fetch_all(&mut **tx)
-    .await?;
+    let old_ids: Vec<String> =
+        sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")
+            .bind(doc_id)
+            .fetch_all(&mut **tx)
+            .await?;
 
     // Clear existing tag associations for this document
-    sqlx::query(
-        "DELETE FROM document_groups WHERE document_id = ?1 AND group_id IN (SELECT id FROM groups WHERE source_id IS NULL AND group_type = 'tag')",
-    )
-    .bind(doc_id)
-    .execute(&mut **tx)
-    .await?;
+    sqlx::query("DELETE FROM document_tags WHERE document_id = ?1")
+        .bind(doc_id)
+        .execute(&mut **tx)
+        .await?;
 
     for tag in tags {
-        // Upsert tag group (global)
-        sqlx::query("INSERT OR IGNORE INTO groups (id, slug, group_type) VALUES (?1, ?2, 'tag')")
-            .bind(tag_group_id(tag))
+        let id = tag_id(tag);
+        sqlx::query("INSERT OR IGNORE INTO tags (id, slug) VALUES (?1, ?2)")
+            .bind(&id)
             .bind(tag)
             .execute(&mut **tx)
             .await?;
 
-        let group_id: String = sqlx::query_scalar(
-            "SELECT id FROM groups WHERE slug = ?1 AND group_type = 'tag' AND source_id IS NULL",
-        )
-        .bind(tag)
-        .fetch_one(&mut **tx)
-        .await?;
-
-        sqlx::query(
-            "INSERT OR IGNORE INTO document_groups (document_id, group_id) VALUES (?1, ?2)",
-        )
-        .bind(doc_id)
-        .bind(&group_id)
-        .execute(&mut **tx)
-        .await?;
+        sqlx::query("INSERT OR IGNORE INTO document_tags (document_id, tag_id) VALUES (?1, ?2)")
+            .bind(doc_id)
+            .bind(&id)
+            .execute(&mut **tx)
+            .await?;
     }
 
     // tags this doc just left die with their last member
     for old_id in &old_ids {
         sqlx::query(
-            "DELETE FROM groups WHERE id = ?1
-             AND id NOT IN (SELECT group_id FROM document_groups)",
+            "DELETE FROM tags WHERE id = ?1
+             AND id NOT IN (SELECT tag_id FROM document_tags)",
         )
         .bind(old_id)
         .execute(&mut **tx)
@@ -1290,9 +1222,11 @@ mod tests {
 
     #[test]
     fn folder_rows_derive_parent_from_path() {
-        assert_eq!(folder_parent_and_slug("a"), (None, "a"));
+        assert_eq!(folder_parent_and_slug(""), (None, ""));
+        assert_eq!(folder_parent_and_slug("a"), (Some(""), "a"));
         assert_eq!(folder_parent_and_slug("a/b"), (Some("a"), "b"));
         assert_eq!(folder_parent_and_slug("a/b/c"), (Some("a/b"), "c"));
-        assert_eq!(folder_group_id("src", "a/b"), "folder:src:a/b");
+        assert_eq!(folder_id("src", ""), "folder:src:");
+        assert_eq!(folder_id("src", "a/b"), "folder:src:a/b");
     }
 }

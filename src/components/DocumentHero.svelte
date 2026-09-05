@@ -1,13 +1,15 @@
 <script lang="ts">
 	import DocHandle from '$lib/models/DocHandle';
-	import { sourceName, listSources, type Source } from '$lib/models/Source';
-	import Group, { GroupType } from '$lib/models/Group';
+	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
+	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
+	import type Tag from '$lib/models/Tag';
 	import { formatDateFriendly } from '$lib/views/dateFormat';
 	import { folderDir, fileName } from '$lib/views/fieldValue';
 	import { folderPath } from '$lib/views/createDefaults';
 	import { isValidSegment } from '$lib/util/paths';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import Menu from './views/Menu.svelte';
+	import TagMenu from './views/TagMenu.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
 	import DocProperties from './views/DocProperties.svelte';
 	import {
@@ -18,7 +20,10 @@
 		Plus,
 		Copy,
 		SlidersHorizontal,
-		ExternalLink
+		ExternalLink,
+		TriangleAlert,
+		FileText,
+		RefreshCw
 	} from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -30,32 +35,48 @@
 		onDelete,
 		onDuplicated,
 		compact = false,
+		frontmatterError = null,
+		onFrontmatterFix,
 		propsOpen = $bindable(false)
 	}: {
 		handle: DocHandle;
 		onDelete?: () => void;
 		onDuplicated?: (copy: DocHandle) => void;
 		compact?: boolean;
+		frontmatterError?: string | null;
+		onFrontmatterFix?: (mode: 'keep' | 'rebuild') => void;
 		propsOpen?: boolean;
 	} = $props();
 
+	let fmMenuOpen = $state(false);
+	let fmAnchor: HTMLElement | null = $state(null);
+
+	const fmItems: MenuEntry[] = [
+		{ value: 'keep', label: 'Keep as text', icon: FileText },
+		{ value: 'rebuild', label: 'Discard and rebuild', icon: RefreshCw, danger: true },
+		{ kind: 'divider' },
+		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink }
+	];
+
+	function onFmSelect(value: string) {
+		fmMenuOpen = false;
+		if (value === 'reveal') revealDoc();
+		else onFrontmatterFix?.(value as 'keep' | 'rebuild');
+	}
+
 	let title = $state(untrack(() => handle.title));
+	const wasDraft = untrack(() => handle.isDraft);
+	const draftTitle = untrack(() => handle.title);
 	let relPath = $state(untrack(() => handle.relPath));
 	let source = $state<Source>(untrack(() => handle.source));
-	let allGroups: Group[] = $state([]);
+	let folderList: Folder[] = $state([]);
 	let sources: Source[] = $state([]);
-	let tagList: Group[] = $state(untrack(() => handle.tags));
+	let tagList: Tag[] = $state(untrack(() => handle.tags));
 
-	const folders = $derived(allGroups.filter((g) => g.groupType === GroupType.Folder));
+	const folders = $derived(folderList);
 
 	let tagMenuOpen = $state(false);
 	let tagAnchor: HTMLElement | null = $state(null);
-
-	const tagItems = $derived(
-		allGroups
-			.filter((g) => g.groupType === GroupType.Tag)
-			.map((g) => ({ value: g.id, label: g.slug, icon: Hash }))
-	);
 
 	async function createTag(q: string) {
 		const slug = q.trim();
@@ -63,17 +84,14 @@
 		try {
 			await handle.setTags([...tagList.map((t) => t.slug), slug]);
 			tagList = handle.tags;
-			allGroups = await Group.list();
 		} catch (e) {
 			console.error('create tag failed', e);
 		}
 	}
 
-	async function toggleTag(id: string) {
-		const has = tagList.some((t) => t.id === id);
-		const next = has
-			? tagList.filter((t) => t.id !== id)
-			: [...tagList, allGroups.find((g) => g.id === id)!].filter(Boolean);
+	async function toggleTag(tag: Tag) {
+		const has = tagList.some((t) => t.id === tag.id);
+		const next = has ? tagList.filter((t) => t.id !== tag.id) : [...tagList, tag];
 		tagList = next;
 		try {
 			await handle.setTags(next.map((t) => t.slug));
@@ -83,6 +101,22 @@
 			tagList = handle.tags;
 		}
 	}
+
+	async function tagsMutated() {
+		try {
+			await handle.fetchTags();
+			tagList = handle.tags;
+		} catch (e) {
+			console.error('refresh tags failed', e);
+		}
+	}
+
+	$effect(() =>
+		onSourceReconciled(async (sourceId) => {
+			if (sourceId !== source.id) return;
+			if (await handle.refreshPath()) relPath = handle.relPath;
+		})
+	);
 
 	const ext = $derived(relPath.match(/\.[^.]+$/)?.[0] ?? '.md');
 	const srcName = $derived(sourceName(source));
@@ -95,10 +129,10 @@
 		// first open delay. DNR.
 		// if (!dir) return null;
 		// return (
-		// 		folders.find((f) => f.sourceId === source.id && folderPath(f.id, folders) === dir)?.id ?? null
+		// 		folders.find((f) => f.sourceId === source.id && folderPath(f.id) === dir)?.id ?? null
 		// );
 
-		return dir ? `folder:${source.id}:${dir}` : null;
+		return folderId(source.id, dir);
 	});
 
 	// ── Title rename ───────────────────────────────────────────────────────────
@@ -121,6 +155,10 @@
 			titleTaken = !next;
 			return;
 		}
+		if (titleCandidate(next).toLowerCase() === relPath.toLowerCase()) {
+			titleTaken = false;
+			return;
+		}
 		DocHandle.pathTaken(source, titleCandidate(next)).then((taken) => {
 			if (token === titleCheckToken) titleTaken = taken;
 		});
@@ -133,7 +171,8 @@
 			return;
 		}
 		try {
-			if (await DocHandle.pathTaken(source, titleCandidate(next))) {
+			const caseOnly = titleCandidate(next).toLowerCase() === relPath.toLowerCase();
+			if (!caseOnly && (await DocHandle.pathTaken(source, titleCandidate(next)))) {
 				title = handle.title;
 				return;
 			}
@@ -162,15 +201,12 @@
 	let folderOpen = $state(false);
 	let pickAnchor: HTMLElement | null = $state(null);
 
-	const folderPickerValue = $derived(currentFolderId ?? source.id);
+	const folderPickerValue = $derived(currentFolderId);
 
 	async function onPickFolder(groupId: string, path?: string) {
-		const isFolder = groupId.startsWith('folder:');
-		const targetSourceId = isFolder
-			? (folders.find((f) => f.id === groupId)?.sourceId ?? groupId.split(':')[1])
-			: groupId;
+		const targetSourceId = folderIdSource(groupId);
 		const target = sources.find((s) => s.id === targetSourceId) ?? source;
-		const dir = isFolder ? (path ?? folderPath(groupId, folders)) : '';
+		const dir = path ?? folderIdPath(groupId);
 		const file = fileName(relPath);
 		const newRel = dir ? `${dir}/${file}` : file;
 		if (target.id === source.id && newRel === relPath) return;
@@ -182,7 +218,7 @@
 				source = target;
 			}
 			relPath = newRel;
-			allGroups = await Group.list();
+			folderList = await Folder.list();
 		} catch (e) {
 			console.error('move failed', e);
 		}
@@ -199,6 +235,15 @@
 
 	$effect(() => {
 		if (!menuOpen) confirmingDelete = false;
+	});
+
+	$effect(() => {
+		if (folderOpen || tagMenuOpen) return;
+		if (!wasDraft || handle.title !== draftTitle) return;
+		const active = document.activeElement;
+		if (active && active !== document.body && active !== pickAnchor && active !== tagAnchor) return;
+		titleInput?.focus();
+		titleInput?.select();
 	});
 
 	const menuItems: MenuEntry[] = $derived([
@@ -221,7 +266,7 @@
 				source,
 				newTitle,
 				newRel,
-				handle.groups.map((g) => g.id),
+				handle.tags.map((t) => t.id),
 				JSON.parse(JSON.stringify(handle.properties))
 			);
 			await copy.saveContent(body);
@@ -256,8 +301,8 @@
 			titleInput?.focus();
 			titleInput?.select();
 		}
-		Group.list()
-			.then((gs) => (allGroups = gs))
+		Folder.list()
+			.then((fs) => (folderList = fs))
 			.catch(() => {});
 		listSources()
 			.then((ss) => (sources = ss))
@@ -326,7 +371,18 @@
 						{/if}
 					</button>
 				{/if}
-				{#if propCount > 0}
+				{#if source.use_frontmatter && frontmatterError}
+					<span class="meta-div"></span>
+					<button
+						class="props-chip fm-error"
+						class:open={fmMenuOpen}
+						bind:this={fmAnchor}
+						title="Frontmatter couldn't be parsed"
+						onclick={() => (fmMenuOpen = !fmMenuOpen)}
+					>
+						<TriangleAlert size={12} strokeWidth={1.75} />
+					</button>
+				{:else if propCount > 0}
 					<span class="meta-div"></span>
 					<button
 						class="props-chip"
@@ -356,6 +412,19 @@
 	onSelect={onMenuSelect}
 	minWidth={140}
 />
+
+<Menu bind:open={fmMenuOpen} anchor={fmAnchor} items={fmItems} onSelect={onFmSelect} minWidth={220}>
+	{#snippet header()}
+		<div class="fm-error-head">
+			<span class="fm-error-title">Frontmatter couldn't be parsed</span>
+			<span class="fm-error-msg">{frontmatterError}</span>
+			<span class="fm-error-msg"
+				>Fix it in place, keep it as text under new frontmatter, or rebuild from what the app has
+				(tags and properties in the block are not recovered).</span
+			>
+		</div>
+	{/snippet}
+</Menu>
 <FolderValueEditor
 	bind:open={folderOpen}
 	anchor={pickAnchor}
@@ -363,17 +432,13 @@
 	manage
 	onChange={onPickFolder}
 />
-<Menu
+<TagMenu
 	bind:open={tagMenuOpen}
 	anchor={tagAnchor}
-	items={tagItems}
-	multiple
-	selectedValues={tagList.map((t) => t.id)}
-	onSelect={toggleTag}
+	selectedIds={tagList.map((t) => t.id)}
+	onToggle={toggleTag}
 	onCreate={createTag}
-	searchable
-	placeholder="Search or create…"
-	minWidth={180}
+	onMutated={tagsMutated}
 />
 
 <style>
@@ -583,6 +648,37 @@
 	.props-chip.open {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
+	}
+
+	.props-chip.fm-error {
+		color: var(--error-fg);
+	}
+
+	.props-chip.fm-error:hover,
+	.props-chip.fm-error.open {
+		background: var(--error-bg);
+		color: var(--error-fg);
+	}
+
+	.fm-error-head {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 2px 6px;
+		max-width: 260px;
+	}
+
+	.fm-error-title {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--color-text-primary);
+	}
+
+	.fm-error-msg {
+		font-size: 11px;
+		line-height: 1.35;
+		color: var(--color-ui-muted);
+		overflow-wrap: anywhere;
 	}
 
 	.props-count {

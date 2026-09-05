@@ -28,6 +28,10 @@
 
 --- for dinner ---
 
+**Chores**
+
+- [ ] arm64 builds
+
 **UI/UX**
 
 - [ ] In-line commands in the editor

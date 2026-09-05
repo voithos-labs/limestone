@@ -8,12 +8,7 @@
 		MemberRow
 	} from '$lib/models/View.svelte';
 	import { isLeafActive } from '$lib/models/View.svelte';
-	import {
-		createMetaDate,
-		deriveCreateContext,
-		folderLinkChain,
-		folderPath
-	} from '$lib/views/createDefaults';
+	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
 	import { select } from '$lib/services/db';
 	import { searchDocuments } from '$lib/services/search';
 	import type { SearchResult } from '$lib/types/SearchResult';
@@ -23,13 +18,14 @@
 		getDefaultSourceId,
 		type Source
 	} from '$lib/models/Source';
-	import Group, { GroupType } from '$lib/models/Group';
+	import Folder from '$lib/models/Folder';
 	import DocHandle from '$lib/models/DocHandle';
 	import FaceCard from '../FaceCard.svelte';
 	import { Plus } from '@lucide/svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import { onMount, untrack } from 'svelte';
+	import { onSourceReconciled } from '$lib/models/Source';
 
 	let {
 		view,
@@ -59,8 +55,10 @@
 	let loadToken = 0;
 
 	let sources: Source[] = $state([]);
-	let folders: Group[] = $state([]);
+	let folders: Folder[] = $state([]);
 	let defaultSourceId: string | null = $state(null);
+
+	$effect(() => onSourceReconciled(() => load(true)));
 
 	async function load(silent = false) {
 		const token = ++loadToken;
@@ -164,8 +162,8 @@
 		listSources()
 			.then((ss) => (sources = ss))
 			.catch(() => {});
-		Group.list()
-			.then((gs) => (folders = gs.filter((g) => g.groupType === GroupType.Folder)))
+		Folder.list()
+			.then((fs) => (folders = fs))
 			.catch(() => {});
 		getDefaultSourceId()
 			.then((id) => (defaultSourceId = id))
@@ -185,11 +183,10 @@
 		try {
 			const ph = list.map(() => '?').join(', ');
 			const hits = await select<{ doc_id: string; id: string; slug: string }>(
-				`SELECT dg.document_id AS doc_id, g.id, g.slug
-                     FROM document_groups dg
-                              JOIN groups g ON g.id = dg.group_id
-                     WHERE g.group_type = 'tag'
-                       AND dg.document_id IN (${ph})`,
+				`SELECT dt.document_id AS doc_id, t.id, t.slug
+                     FROM document_tags dt
+                              JOIN tags t ON t.id = dt.tag_id
+                     WHERE dt.document_id IN (${ph})`,
 				list.map((r) => r.id)
 			);
 			const next: Record<string, { id: string; slug: string }[]> = {};
@@ -362,11 +359,8 @@
 			}
 			if (!source) source = pickCreationSource(sources, defaultSourceId) ?? undefined;
 			if (!source) throw new Error('No source available to create in');
-			const dir = createCtx.folderGroupId ? folderPath(createCtx.folderGroupId, folders) : '';
-			const groupIds = [
-				...(createCtx.folderGroupId ? folderLinkChain(createCtx.folderGroupId, folders) : []),
-				...createCtx.tagGroupIds
-			];
+			const dir = createCtx.folderGroupId ? folderPath(createCtx.folderGroupId) : '';
+			const groupIds = [...createCtx.tagGroupIds];
 			const props = Object.keys(createCtx.fieldValues).length
 				? { views: { [view.slug]: createCtx.fieldValues } }
 				: {};

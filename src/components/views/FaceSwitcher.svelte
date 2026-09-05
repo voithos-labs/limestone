@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { untrack } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import type { Component } from 'svelte';
@@ -193,9 +194,9 @@
 				f?.type === 'folder' &&
 				n.op === 'in' &&
 				typeof n.value === 'string' &&
-				!n.value.startsWith('folder:')
+				isSourceRoot(n.value)
 			)
-				return n.value;
+				return folderIdSource(n.value);
 		}
 		return undefined;
 	});
@@ -983,6 +984,7 @@
 	.dot {
 		width: 5px;
 		height: 5px;
+		flex-shrink: 0;
 		border-radius: 50%;
 		background: var(--color-accent);
 	}

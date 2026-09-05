@@ -20,6 +20,8 @@
 	import { currentThemeType } from '$lib/services/theme.svelte';
 	import { getSetting } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
+	import { onDocChanged } from '$lib/models/Source';
+	import DocHandle from '$lib/models/DocHandle';
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
@@ -55,12 +57,17 @@
 
 	let content = $state('');
 	let loaded = $state(false);
+	/** Why the file's frontmatter failed to parse, which the hero shows beside its two repairs. */
+	let frontmatterError = $state<string | null>(null);
 
 	$effect(() => {
+		const h = handle;
 		loaded = false;
-		handle?.loadContent().then((c) => {
+		h?.loadContent().then((c) => {
+			if (h !== handle) return;
 			content = c;
 			loaded = true;
+			frontmatterError = h.frontmatterError;
 		});
 	});
 
@@ -77,32 +84,91 @@
 	// A deleted document must not be resurrected by the flush its own teardown triggers.
 	let deleted = false;
 
-	function flushSave() {
+	// The write in flight, so a change to the file on disk is not read back over it.
+	let saving: Promise<void> | null = null;
+
+	function flushSave(opts: { body?: string; rebuildFrontmatter?: boolean } = {}) {
 		if (saveTimer) {
 			clearTimeout(saveTimer);
 			saveTimer = null;
 		}
 		// Ask the editor now: its `edit` event is debounced, so the last thing it handed us can be a
 		// whole typing burst behind. `pendingSource` is the fallback when the editor is already gone.
-		const body = deleted ? null : (instance?.getSource() ?? pendingSource);
+		const body = deleted ? null : (opts.body ?? instance?.getSource() ?? pendingSource);
 		pendingSource = null;
-		if (body === null || body === savedBody) return;
+		// A frontmatter rebuild writes even an unchanged body: the repair is in the part of the file
+		// the editor never holds.
+		if (!handle || body === null || (body === savedBody && !opts.rebuildFrontmatter)) return;
 		// Moved only once the write lands: setting it earlier would mark a failed save as saved,
 		// and the next attempt would be skipped as a no-op.
-		return handle
-			?.saveContent(body)
+		const write: Promise<void> = handle
+			.saveContent(body, opts)
 			.then(() => {
 				savedBody = body;
 			})
-			.catch((e) => console.error('saveContent failed', e));
+			.catch((e) => console.error('saveContent failed', e))
+			.finally(() => {
+				if (saving === write) saving = null;
+			});
+		saving = write;
+		return write;
 	}
 
-	const unregisterFlush = registerFlush(flushSave);
+	const unregisterFlush = registerFlush(() => flushSave());
 
 	function scheduleSave() {
 		pendingSource = instance?.getSource() ?? pendingSource;
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
+	}
+
+	// ── Outside edits, and the frontmatter repair ───────────────────────────────────────
+
+	/**
+	 * Whether an edit here is still on its way to disk, so nothing from disk may replace it. The
+	 * editor batches its edit event, so a keystroke runs ahead of the save timer it will schedule;
+	 * the document itself is asked, not just the timers.
+	 */
+	function hasUnsavedEdits(): boolean {
+		if (saveTimer !== null || saving !== null) return true;
+		return !!instance && savedBody !== null && instance.getSource() !== savedBody;
+	}
+
+	// The watcher reports the file changing under the editor, our own writes included. A body that
+	// differs from the editor's is re-seeded, which the caret and undo history do not survive, so an
+	// unsaved edit here wins over the file.
+	$effect(() => {
+		const h = handle;
+		if (!h) return;
+		return onDocChanged(h, () => void reloadFromDisk(h));
+	});
+
+	async function reloadFromDisk(h: DocHandle) {
+		if (deleted || hasUnsavedEdits()) return;
+		const fromDisk = await h.loadContent();
+		if (deleted || h !== handle || !instance || hasUnsavedEdits()) return;
+		frontmatterError = h.frontmatterError;
+		if (fromDisk === instance.getSource()) return;
+		// Marked saved before the re-seed, so the swap cannot schedule a write of what just came in.
+		savedBody = fromDisk;
+		content = fromDisk;
+	}
+
+	/**
+	 * The hero's two answers to frontmatter that would not parse: keep it as the document's first
+	 * lines, or drop it. Either way a fresh frontmatter is written, and the file is read back so the
+	 * warning clears on what is actually on disk.
+	 */
+	async function fixFrontmatter(mode: 'keep' | 'rebuild') {
+		const h = handle;
+		if (!h || !instance) return;
+		const live = instance.getSource();
+		const body = mode === 'rebuild' ? DocHandle.stripFence(live) : live;
+		// The save takes the body directly rather than waiting on the re-seed to reach the editor.
+		if (body !== live) content = body;
+		await flushSave({ body, rebuildFrontmatter: true });
+		await tick();
+		await reloadFromDisk(h);
 	}
 
 	// ── Per-tab state ───────────────────────────────────────────────────────────────────
@@ -240,17 +306,29 @@
 		focus: { path: [0], offset: 0 }
 	};
 
+	/** Whether the reader is mid-word in a field that is not a block of this document. */
+	function typingElsewhere(): boolean {
+		const active = document.activeElement;
+		if (!(active instanceof HTMLElement)) return false;
+		if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return true;
+		return active.isContentEditable && !scrollEl?.contains(active);
+	}
+
 	async function restore() {
 		// The old editor's `cursorPos`/`scrollTop` tab keys are ignored: they measure a flat
 		// character offset and a scroller with the header outside it, neither of which exists here.
-		const selection = rememberedSelection();
-		// Restoring can fail (a file edited outside the app may no longer have the block that
-		// selection names), and setSelection reports that by returning false rather than throwing.
-		const placed = selection ? await instance?.setSelection(selection) : false;
-		// It also returns false in cases where the caret did land, so ask the editor before giving
-		// up. An open document has to be typable, and focusing the root leaves no caret, hence last.
-		const hasCaret = placed || (!!selection && instance?.getSelection() != null);
-		if (!hasCaret && !flow && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
+		// Placing a caret focuses the document, so a reader typing elsewhere (quick search, a title
+		// field) keeps their field; the remembered caret stays on the tab for the next open.
+		if (!typingElsewhere()) {
+			const selection = rememberedSelection();
+			// Restoring can fail (a file edited outside the app may no longer have the block that
+			// selection names), and setSelection reports that by returning false rather than throwing.
+			const placed = selection ? await instance?.setSelection(selection) : false;
+			// It also returns false in cases where the caret did land, so ask the editor before giving
+			// up. An open document has to be typable, and focusing the root leaves no caret, hence last.
+			const hasCaret = placed || (!!selection && instance?.getSelection() != null);
+			if (!hasCaret && !flow && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
+		}
 		if (typeof tab.state.scrollTopBlocks === 'number' && scrollEl) {
 			blocksTop = measureBlocksTop(scrollEl);
 			scrollEl.scrollTop = tab.state.scrollTopBlocks + blocksTop;
@@ -378,6 +456,8 @@
 			onDelete={deleteDoc}
 			onDuplicated={(d) => editor?.openDoc(d)}
 			compact={false}
+			{frontmatterError}
+			onFrontmatterFix={fixFrontmatter}
 			bind:propsOpen
 		/>
 	{/if}
@@ -414,6 +494,8 @@
 			onDelete={deleteDoc}
 			onDuplicated={(d) => editor?.openDoc(d)}
 			compact
+			{frontmatterError}
+			onFrontmatterFix={fixFrontmatter}
 			bind:propsOpen
 		/>
 	{/if}

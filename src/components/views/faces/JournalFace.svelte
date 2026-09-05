@@ -10,6 +10,7 @@
 	import DocFace from './DocFace.svelte';
 	import ListFace from './ListFace.svelte';
 	import TableFace from './TableFace.svelte';
+	import { onSourceReconciled } from '$lib/models/Source';
 
 	let {
 		view,
@@ -36,7 +37,10 @@
 	const DAY_GAP = 12;
 	const DAY_STEP = DAY_SIZE + DAY_GAP;
 	const TODAY_W = 140;
+	const PAST_DAYS = 365;
 	const FUTURE_DAYS = 365;
+	const WINDOW_DAYS = PAST_DAYS + FUTURE_DAYS + 2;
+	const JUMP_MARGIN = 180;
 	const SNAP_PX = 24;
 	const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -52,7 +56,8 @@
 		if (typeof s !== 'string') return null;
 		const parts = s.split('-').map(Number);
 		if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
-		return new Date(parts[0], parts[1] - 1, parts[2]);
+		const d = new Date(parts[0], parts[1] - 1, parts[2]);
+		return isNaN(d.getTime()) ? null : d;
 	}
 
 	function dayKey(d: Date): string {
@@ -138,6 +143,8 @@
 		loadRows();
 	});
 
+	$effect(() => onSourceReconciled(() => loadRows()));
+
 	const entries = $derived.by(() => {
 		const set = new Set<string>();
 		for (const r of rows) {
@@ -184,16 +191,28 @@
 	const SPARK_CELL = 8;
 	const SPARK_GAP = 3;
 	const SPARK_STEP = SPARK_CELL + SPARK_GAP;
-	const stripDefaultStart = untrack(
-		() => new Date(today.getFullYear() - 1, today.getMonth(), today.getDate())
-	);
-	let stripStart = $state(
-		initSelected.getTime() < stripDefaultStart.getTime()
-			? addDays(initSelected, -7)
-			: stripDefaultStart
-	);
+
+	function windowStartFor(d: Date): Date {
+		const lo = addDays(d, JUMP_MARGIN + 1 - WINDOW_DAYS);
+		const hi = addDays(d, -JUMP_MARGIN);
+		const def = addDays(today, -PAST_DAYS);
+		if (def.getTime() < lo.getTime()) return lo;
+		if (def.getTime() > hi.getTime()) return hi;
+		return def;
+	}
+
+	let stripStart = $state(untrack(() => windowStartFor(initSelected)));
+	const stripEnd = $derived(addDays(stripStart, WINDOW_DAYS - 1));
+	const todayIndex = $derived(dayOffset(today));
+	const todayInWindow = $derived(todayIndex >= 0 && todayIndex < WINDOW_DAYS);
+
+	function inWindow(d: Date): boolean {
+		return d.getTime() >= stripStart.getTime() && d.getTime() <= stripEnd.getTime();
+	}
+
+	const sparkEnd = $derived(todayInWindow ? tomorrow : stripEnd);
 	const sparkDayCount = $derived(
-		Math.round((tomorrow.getTime() - stripStart.getTime()) / 86400000) + 1
+		Math.round((sparkEnd.getTime() - stripStart.getTime()) / 86400000) + 1
 	);
 	const sparkContentW = $derived(sparkDayCount * SPARK_CELL + (sparkDayCount - 1) * SPARK_GAP);
 
@@ -216,7 +235,7 @@
 	const sparkMonths = $derived.by(() => {
 		const LABEL_W = 38;
 		const TODAY_LABEL_W = 36;
-		const todayLeft = sparkContentW - SPARK_STEP - TODAY_LABEL_W;
+		const todayLeft = todayInWindow ? sparkContentW - SPARK_STEP - TODAY_LABEL_W : Infinity;
 		const out: { leftPx: number; label: string }[] = [];
 		let lastRight = -Infinity;
 		sparkDays.forEach((d, i) => {
@@ -276,21 +295,11 @@
 
 	let stripEl: HTMLElement | null = $state(null);
 	let stripAtPresent = $state(true);
-	const initBeyond =
-		Math.round((initSelected.getTime() - untrack(() => tomorrow).getTime()) / 86400000) -
-		FUTURE_DAYS;
-	let stripEndExtra = $state(initBeyond > 0 ? initBeyond + 7 : 0);
 
 	const stripDays = $derived.by(() => {
-		const end = addDays(tomorrow, FUTURE_DAYS + stripEndExtra);
-		const n = Math.round((end.getTime() - stripStart.getTime()) / 86400000) + 1;
 		const out: Date[] = [];
-		for (let i = 0; i < n; i++) out.push(addDays(stripStart, i));
+		for (let i = 0; i < WINDOW_DAYS; i++) out.push(addDays(stripStart, i));
 		return out;
-	});
-
-	$effect(() => {
-		if (stripEndExtra && selected.getTime() <= tomorrow.getTime()) stripEndExtra = 0;
 	});
 
 	function presentDelta(): number | null {
@@ -348,13 +357,13 @@
 	}
 
 	function cellLeft(i: number): number {
-		const ti = dayOffset(today);
-		if (i <= ti) return i * DAY_STEP;
+		const ti = todayIndex;
+		if (ti < 0 || i <= ti) return i * DAY_STEP;
 		return ti * DAY_STEP + TODAY_W + DAY_GAP + (i - ti - 1) * DAY_STEP;
 	}
 
 	function cellWidth(i: number): number {
-		return i === dayOffset(today) ? TODAY_W : DAY_SIZE;
+		return i === todayIndex ? TODAY_W : DAY_SIZE;
 	}
 
 	const headerDate = $derived.by(() => {
@@ -417,9 +426,7 @@
 
 	function selectDay(d: Date) {
 		selected = d;
-		if (d.getTime() < stripStart.getTime()) stripStart = addDays(d, -7);
-		const beyond = Math.round((d.getTime() - tomorrow.getTime()) / 86400000) - FUTURE_DAYS;
-		if (beyond > 0 && beyond + 7 > stripEndExtra) stripEndExtra = beyond + 7;
+		if (!inWindow(d)) stripStart = windowStartFor(d);
 		scrollStripTo(d);
 	}
 
@@ -427,6 +434,7 @@
 
 	function returnToPresent() {
 		selected = today;
+		stripStart = windowStartFor(today);
 		scrollStripTo(today);
 		if (sparkEl) sparkEl.scrollLeft = sparkEl.scrollWidth;
 	}
@@ -499,6 +507,16 @@
 		return `${d.getFullYear()}-${m}-${day}`;
 	}
 
+	async function onDocPicked(id: string) {
+		try {
+			const [r] = await view.getMembers({ face, ids_in: [id] });
+			const d = r ? rowDate(r) : null;
+			if (d && !sameDay(d, selected)) selectDay(d);
+		} catch (e) {
+			console.error('journal pick failed', e);
+		}
+	}
+
 	// a doc body creates the day's entry itself; it just borrows the journal's naming
 	const docLabels = $derived({
 		newTitle: `${isoDay(selected)} ${selected.toLocaleDateString(undefined, { weekday: 'long' })}`,
@@ -568,7 +586,9 @@
 						{#each sparkMonths as m (m.leftPx)}
 							<span class="spark-mlabel" style="left: {m.leftPx}px">{m.label}</span>
 						{/each}
-						<span class="spark-mlabel today" style="right: {SPARK_STEP}px">Today</span>
+						{#if todayInWindow}
+							<span class="spark-mlabel today" style="right: {SPARK_STEP}px">Today</span>
+						{/if}
 					</div>
 				</div>
 			</div>
@@ -609,11 +629,13 @@
 							face={bodyFace}
 							{flow}
 							scope={bodyScope}
+							queryScope={face.additive_filter}
 							labels={docLabels}
 							picker={docPicker}
 							{tab}
 							{findBarAnchor}
 							onCreated={loadRows}
+							onPicked={onDocPicked}
 						/>
 					{:else if bodyFace.type === 'list' || bodyFace.type === 'grid'}
 						<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />

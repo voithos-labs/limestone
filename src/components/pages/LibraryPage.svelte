@@ -9,7 +9,6 @@
 	} from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import View from '$lib/models/View.svelte';
-	import { listen } from '@tauri-apps/api/event';
 	import { openPath } from '@tauri-apps/plugin-opener';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import ClockHero from '../ClockHero.svelte';
@@ -32,7 +31,7 @@
 	import { fly } from 'svelte/transition';
 	import { onMount } from 'svelte';
 
-	let { editor }: { editor: EditorState } = $props();
+	let { editor, missingSources }: { editor: EditorState; missingSources: Set<string> } = $props();
 
 	let savedViews: View[] = $state([]);
 
@@ -237,13 +236,8 @@
 
 	onMount(() => {
 		loadRecents();
-		const unlisten = listen('source-reconciled', () => {
-			loadRecents();
-			docsKey++;
-		});
 		window.addEventListener('resize', updatePinnedFade);
 		return () => {
-			unlisten.then((fn) => fn());
 			window.removeEventListener('resize', updatePinnedFade);
 		};
 	});
@@ -257,11 +251,28 @@
 			</div>
 			<div class="search-row">
 				<QuickSearch {editor} />
+				<button
+					class="new-btn"
+					type="button"
+					title="New"
+					bind:this={newMenuAnchor}
+					onclick={() => (newMenuOpen = !newMenuOpen)}
+				>
+					<Plus size={18} strokeWidth={2} />
+				</button>
+				<Menu
+					bind:open={newMenuOpen}
+					anchor={newMenuAnchor}
+					items={newMenuItems}
+					onSelect={onNewMenuSelect}
+					minWidth={170}
+				/>
 			</div>
 			<SourceDialog
 				bind:open={sourceDialogOpen}
 				mode={dialogMode}
 				source={dialogSource}
+				missing={!!dialogSource && missingSources.has(dialogSource.id)}
 				onSaved={loadRecents}
 			/>
 			<SourceMenu
@@ -269,6 +280,7 @@
 				anchor={srcMenuAnchor}
 				source={menuSource}
 				{defaultSourceId}
+				missing={!!menuSource && missingSources.has(menuSource.id)}
 				onConfigure={configureSource}
 				onReveal={revealSource}
 				onToggleDefault={toggleDefaultSource}
@@ -307,7 +319,11 @@
 					{/if}
 
 					{#each orderedSources as s, i (s.view.id)}
-						<div class="card-wrap" transition:fly={{ y: 4, duration: 160, delay: i * 25 }}>
+						<div
+							class="card-wrap"
+							class:unavailable={missingSources.has(s.source.id)}
+							transition:fly={{ y: 4, duration: 160, delay: i * 25 }}
+						>
 							<button
 								class="view-card has-menu"
 								onclick={() => !pinnedDragMoved && openSavedView(s.view)}
@@ -340,28 +356,10 @@
 			</section>
 		</div>
 	</div>
-
-	<button
-		class="new-fab"
-		type="button"
-		title="New"
-		bind:this={newMenuAnchor}
-		onclick={() => (newMenuOpen = !newMenuOpen)}
-	>
-		<Plus size={18} strokeWidth={2} />
-	</button>
-	<Menu
-		bind:open={newMenuOpen}
-		anchor={newMenuAnchor}
-		items={newMenuItems}
-		onSelect={onNewMenuSelect}
-		minWidth={170}
-	/>
 </div>
 
 <style>
 	.library-page {
-		position: relative;
 		height: 100%;
 		overflow: hidden;
 	}
@@ -389,28 +387,24 @@
 	.search-row {
 		display: flex;
 		align-items: center;
+		gap: 10px;
 	}
 
-	/* Bare "+" closing each chip row: no card around it, just the glyph in a square hitbox */
-	.new-fab {
-		position: absolute;
-		bottom: 24px;
-		right: calc(24px + max(0px, (100% - var(--page-max-width, 900px)) / 2));
-		z-index: 5;
+	.new-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 34px;
-		height: 34px;
+		width: 36px;
+		height: 36px;
+		flex-shrink: 0;
 		border: none;
 		border-radius: 10px;
 		background: var(--color-accent);
 		color: var(--color-accent-contrast);
 		cursor: pointer;
-		box-shadow: var(--menu-shadow);
 	}
 
-	.new-fab:hover {
+	.new-btn:hover {
 		filter: brightness(1.08);
 	}
 
@@ -558,6 +552,12 @@
 	.card-kebab:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
+	}
+
+	.card-wrap.unavailable .vc-title,
+	.card-wrap.unavailable .view-card :global(svg),
+	.card-wrap.unavailable .card-kebab {
+		opacity: 0.4;
 	}
 
 	/* The list face carries its own 24px side margin (it sits flush in a view page),

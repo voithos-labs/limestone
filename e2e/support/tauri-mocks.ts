@@ -482,6 +482,13 @@ function installMockInternals({
 				return clone(SOURCE);
 			case 'get_default_source_id':
 				return SOURCE.id;
+			// The file watcher: nothing in a browser changes the fake filesystem behind the app's
+			// back, so the sources are all reachable and no path needs watching.
+			case 'check_sources':
+				return [];
+			case 'set_watched_paths':
+			case 'reconcile_source':
+				return null;
 
 			// Window chrome has no effect in a browser, but the calls are recorded above,
 			// so a spec can still assert that closing destroyed the window.

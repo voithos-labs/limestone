@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listen } from '@tauri-apps/api/event';
+	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { getCurrentWebview } from '@tauri-apps/api/webview';
 	import TopBar from '../components/nav/TopBar.svelte';
@@ -18,11 +18,22 @@
 	import { editorTakesKey } from '$lib/editor-chords';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
 	import { toasts } from '$lib/toasts.svelte';
+	import { startWatching } from '$lib/models/Source';
 
 	let session = $state<Session>();
 	let tab: TabState | undefined = $state();
 
 	Session.init().then((s) => (session = s));
+
+	// watching for external changes
+	let unlistenWatch: Promise<UnlistenFn> | undefined;
+	$effect(() => {
+		if (!session || unlistenWatch) return;
+		unlistenWatch = startWatching(session.missingSources).catch((err) => {
+			console.error('file watching failed to start', err);
+			return () => {};
+		});
+	});
 
 	let updateChecked = false;
 	$effect(() => {
@@ -89,12 +100,14 @@
 			}
 			await win.destroy();
 		});
+		// startup scan
 		const unlistenScan = listen<{ source_id: string; skipped: number }>('source-reconciled', (e) =>
 			reportScanSkips(e.payload.skipped)
 		);
 		return () => {
 			unlisten.then((f) => f());
 			unlistenScan.then((f) => f());
+			unlistenWatch?.then((f) => f());
 		};
 	});
 
@@ -188,7 +201,7 @@
 					{/if}
 				{/key}
 			{:else if editor.focused?.kind === 'search'}
-				<LibraryPage {editor} />
+				<LibraryPage {editor} missingSources={session.missingSources} />
 			{:else if editor.focused?.kind === 'settings'}
 				<SettingsPage viewTab={session.getViewTab('settings')} {session} />
 			{:else}

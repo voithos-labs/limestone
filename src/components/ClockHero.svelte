@@ -1,10 +1,6 @@
 <script lang="ts">
 	import { getVersion } from '@tauri-apps/api/app';
 	import { onMount, untrack } from 'svelte';
-	import '@fontsource/jetbrains-mono/400.css';
-	import '@fontsource/jetbrains-mono/500.css';
-	import '@fontsource/jetbrains-mono/700.css';
-	import '@fontsource/jetbrains-mono/800.css';
 
 	let { animateIn = true }: { animateIn?: boolean } = $props();
 

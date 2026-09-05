@@ -75,6 +75,7 @@ async fn run_reconcile(
         crate::Reconciled {
             source_id: &source_id,
             skipped,
+            unreachable: !source.path.is_dir(),
         },
     );
     if let Err(e) = services::index_fts(&pool, &source, changed).await {
@@ -91,6 +92,17 @@ fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
         app_data.db.clone(),
         fm_buf_size,
     ));
+}
+
+#[tauri::command]
+pub fn reconcile_source(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    id: Uuid,
+) -> Result<(), String> {
+    let source = find_source(&app, id)?;
+    spawn_reconcile(&app, &source, &app_data);
+    Ok(())
 }
 
 fn save_sources_file(app: &AppHandle, data: &Sources) -> Result<(), String> {
@@ -170,6 +182,14 @@ pub fn get_sources(app: AppHandle) -> Vec<Source> {
 }
 
 #[tauri::command]
+pub fn check_sources(app: AppHandle) -> Vec<(String, bool)> {
+    load_sources(&app)
+        .into_iter()
+        .map(|s| (s.id.to_string(), s.path.is_dir()))
+        .collect()
+}
+
+#[tauri::command]
 pub fn is_git_repo(path: String) -> bool {
     let mut dir: Option<&Path> = Some(Path::new(&path));
     while let Some(d) = dir {
@@ -204,6 +224,33 @@ pub fn update_source(
         .ok_or_else(|| "source not found".to_string())?;
     source.note_location = note_location;
     source.asset_location = asset_location;
+    save_sources_file(&app, &data)
+}
+
+#[tauri::command]
+pub fn update_source_path(app: AppHandle, id: Uuid, path: String) -> Result<(), String> {
+    let candidate = PathBuf::from(&path);
+    if !candidate.is_dir() {
+        return Err("folder not found".to_string());
+    }
+    let mut data = load_sources_file(&app);
+    let others: Vec<Source> = data
+        .sources
+        .iter()
+        .filter(|s| s.id != id)
+        .cloned()
+        .collect();
+    check_source_conflict(&candidate, &others)?;
+    let source = data
+        .sources
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "source not found".to_string())?;
+    source.path = candidate;
+    let _ = app.fs_scope().allow_directory(&source.path, true);
+    let _ = app
+        .asset_protocol_scope()
+        .allow_directory(&source.path, true);
     save_sources_file(&app, &data)
 }
 
@@ -250,7 +297,7 @@ pub async fn delete_source(
         .await
         .map_err(|e| e.to_string())?;
 
-    services::cleanup_orphan_tag_groups(&app_data.db)
+    services::cleanup_orphan_tags(&app_data.db)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -364,7 +411,7 @@ pub async fn create_folder(
             path_acc.push('/');
         }
         path_acc.push_str(seg);
-        id = services::upsert_folder_group(&mut tx, &source_id, &path_acc)
+        id = services::upsert_folder(&mut tx, &source_id, &path_acc)
             .await
             .map_err(|_| FolderOpError::new("other"))?;
     }
@@ -392,9 +439,9 @@ pub async fn move_folder(
     if !old_full.is_dir() {
         return Err(FolderOpError::named("not_found", folder_leaf(&old_rel_dir)));
     }
-    // case-only change should still pass exists guard
-    let case_only = old_rel_dir.eq_ignore_ascii_case(&new_rel_dir);
-    if new_full.exists() && !case_only {
+    let same_entry = new_full.exists() // check different against actual fs
+        && std::fs::canonicalize(&old_full).ok() == std::fs::canonicalize(&new_full).ok();
+    if new_full.exists() && !same_entry {
         return Err(FolderOpError::named(
             "already_exists",
             folder_leaf(&new_rel_dir),

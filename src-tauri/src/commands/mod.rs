@@ -5,3 +5,4 @@ pub mod document_commands;
 pub mod history_commands;
 pub mod settings_commands;
 pub mod source_commands;
+pub mod watch_commands;

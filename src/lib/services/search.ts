@@ -83,7 +83,10 @@ async function recents(scope?: SearchScope): Promise<SearchResult[]> {
 		source_id: string | null;
 		accessed_at: number;
 	}>(
-		'SELECT id, slug, group_type, source_id, accessed_at FROM groups ORDER BY accessed_at DESC LIMIT ?',
+		`SELECT id, slug, 'tag' AS group_type, NULL AS source_id, accessed_at FROM tags
+         UNION ALL
+         SELECT id, slug, 'folder' AS group_type, source_id, accessed_at FROM folders WHERE parent_id IS NOT NULL
+         ORDER BY accessed_at DESC LIMIT ?`,
 		[MAX_RESULTS]
 	);
 	const sources = await select<{ id: string; title: string; accessed_at: number }>(
@@ -291,7 +294,10 @@ async function containerMatches(q: string): Promise<SearchResult[]> {
 			group_type: string;
 			source_id: string | null;
 		}>(
-			"SELECT id, slug, group_type, source_id FROM groups WHERE lower(slug) LIKE ? ORDER BY (group_type = 'folder') ASC, length(slug) ASC, slug ASC LIMIT ?",
+			`SELECT id, slug, 'tag' AS group_type, NULL AS source_id FROM tags WHERE lower(slug) LIKE ?1
+         UNION ALL
+         SELECT id, slug, 'folder' AS group_type, source_id FROM folders WHERE parent_id IS NOT NULL AND lower(slug) LIKE ?1
+         ORDER BY (group_type = 'folder') ASC, length(slug) ASC, slug ASC LIMIT ?2`,
 			[like, CONTAINER_MAX_RESULTS]
 		)
 	]);

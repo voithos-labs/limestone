@@ -44,6 +44,7 @@
 	import { select } from '$lib/services/db';
 	import { searchDocuments } from '$lib/services/search';
 	import Menu from '../Menu.svelte';
+	import TagMenu from '../TagMenu.svelte';
 	import IconAddColumnRight from '~icons/material-symbols/add-column-right';
 	import {
 		Plus,
@@ -54,10 +55,9 @@
 		ChevronDown,
 		SquareArrowOutUpRight,
 		SquareCheck,
-		Folder,
+		Folder as FolderIcon,
 		Notebook,
 		Ellipsis,
-		Hash,
 		X
 	} from '@lucide/svelte';
 	import {
@@ -67,14 +67,10 @@
 		pickCreationSource,
 		type Source
 	} from '$lib/models/Source';
-	import Group, { GroupType } from '$lib/models/Group';
+	import Folder from '$lib/models/Folder';
+	import type Tag from '$lib/models/Tag';
 	import DocHandle from '$lib/models/DocHandle';
-	import {
-		createMetaDate,
-		deriveCreateContext,
-		folderLinkChain,
-		folderPath
-	} from '$lib/views/createDefaults';
+	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
 	import FolderValueEditor from '../FolderValueEditor.svelte';
 	import CellEditor from '../CellEditor.svelte';
 	import CellTextEditor from '../CellTextEditor.svelte';
@@ -82,6 +78,7 @@
 	import FolderCrumb from '../FolderCrumb.svelte';
 	import LeanScroll from '../LeanScroll.svelte';
 	import { onMount } from 'svelte';
+	import { onSourceReconciled } from '$lib/models/Source';
 
 	let {
 		view,
@@ -316,7 +313,7 @@
 		return face.sort.some((s) => s.field_id === fieldId);
 	}
 
-	let folders: Group[] = $state([]);
+	let folders: Folder[] = $state([]);
 
 	let didInitFocus = false;
 
@@ -325,10 +322,9 @@
 
 	onMount(() => {
 		load();
-		Group.list()
-			.then((gs) => {
-				folders = gs.filter((g) => g.groupType === GroupType.Folder);
-				tagGroups = gs.filter((g) => g.groupType === GroupType.Tag);
+		Folder.list()
+			.then((fs) => {
+				folders = fs;
 			})
 			.catch(() => {});
 		listSources()
@@ -400,6 +396,8 @@
 		if (faceChanged) load(true);
 		else reloadTimer = setTimeout(() => load(true), 100);
 	});
+
+	$effect(() => onSourceReconciled(() => load(true)));
 
 	function startResize(e: PointerEvent, col: ColumnDef) {
 		e.preventDefault();
@@ -890,13 +888,10 @@
 	}
 
 	// ── Tags (built-in field, edited like the doc header's tag menu) ────────────
-	let tagGroups: Group[] = $state([]);
 	let rowTags: Record<string, { id: string; slug: string }[]> = $state({});
 	let tagMenuOpen = $state(false);
 	let tagMenuAnchor: HTMLElement | null = $state(null);
 	let tagEditRowId: string | null = $state(null);
-
-	const tagItems = $derived(tagGroups.map((g) => ({ value: g.id, label: g.slug, icon: Hash })));
 
 	// The open menu edits this snapshot, NOT rowTags: a tag edit can drop the row out
 	// of the view (removing the tag a tag-scoped view filters on), and load() then
@@ -923,11 +918,10 @@
 		try {
 			const ph = list.map(() => '?').join(', ');
 			const hits = await select<{ doc_id: string; id: string; slug: string }>(
-				`SELECT dg.document_id AS doc_id, g.id, g.slug
-                 FROM document_groups dg
-                          JOIN groups g ON g.id = dg.group_id
-                 WHERE g.group_type = 'tag'
-                   AND dg.document_id IN (${ph})`,
+				`SELECT dt.document_id AS doc_id, t.id, t.slug
+                 FROM document_tags dt
+                          JOIN tags t ON t.id = dt.tag_id
+                 WHERE dt.document_id IN (${ph})`,
 				list.map((r) => r.id)
 			);
 			const next: Record<string, { id: string; slug: string }[]> = {};
@@ -954,7 +948,6 @@
 			const tags = doc.tags.map((t) => ({ id: t.id, slug: t.slug }));
 			rowTags = { ...rowTags, [rowId]: tags };
 			if (tagEditRowId === rowId) tagDraft = tags;
-			tagGroups = (await Group.list()).filter((g) => g.groupType === GroupType.Tag);
 			const fid = view.fields.find((f) => f.type === 'tags')?.id;
 			if (fid && fieldAffectsView(fid)) load(true);
 		} catch (e) {
@@ -964,17 +957,14 @@
 		}
 	}
 
-	function toggleRowTag(groupId: string) {
+	function toggleRowTag(tag: Tag) {
 		const rowId = tagEditRowId;
 		if (!rowId) return;
 		const cur = tagDraft;
-		const has = cur.some((t) => t.id === groupId);
-		const g = tagGroups.find((t) => t.id === groupId);
+		const has = cur.some((t) => t.id === tag.id);
 		const next = has
-			? cur.filter((t) => t.id !== groupId)
-			: g
-				? [...cur, { id: g.id, slug: g.slug }]
-				: cur;
+			? cur.filter((t) => t.id !== tag.id)
+			: [...cur, { id: tag.id, slug: tag.slug }];
 		tagDraft = next;
 		rowTags = { ...rowTags, [rowId]: next };
 		applyRowTags(
@@ -990,6 +980,13 @@
 		const cur = tagDraft;
 		if (cur.some((t) => t.slug === slug)) return;
 		applyRowTags(rowId, [...cur.map((t) => t.slug), slug]);
+	}
+
+	async function onTagsMutated() {
+		await loadRowTags(rows);
+		if (tagEditRowId) tagDraft = [...(rowTags[tagEditRowId] ?? [])];
+		const fid = view.fields.find((f) => f.type === 'tags')?.id;
+		if (fid && fieldAffectsView(fid)) load(true);
 	}
 
 	const editingField = $derived(
@@ -1016,7 +1013,7 @@
 	function folderIdForPath(relPath: string, sourceId: string): string | null {
 		const dir = folderDir(relPath);
 		if (!dir) return null;
-		const match = folders.find((f) => f.sourceId === sourceId && folderPath(f.id, folders) === dir);
+		const match = folders.find((f) => f.sourceId === sourceId && folderPath(f.id) === dir);
 		return match?.id ?? null;
 	}
 
@@ -1328,7 +1325,7 @@
 			folderOverrideDir = knownDir ?? null;
 			return;
 		}
-		const dir = groupId ? (knownDir ?? folderPath(groupId, folders)) : '';
+		const dir = groupId ? (knownDir ?? folderPath(groupId)) : '';
 		const file = fileName(row.rel_path);
 		const newRel = dir ? `${dir}/${file}` : file;
 		if (newRel === row.rel_path) return;
@@ -1400,7 +1397,7 @@
 		if (!effectiveFolderId) return '';
 		if (folderOverride === effectiveFolderId && folderOverrideDir !== null)
 			return folderOverrideDir;
-		return folderPath(effectiveFolderId, folders);
+		return folderPath(effectiveFolderId);
 	});
 
 	// Warn (red border) when the draft title would collide with an existing note
@@ -1617,10 +1614,7 @@
 		try {
 			const source = await resolveCreateSource();
 			const dir = folderDirLabel;
-			const groupIds = [
-				...(effectiveFolderId ? folderLinkChain(effectiveFolderId, folders) : []),
-				...createCtx.tagGroupIds
-			];
+			const groupIds = [...createCtx.tagGroupIds];
 			const props = Object.keys(draft.values).length
 				? { views: { [view.slug]: draft.values } }
 				: {};
@@ -1752,7 +1746,7 @@
 									onclick={openFolderPicker}
 								>
 									{#if folderDirLabel}
-										<Folder size={13} strokeWidth={1.75} />
+										<FolderIcon size={13} strokeWidth={1.75} />
 									{:else}
 										<Notebook size={13} strokeWidth={1.75} />
 									{/if}
@@ -2046,17 +2040,13 @@
 	minWidth={150}
 />
 
-<Menu
+<TagMenu
 	bind:open={tagMenuOpen}
 	anchor={tagMenuAnchor}
-	items={tagItems}
-	multiple
-	selectedValues={tagSelectedIds}
-	onSelect={toggleRowTag}
+	selectedIds={tagSelectedIds}
+	onToggle={toggleRowTag}
 	onCreate={createRowTag}
-	searchable
-	placeholder="Search or create…"
-	minWidth={180}
+	onMutated={onTagsMutated}
 />
 
 <Menu
