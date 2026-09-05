@@ -81,7 +81,6 @@ input[type='number']::-webkit-outer-spin-button {
 
 	/* ── Markdown syntax highlighting (dark defaults) ── */
 	--syntax-heading: #a6e22e;
-	--syntax-emphasis: #66d9ef;
 	--syntax-link: #ae81ff;
 	--syntax-url: #d33682;
 	--syntax-quote: #f92672;
@@ -95,7 +94,6 @@ input[type='number']::-webkit-outer-spin-button {
 
 :root[data-theme-type='light'] {
 	--syntax-heading: #3f6e1a;
-	--syntax-emphasis: #0369a1;
 	--syntax-link: #6d28d9;
 	--syntax-url: #be185d;
 	--syntax-quote: #b91c1c;

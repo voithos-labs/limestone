@@ -10,7 +10,6 @@
 	   and unlike aragonite's value it follows the limestone theme. */
 	--color-ui-faint: var(--menu-item-hover);
 	--syntax-heading: inherit;
-	--syntax-emphasis: inherit;
 	--syntax-link: inherit;
 	--syntax-url: inherit;
 	--syntax-quote: inherit;
