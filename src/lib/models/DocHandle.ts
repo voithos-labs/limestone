@@ -52,6 +52,21 @@ export interface DocumentRow {
 	properties: string;
 }
 
+const FENCE_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
+
+function yamlErrorText(e: unknown): string {
+	const err = e as { reason?: string; message?: string; mark?: { line?: number } };
+	const reason = err?.reason ?? err?.message ?? 'invalid YAML';
+	const line = err?.mark?.line;
+	return typeof line === 'number' ? `${reason} (line ${line + 2})` : reason;
+}
+
+function validDate(v: unknown): Date | undefined {
+	if (v === null || v === undefined || v === '') return undefined;
+	const d = new Date(v as string | number | Date);
+	return isNaN(d.getTime()) ? undefined : d;
+}
+
 export interface DocumentFrontmatter {
 	id: string;
 	tags: string[];
@@ -82,6 +97,7 @@ class DocHandle {
 	updatedAt: Date;
 	accessedAt: Date;
 	deletedAt?: Date; // todo: handle deleted cases, e.g. load from id, where you return a stub
+	frontmatterError: string | null = null;
 
 	private constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;
@@ -271,9 +287,10 @@ class DocHandle {
 	/**
 	 * Serialize frontmatter + body into a full file string.
 	 */
-	async serialize(body: string): Promise<string> {
+	async serialize(body: string, rebuildFrontmatter = false): Promise<string> {
 		const source = await getSource(this.source.id);
 		if (source.use_frontmatter === false) return body;
+		if (this.frontmatterError && !rebuildFrontmatter) return body;
 
 		const fm = this.toFrontmatter();
 		const fmStr = yaml.dump(fm, { lineWidth: -1, sortKeys: false });
@@ -285,20 +302,35 @@ class DocHandle {
 	 *
 	 * todo: probably want to extract tags from body for obsid compat
 	 */
-	static deserialize(raw: string): { frontmatter: DocumentFrontmatter | null; body: string } {
-		const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-		if (!match) return { frontmatter: null, body: raw };
+	static stripFence(raw: string): string {
+		const match = raw.match(FENCE_RE);
+		return match ? match[2] : raw;
+	}
 
-		const parsed = (yaml.load(match[1]) as Record<string, any>) ?? {};
+	static deserialize(raw: string): {
+		frontmatter: DocumentFrontmatter | null;
+		body: string;
+		error: string | null;
+	} {
+		const match = raw.match(FENCE_RE);
+		if (!match) return { frontmatter: null, body: raw, error: null };
+
+		let parsed: Record<string, any>;
+		try {
+			const loaded = yaml.load(match[1]);
+			parsed = loaded && typeof loaded === 'object' ? (loaded as Record<string, any>) : {};
+		} catch (e) {
+			return { frontmatter: null, body: raw, error: yamlErrorText(e) };
+		}
 		const frontmatter: DocumentFrontmatter = {
 			...parsed,
 			id: parsed.id ?? '',
-			tags: Array.isArray(parsed.tags) ? parsed.tags : [],
-			created_at: parsed.created_at ? new Date(parsed.created_at) : new Date(),
-			updated_at: parsed.updated_at ? new Date(parsed.updated_at) : new Date()
+			tags: Array.isArray(parsed.tags) ? parsed.tags.filter((t) => typeof t === 'string') : [],
+			created_at: validDate(parsed.created_at) ?? new Date(),
+			updated_at: validDate(parsed.updated_at) ?? new Date()
 		};
 
-		return { frontmatter, body: match[2] };
+		return { frontmatter, body: match[2], error: null };
 	}
 
 	// ── Fs ───────────────────────────────────────────────────────────────────────────
@@ -317,7 +349,8 @@ class DocHandle {
 			this.hasFile = false;
 			return '';
 		}
-		const { frontmatter, body } = DocHandle.deserialize(raw);
+		const { frontmatter, body, error } = DocHandle.deserialize(raw);
+		this.frontmatterError = this.source.use_frontmatter === false ? null : error;
 
 		if (frontmatter) {
 			const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
@@ -356,7 +389,8 @@ class DocHandle {
 		} catch {
 			return;
 		}
-		const { frontmatter } = DocHandle.deserialize(raw);
+		const { frontmatter, error } = DocHandle.deserialize(raw);
+		this.frontmatterError = this.source.use_frontmatter === false ? null : error;
 		if (!frontmatter) return;
 		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
 		this.properties = remaining;
@@ -364,10 +398,10 @@ class DocHandle {
 		this.tags = await Tag.fromSlugs(tags);
 	}
 
-	async saveContent(body: string): Promise<void> {
+	async saveContent(body: string, opts: { rebuildFrontmatter?: boolean } = {}): Promise<void> {
 		await this.refreshMetaFromDisk(); // this is hmm possibly not needed
 		this.updatedAt = new Date();
-		const contents = await this.serialize(body);
+		const contents = await this.serialize(body, opts.rebuildFrontmatter);
 		await invoke('write_document', {
 			sourceId: this.source.id,
 			relPath: this._relPath,

@@ -23,7 +23,7 @@ export function statefulValue(row: MemberRow, viewSlug: string, fieldName: strin
 
 export function rawArrayValue(row: MemberRow, viewSlug: string, fieldName: string): string[] {
 	const v = rawStatefulValue(row, viewSlug, fieldName);
-	if (Array.isArray(v)) return v.map(String);
+	if (Array.isArray(v)) return [...new Set(v.map(String))];
 	if (v === null || v === undefined || v === '') return [];
 	return [String(v)];
 }
