@@ -700,16 +700,16 @@
 				{:else if activeSection === GENERAL}
 					<div class="settings-list">
 						<!-- prettier-ignore -->
-<!--						<div class="general-banner">-->
-<!--<pre class="ascii-logo">              ,,-->
-<!--`7MMF'        db                                      mm-->
-<!--  MM                                                  MM-->
-<!--  MM        `7MM  `7MMpMMMb.pMMMb.  .gP"Ya  ,pP"Ybd mmMMmm ,pW"Wq.`7MMpMMMb.  .gP"Ya-->
-<!--  MM          MM    MM    MM    MM ,M'   Yb 8I   `"   MM  6W'   `Wb MM    MM ,M'   Yb-->
-<!--  MM      ,   MM    MM    MM    MM 8M"""""" `YMMMa.   MM  8M     M8 MM    MM 8M""""""-->
-<!--  MM     ,M   MM    MM    MM    MM YM.    , L.   I8   MM  YA.   ,A9 MM    MM YM.    ,-->
-<!--.JMMmmmmMMM .JMML..JMML  JMML  JMML.`Mbmmd' M9mmmP'   `Mbmo`Ybmd9'.JMML  JMML.`Mbmmd'</pre>-->
-<!--				</div>-->
+						<!--						<div class="general-banner">-->
+						<!--<pre class="ascii-logo">              ,,-->
+						<!--`7MMF'        db                                      mm-->
+						<!--  MM                                                  MM-->
+						<!--  MM        `7MM  `7MMpMMMb.pMMMb.  .gP"Ya  ,pP"Ybd mmMMmm ,pW"Wq.`7MMpMMMb.  .gP"Ya-->
+						<!--  MM          MM    MM    MM    MM ,M'   Yb 8I   `"   MM  6W'   `Wb MM    MM ,M'   Yb-->
+						<!--  MM      ,   MM    MM    MM    MM 8M"""""" `YMMMa.   MM  8M     M8 MM    MM 8M""""""-->
+						<!--  MM     ,M   MM    MM    MM    MM YM.    , L.   I8   MM  YA.   ,A9 MM    MM YM.    ,-->
+						<!--.JMMmmmmMMM .JMML..JMML  JMML  JMML.`Mbmmd' M9mmmP'   `Mbmo`Ybmd9'.JMML  JMML.`Mbmmd'</pre>-->
+						<!--				</div>-->
 						<div class="info-list">
 							<div class="info-row">
 								<div class="item-info">
