@@ -137,8 +137,7 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 							"'Cascadia Code', 'Cascadia Mono', Consolas, 'JetBrains Mono', ui-monospace, monospace",
 						label: 'Monospace'
 					}
-				],
-				allowCustom: true
+				]
 			},
 			{
 				key: 'editor.font_size',

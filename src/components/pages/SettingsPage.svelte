@@ -1277,7 +1277,7 @@
 	.ascii-logo {
 		display: inline-block;
 		margin: 0;
-		font-family: var(--font-editor, monospace);
+		font-family: var(--font-mono);
 		font-size: min(calc(100cqw / 80), 13px);
 		line-height: 1.15;
 		white-space: pre;
@@ -1314,7 +1314,7 @@
 	}
 
 	.info-mono {
-		font-family: var(--font-editor, monospace);
+		font-family: var(--font-mono);
 		font-size: 12px;
 		color: var(--color-text-secondary);
 		overflow: hidden;
