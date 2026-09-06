@@ -12,8 +12,8 @@ Note taking etc., built for people who think clearly when their tools get out of
 
 The editor is [aragonite](https://github.com/voithos-labs/aragonite), the block editor we wrote for this, and it comes from npm now (`@voithos-labs/aragonite`). The old CodeMirror editor is gone. Things worth knowing:
 
-- A note has three views, Source, Live and Reading. Toggle at the top right of the document, or `Ctrl+E` to cycle. Which one a new tab opens in is a setting under Appearance.
-- Live hides the markdown, so it gets a small formatting bar when you select text, and a `+` beside the toggle for tables, code blocks, callouts, math, diagrams and dividers.
+- A note is edited in one of two modes, Live or Source, set under Settings > Editor and applied to every open document.
+- Live hides the markdown, so it gets a small formatting bar when you select text, and a `+` at the top right of the document for tables, code blocks, callouts, math, diagrams and dividers.
 - Images are Obsidian style, `![[cat.png]]`. Paste an image and it's saved into the source's asset folder and embedded for you.
 - `Ctrl+F` finds, `Ctrl+H` replaces, `Ctrl+=` and `Ctrl+-` zoom.
 

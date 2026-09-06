@@ -191,9 +191,9 @@
 			{#if tab}
 				{#key tab.id}
 					{#if tab.content.type === 'view'}
-						<ViewPage view={tab.content.view} {tab} {editor} />
+						<ViewPage view={tab.content.view} {tab} {editor} settings={session.settings} />
 					{:else if tab.content.type === 'markdown'}
-						<DocumentEditor {tab} {editor} />
+						<DocumentEditor {tab} {editor} settings={session.settings} />
 					{:else if tab.content.type === 'new'}
 						<NewTabPage {tab} {editor} />
 					{:else if tab.content.type === 'licenses'}

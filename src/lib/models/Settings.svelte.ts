@@ -76,29 +76,6 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				description: 'Sit a document’s folder, tags, and date inline with its title when they fit.'
 			},
 			{
-				key: 'appearance.default_editor_mode',
-				type: 'string',
-				control: 'select',
-				label: 'Default Editor Mode',
-				description: 'How a document presents when it is opened for the first time.',
-				options: [
-					{ value: 'source', label: 'Source' },
-					{ value: 'live', label: 'Live' },
-					{ value: 'reading', label: 'Reading' }
-				]
-			},
-			{
-				key: 'appearance.editor_font_size',
-				type: 'number',
-				control: 'stepper',
-				label: 'Editor Font Size',
-				description: 'Font size in pixels for the document editor.',
-				min: 8,
-				max: 32,
-				step: 1,
-				unit: 'px'
-			},
-			{
 				key: 'appearance.ui_scale_percent',
 				type: 'number',
 				control: 'select',
@@ -122,6 +99,34 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				min: 600,
 				max: 3000,
 				step: 50,
+				unit: 'px'
+			}
+		]
+	},
+	{
+		id: 'editor',
+		label: 'Editor',
+		settings: [
+			{
+				key: 'editor.mode',
+				type: 'string',
+				control: 'select',
+				label: 'Mode',
+				description: 'Live renders the markdown as you type. Source shows it as written.',
+				options: [
+					{ value: 'live', label: 'Live' },
+					{ value: 'source', label: 'Source' }
+				]
+			},
+			{
+				key: 'editor.font_size',
+				type: 'number',
+				control: 'stepper',
+				label: 'Font Size',
+				description: 'Font size in pixels for the document editor.',
+				min: 8,
+				max: 32,
+				step: 1,
 				unit: 'px'
 			}
 		]
@@ -215,15 +220,7 @@ export class SettingsState {
 		const [defaults, values] = await Promise.all([getDefaultSettings(), getAllSettings()]);
 		this.defaults = defaults;
 		this.values = values;
-		await this.migrateEditorMode();
 		if (import.meta.env.DEV) this.validateRegistry();
-	}
-
-	// Rewriting the renamed middle mode keeps the settings page from showing a stored name it has
-	// no option for. Delete once no settings store predating the live-mode swap is left in the wild.
-	private async migrateEditorMode(): Promise<void> {
-		const key = 'appearance.default_editor_mode';
-		if (this.get(key) === 'preview-inline') await this.set(key, 'live');
 	}
 
 	get<T extends SettingValue>(key: string): T | null {

@@ -7,6 +7,7 @@
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
+	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { listSources } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import ViewHeader from '../views/ViewHeader.svelte';
@@ -22,7 +23,12 @@
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import { Crop, X, Check, EllipsisVertical, Trash2, ImageUp, Plus, Copy } from '@lucide/svelte';
 
-	let { view, tab, editor }: { view: View; tab?: TabState; editor: EditorState } = $props();
+	let {
+		view,
+		tab,
+		editor,
+		settings
+	}: { view: View; tab?: TabState; editor: EditorState; settings: SettingsState } = $props();
 
 	const activeFace: ViewFace = $derived(
 		view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
@@ -470,6 +476,7 @@
 						{createSignal}
 						{docPicker}
 						{tab}
+						{settings}
 						{findBarAnchor}
 					/>
 				{:else if activeFace?.type === 'doc'}
@@ -479,6 +486,7 @@
 						flow={bodyFlow}
 						picker={docPicker}
 						{tab}
+						{settings}
 						{findBarAnchor}
 					/>
 				{:else if activeFace?.type === 'list' || activeFace?.type === 'grid'}

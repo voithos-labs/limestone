@@ -11,14 +11,13 @@
 	// yes you must load editor-tokens.css after aragonite's editor-theme.css
 	import './editor-tokens.css';
 	import { EDITOR_PLUGINS } from './editor-plugins';
-	import { MODES, normalizeMode } from './editor-modes';
 	import { isImageTarget } from './image-targets';
 	import { createPasteImportLedger } from './paste-imports';
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { deleteSourceAsset, importSourceAssetBytes } from '$lib/services/assets';
 	import { currentThemeType } from '$lib/services/theme.svelte';
-	import { getSetting } from '$lib/models/Settings.svelte';
+	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
 	import { onDocChanged } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
@@ -32,13 +31,18 @@
 
 	let {
 		tab,
+		settings,
 		editor,
 		flow = false,
+		readOnly = false,
 		findBarAnchor
 	}: {
 		tab: TabState;
+		settings: SettingsState;
 		editor?: EditorStateModel;
 		flow?: boolean;
+		/** Renders the document without a caret, for a history entry or anything else not to edit. */
+		readOnly?: boolean;
 		/** Where the editor should draw its find bar, for a page that scrolls the document itself. */
 		findBarAnchor?: HTMLElement | null;
 	} = $props();
@@ -179,40 +183,19 @@
 		tab.state.props_open = propsOpen;
 	});
 
-	let zoom = $state(untrack(() => tab.state.zoom ?? 16));
-	if (untrack(() => tab.state.zoom) === undefined) {
-		getSetting<number>('appearance.editor_font_size').then((v) => {
-			if (tab.state.zoom === undefined && typeof v === 'number') zoom = v;
-		});
-	}
+	let zoom = $state(
+		untrack(() => tab.state.zoom ?? settings.get<number>('editor.font_size') ?? 16)
+	);
 
 	function setZoom(next: number) {
 		zoom = Math.max(10, Math.min(40, next));
 		tab.state.zoom = zoom;
 	}
 
-	// A tab only remembers a mode once the reader picks one; until then the global setting
-	// supplies it. That is why setMode is the only thing that writes tab.state.presentationMode.
-	let mode = $state<PresentationMode>(
-		untrack(() => normalizeMode(tab.state.presentationMode) ?? 'live')
+	// The mode is global, not the tab's: every open document follows the setting as it changes.
+	let mode = $derived<PresentationMode>(
+		readOnly ? 'reading' : settings.get('editor.mode') === 'source' ? 'source' : 'live'
 	);
-	if (untrack(() => tab.state.presentationMode) === undefined) {
-		getSetting<string>('appearance.default_editor_mode').then((v) => {
-			const m = normalizeMode(v);
-			if (tab.state.presentationMode === undefined && m) mode = m;
-		});
-	}
-
-	function setMode(next: PresentationMode) {
-		mode = next;
-		tab.state.presentationMode = next;
-	}
-
-	/** Steps from the current mode, not the stored one, so the shortcut and the buttons agree. */
-	function cycleMode() {
-		const from = MODES.findIndex((m) => m.value === mode);
-		setMode(MODES[(from + 1) % MODES.length].value);
-	}
 
 	// ── Wire-up: events, scroll tracking, and the restore of where you left off ─────────
 
@@ -402,7 +385,7 @@
 		return `![[${relPath}]]`;
 	}
 
-	// ── UI the editor doesn't provide: zoom and the mode toggle ─────────────────────────
+	// ── UI the editor doesn't provide: zoom ─────────────────────────────────────────────
 
 	function onKeydown(e: KeyboardEvent) {
 		// The same match the window handler stands down on, so the two cannot disagree.
@@ -412,14 +395,7 @@
 		// would flip the mode. Blocks are contenteditable, not form fields, so they are unaffected.
 		if ((e.target as HTMLElement | null)?.closest('input, textarea, select')) return;
 		e.preventDefault();
-		if (shortcut === 'zoom-in') setZoom(zoom + 1);
-		else if (shortcut === 'zoom-out') setZoom(zoom - 1);
-		else {
-			cycleMode();
-			// Reading mode is read-only, so focus falls to <body>, outside this wrapper's handler.
-			// Take it back after the re-render or the shortcut cannot cycle out again.
-			void tick().then(() => scrollEl?.focus());
-		}
+		setZoom(shortcut === 'zoom-in' ? zoom + 1 : zoom - 1);
 	}
 
 	async function deleteDoc() {
@@ -461,21 +437,11 @@
 			bind:propsOpen
 		/>
 	{/if}
-	<div class="mode-toggle">
-		{#if mode === 'live'}
+	{#if mode === 'live'}
+		<div class="insert-row">
 			<InsertMenu {instance} />
-		{/if}
-		<span class="mode-group" role="group" aria-label="Editor mode">
-			{#each MODES as { value, label } (value)}
-				<button
-					type="button"
-					class:active={mode === value}
-					aria-pressed={mode === value}
-					onclick={() => setMode(value)}>{label}</button
-				>
-			{/each}
-		</span>
-	</div>
+		</div>
+	{/if}
 {/snippet}
 
 <!-- The zoom is aragonite's own type-scale root, so it inherits into the editor from here. The
@@ -551,41 +517,15 @@
 		display: none;
 	}
 
-	/* Same page column as its neighbours, so the toggle's right edge is the document's. Without
+	/* Same page column as its neighbours, so the button's right edge is the document's. Without
 	   it, `flex-end` aligns to the editor root's padding, far outside the text column. */
-	.mode-toggle {
+	.insert-row {
 		display: flex;
 		justify-content: flex-end;
-		gap: 2px;
 		box-sizing: border-box;
 		width: 100%;
 		max-width: var(--page-max-width, 1200px);
 		margin: 0 auto;
 		padding: 0 24px;
-	}
-
-	.mode-group {
-		display: flex;
-		gap: 2px;
-	}
-
-	.mode-toggle button {
-		padding: 3px 9px;
-		border: none;
-		border-radius: var(--radius-ui, 4px);
-		background: transparent;
-		color: var(--color-ui-muted);
-		font-family: var(--font-ui);
-		font-size: 12px;
-		cursor: pointer;
-	}
-
-	.mode-toggle button:hover {
-		color: var(--color-text-primary);
-	}
-
-	.mode-toggle button.active {
-		background: var(--color-border);
-		color: var(--color-text-primary);
 	}
 </style>

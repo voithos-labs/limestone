@@ -20,17 +20,16 @@ export function registerDocumentEditor(instance: EditorInstance): () => void {
 
 // ── Shortcuts the app adds inside a document ─────────────────────────────────
 
-export type AppEditorShortcut = 'zoom-in' | 'zoom-out' | 'cycle-mode';
+export type AppEditorShortcut = 'zoom-in' | 'zoom-out';
 
 /**
- * Zoom and the mode toggle, which DocumentEditor handles itself and runs from this same answer.
- * The editor knows nothing about them, so they are the only keys the app still spells out.
+ * Zoom, which DocumentEditor handles itself and runs from this same answer. The editor knows
+ * nothing about it, so these are the only keys the app still spells out.
  */
 export function appEditorShortcut(e: KeyboardEvent): AppEditorShortcut | null {
 	if (!(e.ctrlKey || e.metaKey)) return null;
 	if (e.key === '=' || e.key === '+') return 'zoom-in';
 	if (e.key === '-') return 'zoom-out';
-	if (e.key.toLowerCase() === 'e' && !e.shiftKey && !e.altKey) return 'cycle-mode';
 	return null;
 }
 

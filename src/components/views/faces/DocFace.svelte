@@ -7,6 +7,7 @@
 	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
 	import Folder from '$lib/models/Folder';
 	import type { DocPicker } from '$lib/views/docPicker.svelte';
+	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { searchDocuments } from '$lib/services/search';
 	import type { SearchResult } from '$lib/types/SearchResult';
 	import DocumentEditor from '../../editor/DocumentEditor.svelte';
@@ -22,6 +23,7 @@
 		labels = {},
 		picker,
 		tab,
+		settings,
 		findBarAnchor,
 		onCreated,
 		onPicked
@@ -34,6 +36,7 @@
 		labels?: { newTitle?: string; empty?: string; create?: string };
 		picker?: DocPicker;
 		tab?: TabState;
+		settings: SettingsState;
 		/** The page's own box for the find bar, which the document editor draws into. */
 		findBarAnchor?: HTMLElement | null;
 		onCreated?: (rowId: string) => void;
@@ -289,7 +292,7 @@
 >
 	{#if docTab}
 		{#key docTab.id}
-			<DocumentEditor bind:this={docEditor} tab={docTab} {flow} {findBarAnchor} />
+			<DocumentEditor bind:this={docEditor} tab={docTab} {settings} {flow} {findBarAnchor} />
 		{/key}
 	{:else}
 		<div class="doc-empty">
