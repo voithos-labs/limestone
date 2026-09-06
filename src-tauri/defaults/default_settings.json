@@ -11,6 +11,7 @@
 	},
 	"editor": {
 		"mode": "live",
+		"font": "Inter, system-ui, sans-serif",
 		"font_size": 14
 	},
 	"indexing": {

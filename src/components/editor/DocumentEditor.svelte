@@ -192,10 +192,12 @@
 		tab.state.zoom = zoom;
 	}
 
-	// The mode is global, not the tab's: every open document follows the setting as it changes.
+	// The mode and font are global, not the tab's: every open document follows the setting as it
+	// changes.
 	let mode = $derived<PresentationMode>(
 		readOnly ? 'reading' : settings.get('editor.mode') === 'source' ? 'source' : 'live'
 	);
+	let font = $derived(settings.get<string>('editor.font') ?? 'sans-serif');
 
 	// ── Wire-up: events, scroll tracking, and the restore of where you left off ─────────
 
@@ -444,13 +446,13 @@
 	{/if}
 {/snippet}
 
-<!-- The zoom is aragonite's own type-scale root, so it inherits into the editor from here. The
-	 px unit is load-bearing: a bare number makes the font-size rule it feeds invalid. -->
+<!-- The zoom and font are aragonite's own type-scale root and face, so they inherit into the editor
+	 from here. The px unit is load-bearing: a bare number makes the font-size rule it feeds invalid. -->
 <div
 	class="doc-editor"
 	class:flow
 	bind:this={wrapperEl}
-	style="--editor-font-size: {zoom}px"
+	style="--editor-font-size: {zoom}px; --font-editor: {font}"
 	onkeydowncapture={onKeydown}
 	role="presentation"
 >

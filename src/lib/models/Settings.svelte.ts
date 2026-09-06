@@ -119,6 +119,28 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				]
 			},
 			{
+				key: 'editor.font',
+				type: 'string',
+				control: 'select',
+				label: 'Font',
+				description: 'Typeface for document text. Code keeps the monospace font.',
+				options: [
+					{ value: 'Inter, system-ui, sans-serif', label: 'Inter' },
+					{ value: 'Arial, Helvetica, sans-serif', label: 'Arial' },
+					{ value: 'system-ui, sans-serif', label: 'System' },
+					{ value: 'Verdana, Geneva, sans-serif', label: 'Verdana' },
+					{ value: 'Georgia, serif', label: 'Georgia' },
+					{ value: "'Times New Roman', Times, serif", label: 'Times New Roman' },
+					{ value: "Consolas, 'Cascadia Mono', Menlo, ui-monospace, monospace", label: 'Consolas' },
+					{
+						value:
+							"'Cascadia Code', 'Cascadia Mono', Consolas, 'JetBrains Mono', ui-monospace, monospace",
+						label: 'Monospace'
+					}
+				],
+				allowCustom: true
+			},
+			{
 				key: 'editor.font_size',
 				type: 'number',
 				control: 'stepper',

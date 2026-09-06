@@ -6,6 +6,14 @@
  * after `aragonite/styles/editor-theme.css`.
  */
 .editor {
+	/* The document sits on --color-surface and limestone floats its menus on --color-bg, so
+	   the editor's inset panels (code, math, diagrams) and its popovers (find bar, link card,
+	   language chip) take the same second surface. Aragonite defaults these on .editor itself,
+	   which is why :root cannot supply them. */
+	--color-bg-secondary: var(--color-bg);
+	--color-bg-elevated: var(--color-bg);
+	--color-bg-muted: var(--color-bg);
+	--color-text-muted: var(--color-ui-muted);
 	/* aragonite hovers its table menu with this. The app's own menu hover is the same thing,
 	   and unlike aragonite's value it follows the limestone theme. */
 	--color-ui-faint: var(--menu-item-hover);
@@ -21,6 +29,19 @@
 	--syntax-task-done: inherit;
 	/* No fallbacks: the app's variables are unset until applyTheme runs (aragonite's own reads
 	   carry fallbacks), and a literal color would pin one mode into a file that serves both. */
+}
+
+/* Aragonite has one font token for prose and code alike, so with a proportional face chosen the
+   code surfaces are pinned back to the app's monospace here. These are aragonite's own class
+   names, not promised API; the wrapper is in the selector to outweigh the component styles. */
+.doc-editor .editor .code-block,
+.doc-editor .editor .code-lang-chip,
+.doc-editor .editor .inline-code-content,
+.doc-editor .editor .text-editable-block.raw-block,
+.doc-editor .editor .md-raw-html,
+.doc-editor .editor .md-source-surface,
+.doc-editor .editor .failed-block-raw {
+	font-family: var(--font-mono);
 }
 
 /* --syntax-separator colors the `---` characters where they sit in a line of text. Painted
