@@ -379,7 +379,7 @@
 			MIME_EXTS[file.type] ?? 'png'
 		);
 		const { from, to } = view.state.selection.main;
-		const embed = `![[${relPath}]]`;
+		const embed = `![[${relPath.slice(relPath.lastIndexOf('/') + 1)}]]`;
 		view.dispatch({
 			changes: { from, to, insert: embed },
 			selection: { anchor: from + embed.length }
