@@ -83,13 +83,57 @@ export const SOFT_LIGHT: Theme = {
 	}
 };
 
+export const HIGH_CONTRAST_DARK: Theme = {
+	name: 'High Contrast Dark',
+	type: 'dark',
+	variables: {
+		'color-bg': '#1e2124',
+		'color-surface': '#000000',
+		'color-border': '#cfd3d6',
+		'color-text-primary': '#ffffff',
+		'color-text-secondary': '#f0f1f2',
+		'color-ui-dulled': '#d2d5d8',
+		'color-ui-muted': '#b6babd',
+		'color-accent': '#7ed3a4',
+		'color-accent-primary': '#7ed3a4',
+		'color-error': '#ff8f87',
+		'focus-ring': '#ffffff',
+		'focus-border': '#ffffff',
+		'radius-ui': '4px',
+		'radius-surface': '8px'
+	}
+};
+
+export const HIGH_CONTRAST_LIGHT: Theme = {
+	name: 'High Contrast Light',
+	type: 'light',
+	variables: {
+		'color-bg': '#dcdee1',
+		'color-surface': '#ffffff',
+		'color-border': '#2b2e31',
+		'color-text-primary': '#000000',
+		'color-text-secondary': '#121314',
+		'color-ui-dulled': '#333638',
+		'color-ui-muted': '#414447',
+		'color-accent': '#234b36',
+		'color-accent-primary': '#234b36',
+		'color-error': '#85110a',
+		'focus-ring': '#000000',
+		'focus-border': '#000000',
+		'radius-ui': '4px',
+		'radius-surface': '8px'
+	}
+};
+
 export const DEFAULT_THEME = DEFAULT_DARK;
 
 export const BUILTIN_THEMES: Record<string, Theme> = {
 	'default-dark': DEFAULT_DARK,
 	'soft-dark': SOFT_DARK,
+	'high-contrast-dark': HIGH_CONTRAST_DARK,
 	'default-light': DEFAULT_LIGHT,
-	'soft-light': SOFT_LIGHT
+	'soft-light': SOFT_LIGHT,
+	'high-contrast-light': HIGH_CONTRAST_LIGHT
 };
 
 export interface AccentPreset {
@@ -159,8 +203,14 @@ export function applyAccent(setting: string | null, type: 'dark' | 'light') {
 	root.style.setProperty('--color-accent-contrast', resolved.contrast);
 }
 
+let appliedKeys: string[] = [];
+
 export function applyTheme(theme: Theme) {
 	const root = document.documentElement;
+	for (const key of appliedKeys) {
+		if (!(key in theme.variables)) root.style.removeProperty(`--${key}`);
+	}
+	appliedKeys = Object.keys(theme.variables);
 	for (const [key, value] of Object.entries(theme.variables)) {
 		root.style.setProperty(`--${key}`, value);
 	}
