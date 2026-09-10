@@ -361,7 +361,7 @@
 
 	function fullSignature(): string {
 		return [
-			view.slug,
+			view.propKey,
 			nodeSig(view.filter),
 			nodeSig(face.additive_filter),
 			scope ? nodeSig(scope) : '',
@@ -772,9 +772,9 @@
 	}
 
 	// thin wrappers binding this view's slug / sources to the shared helpers
-	const rawStatefulValue = (field: ViewField, row: Row) => rawStateful(row, view.slug, field.name);
-	const statefulValue = (field: ViewField, row: Row) => stateful(row, view.slug, field.name);
-	const rawArrayValue = (field: ViewField, row: Row) => rawArray(row, view.slug, field.name);
+	const rawStatefulValue = (field: ViewField, row: Row) => rawStateful(row, view.propKey, field.name);
+	const statefulValue = (field: ViewField, row: Row) => stateful(row, view.propKey, field.name);
+	const rawArrayValue = (field: ViewField, row: Row) => rawArray(row, view.propKey, field.name);
 	const tagClass = tagClassOf;
 	const valueFor = (field: ViewField, row: Row) => valueOf(field, row, view.slug);
 	const sourceName = (id: string) => sourceNameOf(sources, id);
@@ -1660,7 +1660,7 @@
 {/if}
 
 {#snippet cellInner(field: ViewField, row: Row)}
-	<CellValue {field} {row} viewSlug={view.slug} {sources} tags={tagsFor(row.id)} />
+	<CellValue {field} {row} viewSlug={view.propKey} {sources} tags={tagsFor(row.id)} />
 {/snippet}
 
 <LeanScroll {flow}>

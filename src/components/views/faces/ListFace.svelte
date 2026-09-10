@@ -433,7 +433,7 @@
 						<FaceCard
 							{row}
 							fields={metaFields}
-							viewSlug={view.slug}
+							viewSlug={view.propKey}
 							{sources}
 							tags={tagSlugsFor(row.id)}
 							preview={previews[row.id] ?? ''}

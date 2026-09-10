@@ -340,6 +340,7 @@
 			json.updated_at = new Date();
 			json.temporary = false;
 			const copy = new View(json);
+			copy.detachUnit();
 			await copy.save();
 			editor.openView(copy);
 		} catch (e) {
