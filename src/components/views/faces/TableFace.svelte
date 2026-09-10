@@ -772,11 +772,12 @@
 	}
 
 	// thin wrappers binding this view's slug / sources to the shared helpers
-	const rawStatefulValue = (field: ViewField, row: Row) => rawStateful(row, view.propKey, field.name);
+	const rawStatefulValue = (field: ViewField, row: Row) =>
+		rawStateful(row, view.propKey, field.name);
 	const statefulValue = (field: ViewField, row: Row) => stateful(row, view.propKey, field.name);
 	const rawArrayValue = (field: ViewField, row: Row) => rawArray(row, view.propKey, field.name);
 	const tagClass = tagClassOf;
-	const valueFor = (field: ViewField, row: Row) => valueOf(field, row, view.slug);
+	const valueFor = (field: ViewField, row: Row) => valueOf(field, row, view.propKey);
 	const sourceName = (id: string) => sourceNameOf(sources, id);
 
 	// ── Draft (new-row) state ───────────────────────────────────────────────────
@@ -803,7 +804,7 @@
 		rel_path: '',
 		created_at: draft.createdAt,
 		updated_at: draft.createdAt,
-		properties: JSON.stringify({ views: { [view.slug]: draft.values } }),
+		properties: JSON.stringify({ views: { [view.propKey]: draft.values } }),
 		source_id: createCtx.sourceId ?? ''
 	}));
 
@@ -1361,12 +1362,12 @@
 	function applyLocal(rowId: string, name: string, value: unknown) {
 		rows = rows.map((r) =>
 			r.id === rowId
-				? { ...r, properties: withStatefulValue(r.properties, view.slug, name, value) }
+				? { ...r, properties: withStatefulValue(r.properties, view.propKey, name, value) }
 				: r
 		);
 	}
 
-	const titleFor = (field: ViewField, row: Row) => titleOf(field, row, view.slug);
+	const titleFor = (field: ViewField, row: Row) => titleOf(field, row, view.propKey);
 
 	function cellClassFor(type: ViewFieldType): string {
 		if (type === 'title') return 'cell-title';
@@ -1616,7 +1617,7 @@
 			const dir = folderDirLabel;
 			const groupIds = [...createCtx.tagGroupIds];
 			const props = Object.keys(draft.values).length
-				? { views: { [view.slug]: draft.values } }
+				? { views: { [view.propKey]: draft.values } }
 				: {};
 			const doc = await DocHandle.createFromTitle(source, {
 				title,
