@@ -16,7 +16,7 @@ Good entry point to explore the code base is Session ([see file](https://github.
 
 ---
 
-Run dev app ( you may need to install deps first, e.g. `npm i` )
+Run dev app ( you will need to install node deps first, e.g. `npm i` )
 
 ```bash
 npm run tauri dev
