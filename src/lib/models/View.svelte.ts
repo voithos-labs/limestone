@@ -47,28 +47,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
 import type DocHandle from '$lib/models/DocHandle';
 import type Tag from '$lib/models/Tag';
-import Folder, { folderId, isSourceRoot } from '$lib/models/Folder';
+import Folder, { folderId, folderIdPath, isSourceRoot } from '$lib/models/Folder';
 import { getSource, listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/services/db';
 import { load, type Store } from '@tauri-apps/plugin-store';
 import { toasts } from '$lib/toasts.svelte';
 import { wallClockToMs } from '$lib/views/dateFormat';
 
-/**
- * okay so a Face instance is 1:1 with a view-component, e.g. table, kanban etc.
- * todo: some sort of registry or something, so you can select amongst them in the UI and also
- * to have it mapped correctly when you go to open a view
- *
- * A view may have many faces
- *
- * Need to think about how to selectively display / hide fields, and how to do group by and sort by
- * Based the running UX model we've discussed, faces need additive filters on from the overall view
- * too, e.g. a kanban face doesn't show documents with field 'status' eq to 'postponed' but the
- * primary tab, a table for instance, just shows all
- *
- * faces: table, list, kanban, calendar, pinned doc
- *
- */
 export type ViewFaceType =
 	'table' | 'list' | 'grid' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
 
@@ -380,7 +365,7 @@ interface CompiledFilter {
 	params: unknown[];
 }
 
-const UNSAFE_IDENT = /["'.\\]|\p{Cc}/u;
+const UNSAFE_IDENT = /["'\\]|\p{Cc}/u;
 
 function isValidName(s: string): boolean {
 	return s !== '' && !UNSAFE_IDENT.test(s);
@@ -393,7 +378,7 @@ function pathSeg(s: string, kind: string): string {
 
 export function sanitizeName(raw: string): string {
 	return raw
-		.replace(/["'.\\]/g, '')
+		.replace(/["'\\]/g, '')
 		.replace(/\p{Cc}/gu, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();
@@ -417,6 +402,21 @@ function resolveColumn(fieldType: ViewFieldType, fieldName: string, viewSlug: st
 		default:
 			return `json_extract(d.properties, '$.views."${pathSeg(viewSlug, 'view slug')}"."${pathSeg(fieldName, 'field name')}"')`;
 	}
+}
+
+/**
+ * A unit view is 1:1 with an organization unit; a source is its root folder. The unit id both
+ * scopes the view and names the frontmatter namespace its stateful props live under, so folders
+ * key on a source-relative path with a trailing slash and tags key on their bare slug
+ */
+export function unitPropKey(unitId: string): string {
+	return unitId.startsWith('tag:') ? unitId.slice('tag:'.length) : `${folderIdPath(unitId)}/`;
+}
+
+function compileUnit(unitId: string): CompiledFilter {
+	return unitId.startsWith('tag:')
+		? compileTagsLeaf('has_any', [unitId])
+		: compileFolderLeaf('in', unitId);
 }
 
 function compileFolderLeaf(op: string, value: unknown): CompiledFilter {
@@ -700,6 +700,7 @@ export interface MemberRow {
 interface ViewJSON {
 	id: string;
 	slug: string;
+	unit?: string | null;
 	created_at: Date;
 	updated_at: Date;
 	fields: ViewField[];
@@ -786,7 +787,8 @@ export async function isViewSlugTaken(slug: string, excludeId: string): Promise<
 
 class View {
 	id: string; // uuid
-	slug: string = $state(''); // global unique view slug
+	slug: string = $state(''); // display name; also the prop namespace for non-unit views
+	unit: string | null = $state(null); // tag or folder id when this is a unit view
 	createdAt: Date;
 	updatedAt: Date = $state(new Date());
 	fields: ViewField[] = $state([]);
@@ -802,6 +804,7 @@ class View {
 	constructor(json: ViewJSON) {
 		this.id = json.id;
 		this.slug = json.slug;
+		this.unit = json.unit ?? null;
 		this.createdAt = json.created_at;
 		this.updatedAt = json.updated_at;
 		this.fields = json.fields;
@@ -813,6 +816,11 @@ class View {
 		this.cover = json.cover ?? '';
 		this.accessedAt = json.accessed_at ?? json.updated_at;
 		this.markPristine();
+	}
+
+	/** Where this view's stateful props live: `views.<propKey>.<field>` */
+	get propKey(): string {
+		return this.unit ? unitPropKey(this.unit) : this.slug;
 	}
 
 	private snapshot(): string {
@@ -861,45 +869,26 @@ class View {
 		return view;
 	}
 
-	static createFromUnit(unit: Tag | Folder): View {
-		const view = View.create(unit.slug);
-		view.state.origin_id = unit.id;
-
-		if (unit instanceof Folder) {
-			const folderFieldId = view.fields.find((f) => f.type == 'folder')!.id;
-			view.addBasicFilter({
-				field_id: folderFieldId,
-				op: 'in',
-				value: unit.id
-			});
-		} else {
-			const tagsFieldId = view.fields.find((f) => f.type == 'tags')!.id;
-			view.addBasicFilter({
-				field_id: tagsFieldId,
-				op: 'has_any',
-				value: [unit.id]
-			});
-		}
-
+	static createForUnit(unitId: string, name: string): View {
+		const view = View.create(name);
+		view.unit = unitId;
 		view.temporary = true;
 		view.markPristine();
 		return view;
 	}
 
+	static createFromUnit(unit: Tag | Folder): View {
+		return View.createForUnit(unit.id, unit.slug);
+	}
+
 	static createFromSource(source: Source): View {
-		const view = View.create(sourceName(source));
-		view.state.origin_id = source.id;
-		const locationFieldId = view.fields.find((f) => f.type == 'folder')!.id;
+		return View.createForUnit(folderId(source.id, ''), sourceName(source));
+	}
 
-		view.addBasicFilter({
-			field_id: locationFieldId,
-			op: 'in',
-			value: folderId(source.id, '')
-		});
-
-		view.temporary = true;
-		view.markPristine();
-		return view;
+	/** The saved view for this unit if there is one, else a fresh temporary one */
+	static async forUnit(unitId: string, name: string): Promise<View> {
+		const saved = (await listSavedViewJSON()).find((v) => v.unit === unitId);
+		return saved ? new View(saved) : View.createForUnit(unitId, name);
 	}
 
 	private initDefaultFields(): void {
@@ -996,9 +985,31 @@ class View {
 		this.filter.children.push(filter);
 	}
 
+	/**
+	 * Two views can't share a unit (they'd share a prop namespace), so a copy gives up the unit and
+	 * keeps its members as an ordinary filter instead
+	 */
+	detachUnit(): void {
+		const unitId = this.unit;
+		if (!unitId) return;
+		const isTag = unitId.startsWith('tag:');
+		const type: ViewFieldType = isTag ? 'tags' : 'folder';
+		let field = this.fields.find((f) => f.type === type);
+		if (!field) {
+			field = createViewField(type, type);
+			this.fields.push(field);
+		}
+		this.addBasicFilter({
+			field_id: field.id,
+			op: isTag ? 'has_any' : 'in',
+			value: isTag ? [unitId] : unitId
+		});
+		this.unit = null;
+	}
+
 	/** Persist this view to views.json and mark it as a saved (non-temporary) view. */
 	async save() {
-		if (await isViewSlugTaken(this.slug, this.id)) {
+		if (!this.unit && (await isViewSlugTaken(this.slug, this.id))) {
 			let n = 2;
 			while (await isViewSlugTaken(`${this.slug} ${n}`, this.id)) n++;
 			this.slug = `${this.slug} ${n}`;
@@ -1027,6 +1038,7 @@ class View {
 		return {
 			id: this.id,
 			slug: this.slug,
+			unit: this.unit,
 			created_at: this.createdAt,
 			updated_at: this.updatedAt,
 			fields: this.fields,
@@ -1042,6 +1054,22 @@ class View {
 
 	// `scope` is an extra, non-persisted predicate from whoever is rendering the face
 	// (a journal scoping its body to the selected day)
+	// The unit scope is implicit and always applies; view and face filters are additive on top
+	private compileScope(opts?: { face?: ViewFace; scope?: FilterNode | null }): CompiledFilter {
+		const compiled = compileFilter(
+			memberFilter(this.filter, opts?.face, opts?.scope),
+			this.fields,
+			this.propKey
+		);
+		if (!this.unit) return compiled;
+		const unit = compileUnit(this.unit);
+		if (!compiled.sql) return unit;
+		return {
+			sql: `(${unit.sql} AND ${compiled.sql})`,
+			params: [...unit.params, ...compiled.params]
+		};
+	}
+
 	async getMembers(opts?: {
 		face?: ViewFace;
 		scope?: FilterNode | null;
@@ -1049,8 +1077,7 @@ class View {
 		offset?: number;
 		ids_in?: string[];
 	}): Promise<MemberRow[]> {
-		const filterNode = memberFilter(this.filter, opts?.face, opts?.scope);
-		const compiled = compileFilter(filterNode, this.fields, this.slug);
+		const compiled = this.compileScope(opts);
 		const params = [...compiled.params];
 
 		const idsIn = opts?.ids_in;
@@ -1062,7 +1089,7 @@ class View {
 		}
 
 		const sort = opts?.face?.sort ?? [];
-		const orderBy = sort.length ? compileSort(sort, this.fields, this.slug) : '';
+		const orderBy = sort.length ? compileSort(sort, this.fields, this.propKey) : '';
 
 		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.properties, d.source_id
 			FROM documents d
@@ -1089,15 +1116,13 @@ class View {
 		sql: string;
 		params: unknown[];
 	} {
-		const filterNode = memberFilter(this.filter, opts?.face, opts?.scope);
-		const compiled = compileFilter(filterNode, this.fields, this.slug);
+		const compiled = this.compileScope(opts);
 		return { sql: compiled.sql, params: [...compiled.params] };
 	}
 
 	// total matching members
 	async countMembers(opts?: { face?: ViewFace; scope?: FilterNode | null }): Promise<number> {
-		const filterNode = memberFilter(this.filter, opts?.face, opts?.scope);
-		const compiled = compileFilter(filterNode, this.fields, this.slug);
+		const compiled = this.compileScope(opts);
 		const sql = `SELECT COUNT(*) AS n
 			FROM documents d
 			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
@@ -1107,10 +1132,17 @@ class View {
 
 	// ── Brain Damaging Ops (multi-doc) ──────────────────────────────────────────────────
 
-	/** Rename the view slug, moving every stored `views.<old>.*` value to the new namespace */
+	/**
+	 * Rename the view slug, moving every stored `views.<old>.*` value to the new namespace. A unit
+	 * view keys its props on the unit, not the slug, so there its slug is only a label
+	 */
 	async renameSlug(newSlug: string): Promise<void> {
 		const oldSlug = this.slug;
 		if (!isValidName(newSlug) || newSlug === oldSlug) return;
+		if (this.unit) {
+			this.slug = newSlug;
+			return;
+		}
 		if (await isViewSlugTaken(newSlug, this.id)) return;
 		await bulkPerSource('bulk_rename_view', { oldSlug, newSlug });
 		this.slug = newSlug;
@@ -1121,13 +1153,13 @@ class View {
 		const oldName = field.name;
 		if (!isValidName(newName) || newName === oldName) return;
 		this.fields = this.fields.map((f) => (f.id === field.id ? { ...f, name: newName } : f));
-		await bulkPerSource('bulk_rename_view_field', { viewSlug: this.slug, oldName, newName });
+		await bulkPerSource('bulk_rename_view_field', { viewSlug: this.propKey, oldName, newName });
 	}
 
 	/** Rename a select/multiselect option value across all stored documents */
 	async renameOption(field: ViewField, oldValue: string, newValue: string): Promise<void> {
 		await bulkPerSource('bulk_rename_view_option', {
-			viewSlug: this.slug,
+			viewSlug: this.propKey,
 			fieldName: field.name,
 			oldValue,
 			newValue
@@ -1144,7 +1176,7 @@ class View {
 		const source = await getSource(sourceId);
 		return await invoke<BulkResult>('bulk_set_view_field', {
 			sourceId,
-			viewSlug: this.slug,
+			viewSlug: this.propKey,
 			fieldName: field.name,
 			value,
 			docIds
@@ -1184,6 +1216,12 @@ export function describeBulkFailure(r: BulkResult): string {
 		default:
 			return `${n} ${noun} couldn't be saved.`;
 	}
+}
+
+/** Move every `views.<oldPrefix>*` namespace to `<newPrefix>*`, e.g. when a folder is renamed */
+export async function renameUnitViewPrefix(oldPrefix: string, newPrefix: string): Promise<void> {
+	if (oldPrefix === newPrefix) return;
+	await bulkPerSource('bulk_rename_view_prefix', { oldPrefix, newPrefix });
 }
 
 export async function bulkPerSource(

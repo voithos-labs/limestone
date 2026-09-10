@@ -512,7 +512,7 @@
 	{/if}
 </div>
 
-{#if !hasCover && view.temporary && (!view.state.origin_id || view.isDirty)}
+{#if !hasCover && view.temporary && (!view.unit || view.isDirty)}
 	<div class="save-row">
 		{@render saveButton()}
 	</div>

@@ -102,7 +102,7 @@
 		let raw: unknown;
 		if (field.type === 'created_at') raw = r.created_at;
 		else if (field.type === 'updated_at') raw = r.updated_at;
-		else raw = rawStatefulValue(r, view.slug, field.name);
+		else raw = rawStatefulValue(r, view.propKey, field.name);
 		if (raw == null || raw === '') return null;
 		// A date-only string ("2026-07-13") parses as UTC via `new Date`, which lands on
 		// the previous day west of UTC and disagrees with the SQL day scope. wallClockToMs

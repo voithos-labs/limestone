@@ -294,10 +294,11 @@ async function containerMatches(q: string): Promise<SearchResult[]> {
 			group_type: string;
 			source_id: string | null;
 		}>(
-			`SELECT id, slug, 'tag' AS group_type, NULL AS source_id FROM tags WHERE lower(slug) LIKE ?1
-         UNION ALL
-         SELECT id, slug, 'folder' AS group_type, source_id FROM folders WHERE parent_id IS NOT NULL AND lower(slug) LIKE ?1
-         ORDER BY (group_type = 'folder') ASC, length(slug) ASC, slug ASC LIMIT ?2`,
+			`SELECT id, slug, group_type, source_id FROM (
+           SELECT id, slug, 'tag' AS group_type, NULL AS source_id FROM tags WHERE lower(slug) LIKE ?1
+           UNION ALL
+           SELECT id, slug, 'folder' AS group_type, source_id FROM folders WHERE parent_id IS NOT NULL AND lower(slug) LIKE ?1
+         ) ORDER BY (group_type = 'folder') ASC, length(slug) ASC, slug ASC LIMIT ?2`,
 			[like, CONTAINER_MAX_RESULTS]
 		)
 	]);

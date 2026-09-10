@@ -134,6 +134,27 @@ pub fn rename_view(fm: &mut Value, from: &str, to: &str) {
     }
 }
 
+/// Rename every `views.<key>` whose key starts with `from`, swapping that prefix for `to`
+pub fn rename_view_prefix(fm: &mut Value, from: &str, to: &str) {
+    let Some(views) = fm.as_object_mut().and_then(|r| r.get_mut("views")) else {
+        return;
+    };
+    let Some(views) = views.as_object_mut() else {
+        return;
+    };
+    let hits: Vec<String> = views
+        .keys()
+        .filter(|k| k.starts_with(from))
+        .cloned()
+        .collect();
+    for key in hits {
+        let Some(val) = views.remove(&key) else {
+            continue;
+        };
+        views.insert(format!("{to}{}", &key[from.len()..]), val);
+    }
+}
+
 /// Rename a select/multiselect option value in-place within `views.<slug>.<field>`
 pub fn rename_view_option(fm: &mut Value, slug: &str, field: &str, from: &str, to: &str) {
     let Some(views) = fm.as_object_mut().and_then(|r| r.get_mut("views")) else {
@@ -285,5 +306,43 @@ mod tests {
         let mut v = json!({ "views": { "v": { "x": 1, "y": 2 } } });
         remove_view_field(&mut v, "v", "x");
         assert_eq!(v, json!({ "views": { "v": { "y": 2 } } }));
+    }
+
+    #[test]
+    fn rename_prefix_moves_whole_subtree() {
+        let mut v = json!({ "views": {
+            "projects/": { "due": "2026-01-01" },
+            "projects/2026/": { "done": true },
+            "projectsX/": { "due": 1 },
+            "projects": { "x": 1 }
+        } });
+        rename_view_prefix(&mut v, "projects/", "work/");
+        assert_eq!(
+            v,
+            json!({ "views": {
+                "work/": { "due": "2026-01-01" },
+                "work/2026/": { "done": true },
+                "projectsX/": { "due": 1 },
+                "projects": { "x": 1 }
+            } })
+        );
+    }
+
+    #[test]
+    fn dotted_keys_survive_a_yaml_round_trip() {
+        let mut v = json!({});
+        set_view_field(&mut v, "projects/v1.2/", "due.date", json!("2026-01-01"));
+        set_view_field(&mut v, "1.5", "n", json!(2));
+        let out = format_content(&v, "body").unwrap();
+        let (back, body) = split_content(&out);
+        assert_eq!(back.unwrap(), v);
+        assert_eq!(body, "body");
+    }
+
+    #[test]
+    fn rename_prefix_without_views_is_noop() {
+        let mut v = json!({ "tags": ["a"] });
+        rename_view_prefix(&mut v, "projects/", "work/");
+        assert_eq!(v, json!({ "tags": ["a"] }));
     }
 }

@@ -132,7 +132,7 @@
 
 	$effect(() => {
 		const sig = [
-			view.slug,
+			view.propKey,
 			nodeSig(view.filter),
 			nodeSig(face.additive_filter),
 			scope ? nodeSig(scope) : '',
@@ -362,7 +362,7 @@
 			const dir = createCtx.folderGroupId ? folderPath(createCtx.folderGroupId) : '';
 			const groupIds = [...createCtx.tagGroupIds];
 			const props = Object.keys(createCtx.fieldValues).length
-				? { views: { [view.slug]: createCtx.fieldValues } }
+				? { views: { [view.propKey]: createCtx.fieldValues } }
 				: {};
 			const doc = await DocHandle.createFromTitle(source, {
 				title: 'Untitled',
@@ -433,7 +433,7 @@
 						<FaceCard
 							{row}
 							fields={metaFields}
-							viewSlug={view.slug}
+							viewSlug={view.propKey}
 							{sources}
 							tags={tagSlugsFor(row.id)}
 							preview={previews[row.id] ?? ''}
