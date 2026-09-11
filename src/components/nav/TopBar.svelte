@@ -66,11 +66,14 @@
 	let dragDeltaX = $state(0);
 	let dropIndex = $state(-1);
 	let suppressTransition = $state(false);
+	let dragActive = $state(false);
 	let originalIndex = -1;
 	let dragStartX = 0;
 	let tabWidths: number[] = [];
 	let tabLefts: number[] = [];
 	let tabEls: HTMLElement[] = $state([]);
+
+	const DRAG_THRESHOLD = 4;
 
 	// Pinned tabs occupy the front of the strip; a divider separates them from the
 	// open tabs. Dragging reorders within a zone only — pinning is deliberate (the
@@ -89,20 +92,27 @@
 		dragDocId = editor.tabs[index].id;
 		dragStartX = e.clientX;
 		dragDeltaX = 0;
+		dragActive = false;
 		originalIndex = index;
 		dropIndex = index;
 
-		tabWidths = tabEls.map((t) => t?.getBoundingClientRect().width ?? 0);
-		tabLefts = tabEls.map((t) => t?.getBoundingClientRect().left ?? 0);
+		const els = tabEls.slice(0, editor.tabs.length);
+		tabWidths = els.map((t) => t?.getBoundingClientRect().width ?? 0);
+		tabLefts = els.map((t) => t?.getBoundingClientRect().left ?? 0);
 	}
 
 	function onPointerMove(e: PointerEvent) {
 		if (dragDocId === null) return;
 
+		if (!dragActive) {
+			if (Math.abs(e.clientX - dragStartX) < DRAG_THRESHOLD) return;
+			dragActive = true;
+		}
+
 		// A tab reorders only within its own pinned/unpinned zone
 		const draggedPinned = editor.tabs[originalIndex].pinned;
 		const zoneStart = draggedPinned ? 0 : pinnedCount;
-		const zoneEnd = draggedPinned ? pinnedCount - 1 : tabWidths.length - 1;
+		const zoneEnd = draggedPinned ? pinnedCount - 1 : editor.tabs.length - 1;
 
 		const minDelta = tabLefts[zoneStart] - tabLefts[originalIndex];
 		const maxDelta =
@@ -125,7 +135,7 @@
 	}
 
 	function tabTransform(index: number): string {
-		if (dragDocId === null) return '';
+		if (dragDocId === null || !dragActive) return '';
 		if (index === originalIndex) return `translateX(${dragDeltaX}px)`;
 
 		const gap = 6;
@@ -143,6 +153,7 @@
 	function endDrag() {
 		dragDocId = null;
 		dragDeltaX = 0;
+		dragActive = false;
 		dropIndex = -1;
 	}
 
@@ -249,7 +260,7 @@
 				class:active={editor.isTabFocused(target)}
 				class:pinned={d.pinned}
 				class:collapsed
-				class:dragging={dragDocId === d.id}
+				class:dragging={dragActive && dragDocId === d.id}
 				class:no-transition={suppressTransition}
 				style:transform={tabTransform(i)}
 				title={collapsed ? d.title : null}
@@ -541,7 +552,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
-		padding-right: 2px;
+		padding-right: 4px;
 		border-radius: 0 6px 6px 0;
 		background: transparent;
 		pointer-events: none;
