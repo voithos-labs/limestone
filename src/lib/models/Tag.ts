@@ -38,7 +38,7 @@ export function tagId(slug: string): string {
 }
 
 class Tag {
-	readonly id: string;
+	readonly id: string; // tag:<slug>
 	readonly slug: string;
 	readonly createdAt: Date;
 	updatedAt: Date;

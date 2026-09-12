@@ -108,6 +108,10 @@ pub(crate) enum BulkAction {
         old_slug: String,
         new_slug: String,
     },
+    RenameViewPrefix {
+        old_prefix: String,
+        new_prefix: String,
+    },
     RenameTag {
         old_slug: String,
         new_slug: String,
@@ -149,6 +153,13 @@ impl BulkAction {
             BulkAction::RenameView { old_slug, new_slug } => {
                 validate_ident(old_slug, "view slug")?;
                 validate_ident(new_slug, "new view slug")
+            }
+            BulkAction::RenameViewPrefix {
+                old_prefix,
+                new_prefix,
+            } => {
+                validate_ident(old_prefix, "view slug prefix")?;
+                validate_ident(new_prefix, "new view slug prefix")
             }
             BulkAction::RenameTag { old_slug, new_slug } => {
                 validate_tag(old_slug)?;
@@ -307,6 +318,9 @@ async fn fetch_rel_paths(db: &SqlitePool, op: &BulkOp) -> Result<Vec<String>, St
         BulkAction::RenameView { old_slug, .. } => {
             fetch_paths_with_field(db, source_id, &json_view_path(old_slug)).await
         }
+        BulkAction::RenameViewPrefix { old_prefix, .. } => {
+            fetch_paths_with_view_prefix(db, source_id, old_prefix).await
+        }
         BulkAction::RenameTag { old_slug, .. } => {
             fetch_paths_with_tag(db, source_id, &tag_id(old_slug)).await
         }
@@ -448,6 +462,37 @@ async fn execute(
             let (from, to) = (old_slug.clone(), new_slug.clone());
             write_files(app, source_path, rel_paths, move |fm| {
                 frontmatter::rename_view(fm, &from, &to);
+            })
+            .await
+        }
+        BulkAction::RenameViewPrefix {
+            old_prefix,
+            new_prefix,
+        } => {
+            sqlx::query(
+                "UPDATE documents
+                 SET properties = json_set(properties, '$.views',
+                     (SELECT json_group_object(
+                          CASE WHEN substr(je.key, 1, length(?1)) = ?1
+                               THEN ?2 || substr(je.key, length(?1) + 1)
+                               ELSE je.key END,
+                          CASE WHEN je.type IN ('object', 'array')
+                               THEN json(je.value) ELSE je.value END)
+                      FROM json_each(documents.properties, '$.views') je))
+                 WHERE source_id = ?3
+                   AND EXISTS (SELECT 1 FROM json_each(properties, '$.views') je
+                               WHERE substr(je.key, 1, length(?1)) = ?1)",
+            )
+            .bind(old_prefix)
+            .bind(new_prefix)
+            .bind(source_id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let (from, to) = (old_prefix.clone(), new_prefix.clone());
+            write_files(app, source_path, rel_paths, move |fm| {
+                frontmatter::rename_view_prefix(fm, &from, &to);
             })
             .await
         }
@@ -627,6 +672,25 @@ async fn fetch_paths_by_id(
     Ok(rows.into_iter().map(|(p,)| p).collect())
 }
 
+async fn fetch_paths_with_view_prefix(
+    db: &SqlitePool,
+    source_id: &str,
+    prefix: &str,
+) -> Result<Vec<String>, String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT rel_path FROM documents
+         WHERE source_id = ?1 AND deleted_at IS NULL
+           AND EXISTS (SELECT 1 FROM json_each(properties, '$.views') je
+                       WHERE substr(je.key, 1, length(?2)) = ?2)",
+    )
+    .bind(source_id)
+    .bind(prefix)
+    .fetch_all(db)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
+}
+
 async fn fetch_paths_with_tag(
     db: &SqlitePool,
     source_id: &str,
@@ -668,7 +732,7 @@ fn validate_ident(s: &str, what: &str) -> Result<(), String> {
         return Err(format!("{what} is empty"));
     }
     if s.chars()
-        .any(|c| c == '.' || c == '"' || c == '\'' || c == '\\' || c.is_control())
+        .any(|c| c == '"' || c == '\'' || c == '\\' || c.is_control())
     {
         return Err(format!("{what} has unsafe characters: {s}"));
     }
@@ -688,15 +752,18 @@ mod tests {
             "priority-1",
             "café",
             "a_b",
+            "a.b",
+            "projects/v1.2/",
+            ".github/",
         ] {
             assert!(validate_ident(s, "field name").is_ok(), "{s:?}");
         }
     }
 
     #[test]
-    fn ident_rejects_json_path_and_control_chars() {
+    fn ident_rejects_quotes_and_control_chars() {
         for s in [
-            "", "a.b", "a\"b", "a'b", "a\\b", "a\nb", "a\tb", "a\u{1}b", "a\u{7f}b",
+            "", "a\"b", "a'b", "a\\b", "a\nb", "a\tb", "a\u{1}b", "a\u{7f}b",
         ] {
             assert!(validate_ident(s, "field name").is_err(), "{s:?}");
         }

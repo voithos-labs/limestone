@@ -37,7 +37,7 @@ create table if not exists documents (
 ) strict;
 
 create table if not exists tags (
-    id text primary key not null,
+    id text primary key not null, -- tag:<slug>
     slug text not null unique,
     created_at integer not null default (unixepoch() * 1000),
     updated_at integer not null default (unixepoch() * 1000),
@@ -45,7 +45,7 @@ create table if not exists tags (
 ) strict;
 
 create table if not exists folders (
-    id text primary key not null, -- folder:<source_id>:<path>, path is identity
+    id text primary key not null, -- folder:<source_id>:<path>
     source_id text not null references sources(id) on delete cascade,
     slug text not null, -- leaf name
     parent_id text references folders(id) on delete cascade,

@@ -239,7 +239,7 @@
 			const dir = folderId ? folderPath(folderId) : '';
 			const groupIds = [...ctx.tagGroupIds];
 			const properties = Object.keys(ctx.fieldValues).length
-				? { views: { [view.slug]: ctx.fieldValues } }
+				? { views: { [view.propKey]: ctx.fieldValues } }
 				: {};
 
 			const doc = await DocHandle.createFromTitle(source, {

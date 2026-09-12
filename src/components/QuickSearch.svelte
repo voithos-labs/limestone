@@ -2,10 +2,10 @@
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import type { SearchResult } from '$lib/types/SearchResult';
-	import { getSource, touchSource, listSources, type Source } from '$lib/models/Source';
+	import { getSource, touchSource, listSources, sourceName, type Source } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import Tag from '$lib/models/Tag';
-	import Folder from '$lib/models/Folder';
+	import Folder, { folderId } from '$lib/models/Folder';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
 	import { searchDocuments } from '$lib/services/search';
 	import SearchResultRow from './SearchResultRow.svelte';
@@ -41,10 +41,8 @@
 		if (tab) tab.state.query = query;
 	});
 
-	function findViewTabByOrigin(originId: string): TabState | undefined {
-		return editor.tabs.find(
-			(t) => t.content.type === 'view' && t.content.view.state?.origin_id === originId
-		);
+	function findViewTabByUnit(unitId: string): TabState | undefined {
+		return editor.tabs.find((t) => t.content.type === 'view' && t.content.view.unit === unitId);
 	}
 
 	// Hosted in a real tab -> replace it in place; otherwise open a fresh tab.
@@ -115,23 +113,24 @@
 					? await Folder.fromID(result.id)
 					: await Tag.fromID(result.id);
 			group.touch();
-			const existing = findViewTabByOrigin(group.id);
+			const existing = findViewTabByUnit(group.id);
 			if (existing) {
 				editor.focusTab({ kind: 'tab', id: existing.id });
 				return;
 			}
-			openInTab(TabState.forView(View.createFromUnit(group)));
+			openInTab(TabState.forView(await View.forUnit(group.id, group.slug)));
 			return;
 		}
 		if (result.kind === 'source') {
 			const source = await getSource(result.id);
 			touchSource(source.id);
-			const existing = findViewTabByOrigin(source.id);
+			const unitId = folderId(source.id, '');
+			const existing = findViewTabByUnit(unitId);
 			if (existing) {
 				editor.focusTab({ kind: 'tab', id: existing.id });
 				return;
 			}
-			openInTab(TabState.forView(View.createFromSource(source)));
+			openInTab(TabState.forView(await View.forUnit(unitId, sourceName(source))));
 			return;
 		}
 		const existing = editor.tabs.find((d) => d.id === result.id);

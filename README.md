@@ -1,10 +1,11 @@
 # <img width="3840" height="1020" alt="image" src="https://github.com/user-attachments/assets/e64a6afd-2b98-4d51-8e6c-654694027855" />
 
-> [!WARNING]
-> Limestone is still in pre-release state, expect bugs. The editor just swapped over to Daniel's in-house aragonite editor, so that part is the newest and prob the roughest.
-> <img width="1120" height="469" alt="image" src="https://github.com/user-attachments/assets/92ee945e-a479-4681-9a4d-5247ebfb85f2" />
+> Links: [limestone.app](https://limestone.app/), [voithoslabs.com](https://voithoslabs.com/)
 
-Note taking etc., built for people who think clearly when their tools get out of the way.
+> [!WARNING]
+> Limestone is still in pre-release state, expect bugs.
+
+Note taking, tasks, projects, etc.
 
 <img width="1019" height="691" alt="image" src="https://github.com/user-attachments/assets/254cff31-24d8-49ac-b3a2-16051cc4634e" />
 
@@ -14,7 +15,7 @@ The editor is [aragonite](https://github.com/voithos-labs/aragonite), the block 
 
 - A note is edited in one of two modes, Live or Source, set under Settings > Editor and applied to every open document.
 - Live hides the markdown, so it gets a small formatting bar when you select text, and a `+` at the top right of the document for tables, code blocks, callouts, math, diagrams and dividers.
-- Images are Obsidian style, `![[cat.png]]`. Paste an image and it's saved into the source's asset folder and embedded for you.
+- Images are wikilink style, `![[cat.png]]`. Paste an image and it's saved into the source's asset folder and embedded for you.
 - `Ctrl+F` finds, `Ctrl+H` replaces, `Ctrl+=` and `Ctrl+-` zoom.
 
 Everything else about the editor (every shortcut, plugins, theming) is in aragonite's [consumer guide](https://github.com/voithos-labs/aragonite/blob/main/docs/guide/consumer-guide.md). A copy ships in the package too, under `node_modules/@voithos-labs/aragonite/docs/guide/`.
@@ -25,7 +26,7 @@ Good entry point to explore the code base is Session ([see file](https://github.
 
 ---
 
-The editor library is on npm now, so there's no setup anymore:
+Run dev app
 
 ```bash
 npm i

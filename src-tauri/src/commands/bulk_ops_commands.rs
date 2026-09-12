@@ -84,6 +84,26 @@ pub async fn bulk_rename_view(
 }
 
 #[tauri::command]
+pub async fn bulk_rename_view_prefix(
+    app_data: State<'_, AppData>,
+    app: AppHandle,
+    source_id: String,
+    old_prefix: String,
+    new_prefix: String,
+) -> Result<BulkResult, String> {
+    run(
+        &app_data,
+        &app,
+        &source_id,
+        BulkAction::RenameViewPrefix {
+            old_prefix,
+            new_prefix,
+        },
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn bulk_rename_view_option(
     app_data: State<'_, AppData>,
     app: AppHandle,
