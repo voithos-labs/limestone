@@ -19,3 +19,7 @@ export function importSourceAssetBytes(
 ): Promise<string> {
 	return invoke<string>('import_source_asset_bytes', { sourceId, data: toBase64(data), ext });
 }
+
+export function deleteSourceAsset(sourceId: string, relPath: string): Promise<void> {
+	return invoke<void>('delete_source_asset', { sourceId, relPath });
+}

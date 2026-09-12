@@ -65,7 +65,7 @@
 	}
 
 	.time {
-		font-family: 'JetBrains Mono', var(--font-editor), monospace;
+		font-family: var(--font-mono);
 		font-size: 45px;
 		font-weight: 800;
 		line-height: 1;
@@ -84,7 +84,7 @@
 	}
 
 	.date {
-		font-family: 'JetBrains Mono', var(--font-editor), monospace;
+		font-family: var(--font-mono);
 		font-size: 18px;
 		font-weight: 500;
 		line-height: 1;
@@ -94,7 +94,7 @@
 	}
 
 	.brand {
-		font-family: 'JetBrains Mono', var(--font-editor), monospace;
+		font-family: var(--font-mono);
 		font-size: 12px;
 		font-weight: 400;
 		line-height: 1;

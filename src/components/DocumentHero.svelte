@@ -454,7 +454,7 @@
 	}
 
 	.hero-inner.compact {
-		padding: 2px 0 6px;
+		padding: 2px 24px 6px;
 	}
 
 	/* Meta sits inline with the title; when the row can't give it its basis width
@@ -558,7 +558,6 @@
 
 	.hero-inner.compact .kebab {
 		top: 2px;
-		right: 0;
 	}
 
 	.kebab:hover {

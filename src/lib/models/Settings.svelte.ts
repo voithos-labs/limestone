@@ -76,17 +76,6 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				description: 'Sit a document’s folder, tags, and date inline with its title when they fit.'
 			},
 			{
-				key: 'appearance.editor_font_size',
-				type: 'number',
-				control: 'stepper',
-				label: 'Editor Font Size',
-				description: 'Font size in pixels for the document editor.',
-				min: 8,
-				max: 32,
-				step: 1,
-				unit: 'px'
-			},
-			{
 				key: 'appearance.ui_scale_percent',
 				type: 'number',
 				control: 'select',
@@ -110,6 +99,55 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				min: 600,
 				max: 3000,
 				step: 50,
+				unit: 'px'
+			}
+		]
+	},
+	{
+		id: 'editor',
+		label: 'Editor',
+		settings: [
+			{
+				key: 'editor.mode',
+				type: 'string',
+				control: 'select',
+				label: 'Mode',
+				description: 'Live renders the markdown as you type. Source shows it as written.',
+				options: [
+					{ value: 'live', label: 'Live' },
+					{ value: 'source', label: 'Source' }
+				]
+			},
+			{
+				key: 'editor.font',
+				type: 'string',
+				control: 'select',
+				label: 'Font',
+				description: 'Typeface for document text. Code keeps the monospace font.',
+				options: [
+					{ value: 'Inter, system-ui, sans-serif', label: 'Inter' },
+					{ value: 'Arial, Helvetica, sans-serif', label: 'Arial' },
+					{ value: 'system-ui, sans-serif', label: 'System' },
+					{ value: 'Verdana, Geneva, sans-serif', label: 'Verdana' },
+					{ value: 'Georgia, serif', label: 'Georgia' },
+					{ value: "'Times New Roman', Times, serif", label: 'Times New Roman' },
+					{ value: "Consolas, 'Cascadia Mono', Menlo, ui-monospace, monospace", label: 'Consolas' },
+					{
+						value:
+							"'Cascadia Code', 'Cascadia Mono', Consolas, 'JetBrains Mono', ui-monospace, monospace",
+						label: 'Monospace'
+					}
+				]
+			},
+			{
+				key: 'editor.font_size',
+				type: 'number',
+				control: 'stepper',
+				label: 'Font Size',
+				description: 'Font size in pixels for the document editor.',
+				min: 8,
+				max: 32,
+				step: 1,
 				unit: 'px'
 			}
 		]

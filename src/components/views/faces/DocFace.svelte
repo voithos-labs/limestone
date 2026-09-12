@@ -7,9 +7,10 @@
 	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
 	import Folder from '$lib/models/Folder';
 	import type { DocPicker } from '$lib/views/docPicker.svelte';
+	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { searchDocuments } from '$lib/services/search';
 	import type { SearchResult } from '$lib/types/SearchResult';
-	import MarkdownEditor from '../../editor/MarkdownEditor.svelte';
+	import DocumentEditor from '../../editor/DocumentEditor.svelte';
 	import { untrack } from 'svelte';
 	import { onSourceReconciled } from '$lib/models/Source';
 
@@ -22,6 +23,8 @@
 		labels = {},
 		picker,
 		tab,
+		settings,
+		findBarAnchor,
 		onCreated,
 		onPicked
 	}: {
@@ -33,9 +36,14 @@
 		labels?: { newTitle?: string; empty?: string; create?: string };
 		picker?: DocPicker;
 		tab?: TabState;
+		settings: SettingsState;
+		/** The page's own box for the find bar, which the document editor draws into. */
+		findBarAnchor?: HTMLElement | null;
 		onCreated?: (rowId: string) => void;
 		onPicked?: (rowId: string) => void | Promise<void>;
 	} = $props();
+
+	let docEditor: DocumentEditor | undefined = $state();
 
 	const query = $derived((view.state.search as string | undefined) ?? '');
 
@@ -266,10 +274,25 @@
 	}
 </script>
 
-<div class="doc-face" class:flow>
+<!-- Mouse only, like the editor's own click-below-the-text gesture. Keyboard reaches it by focus. -->
+<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+<div
+	class="doc-face"
+	class:flow
+	onclick={(e) => {
+		// Only below the entry, where the editor's own version cannot reach. The strip beside
+		// the text is the editor's, and it answers a click there with the line next to it.
+		if (!flow || e.target !== e.currentTarget) return;
+		const editorEl = (e.currentTarget as HTMLElement).querySelector('.editor');
+		if (editorEl && e.clientY <= editorEl.getBoundingClientRect().bottom) return;
+		// The point goes over as clicked. The check above leaves it below every block, which is
+		// how the editor is asked for the end of the document.
+		docEditor?.placeCaretAtPoint(e.clientX, e.clientY);
+	}}
+>
 	{#if docTab}
 		{#key docTab.id}
-			<MarkdownEditor tab={docTab} {flow} />
+			<DocumentEditor bind:this={docEditor} tab={docTab} {settings} {flow} {findBarAnchor} />
 		{/key}
 	{:else}
 		<div class="doc-empty">
@@ -284,7 +307,6 @@
 <style>
 	.doc-face {
 		position: relative;
-		padding: 0 24px;
 	}
 
 	.doc-face.flow {

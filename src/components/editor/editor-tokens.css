@@ -1,0 +1,44 @@
+/**
+ * Points the editor variables aragonite still defaults on `.editor` at limestone's theme. Its
+ * host-contract names are absent on purpose: those default behind an opt-in class the app never
+ * sets, so limestone's own `:root` reaches the editor unbridged. No ancestor may carry
+ * `.aragonite-editor-theme`, or the inherited lines pick up aragonite's colors instead. Load
+ * after `aragonite/styles/editor-theme.css`.
+ */
+.editor {
+	/* Limestone floats its menus on --color-bg, so the editor's popovers (find bar, link card,
+	   language chip) take the same surface. Aragonite defaults this on .editor itself, which is
+	   why :root cannot supply it. */
+	--color-bg-elevated: var(--color-bg);
+}
+
+/* The same page width every other page uses, and the same side padding as DocumentHero, so
+   the document title and the first block line up on the left. */
+.editor > .block-list {
+	max-width: var(--page-max-width, 1200px);
+	margin: 0 auto;
+	width: 100%;
+	padding: 0 24px;
+}
+
+/* The trailing insert row is the list's sibling, not its child, so it needs the same column.
+   Sized to the text column itself (the padding taken off) rather than padded, so its `+`,
+   which hangs 1rem off its left edge, sits in the gutter beside the text like a block's drag
+   handle does. */
+.editor > .editor-tail {
+	max-width: calc(var(--page-max-width, 1200px) - 48px);
+	margin-left: auto;
+	margin-right: auto;
+	width: calc(100% - 48px);
+}
+
+/* The page scrolls the entry in flow mode, so the room above and below is the editor's to give.
+   The side padding stays here: a click in that strip has to reach the line beside it. The room
+   below goes under the insert row, so that row follows the last block directly. */
+.doc-editor.flow .editor > .block-list {
+	padding-top: 4px;
+}
+
+.doc-editor.flow .editor > .editor-tail {
+	margin-bottom: 48px;
+}

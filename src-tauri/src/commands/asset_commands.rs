@@ -133,6 +133,29 @@ pub async fn import_source_asset_bytes(
     source_import(&app, source_id, &decode_base64(&data)?, &stem, &ext)
 }
 
+/// Releases an asset an import wrote but nothing ended up referencing — the paste whose
+/// markdown never landed. Idempotent on a path already gone, so a retry is harmless.
+#[tauri::command]
+pub async fn delete_source_asset(
+    app: AppHandle,
+    source_id: Uuid,
+    rel_path: String,
+) -> Result<(), String> {
+    let source = find_source(&app, source_id)?;
+    // Rejects an absolute path and any `..` before the join; the canonicalized check below is
+    // what covers a symlink out of the source, which no component inspection can see.
+    let dest = resolve_in_source(&source.path, &rel_path).map_err(|e| e.to_string())?;
+    if !dest.exists() {
+        return Ok(());
+    }
+    let root = std::fs::canonicalize(&source.path).map_err(|e| e.to_string())?;
+    let target = std::fs::canonicalize(&dest).map_err(|e| e.to_string())?;
+    if !target.starts_with(&root) || !target.is_file() {
+        return Err(format!("invalid asset path: {rel_path}"));
+    }
+    std::fs::remove_file(&target).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

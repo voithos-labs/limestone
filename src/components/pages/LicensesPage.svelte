@@ -247,7 +247,7 @@ P'   MM   `7   MM                               MM                              
 	.ascii-logo {
 		display: inline-block;
 		margin: 0;
-		font-family: var(--font-editor, monospace);
+		font-family: var(--font-mono);
 		font-size: min(calc(100cqw / 113), 11px);
 		line-height: 1.15;
 		white-space: pre;

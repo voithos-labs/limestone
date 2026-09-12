@@ -11,7 +11,7 @@
 		type SettingDef,
 		type SettingValue
 	} from '$lib/models/Settings.svelte';
-	import { ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent } from '$lib/services/theme';
+	import { ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent } from '$lib/services/theme.svelte';
 	import {
 		getDefaultSourceId,
 		listSources,
@@ -54,6 +54,7 @@
 		EllipsisVertical,
 		X,
 		Keyboard,
+		PenLine,
 		LayoutGrid,
 		AppWindow,
 		FileText,
@@ -120,7 +121,7 @@
 		...SETTINGS_REGISTRY.map((c) => ({
 			value: c.id,
 			label: c.label,
-			icon: c.id === 'appearance' ? Palette : undefined
+			icon: c.id === 'appearance' ? Palette : c.id === 'editor' ? PenLine : undefined
 		})),
 		{ value: SHORTCUTS, label: 'Shortcuts', icon: Keyboard },
 		{ value: SOURCES, label: 'Sources', icon: Notebook }
@@ -699,16 +700,16 @@
 				{:else if activeSection === GENERAL}
 					<div class="settings-list">
 						<!-- prettier-ignore -->
-						<div class="general-banner">
-<pre class="ascii-logo">              ,,
-`7MMF'        db                                      mm
-  MM                                                  MM
-  MM        `7MM  `7MMpMMMb.pMMMb.  .gP"Ya  ,pP"Ybd mmMMmm ,pW"Wq.`7MMpMMMb.  .gP"Ya
-  MM          MM    MM    MM    MM ,M'   Yb 8I   `"   MM  6W'   `Wb MM    MM ,M'   Yb
-  MM      ,   MM    MM    MM    MM 8M"""""" `YMMMa.   MM  8M     M8 MM    MM 8M""""""
-  MM     ,M   MM    MM    MM    MM YM.    , L.   I8   MM  YA.   ,A9 MM    MM YM.    ,
-.JMMmmmmMMM .JMML..JMML  JMML  JMML.`Mbmmd' M9mmmP'   `Mbmo`Ybmd9'.JMML  JMML.`Mbmmd'</pre>
-				</div>
+						<!--						<div class="general-banner">-->
+						<!--<pre class="ascii-logo">              ,,-->
+						<!--`7MMF'        db                                      mm-->
+						<!--  MM                                                  MM-->
+						<!--  MM        `7MM  `7MMpMMMb.pMMMb.  .gP"Ya  ,pP"Ybd mmMMmm ,pW"Wq.`7MMpMMMb.  .gP"Ya-->
+						<!--  MM          MM    MM    MM    MM ,M'   Yb 8I   `"   MM  6W'   `Wb MM    MM ,M'   Yb-->
+						<!--  MM      ,   MM    MM    MM    MM 8M"""""" `YMMMa.   MM  8M     M8 MM    MM 8M""""""-->
+						<!--  MM     ,M   MM    MM    MM    MM YM.    , L.   I8   MM  YA.   ,A9 MM    MM YM.    ,-->
+						<!--.JMMmmmmMMM .JMML..JMML  JMML  JMML.`Mbmmd' M9mmmP'   `Mbmo`Ybmd9'.JMML  JMML.`Mbmmd'</pre>-->
+						<!--				</div>-->
 						<div class="info-list">
 							<div class="info-row">
 								<div class="item-info">
@@ -1276,7 +1277,7 @@
 	.ascii-logo {
 		display: inline-block;
 		margin: 0;
-		font-family: var(--font-editor, monospace);
+		font-family: var(--font-mono);
 		font-size: min(calc(100cqw / 80), 13px);
 		line-height: 1.15;
 		white-space: pre;
@@ -1313,7 +1314,7 @@
 	}
 
 	.info-mono {
-		font-family: var(--font-editor, monospace);
+		font-family: var(--font-mono);
 		font-size: 12px;
 		color: var(--color-text-secondary);
 		overflow: hidden;

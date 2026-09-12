@@ -7,6 +7,7 @@
 - [ ] body indexing (in-body tags, wikilinks)
 - [ ] filesystem watcher (see figjam plan)
 - [ ] wire histroy into Daniel's document system + UI
+
 > Then add soft delete (trash) for docs!
 
 **UI/UX**
@@ -28,6 +29,7 @@
 --- for dinner ---
 
 **Chores**
+
 - [ ] arm64 builds
 
 **UI/UX**
@@ -37,7 +39,7 @@
 
 **Features**
 
-- [ ] Embed view-faces in notes wikilink style! 
+- [ ] Embed view-faces in notes wikilink style!
 - [ ] PDF + EPUB viewing and annotation (see google doc notes)
 - [ ] Audio file first-party document support
 - [ ] TTS, STT
