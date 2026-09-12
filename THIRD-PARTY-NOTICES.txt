@@ -3808,7 +3808,7 @@ NPM PACKAGES
   Copyright (c) 2021 Samuel Gratzl
   Full text: [L-750260c3]
 
-@voithos-labs/aragonite 0.10.2
+@voithos-labs/aragonite 0.10.3
   License: AGPL-3.0-or-later
   Source:  https://github.com/voithos-labs/aragonite
   Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
