@@ -14,8 +14,8 @@ Note taking, tasks, projects, etc.
 The editor is [aragonite](https://github.com/voithos-labs/aragonite), the block editor we wrote for this, and it comes from npm now (`@voithos-labs/aragonite`). The old CodeMirror editor is gone. Things worth knowing:
 
 - A note is edited in one of two modes, Live or Source, set under Settings > Editor and applied to every open document.
-- Live hides the markdown, so it gets a small formatting bar when you select text, and a `+` at the top right of the document for tables, code blocks, callouts, math, diagrams and dividers.
-- Images are wikilink style, `![[cat.png]]`. Paste an image and it's saved into the source's asset folder and embedded for you.
+- Live hides the markdown, so it gets a small formatting bar when you select text.
+- Images are standard markdown, `![alt](cat.png)`. Paste an image and it's saved into the source's asset folder and embedded for you. Obsidian-style `![[cat.png]]` embeds still render, so a vault brought over keeps its images.
 - `Ctrl+F` finds, `Ctrl+H` replaces, `Ctrl+=` and `Ctrl+-` zoom.
 
 Everything else about the editor (every shortcut, plugins, theming) is in aragonite's [consumer guide](https://github.com/voithos-labs/aragonite/blob/main/docs/guide/consumer-guide.md). A copy ships in the package too, under `node_modules/@voithos-labs/aragonite/docs/guide/`.

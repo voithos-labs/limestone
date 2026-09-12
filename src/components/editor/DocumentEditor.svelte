@@ -26,7 +26,6 @@
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
-	import InsertMenu from './InsertMenu.svelte';
 	import SelectionToolbar from './SelectionToolbar.svelte';
 
 	let {
@@ -334,11 +333,31 @@
 
 	const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
+	// The same set aragonite escapes when it writes a destination itself, so a path limestone
+	// wrote and one the editor rewrote (a width drag, say) read back the same way.
+	function encodeDestination(url: string): string {
+		return url.replace(
+			/[ \t\r\n()"'\\]/g,
+			(c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')
+		);
+	}
+
+	function decodeDestination(url: string): string {
+		try {
+			return decodeURIComponent(url);
+		} catch {
+			return url;
+		}
+	}
+
 	function resolveImageUrl(target: string): string {
 		// Anything that already has a scheme is the editor's to judge; rewriting it would turn a
 		// URL limestone does not own (`appasset:`) into a path.
 		if (!handle || HAS_SCHEME.test(target)) return target;
-		const clean = target.replace(/\\/g, '/').replace(/^\.?\//, '');
+		// The destination arrives as written, escapes included; the file system wants the name.
+		const clean = decodeDestination(target)
+			.replace(/\\/g, '/')
+			.replace(/^\.?\//, '');
 		if (!isImageTarget(clean)) return target;
 		const loc = handle.source.asset_location.replace(/^\/+|\/+$/g, '');
 		const rel = clean.includes('/') || !loc ? clean : `${loc}/${clean}`;
@@ -384,7 +403,7 @@
 			throw e;
 		}
 		pasteImports.record(relPath);
-		return `![[${relPath}]]`;
+		return `![](${encodeDestination(relPath)})`;
 	}
 
 	// ── UI the editor doesn't provide: zoom ─────────────────────────────────────────────
@@ -439,20 +458,16 @@
 			bind:propsOpen
 		/>
 	{/if}
-	{#if mode === 'live'}
-		<div class="insert-row">
-			<InsertMenu {instance} />
-		</div>
-	{/if}
 {/snippet}
 
-<!-- The zoom and font are aragonite's own type-scale root and face, so they inherit into the editor
-	 from here. The px unit is load-bearing: a bare number makes the font-size rule it feeds invalid. -->
+<!-- The zoom and fonts are aragonite's own type-scale root and faces, so they inherit into the
+	 editor from here. Code keeps the app's monospace whatever face the document wears. The px unit
+	 is load-bearing: a bare number makes the font-size rule it feeds invalid. -->
 <div
 	class="doc-editor"
 	class:flow
 	bind:this={wrapperEl}
-	style="--editor-font-size: {zoom}px; --font-editor: {font}"
+	style="--editor-font-size: {zoom}px; --font-editor: {font}; --font-code: var(--font-mono)"
 	onkeydowncapture={onKeydown}
 	role="presentation"
 >
@@ -475,7 +490,7 @@
 			header={flow ? undefined : documentHeader}
 			theme={currentThemeType()}
 			presentationMode={mode}
-			blockDragHandles={false}
+			blockDragHandles={true}
 			searchBarAnchor={flow ? findBarAnchor : undefined}
 			plugins={EDITOR_PLUGINS}
 			{resolveImageUrl}
@@ -517,17 +532,5 @@
 
 	.doc-editor :global(.editor::-webkit-scrollbar) {
 		display: none;
-	}
-
-	/* Same page column as its neighbours, so the button's right edge is the document's. Without
-	   it, `flex-end` aligns to the editor root's padding, far outside the text column. */
-	.insert-row {
-		display: flex;
-		justify-content: flex-end;
-		box-sizing: border-box;
-		width: 100%;
-		max-width: var(--page-max-width, 1200px);
-		margin: 0 auto;
-		padding: 0 24px;
 	}
 </style>

@@ -7,8 +7,9 @@ import type { EditorPlugin, ImageFields, InlineNode } from '@voithos-labs/aragon
 import { OPEN, recognizeWikiImageEmbed } from './wiki-image-embeds-scan';
 
 /**
- * Obsidian-style `![[cat.png]]` image embeds, the format limestone's notes use and its image
- * paste writes. An embed parses into aragonite's ordinary `image` node, so the editor treats it
+ * Obsidian-style `![[cat.png]]` image embeds, the format limestone's older notes and imported
+ * vaults use; new images are written in standard `![](…)` syntax, and this keeps the old ones
+ * rendering. An embed parses into aragonite's ordinary `image` node, so the editor treats it
  * as a real image everywhere, not just visually. Two consequences: this gets first look at `!`,
  * ahead of aragonite's own image parser, so it must bow out where the two syntaxes overlap (see
  * wiki-image-embeds-scan.ts), and every edit comes back in aragonite's image shape, so

@@ -6,49 +6,10 @@
  * after `aragonite/styles/editor-theme.css`.
  */
 .editor {
-	/* The document sits on --color-surface and limestone floats its menus on --color-bg, so
-	   the editor's inset panels (code, math, diagrams) and its popovers (find bar, link card,
-	   language chip) take the same second surface. Aragonite defaults these on .editor itself,
-	   which is why :root cannot supply them. */
-	--color-bg-secondary: var(--color-bg);
+	/* Limestone floats its menus on --color-bg, so the editor's popovers (find bar, link card,
+	   language chip) take the same surface. Aragonite defaults this on .editor itself, which is
+	   why :root cannot supply it. */
 	--color-bg-elevated: var(--color-bg);
-	--color-bg-muted: var(--color-bg);
-	--color-text-muted: var(--color-ui-muted);
-	/* aragonite hovers its table menu with this. The app's own menu hover is the same thing,
-	   and unlike aragonite's value it follows the limestone theme. */
-	--color-ui-faint: var(--menu-item-hover);
-	--syntax-heading: inherit;
-	--syntax-link: inherit;
-	--syntax-url: inherit;
-	--syntax-quote: inherit;
-	--syntax-code: inherit;
-	--syntax-comment: inherit;
-	--syntax-list: inherit;
-	--syntax-separator: inherit;
-	--syntax-task: inherit;
-	--syntax-task-done: inherit;
-	/* No fallbacks: the app's variables are unset until applyTheme runs (aragonite's own reads
-	   carry fallbacks), and a literal color would pin one mode into a file that serves both. */
-}
-
-/* Aragonite has one font token for prose and code alike, so with a proportional face chosen the
-   code surfaces are pinned back to the app's monospace here. These are aragonite's own class
-   names, not promised API; the wrapper is in the selector to outweigh the component styles. */
-.doc-editor .editor .code-block,
-.doc-editor .editor .code-lang-chip,
-.doc-editor .editor .inline-code-content,
-.doc-editor .editor .text-editable-block.raw-block,
-.doc-editor .editor .md-raw-html,
-.doc-editor .editor .md-source-surface,
-.doc-editor .editor .failed-block-raw {
-	font-family: var(--font-mono);
-}
-
-/* --syntax-separator colors the `---` characters where they sit in a line of text. Painted
-   across a full-width rule the same color shouts. Fixed on the rule rather than by changing
-   the variable, so the rest of the syntax colors keep their meaning. */
-.editor .thematic-break-block [role='separator'] > hr {
-	border-top-color: var(--color-border);
 }
 
 /* The same page width every other page uses, and the same side padding as DocumentHero, so
@@ -60,8 +21,24 @@
 	padding: 0 24px;
 }
 
+/* The trailing insert row is the list's sibling, not its child, so it needs the same column.
+   Sized to the text column itself (the padding taken off) rather than padded, so its `+`,
+   which hangs 1rem off its left edge, sits in the gutter beside the text like a block's drag
+   handle does. */
+.editor > .editor-tail {
+	max-width: calc(var(--page-max-width, 1200px) - 48px);
+	margin-left: auto;
+	margin-right: auto;
+	width: calc(100% - 48px);
+}
+
 /* The page scrolls the entry in flow mode, so the room above and below is the editor's to give.
-   The side padding stays here: a click in that strip has to reach the line beside it. */
+   The side padding stays here: a click in that strip has to reach the line beside it. The room
+   below goes under the insert row, so that row follows the last block directly. */
 .doc-editor.flow .editor > .block-list {
-	padding: 4px 24px 48px;
+	padding-top: 4px;
+}
+
+.doc-editor.flow .editor > .editor-tail {
+	margin-bottom: 48px;
 }

@@ -7,7 +7,6 @@ import { katexRenderer } from '@voithos-labs/aragonite/plugins/latex/renderer';
 import { mermaidPlugin } from '@voithos-labs/aragonite/plugins/mermaid';
 import { mermaidRenderer } from '@voithos-labs/aragonite/plugins/mermaid/renderer';
 import { tocPlugin } from '@voithos-labs/aragonite/plugins/toc';
-import { highlightOccurrencesPlugin } from '@voithos-labs/aragonite/plugins/highlight-occurrences';
 import { wikiImageEmbedsPlugin } from './wiki-image-embeds-plugin';
 import type { EditorPluginEntry } from '@voithos-labs/aragonite';
 
@@ -24,6 +23,5 @@ export const EDITOR_PLUGINS: readonly EditorPluginEntry[] = [
 	latexPlugin({ renderer: katexRenderer }),
 	mermaidPlugin({ renderer: mermaidRenderer }),
 	tocPlugin(),
-	highlightOccurrencesPlugin(),
 	wikiImageEmbedsPlugin()
 ];
