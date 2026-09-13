@@ -17,6 +17,7 @@ jobs:
       - run: npm run lint
       - run: npm run check
       - run: npm run build
+      - run: npm run compat
 
   rust:
     name: rust

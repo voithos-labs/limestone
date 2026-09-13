@@ -44,6 +44,9 @@
 			"icons/icon.icns",
 			"icons/icon.ico"
 		],
+		"macOS": {
+			"minimumSystemVersion": "12.3"
+		},
 		"windows": {
 			"nsis": {
 				"headerImage": "installer/header.bmp",
