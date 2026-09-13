@@ -187,4 +187,4 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Limestone ${{ github.ref_name }}
           releaseDraft: true
-          args: --target universal-apple-darwin --bundles dmg
+          args: --target universal-apple-darwin --bundles app,dmg
