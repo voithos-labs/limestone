@@ -64,6 +64,7 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             libxdo-dev \
+            xdg-utils \
             libssl-dev \
             build-essential \
             curl wget file
