@@ -50,7 +50,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          key: ${{ matrix.target }}
+          shared-key: release-${{ matrix.target }}
+          save-if: false
 
       # does not catch shit
       - name: Generate third-party notices
@@ -123,6 +124,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          shared-key: release-${{ matrix.runner }}
+          save-if: false
 
       - name: Generate third-party notices
         run: npm run notices
@@ -162,6 +165,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          shared-key: release-universal-apple-darwin
+          save-if: false
 
       - name: Generate third-party notices
         run: npm run notices

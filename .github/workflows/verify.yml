@@ -5,6 +5,9 @@ on:
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    - cron: '0 4 * * 1,4'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -13,3 +16,65 @@ concurrency:
 jobs:
   checks:
     uses: ./.github/workflows/checks.yml
+
+  warm:
+    name: warm (${{ matrix.key }})
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            key: x86_64-pc-windows-msvc
+            targets: x86_64-pc-windows-msvc
+            args: --target x86_64-pc-windows-msvc
+          - runner: windows-latest
+            key: aarch64-pc-windows-msvc
+            targets: aarch64-pc-windows-msvc
+            args: --target aarch64-pc-windows-msvc
+          - runner: ubuntu-24.04
+            key: ubuntu-24.04
+            targets: ''
+            args: ''
+          - runner: ubuntu-24.04-arm
+            key: ubuntu-24.04-arm
+            targets: ''
+            args: ''
+          - runner: macos-latest
+            key: universal-apple-darwin
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Tauri system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            build-essential \
+            curl wget file
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: release-${{ matrix.key }}
+
+      - run: npx tauri build --no-bundle ${{ matrix.args }}
