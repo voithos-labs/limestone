@@ -21,9 +21,13 @@ jobs:
     uses: ./.github/workflows/checks.yml
 
   windows:
-    name: windows
+    name: windows (${{ matrix.target }})
     needs: checks
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
     steps:
       - uses: actions/checkout@v7
 
@@ -40,10 +44,13 @@ jobs:
       - run: npm ci
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.target }}
 
       # does not catch shit
       - name: Generate third-party notices
@@ -76,12 +83,16 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Limestone ${{ github.ref_name }}
           releaseDraft: true
-          args: --bundles nsis --config src-tauri/tauri.signing.conf.json
+          args: --target ${{ matrix.target }} --bundles nsis --config src-tauri/tauri.signing.conf.json
 
   linux:
-    name: linux
+    name: linux (${{ matrix.runner }})
     needs: checks
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v7
 
@@ -126,3 +137,48 @@ jobs:
           releaseName: Limestone ${{ github.ref_name }}
           releaseDraft: true
           args: --bundles appimage,deb,rpm
+
+  macos:
+    name: macos (universal)
+    needs: checks
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Set version from tag
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+
+      - run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Generate third-party notices
+        run: npm run notices
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Limestone ${{ github.ref_name }}
+          releaseDraft: true
+          args: --target universal-apple-darwin --bundles dmg
