@@ -9,6 +9,7 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
 	plugins: [sveltekit(), Icons({ compiler: 'svelte' })],
 	build: { target: ['safari15'] },
+	optimizeDeps: { rolldownOptions: { transform: { target: ['safari15'] } } },
 
 	// Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
 	//

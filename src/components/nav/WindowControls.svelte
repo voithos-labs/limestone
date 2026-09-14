@@ -2,7 +2,7 @@
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import type { WindowStyle } from '$lib/services/platform';
 
-	let { style }: { style: WindowStyle } = $props();
+	let { style, native = false }: { style: WindowStyle; native?: boolean } = $props();
 
 	const appWindow = getCurrentWindow();
 	let isMaximized = $state(false);
@@ -30,7 +30,7 @@
 
 	// Traffic lights gray out with the window, so the focus state only matters there
 	$effect(() => {
-		if (style !== 'macos') return;
+		if (style !== 'macos' || native) return;
 		let unlisten: (() => void) | undefined;
 		appWindow.onFocusChanged(({ payload }) => (isFocused = payload)).then((u) => (unlisten = u));
 		return () => unlisten?.();
@@ -50,7 +50,9 @@
 	}
 </script>
 
-{#if style === 'macos'}
+{#if style === 'macos' && native}
+	<div class="traffic-lights native" aria-hidden="true"></div>
+{:else if style === 'macos'}
 	<div class="traffic-lights" class:unfocused={!isFocused}>
 		<button class="light close" title="Close" tabindex="-1" onclick={close}>
 			<svg aria-hidden="true" width="6" height="6" viewBox="0 0 6 6">
@@ -174,6 +176,10 @@
 		margin-bottom: 4px;
 		padding: 0 6px 0 2px;
 		flex-shrink: 0;
+	}
+
+	.traffic-lights.native {
+		width: 60px;
 	}
 
 	.light {
