@@ -4,7 +4,7 @@
 	import type { FocusTarget, TabState } from '$lib/models/EditorState.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import WindowControls from './WindowControls.svelte';
-	import { resolveWindowStyle } from '$lib/services/platform';
+	import { hostWindowStyle, resolveWindowStyle } from '$lib/services/platform';
 
 	import {
 		Settings,
@@ -193,6 +193,7 @@
 	// so a style can be forced (and previewed) on any host.
 	let windowStyle = $derived(resolveWindowStyle(settings.get<string>('appearance.window_style')));
 	let isMac = $derived(windowStyle === 'macos');
+	const nativeLights = hostWindowStyle() === 'macos';
 
 	const appWindow = getCurrentWindow();
 
@@ -213,7 +214,7 @@
 <nav class="nav-bar" class:mac={isMac} onmousedown={handleDrag}>
 	<!-- Leading: traffic lights on macOS, the logo drag handle elsewhere -->
 	{#if isMac}
-		<WindowControls style={windowStyle} />
+		<WindowControls style={windowStyle} native={nativeLights} />
 	{:else}
 		{@render grip()}
 	{/if}
