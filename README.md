@@ -9,6 +9,9 @@ Note taking, tasks, projects, etc.
 
 <img width="1019" height="691" alt="image" src="https://github.com/user-attachments/assets/254cff31-24d8-49ac-b3a2-16051cc4634e" />
 
+<img width="819" height="615" alt="image" src="https://github.com/user-attachments/assets/1b7ea001-cf84-466b-899b-4cb35cb835b9" />
+> yes, this is on a 2017 MacBook Air
+
 ## Editor
 
 The editor is [aragonite](https://github.com/voithos-labs/aragonite), the block editor we wrote for this, and it comes from npm now (`@voithos-labs/aragonite`). The old CodeMirror editor is gone. Things worth knowing:
