@@ -1,4 +1,7 @@
 {
+	"bundle": {
+		"icon": ["icons/macos/icon.icns"]
+	},
 	"app": {
 		"windows": [
 			{

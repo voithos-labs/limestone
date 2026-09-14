@@ -179,6 +179,44 @@ function hexLuminance(hex: string): number {
 	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+function hexAlpha(hex: string, alpha: number): string {
+	let h = hex.replace('#', '');
+	if (h.length === 3)
+		h = h
+			.split('')
+			.map((c) => c + c)
+			.join('');
+	const n = parseInt(h, 16);
+	return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+function hexMix(hex: string, other: string, weight: number): string {
+	const rgb = (h: string) => {
+		let v = h.replace('#', '');
+		if (v.length === 3)
+			v = v
+				.split('')
+				.map((c) => c + c)
+				.join('');
+		const n = parseInt(v, 16);
+		return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+	};
+	const a = rgb(hex);
+	const b = rgb(other);
+	const mixed = a.map((v, i) => Math.round(v * weight + b[i] * (1 - weight)));
+	return '#' + mixed.map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+
+function setAccentTints(root: HTMLElement, accent: string, contrast: string) {
+	if (!HEX_RE.test(accent)) return;
+	root.style.setProperty('--accent-a9', hexAlpha(accent, 0.09));
+	root.style.setProperty('--accent-a14', hexAlpha(accent, 0.14));
+	root.style.setProperty('--accent-a22', hexAlpha(accent, 0.22));
+	root.style.setProperty('--accent-a30', hexAlpha(accent, 0.3));
+	root.style.setProperty('--accent-a45', hexAlpha(accent, 0.45));
+	root.style.setProperty('--accent-contrast-a72', hexAlpha(contrast, 0.72));
+}
+
 function accentContrast(hex: string): string {
 	if (!HEX_RE.test(hex)) return '#ffffff';
 	return hexLuminance(hex) > 0.45 ? '#1a1c1d' : '#ffffff';
@@ -196,8 +234,8 @@ export function resolveAccent(
 	if (HEX_RE.test(setting)) {
 		const lum = hexLuminance(setting);
 		let accent = setting;
-		if (type === 'dark' && lum < 0.08) accent = `color-mix(in oklab, ${setting} 72%, white)`;
-		else if (type === 'light' && lum > 0.6) accent = `color-mix(in oklab, ${setting} 72%, black)`;
+		if (type === 'dark' && lum < 0.08) accent = hexMix(setting, '#ffffff', 0.72);
+		else if (type === 'light' && lum > 0.6) accent = hexMix(setting, '#000000', 0.72);
 		return { accent, contrast: accentContrast(setting) };
 	}
 	return null;
@@ -224,6 +262,7 @@ export function applyAccent(setting: string | null, type: 'dark' | 'light') {
 	root.style.setProperty('--color-accent', resolved.accent);
 	root.style.setProperty('--color-accent-primary', resolved.accent);
 	root.style.setProperty('--color-accent-contrast', resolved.contrast);
+	setAccentTints(root, resolved.accent, resolved.contrast);
 }
 
 let appliedKeys: string[] = [];
@@ -239,11 +278,17 @@ export function applyTheme(theme: Theme) {
 	}
 	// Preserved so the "default" accent swatch can show it while a preset override has
 	// replaced --color-accent.
-	root.style.setProperty('--color-accent-default', theme.variables['color-accent'] ?? '#567b67');
-	root.style.setProperty(
-		'--color-accent-contrast',
-		accentContrast(theme.variables['color-accent'] ?? '#567b67')
-	);
+	const accent = theme.variables['color-accent'] ?? '#567b67';
+	root.style.setProperty('--color-accent-default', accent);
+	root.style.setProperty('--color-accent-contrast', accentContrast(accent));
+	setAccentTints(root, accent, accentContrast(accent));
+	const error = theme.variables['color-error'] ?? (theme.type === 'dark' ? '#ff5f57' : '#d03025');
+	if (HEX_RE.test(error)) {
+		root.style.setProperty('--error-bg', hexAlpha(error, theme.type === 'dark' ? 0.13 : 0.09));
+		root.style.setProperty('--error-a18', hexAlpha(error, 0.18));
+	}
+	const muted = theme.variables['color-ui-muted'];
+	if (muted && HEX_RE.test(muted)) root.style.setProperty('--ui-muted-a55', hexAlpha(muted, 0.55));
 	root.style.setProperty('--font-ui', theme.fontFamily ?? DEFAULT_FONT);
 	root.dataset.themeType = theme.type;
 	themeType = theme.type;

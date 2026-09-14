@@ -4,11 +4,34 @@ import { join } from 'node:path';
 
 const DIR = 'build/_app/immutable';
 const LOOKBEHIND = /\(\?<[=!]/;
+const CSS_FEATURES = [
+	[/@container\b/, 'container query'],
+	[/\d(?:cqw|cqh|cqi|cqb|cqmin|cqmax)\b/, 'container unit'],
+	[/color-mix\(/, 'color-mix outside @supports']
+];
 
-function list(dir) {
+function list(dir, ext) {
 	return readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
-		d.isDirectory() ? list(join(dir, d.name)) : d.name.endsWith('.js') ? [join(dir, d.name)] : []
+		d.isDirectory() ? list(join(dir, d.name), ext) : d.name.endsWith(ext) ? [join(dir, d.name)] : []
 	);
+}
+
+function withoutSupportsBlocks(css) {
+	let out = '';
+	let i = 0;
+	while (i < css.length) {
+		const at = css.indexOf('@supports', i);
+		if (at === -1) return out + css.slice(i);
+		out += css.slice(i, at);
+		let j = css.indexOf('{', at);
+		let depth = 0;
+		for (; j < css.length; j++) {
+			if (css[j] === '{') depth++;
+			else if (css[j] === '}' && --depth === 0) break;
+		}
+		i = j + 1;
+	}
+	return out;
 }
 
 function walk(node, visit) {
@@ -23,7 +46,14 @@ function walk(node, visit) {
 }
 
 const failures = [];
-for (const file of list(DIR)) {
+for (const file of list(DIR, '.css')) {
+	const css = withoutSupportsBlocks(readFileSync(file, 'utf8'));
+	for (const [pattern, what] of CSS_FEATURES) {
+		const m = pattern.exec(css);
+		if (m) failures.push(`${file}: ${what} near "${css.slice(m.index, m.index + 40)}"`);
+	}
+}
+for (const file of list(DIR, '.js')) {
 	const src = readFileSync(file, 'utf8');
 	let ast;
 	try {

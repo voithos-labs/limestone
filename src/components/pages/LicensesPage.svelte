@@ -33,6 +33,7 @@
 	let query: string = $state(untrack(() => tab?.state?.query ?? ''));
 	let expanded: string | null = $state(null);
 	let bodyEl: HTMLElement | null = $state(null);
+	let bannerWidth = $state(0);
 
 	$effect(() => {
 		if (tab) tab.state.query = query;
@@ -96,8 +97,8 @@
 	<div class="scroll" bind:this={bodyEl}>
 		<div class="inner">
 			<!-- prettier-ignore -->
-			<div class="banner">
-<pre class="ascii-logo">               ,,                                                                                       ..
+			<div class="banner" bind:clientWidth={bannerWidth}>
+<pre class="ascii-logo" style:font-size="min({bannerWidth / 113}px, 11px)">               ,,                                                                                       ..
 MMP""MM""YMM `7MM                             `7MM                                        OO             `bq
 P'   MM   `7   MM                               MM                                        88               YA
      MM        MMpMMMb.   ,6"Yb.  `7MMpMMMb.    MM  ,MP'    `7M'   `MF',pW"Wq.`7MM  `7MM  ||     gp        `Mb
@@ -238,7 +239,6 @@ P'   MM   `7   MM                               MM                              
 	}
 
 	.banner {
-		container-type: inline-size;
 		width: 100%;
 		padding: 48px 0 28px;
 		text-align: center;
@@ -248,7 +248,6 @@ P'   MM   `7   MM                               MM                              
 		display: inline-block;
 		margin: 0;
 		font-family: var(--font-mono);
-		font-size: min(calc(100cqw / 113), 11px);
 		line-height: 1.15;
 		white-space: pre;
 		text-align: left;

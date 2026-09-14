@@ -221,7 +221,7 @@
 	}
 
 	.traffic-lights.unfocused .light {
-		background: color-mix(in srgb, var(--color-ui-muted) 55%, transparent);
+		background: var(--ui-muted-a55);
 	}
 
 	.traffic-lights.unfocused:hover .light.close {
