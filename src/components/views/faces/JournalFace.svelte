@@ -706,7 +706,7 @@
 		padding: 0;
 		border: none;
 		border-radius: 2px;
-		background: color-mix(in srgb, var(--color-accent) 9%, transparent);
+		background: var(--accent-a9);
 		cursor: inherit;
 	}
 
@@ -928,7 +928,7 @@
 	}
 
 	.day.selected .dow {
-		color: color-mix(in srgb, var(--color-accent-contrast) 72%, transparent);
+		color: var(--accent-contrast-a72);
 	}
 
 	.day.selected .num {

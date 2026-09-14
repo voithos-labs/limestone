@@ -10,6 +10,9 @@
 	   language chip) take the same surface. Aragonite defaults this on .editor itself, which is
 	   why :root cannot supply it. */
 	--color-bg-elevated: var(--color-bg);
+	--selection-overlay-bg: var(--accent-a30);
+	--search-match-bg: var(--accent-a22);
+	--reorder-scope-bg: var(--accent-a14);
 }
 
 /* The same page width every other page uses, and the same side padding as DocumentHero, so

@@ -1,4 +1,7 @@
 {
+	"bundle": {
+		"icon": ["icons/macos/icon.icns"]
+	},
 	"app": {
 		"windows": [
 			{
@@ -11,7 +14,7 @@
 				"decorations": true,
 				"titleBarStyle": "Overlay",
 				"hiddenTitle": true,
-				"trafficLightPosition": { "x": 14, "y": 24 }
+				"trafficLightPosition": { "x": 14, "y": 20 }
 			}
 		]
 	}

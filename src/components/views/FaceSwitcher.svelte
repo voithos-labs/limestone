@@ -1010,7 +1010,7 @@
 	}
 
 	.confirm-btn:hover {
-		background: color-mix(in srgb, var(--color-error) 18%, transparent);
+		background: var(--error-a18);
 	}
 
 	.divider {

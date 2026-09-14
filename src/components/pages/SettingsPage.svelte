@@ -88,6 +88,7 @@
 
 	// ── Settings search ───────────────────────────────────────────────────────
 	let searchQuery = $state('');
+	let headerWidth = $state(0);
 	let isSearching = $derived(searchQuery.trim().length > 0);
 
 	function matchesQuery(haystack: string): boolean {
@@ -634,7 +635,11 @@
 <svelte:window onkeydowncapture={onDialogKey} />
 
 <div class="settings-page">
-	<div class="settings-header">
+	<div
+		class="settings-header"
+		class:narrow={headerWidth > 0 && headerWidth < 720}
+		bind:clientWidth={headerWidth}
+	>
 		<div class="section-nav">
 			<div class="section-tabs">
 				{#each sectionItems as item (item.value)}
@@ -1027,7 +1032,6 @@
 
 	/* ── Header (section tabs / dropdown) ── */
 	.settings-header {
-		container-type: inline-size;
 		position: relative;
 		display: flex;
 		align-items: center;
@@ -1043,10 +1047,10 @@
 	.section-nav {
 		display: flex;
 		align-items: center;
-		min-width: 0;
+		flex: 0 0 auto;
 	}
 
-	/* Wide: a row of tabs. Narrow: collapses to the dropdown (see @container below). */
+	/* Wide: a row of tabs. Narrow: collapses to the dropdown (see .narrow below). */
 	.section-tabs {
 		display: flex;
 		align-items: center;
@@ -1097,14 +1101,12 @@
 		display: none;
 	}
 
-	@container (max-width: 720px) {
-		.section-tabs {
-			display: none;
-		}
+	.settings-header.narrow .section-tabs {
+		display: none;
+	}
 
-		.section-select {
-			display: inline-flex;
-		}
+	.settings-header.narrow .section-select {
+		display: inline-flex;
 	}
 
 	.settings-header::after {
@@ -1117,7 +1119,7 @@
 		background: var(--color-border);
 	}
 
-	/* Visibility is owned by the header container query above; matches an active tab. */
+	/* Visibility is owned by the header's measured width above; matches an active tab. */
 	.section-select {
 		align-items: center;
 		gap: 6px;
@@ -1145,14 +1147,16 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		min-width: 0;
 	}
 
 	.search-bar {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		width: 240px;
-		max-width: 40vw;
+		flex: 1 1 240px;
+		min-width: 140px;
+		max-width: 240px;
 		padding: 7px 12px;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-ui);
@@ -1268,7 +1272,6 @@
 
 	/* ── General tab ── */
 	.general-banner {
-		container-type: inline-size;
 		width: 100%;
 		padding: 12px 0 40px;
 		text-align: center;
@@ -1278,7 +1281,7 @@
 		display: inline-block;
 		margin: 0;
 		font-family: var(--font-mono);
-		font-size: min(calc(100cqw / 80), 13px);
+		font-size: 13px;
 		line-height: 1.15;
 		white-space: pre;
 		text-align: left;
@@ -1817,7 +1820,7 @@
 	.src-default {
 		padding: 1px 7px;
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+		background: var(--accent-a14);
 		color: var(--color-accent);
 		font-size: 11px;
 		white-space: nowrap;

@@ -170,7 +170,7 @@
 	}
 
 	.result :global(mark) {
-		background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+		background: var(--accent-a45);
 		color: inherit;
 	}
 </style>

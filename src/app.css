@@ -49,7 +49,7 @@ input[type='number']::-webkit-outer-spin-button {
 	--menu-scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
 	--menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
 	--error-fg: var(--color-error, #d03025);
-	--error-bg: color-mix(in srgb, var(--color-error, #d03025) 9%, transparent);
+	--error-bg: rgba(208, 48, 37, 0.09);
 
 	/* tag palette (.tag-cN) */
 	--tag-bg-l: 90%;
@@ -75,7 +75,7 @@ input[type='number']::-webkit-outer-spin-button {
 	--menu-scrollbar-thumb: rgba(255, 255, 255, 0.18);
 	--menu-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 	--menu-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35);
-	--error-bg: color-mix(in srgb, var(--color-error, #ff5f57) 13%, transparent);
+	--error-bg: rgba(255, 95, 87, 0.13);
 
 	/* ── Markdown syntax highlighting (dark defaults) ── */
 	--syntax-heading: #a6e22e;
@@ -142,7 +142,7 @@ body {
 }
 
 ::selection {
-	background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+	background: var(--accent-a45);
 }
 
 ::-webkit-scrollbar-button,
