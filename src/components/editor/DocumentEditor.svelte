@@ -26,7 +26,6 @@
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
-	import SelectionToolbar from './SelectionToolbar.svelte';
 
 	let {
 		tab,
@@ -490,6 +489,7 @@
 			header={flow ? undefined : documentHeader}
 			theme={currentThemeType()}
 			presentationMode={mode}
+			selectionToolbar={mode === 'live'}
 			blockDragHandles={true}
 			searchBarAnchor={flow ? findBarAnchor : undefined}
 			plugins={EDITOR_PLUGINS}
@@ -500,9 +500,6 @@
 	{/if}
 	{#if !flow}
 		<ScrollThumb scroller={scrollEl} top={THUMB_TOP_PX} />
-	{/if}
-	{#if mode === 'live'}
-		<SelectionToolbar {instance} />
 	{/if}
 </div>
 
