@@ -112,25 +112,24 @@
 		gap: 10px;
 		width: min(720px, 100%);
 		padding: 7px 8px 7px 12px;
-		border: 1px solid var(--color-border);
+		border: 1px solid rgba(0, 0, 0, 0.12);
 		border-radius: 8px;
-		background: var(--color-bg);
+		background: var(--color-accent);
 		box-shadow: var(--menu-shadow);
 		font-family: var(--font-ui);
 		font-size: 12px;
-		color: var(--color-ui-muted);
+		color: var(--color-accent-contrast);
 	}
 
 	.hist-icon {
 		display: inline-flex;
 		flex-shrink: 0;
-		color: var(--color-ui-dulled);
+		opacity: 0.75;
 	}
 
 	.hist-when {
 		display: grid;
 		flex-shrink: 0;
-		color: var(--color-text-primary);
 		font-variant-numeric: tabular-nums;
 		text-align: right;
 		white-space: nowrap;
@@ -162,8 +161,8 @@
 		border-radius: 999px;
 		background: linear-gradient(
 			to right,
-			var(--color-accent) 0 var(--pct),
-			var(--color-border) var(--pct) 100%
+			var(--color-accent-contrast) 0 var(--pct),
+			rgba(255, 255, 255, 0.3) var(--pct) 100%
 		);
 	}
 
@@ -174,9 +173,9 @@
 		height: 12px;
 		margin-top: -5px;
 		border-radius: 50%;
-		border: 1.5px solid var(--color-accent);
-		background: var(--color-bg);
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+		border: none;
+		background: var(--color-accent-contrast);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 	}
 
 	.hist-slider:focus-visible {
@@ -184,7 +183,7 @@
 	}
 
 	.hist-slider:focus-visible::-webkit-slider-thumb {
-		box-shadow: 0 0 0 3px var(--accent-a22);
+		box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35);
 	}
 
 	.hist-slider:disabled {
@@ -192,7 +191,6 @@
 		opacity: 0.45;
 	}
 
-	/* Same metrics as the header chips, so the card's controls read as the app's own. */
 	.hist-btn {
 		display: inline-flex;
 		align-items: center;
@@ -203,40 +201,37 @@
 		border: none;
 		border-radius: 5px;
 		background: transparent;
-		color: var(--color-ui-muted);
+		color: var(--color-accent-contrast);
 		font-family: var(--font-ui);
 		font-size: 12px;
 		cursor: pointer;
-		transition:
-			background-color 120ms ease,
-			color 120ms ease;
+		transition: background-color 120ms ease;
 	}
 
 	.hist-btn:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
+		background: rgba(255, 255, 255, 0.14);
 	}
 
 	.hist-btn.icon {
 		width: 22px;
 		padding: 0;
+		opacity: 0.85;
 	}
 
 	.hist-btn.primary {
-		background: var(--color-accent);
-		color: var(--color-accent-contrast);
+		background: var(--color-accent-contrast);
+		color: var(--color-accent);
 	}
 
 	.hist-btn.primary:hover {
-		background: var(--color-accent);
-		color: var(--color-accent-contrast);
-		filter: brightness(1.08);
+		background: var(--color-accent-contrast);
+		filter: brightness(0.95);
 	}
 
 	.hist-btn:disabled,
 	.hist-btn:disabled:hover {
-		background: var(--chip-bg);
-		color: var(--color-ui-dulled);
+		background: rgba(255, 255, 255, 0.14);
+		color: rgba(255, 255, 255, 0.55);
 		filter: none;
 		cursor: default;
 	}
