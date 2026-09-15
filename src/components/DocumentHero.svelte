@@ -1,5 +1,11 @@
+<script module lang="ts">
+	export type HeaderPanel = 'props' | 'history' | null;
+</script>
+
 <script lang="ts">
 	import DocHandle from '$lib/models/DocHandle';
+	import type DocHistory from '$lib/models/DocHistory.svelte';
+	import HistoryPanel from './editor/HistoryPanel.svelte';
 	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import type Tag from '$lib/models/Tag';
@@ -23,7 +29,8 @@
 		ExternalLink,
 		TriangleAlert,
 		FileText,
-		RefreshCw
+		RefreshCw,
+		History
 	} from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -37,7 +44,9 @@
 		compact = false,
 		frontmatterError = null,
 		onFrontmatterFix,
-		propsOpen = $bindable(false)
+		panel = $bindable(null),
+		history = null,
+		onRestoreVersion
 	}: {
 		handle: DocHandle;
 		onDelete?: () => void;
@@ -45,8 +54,14 @@
 		compact?: boolean;
 		frontmatterError?: string | null;
 		onFrontmatterFix?: (mode: 'keep' | 'rebuild') => void;
-		propsOpen?: boolean;
+		panel?: HeaderPanel;
+		history?: DocHistory | null;
+		onRestoreVersion?: () => void;
 	} = $props();
+
+	function togglePanel(which: Exclude<HeaderPanel, null>) {
+		panel = panel === which ? null : which;
+	}
 
 	let fmMenuOpen = $state(false);
 	let fmAnchor: HTMLElement | null = $state(null);
@@ -354,7 +369,6 @@
 					{/each}
 				</button>
 				{#if source.use_frontmatter}
-					<span class="meta-div"></span>
 					<button
 						class="tags-chip"
 						class:has-tags={tagList.length > 0}
@@ -372,7 +386,6 @@
 					</button>
 				{/if}
 				{#if source.use_frontmatter && frontmatterError}
-					<span class="meta-div"></span>
 					<button
 						class="props-chip fm-error"
 						class:open={fmMenuOpen}
@@ -383,24 +396,37 @@
 						<TriangleAlert size={12} strokeWidth={1.75} />
 					</button>
 				{:else if propCount > 0}
-					<span class="meta-div"></span>
 					<button
 						class="props-chip"
-						class:open={propsOpen}
-						title={propsOpen ? 'Hide properties' : 'Show properties'}
-						onclick={() => (propsOpen = !propsOpen)}
+						class:open={panel === 'props'}
+						title={panel === 'props' ? 'Hide properties' : 'Show properties'}
+						onclick={() => togglePanel('props')}
 					>
 						<SlidersHorizontal size={12} strokeWidth={1.75} />
 						<span class="props-count">{propCount}</span>
 					</button>
 				{/if}
-				<span class="meta-div"></span>
-				<span class="meta-date">Updated {formatDateFriendly(handle.updatedAt)}</span>
+				<button
+					class="props-chip history-chip"
+					class:open={panel === 'history'}
+					title={panel === 'history' ? 'Hide history' : 'Show history'}
+					onclick={() => togglePanel('history')}
+				>
+					<History size={12} strokeWidth={1.75} />
+					<span>Updated {formatDateFriendly(handle.updatedAt)}</span>
+				</button>
 			</div>
 		</div>
 
 		{#if source.use_frontmatter}
-			<DocProperties {handle} open={propsOpen} onCount={(n) => (propCount = n)} />
+			<DocProperties {handle} open={panel === 'props'} onCount={(n) => (propCount = n)} />
+		{/if}
+		{#if panel === 'history' && history}
+			<HistoryPanel
+				{history}
+				onRestore={() => onRestoreVersion?.()}
+				onClose={() => (panel = null)}
+			/>
 		{/if}
 	</div>
 </div>
@@ -450,7 +476,7 @@
 		position: relative;
 		max-width: var(--page-max-width, 1200px);
 		margin: 0 auto;
-		padding: 34px 24px 6px;
+		padding: 34px 24px 20px;
 	}
 
 	.hero-inner.compact {
@@ -479,6 +505,19 @@
 		transform: none;
 	}
 
+	/* Full header: the meta stacks under the title, so the history chip goes up beside the
+	   kebab, which sits on the title line out of flow. */
+	:global(:root[data-doc-header='full']) .history-chip {
+		position: absolute;
+		top: 35px;
+		right: 52px;
+		z-index: 1;
+	}
+
+	:global(:root[data-doc-header='full']) .hero-inner.compact .history-chip {
+		top: 3px;
+	}
+
 	.title-left {
 		display: flex;
 		align-items: baseline;
@@ -492,11 +531,14 @@
 		max-width: 100%;
 	}
 
+	/* Pinned: the hero is the editor's header, so it would inherit the document's 1.6
+	   line-height and the 22px kebab beside the title would no longer centre on it. */
 	.title-ghost,
 	.title-input {
 		font-family: var(--font-ui);
 		font-size: 18px;
 		font-weight: 600;
+		line-height: 22px;
 		letter-spacing: -0.01em;
 		padding: 0;
 	}
@@ -527,6 +569,7 @@
 		font-family: var(--font-ui);
 		font-size: 18px;
 		font-weight: 600;
+		line-height: 22px;
 		color: var(--color-ui-muted);
 	}
 
@@ -570,7 +613,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
-		gap: 8px;
+		gap: 6px;
 		flex: 1 1 340px;
 		min-width: 0;
 		transform: translateY(-1px);
@@ -584,19 +627,21 @@
 		align-items: center;
 		gap: 4px;
 		min-width: 0;
-		padding: 2px 8px;
+		height: 20px;
+		padding: 0 8px;
 		border: none;
 		border-radius: 6px;
-		background: transparent;
+		background: var(--chip-bg);
 		color: var(--color-ui-muted);
 		font-family: var(--font-ui);
 		font-size: 12px;
 		white-space: nowrap;
 		cursor: pointer;
+		transition: color 120ms ease;
 	}
 
 	.loc-chip:hover {
-		background: var(--chip-bg);
+		color: var(--color-text-primary);
 	}
 
 	.loc-chip :global(svg) {
@@ -615,14 +660,6 @@
 
 	.crumb-sep {
 		opacity: 0.5;
-	}
-
-	.meta-div {
-		width: 1px;
-		height: 12px;
-		flex-shrink: 0;
-		border-radius: 999px;
-		background: var(--color-border);
 	}
 
 	.props-chip {
@@ -688,10 +725,6 @@
 	.props-chip:hover .props-count,
 	.props-chip.open .props-count {
 		color: var(--color-text-secondary);
-	}
-
-	.meta-date {
-		flex-shrink: 0;
 	}
 
 	/* ── Tags ── */

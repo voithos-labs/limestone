@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { Editor } from '@voithos-labs/aragonite';
+	import { Editor, serialize } from '@voithos-labs/aragonite';
 	import type {
+		DecorationSourceHandle,
 		EditorInstance,
 		EditorSelection,
 		PastedImage,
@@ -21,10 +22,12 @@
 	import { registerFlush } from '$lib/util/flush';
 	import { onDocChanged } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
+	import DocHistory from '$lib/models/DocHistory.svelte';
+	import { historyDecorations } from './history-decorations';
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
-	import DocumentHero from '../DocumentHero.svelte';
+	import DocumentHero, { type HeaderPanel } from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 
 	let {
@@ -96,7 +99,7 @@
 		}
 		// Ask the editor now: its `edit` event is debounced, so the last thing it handed us can be a
 		// whole typing burst behind. `pendingSource` is the fallback when the editor is already gone.
-		const body = deleted ? null : (opts.body ?? instance?.getSource() ?? pendingSource);
+		const body = deleted ? null : (opts.body ?? liveBody ?? instance?.getSource() ?? pendingSource);
 		pendingSource = null;
 		// A frontmatter rebuild writes even an unchanged body: the repair is in the part of the file
 		// the editor never holds.
@@ -107,6 +110,7 @@
 			.saveContent(body, opts)
 			.then(() => {
 				savedBody = body;
+				if (panel === 'history' && history?.atPresent) void history.load();
 			})
 			.catch((e) => console.error('saveContent failed', e))
 			.finally(() => {
@@ -119,6 +123,7 @@
 	const unregisterFlush = registerFlush(() => flushSave());
 
 	function scheduleSave() {
+		if (liveBody !== null) return;
 		pendingSource = instance?.getSource() ?? pendingSource;
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
@@ -133,7 +138,8 @@
 	 */
 	function hasUnsavedEdits(): boolean {
 		if (saveTimer !== null || saving !== null) return true;
-		return !!instance && savedBody !== null && instance.getSource() !== savedBody;
+		const live = liveBody ?? instance?.getSource();
+		return live !== undefined && savedBody !== null && live !== savedBody;
 	}
 
 	// The watcher reports the file changing under the editor, our own writes included. A body that
@@ -146,9 +152,9 @@
 	});
 
 	async function reloadFromDisk(h: DocHandle) {
-		if (deleted || hasUnsavedEdits()) return;
+		if (deleted || liveBody !== null || hasUnsavedEdits()) return;
 		const fromDisk = await h.loadContent();
-		if (deleted || h !== handle || !instance || hasUnsavedEdits()) return;
+		if (deleted || h !== handle || !instance || liveBody !== null || hasUnsavedEdits()) return;
 		frontmatterError = h.frontmatterError;
 		if (fromDisk === instance.getSource()) return;
 		// Marked saved before the re-seed, so the swap cannot schedule a write of what just came in.
@@ -175,11 +181,90 @@
 
 	// ── Per-tab state ───────────────────────────────────────────────────────────────────
 
-	// Persisted on the tab, so a doc reopens with its properties panel as you left it
-	let propsOpen = $state(untrack(() => tab.state.props_open ?? false));
+	// Persisted on the tab, so a doc reopens with its header panel as you left it
+	let panel = $state<HeaderPanel>(
+		untrack(() => tab.state.panel ?? (tab.state.props_open ? 'props' : null))
+	);
 	$effect(() => {
-		tab.state.props_open = propsOpen;
+		tab.state.panel = panel;
 	});
+
+	// ── History: the slider previews a version in the same editor, read-only ────────────
+
+	let history = $derived(handle ? new DocHistory(handle.id) : null);
+	let liveBody: string | null = null;
+	let liveSelection: EditorSelection | null = null;
+	let previewing = $derived(history?.version != null);
+
+	$effect(() => {
+		const h = history;
+		if (panel !== 'history' || !h) {
+			untrack(() => h?.reset());
+			return;
+		}
+		untrack(() => void Promise.resolve(flushSave()).then(() => h.load()));
+	});
+
+	$effect(() => {
+		const version = history?.version ?? null;
+		untrack(() => {
+			if (version) {
+				if (liveBody === null) {
+					liveBody = instance?.getSource() ?? content;
+					liveSelection = instance?.getSelection() ?? null;
+				}
+				content = version.text;
+				return;
+			}
+			if (liveBody === null) return;
+			content = liveBody;
+			liveBody = null;
+			const selection = liveSelection;
+			liveSelection = null;
+			const h = handle;
+			void tick().then(async () => {
+				if (selection) await instance?.setSelection(selection);
+				if (h) await reloadFromDisk(h);
+			});
+		});
+	});
+
+	let decorations: DecorationSourceHandle | null = null;
+
+	$effect(() => {
+		const inst = instance;
+		const h = history;
+		if (!inst || !h) return;
+		const source = untrack(() =>
+			inst.getDecorations().addSource({
+				name: 'history',
+				provide: (doc) => {
+					const v = h.version;
+					return v && serialize(doc) === v.text ? historyDecorations(doc, v.delta) : [];
+				}
+			})
+		);
+		decorations = source;
+		return () => {
+			if (decorations === source) decorations = null;
+			untrack(() => source.dispose());
+		};
+	});
+
+	$effect(() => {
+		history?.version;
+		untrack(() => decorations?.invalidate());
+	});
+
+	async function restoreVersion() {
+		const version = history?.version;
+		if (!version || !handle) return;
+		liveBody = null;
+		liveSelection = null;
+		const write = flushSave({ body: version.text });
+		panel = null;
+		await write;
+	}
 
 	let zoom = $state(
 		untrack(() => tab.state.zoom ?? settings.get<number>('editor.font_size') ?? 16)
@@ -193,7 +278,11 @@
 	// The mode and font are global, not the tab's: every open document follows the setting as it
 	// changes.
 	let mode = $derived<PresentationMode>(
-		readOnly ? 'reading' : settings.get('editor.mode') === 'source' ? 'source' : 'live'
+		readOnly || previewing
+			? 'reading'
+			: settings.get('editor.mode') === 'source'
+				? 'source'
+				: 'live'
 	);
 	let font = $derived(settings.get<string>('editor.font') ?? 'sans-serif');
 
@@ -454,7 +543,9 @@
 			compact={false}
 			{frontmatterError}
 			onFrontmatterFix={fixFrontmatter}
-			bind:propsOpen
+			bind:panel
+			{history}
+			onRestoreVersion={restoreVersion}
 		/>
 	{/if}
 {/snippet}
@@ -478,7 +569,9 @@
 			compact
 			{frontmatterError}
 			onFrontmatterFix={fixFrontmatter}
-			bind:propsOpen
+			bind:panel
+			{history}
+			onRestoreVersion={restoreVersion}
 		/>
 	{/if}
 	{#if loaded}
@@ -529,5 +622,14 @@
 
 	.doc-editor :global(.editor::-webkit-scrollbar) {
 		display: none;
+	}
+
+	.doc-editor :global(.hist-ins) {
+		background: var(--accent-a22);
+		border-radius: 2px;
+	}
+
+	.doc-editor :global(.hist-block) {
+		box-shadow: inset 3px 0 0 var(--color-accent);
 	}
 </style>
