@@ -1,11 +1,5 @@
-<script module lang="ts">
-	export type HeaderPanel = 'props' | 'history' | null;
-</script>
-
 <script lang="ts">
 	import DocHandle from '$lib/models/DocHandle';
-	import type DocHistory from '$lib/models/DocHistory.svelte';
-	import HistoryPanel from './editor/HistoryPanel.svelte';
 	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import type Tag from '$lib/models/Tag';
@@ -44,9 +38,8 @@
 		compact = false,
 		frontmatterError = null,
 		onFrontmatterFix,
-		panel = $bindable(null),
-		history = null,
-		onRestoreVersion
+		propsOpen = $bindable(false),
+		historyOpen = $bindable(false)
 	}: {
 		handle: DocHandle;
 		onDelete?: () => void;
@@ -54,14 +47,9 @@
 		compact?: boolean;
 		frontmatterError?: string | null;
 		onFrontmatterFix?: (mode: 'keep' | 'rebuild') => void;
-		panel?: HeaderPanel;
-		history?: DocHistory | null;
-		onRestoreVersion?: () => void;
+		propsOpen?: boolean;
+		historyOpen?: boolean;
 	} = $props();
-
-	function togglePanel(which: Exclude<HeaderPanel, null>) {
-		panel = panel === which ? null : which;
-	}
 
 	let fmMenuOpen = $state(false);
 	let fmAnchor: HTMLElement | null = $state(null);
@@ -398,9 +386,9 @@
 				{:else if propCount > 0}
 					<button
 						class="props-chip"
-						class:open={panel === 'props'}
-						title={panel === 'props' ? 'Hide properties' : 'Show properties'}
-						onclick={() => togglePanel('props')}
+						class:open={propsOpen}
+						title={propsOpen ? 'Hide properties' : 'Show properties'}
+						onclick={() => (propsOpen = !propsOpen)}
 					>
 						<SlidersHorizontal size={12} strokeWidth={1.75} />
 						<span class="props-count">{propCount}</span>
@@ -408,9 +396,9 @@
 				{/if}
 				<button
 					class="props-chip history-chip"
-					class:open={panel === 'history'}
-					title={panel === 'history' ? 'Hide history' : 'Show history'}
-					onclick={() => togglePanel('history')}
+					class:open={historyOpen}
+					title={historyOpen ? 'Hide history' : 'Show history'}
+					onclick={() => (historyOpen = !historyOpen)}
 				>
 					<History size={12} strokeWidth={1.75} />
 					<span>Updated {formatDateFriendly(handle.updatedAt)}</span>
@@ -419,14 +407,7 @@
 		</div>
 
 		{#if source.use_frontmatter}
-			<DocProperties {handle} open={panel === 'props'} onCount={(n) => (propCount = n)} />
-		{/if}
-		{#if panel === 'history' && history}
-			<HistoryPanel
-				{history}
-				onRestore={() => onRestoreVersion?.()}
-				onClose={() => (panel = null)}
-			/>
+			<DocProperties {handle} open={propsOpen} onCount={(n) => (propCount = n)} />
 		{/if}
 	</div>
 </div>

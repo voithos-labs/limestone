@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type DocHistory from '$lib/models/DocHistory.svelte';
+	import { History, X } from '@lucide/svelte';
 
 	let {
 		history,
@@ -14,6 +15,7 @@
 	const count = $derived(history.count);
 	const max = $derived(Math.max(0, count - 1));
 	const pct = $derived(max > 0 ? (history.index / max) * 100 : 100);
+	const empty = $derived(count < 2);
 
 	function formatWhen(ms: number): string {
 		const d = new Date(ms);
@@ -30,14 +32,20 @@
 		return `${date} ${time}`;
 	}
 
-	const countLabel = $derived(
-		count > 1
-			? `${count - 1} earlier ${count === 2 ? 'version' : 'versions'}`
-			: 'No earlier versions yet'
-	);
 	const whenLabel = $derived(
-		history.atPresent || !history.selected ? 'Current version' : formatWhen(history.selected.time)
+		empty
+			? 'No earlier versions yet'
+			: history.atPresent || !history.selected
+				? 'Current version'
+				: formatWhen(history.selected.time)
 	);
+
+	// Every label the slider can show, so the slot is sized to the widest one and never shifts.
+	const labels = $derived.by(() => {
+		const all = new Set<string>([whenLabel, 'Current version']);
+		for (const cp of history.checkpoints.slice(0, -1)) all.add(formatWhen(cp.time));
+		return [...all];
+	});
 
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key !== 'Escape') return;
@@ -46,11 +54,7 @@
 	}
 </script>
 
-<div class="doc-history">
-	<div class="hist-head">
-		<span class="hist-count">{countLabel}</span>
-		<span class="hist-when" class:present={history.atPresent}>{whenLabel}</span>
-	</div>
+{#snippet slider()}
 	<input
 		class="hist-slider"
 		type="range"
@@ -58,59 +62,95 @@
 		{max}
 		step="1"
 		value={history.index}
-		disabled={count < 2}
+		disabled={empty}
 		style="--pct: {pct}%"
 		aria-label="Version"
 		oninput={(e) => void history.select(Number(e.currentTarget.value))}
 		onkeydown={onKeydown}
 	/>
-	<div class="hist-actions">
-		<button class="btn" type="button" onclick={onClose}>
-			{history.atPresent ? 'Close' : 'Cancel'}
-		</button>
-		<button
-			class="btn primary"
-			type="button"
-			disabled={history.atPresent || history.loading}
-			onclick={onRestore}
-		>
-			Restore
-		</button>
-	</div>
+{/snippet}
+
+{#snippet restore()}
+	<button
+		class="hist-btn primary"
+		type="button"
+		disabled={history.atPresent || history.loading}
+		onclick={onRestore}
+	>
+		Restore
+	</button>
+{/snippet}
+
+{#snippet close()}
+	<button
+		class="hist-btn icon"
+		type="button"
+		title={history.atPresent ? 'Close' : 'Cancel'}
+		aria-label={history.atPresent ? 'Close' : 'Cancel'}
+		onclick={onClose}
+	>
+		<X size={13} strokeWidth={1.75} />
+	</button>
+{/snippet}
+
+<div class="doc-history">
+	<span class="hist-icon"><History size={13} strokeWidth={1.75} /></span>
+	{@render slider()}
+	<span class="hist-when">
+		{#each labels as label (label)}
+			<span class="hist-when-item" class:active={label === whenLabel}>{label}</span>
+		{/each}
+	</span>
+	{@render restore()}
+	{@render close()}
 </div>
 
 <style>
 	.doc-history {
 		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		margin-top: 12px;
+		align-items: center;
+		gap: 10px;
+		width: min(720px, 100%);
+		padding: 7px 8px 7px 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-bg);
+		box-shadow: var(--menu-shadow);
 		font-family: var(--font-ui);
 		font-size: 12px;
 		color: var(--color-ui-muted);
 	}
 
-	.hist-head {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 12px;
+	.hist-icon {
+		display: inline-flex;
+		flex-shrink: 0;
+		color: var(--color-ui-dulled);
 	}
 
 	.hist-when {
+		display: grid;
+		flex-shrink: 0;
 		color: var(--color-text-primary);
 		font-variant-numeric: tabular-nums;
+		text-align: right;
+		white-space: nowrap;
 	}
 
-	.hist-when.present {
-		color: var(--color-ui-muted);
+	.hist-when-item {
+		grid-area: 1 / 1;
+		visibility: hidden;
+	}
+
+	.hist-when-item.active {
+		visibility: visible;
 	}
 
 	.hist-slider {
 		-webkit-appearance: none;
 		appearance: none;
-		width: 100%;
-		height: 16px;
+		flex: 1;
+		min-width: 80px;
+		height: 20px;
 		margin: 0;
 		padding: 0;
 		background: transparent;
@@ -152,35 +192,52 @@
 		opacity: 0.45;
 	}
 
-	.hist-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 6px;
-	}
-
-	.btn {
-		padding: 4px 10px;
-		border: 1px solid var(--color-border);
-		border-radius: 6px;
+	/* Same metrics as the header chips, so the card's controls read as the app's own. */
+	.hist-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		height: 22px;
+		padding: 0 9px;
+		border: none;
+		border-radius: 5px;
 		background: transparent;
-		color: var(--color-text-secondary);
+		color: var(--color-ui-muted);
 		font-family: var(--font-ui);
 		font-size: 12px;
 		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
-	.btn:hover {
+	.hist-btn:hover {
+		background: var(--chip-bg);
 		color: var(--color-text-primary);
 	}
 
-	.btn.primary {
-		border-color: transparent;
+	.hist-btn.icon {
+		width: 22px;
+		padding: 0;
+	}
+
+	.hist-btn.primary {
 		background: var(--color-accent);
 		color: var(--color-accent-contrast);
 	}
 
-	.btn:disabled {
-		opacity: 0.5;
+	.hist-btn.primary:hover {
+		background: var(--color-accent);
+		color: var(--color-accent-contrast);
+		filter: brightness(1.08);
+	}
+
+	.hist-btn:disabled,
+	.hist-btn:disabled:hover {
+		background: var(--chip-bg);
+		color: var(--color-ui-dulled);
+		filter: none;
 		cursor: default;
 	}
 </style>

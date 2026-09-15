@@ -27,8 +27,9 @@
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
-	import DocumentHero, { type HeaderPanel } from '../DocumentHero.svelte';
+	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
+	import HistoryPanel from './HistoryPanel.svelte';
 
 	let {
 		tab,
@@ -110,7 +111,7 @@
 			.saveContent(body, opts)
 			.then(() => {
 				savedBody = body;
-				if (panel === 'history' && history?.atPresent) void history.load();
+				if (historyOpen && history?.atPresent) void history.load();
 			})
 			.catch((e) => console.error('saveContent failed', e))
 			.finally(() => {
@@ -181,29 +182,53 @@
 
 	// ── Per-tab state ───────────────────────────────────────────────────────────────────
 
-	// Persisted on the tab, so a doc reopens with its header panel as you left it
-	let panel = $state<HeaderPanel>(
-		untrack(() => tab.state.panel ?? (tab.state.props_open ? 'props' : null))
-	);
+	// Persisted on the tab, so a doc reopens with its properties panel as you left it
+	let propsOpen = $state(untrack(() => tab.state.props_open ?? false));
 	$effect(() => {
-		tab.state.panel = panel;
+		tab.state.props_open = propsOpen;
 	});
 
 	// ── History: the slider previews a version in the same editor, read-only ────────────
 
 	let history = $derived(handle ? new DocHistory(handle.id) : null);
+	let historyOpen = $state(false);
 	let liveBody: string | null = null;
 	let liveSelection: EditorSelection | null = null;
 	let previewing = $derived(history?.version != null);
 
 	$effect(() => {
 		const h = history;
-		if (panel !== 'history' || !h) {
+		if (!historyOpen || !h) {
 			untrack(() => h?.reset());
 			return;
 		}
 		untrack(() => void Promise.resolve(flushSave()).then(() => h.load()));
 	});
+
+	/** The element that scrolls the document: aragonite's own root, or in flow mode the page's. */
+	function scroller(): HTMLElement | null {
+		if (!flow) return scrollEl;
+		let el = wrapperEl?.parentElement ?? null;
+		while (el && el !== document.body) {
+			const overflow = getComputedStyle(el).overflowY;
+			if (overflow === 'auto' || overflow === 'scroll') return el;
+			el = el.parentElement;
+		}
+		return null;
+	}
+
+	// A source swap re-seeds the editor from height estimates, which would land the reader
+	// somewhere else on every slider step, so the offset is put back once the swap has rendered.
+	function swapContent(next: string) {
+		const el = scroller();
+		const top = el?.scrollTop ?? 0;
+		content = next;
+		if (!el) return;
+		void tick().then(() => {
+			el.scrollTop = top;
+			requestAnimationFrame(() => (el.scrollTop = top));
+		});
+	}
 
 	$effect(() => {
 		const version = history?.version ?? null;
@@ -213,11 +238,11 @@
 					liveBody = instance?.getSource() ?? content;
 					liveSelection = instance?.getSelection() ?? null;
 				}
-				content = version.text;
+				swapContent(version.text);
 				return;
 			}
 			if (liveBody === null) return;
-			content = liveBody;
+			swapContent(liveBody);
 			liveBody = null;
 			const selection = liveSelection;
 			liveSelection = null;
@@ -262,7 +287,7 @@
 		liveBody = null;
 		liveSelection = null;
 		const write = flushSave({ body: version.text });
-		panel = null;
+		historyOpen = false;
 		await write;
 	}
 
@@ -543,9 +568,8 @@
 			compact={false}
 			{frontmatterError}
 			onFrontmatterFix={fixFrontmatter}
-			bind:panel
-			{history}
-			onRestoreVersion={restoreVersion}
+			bind:propsOpen
+			bind:historyOpen
 		/>
 	{/if}
 {/snippet}
@@ -556,6 +580,7 @@
 <div
 	class="doc-editor"
 	class:flow
+	class:history-open={historyOpen}
 	bind:this={wrapperEl}
 	style="--editor-font-size: {zoom}px; --font-editor: {font}; --font-code: var(--font-mono)"
 	onkeydowncapture={onKeydown}
@@ -569,9 +594,8 @@
 			compact
 			{frontmatterError}
 			onFrontmatterFix={fixFrontmatter}
-			bind:panel
-			{history}
-			onRestoreVersion={restoreVersion}
+			bind:propsOpen
+			bind:historyOpen
 		/>
 	{/if}
 	{#if loaded}
@@ -593,6 +617,11 @@
 	{/if}
 	{#if !flow}
 		<ScrollThumb scroller={scrollEl} top={THUMB_TOP_PX} />
+	{/if}
+	{#if historyOpen && history}
+		<div class="history-dock">
+			<HistoryPanel {history} onRestore={restoreVersion} onClose={() => (historyOpen = false)} />
+		</div>
 	{/if}
 </div>
 
@@ -622,6 +651,32 @@
 
 	.doc-editor :global(.editor::-webkit-scrollbar) {
 		display: none;
+	}
+
+	/* Docked over the document like the app's menus, so the last lines get room to scroll
+	   clear of it. Flow embeds are scrolled by the page, so there it pins to the window. */
+	.history-dock {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 18px;
+		z-index: 5;
+		display: flex;
+		justify-content: center;
+		padding: 0 24px;
+		pointer-events: none;
+	}
+
+	.history-dock > :global(*) {
+		pointer-events: auto;
+	}
+
+	.doc-editor.flow .history-dock {
+		position: fixed;
+	}
+
+	.doc-editor.history-open :global(.editor > .block-list) {
+		padding-bottom: 160px;
 	}
 
 	.doc-editor :global(.hist-ins) {
