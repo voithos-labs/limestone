@@ -25,6 +25,7 @@
 		tab,
 		settings,
 		findBarAnchor,
+		dockTarget,
 		onCreated,
 		onPicked
 	}: {
@@ -39,6 +40,7 @@
 		settings: SettingsState;
 		/** The page's own box for the find bar, which the document editor draws into. */
 		findBarAnchor?: HTMLElement | null;
+		dockTarget?: HTMLElement | null;
 		onCreated?: (rowId: string) => void;
 		onPicked?: (rowId: string) => void | Promise<void>;
 	} = $props();
@@ -292,7 +294,14 @@
 >
 	{#if docTab}
 		{#key docTab.id}
-			<DocumentEditor bind:this={docEditor} tab={docTab} {settings} {flow} {findBarAnchor} />
+			<DocumentEditor
+				bind:this={docEditor}
+				tab={docTab}
+				{settings}
+				{flow}
+				{findBarAnchor}
+				{dockTarget}
+			/>
 		{/key}
 	{:else}
 		<div class="doc-empty">

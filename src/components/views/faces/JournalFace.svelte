@@ -22,7 +22,8 @@
 		docPicker,
 		tab,
 		settings,
-		findBarAnchor
+		findBarAnchor,
+		dockTarget
 	}: {
 		view: View;
 		face: ViewFace;
@@ -34,6 +35,7 @@
 		settings: SettingsState;
 		/** The page's own box for the find bar, passed on to a day's entry. */
 		findBarAnchor?: HTMLElement | null;
+		dockTarget?: HTMLElement | null;
 	} = $props();
 
 	const DAY_SIZE = 46;
@@ -638,6 +640,7 @@
 							{tab}
 							{settings}
 							{findBarAnchor}
+							{dockTarget}
 							onCreated={loadRows}
 							onPicked={onDocPicked}
 						/>

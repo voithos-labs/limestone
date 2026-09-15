@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { Editor, serialize } from '@voithos-labs/aragonite';
+	import { Editor } from '@voithos-labs/aragonite';
 	import type {
 		DecorationSourceHandle,
 		EditorInstance,
@@ -22,7 +22,7 @@
 	import { registerFlush } from '$lib/util/flush';
 	import { onDocChanged } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
-	import DocHistory from '$lib/models/DocHistory.svelte';
+	import DocHistory, { type HistoryVersion } from '$lib/models/DocHistory.svelte';
 	import { historyDecorations } from './history-decorations';
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
@@ -30,6 +30,7 @@
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import HistoryPanel from './HistoryPanel.svelte';
+	import { portal } from '$lib/util/portal';
 
 	let {
 		tab,
@@ -37,7 +38,8 @@
 		editor,
 		flow = false,
 		readOnly = false,
-		findBarAnchor
+		findBarAnchor,
+		dockTarget
 	}: {
 		tab: TabState;
 		settings: SettingsState;
@@ -47,6 +49,8 @@
 		readOnly?: boolean;
 		/** Where the editor should draw its find bar, for a page that scrolls the document itself. */
 		findBarAnchor?: HTMLElement | null;
+		/** Where a flow host wants mode bars docked: an element in its pane's positioning context. */
+		dockTarget?: HTMLElement | null;
 	} = $props();
 
 	let handle = $derived(tab.handle);
@@ -190,8 +194,21 @@
 
 	// ── History: the slider previews a version in the same editor, read-only ────────────
 
+	// History is the tab's too: it reopens docked at the version you left it on, until closed.
 	let history = $derived(handle ? new DocHistory(handle.id) : null);
-	let historyOpen = $state(false);
+	let historyOpen = $state(untrack(() => tab.state.history_open ?? false));
+	const storedHistoryAt = untrack(
+		() => tab.state.history_at as { heads: string[]; time: number } | null | undefined
+	);
+	let restoredHistoryAt = false;
+	$effect(() => {
+		tab.state.history_open = historyOpen;
+	});
+	$effect(() => {
+		const h = history;
+		const cp = h?.selected;
+		tab.state.history_at = h && cp && !h.atPresent ? { heads: [...cp.heads], time: cp.time } : null;
+	});
 	let liveBody: string | null = null;
 	let liveSelection: EditorSelection | null = null;
 	let previewing = $derived(history?.version != null);
@@ -202,7 +219,16 @@
 			untrack(() => h?.reset());
 			return;
 		}
-		untrack(() => void Promise.resolve(flushSave()).then(() => h.load()));
+		if (!loaded) return;
+		untrack(() => {
+			void Promise.resolve(flushSave())
+				.then(() => h.load())
+				.then(() => {
+					if (restoredHistoryAt || !storedHistoryAt) return;
+					restoredHistoryAt = true;
+					return h.selectAt(storedHistoryAt.heads, storedHistoryAt.time);
+				});
+		});
 	});
 
 	/** The element that scrolls the document: aragonite's own root, or in flow mode the page's. */
@@ -219,30 +245,39 @@
 
 	// A source swap re-seeds the editor from height estimates, which would land the reader
 	// somewhere else on every slider step, so the offset is put back once the swap has rendered.
-	function swapContent(next: string) {
+	function swapContent(next: string, shown: HistoryVersion | null) {
 		const el = scroller();
 		const top = el?.scrollTop ?? 0;
 		content = next;
-		if (!el) return;
 		void tick().then(() => {
-			el.scrollTop = top;
-			requestAnimationFrame(() => (el.scrollTop = top));
+			if (el) {
+				el.scrollTop = top;
+				requestAnimationFrame(() => (el.scrollTop = top));
+			}
+			shownVersion = shown;
+			decorations?.invalidate();
 		});
 	}
 
+	// The version whose text the editor has actually rendered, so the decoration source never
+	// maps a delta onto the wrong document during the swap.
+	let shownVersion: HistoryVersion | null = null;
+
 	$effect(() => {
 		const version = history?.version ?? null;
+		const ready = loaded && !!instance;
 		untrack(() => {
+			if (!ready) return;
 			if (version) {
 				if (liveBody === null) {
 					liveBody = instance?.getSource() ?? content;
 					liveSelection = instance?.getSelection() ?? null;
 				}
-				swapContent(version.text);
+				swapContent(version.text, version);
 				return;
 			}
 			if (liveBody === null) return;
-			swapContent(liveBody);
+			swapContent(liveBody, null);
 			liveBody = null;
 			const selection = liveSelection;
 			liveSelection = null;
@@ -265,7 +300,7 @@
 				name: 'history',
 				provide: (doc) => {
 					const v = h.version;
-					return v && serialize(doc) === v.text ? historyDecorations(doc, v.delta) : [];
+					return v && v === shownVersion ? historyDecorations(doc, v.delta) : [];
 				}
 			})
 		);
@@ -274,11 +309,6 @@
 			if (decorations === source) decorations = null;
 			untrack(() => source.dispose());
 		};
-	});
-
-	$effect(() => {
-		history?.version;
-		untrack(() => decorations?.invalidate());
 	});
 
 	async function restoreVersion() {
@@ -619,7 +649,7 @@
 		<ScrollThumb scroller={scrollEl} top={THUMB_TOP_PX} />
 	{/if}
 	{#if historyOpen && history}
-		<div class="history-dock">
+		<div class="history-dock" use:portal={flow ? dockTarget : null}>
 			<HistoryPanel {history} onRestore={restoreVersion} onClose={() => (historyOpen = false)} />
 		</div>
 	{/if}
@@ -654,7 +684,8 @@
 	}
 
 	/* Docked over the document like the app's menus, so the last lines get room to scroll
-	   clear of it. Flow embeds are scrolled by the page, so there it pins to the window. */
+	   clear of it. A flow host hands over a dock target in its own pane; without one the dock
+	   falls back to the window. */
 	.history-dock {
 		position: absolute;
 		left: 0;

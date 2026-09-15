@@ -37,6 +37,7 @@
 	const bodyFlow = true;
 	let bodyEl: HTMLDivElement | null = $state(null);
 	let findBarAnchor: HTMLDivElement | null = $state(null);
+	let dockTarget: HTMLDivElement | null = $state(null);
 
 	// the doc face draws the document, the header's search bar picks which one
 	// fyi fab=floating action button
@@ -479,6 +480,7 @@
 						{tab}
 						{settings}
 						{findBarAnchor}
+						{dockTarget}
 					/>
 				{:else if activeFace?.type === 'doc'}
 					<DocFace
@@ -489,6 +491,7 @@
 						{tab}
 						{settings}
 						{findBarAnchor}
+						{dockTarget}
 					/>
 				{:else if activeFace?.type === 'list' || activeFace?.type === 'grid'}
 					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
@@ -501,6 +504,8 @@
 		<!-- Where a document on this page draws its find bar. Outside the scroller, so it stays at
 		     the page's top right while the document scrolls under it. -->
 		<div class="find-bar-anchor" bind:this={findBarAnchor}></div>
+		<!-- Where a document on this page docks its mode bars (history), in the page's own frame. -->
+		<div bind:this={dockTarget}></div>
 
 		<ScrollThumb scroller={bodyEl} top={20} />
 

@@ -74,6 +74,16 @@ export default class DocHistory {
 		this.version = v;
 	}
 
+	async selectAt(heads: string[], time: number): Promise<void> {
+		const cps = this.checkpoints;
+		const key = heads.join('\n');
+		let i = cps.findIndex((cp) => cp.heads.join('\n') === key);
+		if (i < 0) {
+			for (let j = 0; j < cps.length - 1; j++) if (cps[j].time <= time) i = j;
+		}
+		if (i >= 0) await this.select(i);
+	}
+
 	reset(): void {
 		void this.select(this.checkpoints.length - 1);
 	}
