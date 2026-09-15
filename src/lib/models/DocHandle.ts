@@ -28,6 +28,7 @@ import * as yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '$lib/services/db';
+import { addChangeHistory, removeHistory } from '$lib/services/history';
 import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
 import Tag, { type TagRow } from './Tag';
@@ -370,7 +371,12 @@ class DocHandle {
 		);
 		this.accessedAt = new Date(now);
 
+		this.recordHistory(body);
 		return body;
+	}
+
+	private recordHistory(body: string): void {
+		addChangeHistory(this.id, body).catch((e) => console.error('history record failed', e));
 	}
 
 	/**
@@ -410,6 +416,7 @@ class DocHandle {
 			create: !this.hasFile
 		});
 		this.hasFile = true;
+		this.recordHistory(body);
 	}
 
 	private async ensureFile(): Promise<void> {
@@ -423,6 +430,7 @@ class DocHandle {
 			sourceId: this.source.id,
 			relPath: this._relPath
 		});
+		removeHistory(this.id).catch((e) => console.error('history remove failed', e));
 	}
 
 	/**

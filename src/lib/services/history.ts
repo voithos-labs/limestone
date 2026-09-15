@@ -1,15 +1,17 @@
 import { invoke } from '@tauri-apps/api/core';
-import * as Automerge from '@automerge/automerge';
-import { Repo, updateText } from '@automerge/automerge-repo';
+import * as Automerge from '@automerge/automerge/slim';
+import { Repo, updateText } from '@automerge/automerge-repo/slim';
 import type {
 	Chunk,
 	DocHandle,
 	DocumentId,
 	StorageAdapterInterface,
 	StorageKey
-} from '@automerge/automerge-repo';
+} from '@automerge/automerge-repo/slim';
+import wasmUrl from '@automerge/automerge/automerge.wasm?url';
 
 import { fromBase64, toBase64 } from '$lib/util/bytes';
+import { registerFlush } from '$lib/util/flush';
 
 // region storage adapter
 // ── Storage Adapter (via Tauri To Fs) ────────────────────────────────────────────────
@@ -50,29 +52,73 @@ class TauriStorageAdapter implements StorageAdapterInterface {
 // region repo
 // ── Repo Automerge ───────────────────────────────────────────────────────────────────
 
-const repos = new Map<string, Repo>();
+interface DocHistoryShape {
+	docId: string;
+	text: string;
+}
 
-// dry init catch
-function historyRepo(docId: string): Repo {
-	let repo = repos.get(docId);
-	if (!repo) {
-		repo = new Repo({ storage: new TauriStorageAdapter([docId]) });
-		repos.set(docId, repo);
+interface HistoryEntry {
+	repo: Repo;
+	handle: Promise<DocHandle<DocHistoryShape>>;
+}
+
+const entries = new Map<string, HistoryEntry>();
+
+let wasmReady: Promise<void> | null = null;
+
+function ensureWasm(): Promise<void> {
+	if (!wasmReady) {
+		wasmReady = Automerge.initializeWasm(wasmUrl).catch((e) => {
+			wasmReady = null;
+			throw e;
+		});
 	}
-	return repo;
+	return wasmReady;
 }
 
 function listHistoryRoots(docId: string): Promise<string[]> {
 	return invoke<string[]>('storage_list_roots', { prefix: [docId] });
 }
+
+async function openHistory(repo: Repo, docId: string): Promise<DocHandle<DocHistoryShape>> {
+	const [roots] = await Promise.all([listHistoryRoots(docId), ensureWasm()]);
+	const root = roots[0];
+	if (root) {
+		return await repo.find<DocHistoryShape>(root as DocumentId);
+	}
+	return repo.create<DocHistoryShape>({ docId, text: '' });
+}
+
+function historyEntry(docId: string): HistoryEntry {
+	let entry = entries.get(docId);
+	if (!entry) {
+		const repo = new Repo({ storage: new TauriStorageAdapter([docId]) });
+		entry = { repo, handle: openHistory(repo, docId) };
+		entry.handle.catch(() => entries.delete(docId));
+		entries.set(docId, entry);
+	}
+	return entry;
+}
+
+function getDocHistoryHandle(docId: string): Promise<DocHandle<DocHistoryShape>> {
+	return historyEntry(docId).handle;
+}
+
+export async function flushHistory(): Promise<void> {
+	await Promise.all([...entries.values()].map((e) => e.repo.flush()));
+}
+
+registerFlush(flushHistory);
+
+export async function removeHistory(docId: string): Promise<void> {
+	const entry = entries.get(docId);
+	entries.delete(docId);
+	if (entry) await entry.repo.shutdown();
+	await invoke('storage_remove_range', { prefix: [docId] });
+}
 // endregion
 // region doc history management
 // ── Doc History Management ───────────────────────────────────────────────────────────
-
-interface DocHistoryShape {
-	docId: string;
-	text: string;
-}
 
 export interface Checkpoint {
 	heads: string[]; // like git heads, literally hash[], of the changes sorted under this checkpoint
@@ -80,8 +126,8 @@ export interface Checkpoint {
 }
 
 // todo: reasonable groupings, but worth more testing
-const CHECKPOINT_GAP_MS = 20_000;
-const CHECKPOINT_MAX_SPAN_MS = 60_000;
+const CHECKPOINT_GAP_MS = 5_000;
+const CHECKPOINT_MAX_SPAN_MS = 30_000;
 
 function buildCheckpoints(doc: Automerge.Doc<DocHistoryShape>): Checkpoint[] {
 	const meta = Automerge.getChangesMetaSince(doc, []);
@@ -110,15 +156,6 @@ function buildCheckpoints(doc: Automerge.Doc<DocHistoryShape>): Checkpoint[] {
 	}
 	return checkpoints;
 }
-async function getDocHistoryHandle(docId: string): Promise<DocHandle<DocHistoryShape>> {
-	const repo = historyRepo(docId);
-	const [root] = await listHistoryRoots(docId);
-	if (root) {
-		return await repo.find<DocHistoryShape>(root as DocumentId);
-	}
-	return repo.create<DocHistoryShape>({ docId, text: '' });
-}
-
 /**
  * Add change to history via Automerge `updateText`
  */

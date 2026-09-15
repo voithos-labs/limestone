@@ -2,6 +2,7 @@
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { Editor } from '@voithos-labs/aragonite';
 	import type {
+		DecorationSourceHandle,
 		EditorInstance,
 		EditorSelection,
 		PastedImage,
@@ -21,11 +22,15 @@
 	import { registerFlush } from '$lib/util/flush';
 	import { onDocChanged } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
+	import DocHistory, { type HistoryVersion } from '$lib/models/DocHistory.svelte';
+	import { historyDecorations } from './history-decorations';
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
+	import HistoryPanel from './HistoryPanel.svelte';
+	import { portal } from '$lib/util/portal';
 
 	let {
 		tab,
@@ -33,7 +38,8 @@
 		editor,
 		flow = false,
 		readOnly = false,
-		findBarAnchor
+		findBarAnchor,
+		dockTarget
 	}: {
 		tab: TabState;
 		settings: SettingsState;
@@ -43,6 +49,8 @@
 		readOnly?: boolean;
 		/** Where the editor should draw its find bar, for a page that scrolls the document itself. */
 		findBarAnchor?: HTMLElement | null;
+		/** Where a flow host wants mode bars docked: an element in its pane's positioning context. */
+		dockTarget?: HTMLElement | null;
 	} = $props();
 
 	let handle = $derived(tab.handle);
@@ -96,7 +104,7 @@
 		}
 		// Ask the editor now: its `edit` event is debounced, so the last thing it handed us can be a
 		// whole typing burst behind. `pendingSource` is the fallback when the editor is already gone.
-		const body = deleted ? null : (opts.body ?? instance?.getSource() ?? pendingSource);
+		const body = deleted ? null : (opts.body ?? liveBody ?? instance?.getSource() ?? pendingSource);
 		pendingSource = null;
 		// A frontmatter rebuild writes even an unchanged body: the repair is in the part of the file
 		// the editor never holds.
@@ -107,6 +115,7 @@
 			.saveContent(body, opts)
 			.then(() => {
 				savedBody = body;
+				if (historyOpen && history?.atPresent) void history.load();
 			})
 			.catch((e) => console.error('saveContent failed', e))
 			.finally(() => {
@@ -119,6 +128,7 @@
 	const unregisterFlush = registerFlush(() => flushSave());
 
 	function scheduleSave() {
+		if (liveBody !== null) return;
 		pendingSource = instance?.getSource() ?? pendingSource;
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
@@ -133,7 +143,8 @@
 	 */
 	function hasUnsavedEdits(): boolean {
 		if (saveTimer !== null || saving !== null) return true;
-		return !!instance && savedBody !== null && instance.getSource() !== savedBody;
+		const live = liveBody ?? instance?.getSource();
+		return live !== undefined && savedBody !== null && live !== savedBody;
 	}
 
 	// The watcher reports the file changing under the editor, our own writes included. A body that
@@ -146,9 +157,9 @@
 	});
 
 	async function reloadFromDisk(h: DocHandle) {
-		if (deleted || hasUnsavedEdits()) return;
+		if (deleted || liveBody !== null || hasUnsavedEdits()) return;
 		const fromDisk = await h.loadContent();
-		if (deleted || h !== handle || !instance || hasUnsavedEdits()) return;
+		if (deleted || h !== handle || !instance || liveBody !== null || hasUnsavedEdits()) return;
 		frontmatterError = h.frontmatterError;
 		if (fromDisk === instance.getSource()) return;
 		// Marked saved before the re-seed, so the swap cannot schedule a write of what just came in.
@@ -181,6 +192,135 @@
 		tab.state.props_open = propsOpen;
 	});
 
+	// ── History: the slider previews a version in the same editor, read-only ────────────
+
+	// History is the tab's too: it reopens docked at the version you left it on, until closed.
+	let history = $derived(handle ? new DocHistory(handle.id) : null);
+	let historyOpen = $state(untrack(() => tab.state.history_open ?? false));
+	const storedHistoryAt = untrack(
+		() => tab.state.history_at as { heads: string[]; time: number } | null | undefined
+	);
+	let restoredHistoryAt = false;
+	$effect(() => {
+		tab.state.history_open = historyOpen;
+	});
+	$effect(() => {
+		const h = history;
+		const cp = h?.selected;
+		tab.state.history_at = h && cp && !h.atPresent ? { heads: [...cp.heads], time: cp.time } : null;
+	});
+	let liveBody: string | null = null;
+	let liveSelection: EditorSelection | null = null;
+	let previewing = $derived(history?.version != null);
+
+	$effect(() => {
+		const h = history;
+		if (!historyOpen || !h) {
+			untrack(() => h?.reset());
+			return;
+		}
+		if (!loaded) return;
+		untrack(() => {
+			void Promise.resolve(flushSave())
+				.then(() => h.load())
+				.then(() => {
+					if (restoredHistoryAt || !storedHistoryAt) return;
+					restoredHistoryAt = true;
+					return h.selectAt(storedHistoryAt.heads, storedHistoryAt.time);
+				});
+		});
+	});
+
+	/** The element that scrolls the document: aragonite's own root, or in flow mode the page's. */
+	function scroller(): HTMLElement | null {
+		if (!flow) return scrollEl;
+		let el = wrapperEl?.parentElement ?? null;
+		while (el && el !== document.body) {
+			const overflow = getComputedStyle(el).overflowY;
+			if (overflow === 'auto' || overflow === 'scroll') return el;
+			el = el.parentElement;
+		}
+		return null;
+	}
+
+	// A source swap re-seeds the editor from height estimates, which would land the reader
+	// somewhere else on every slider step, so the offset is put back once the swap has rendered.
+	function swapContent(next: string, shown: HistoryVersion | null) {
+		const el = scroller();
+		const top = el?.scrollTop ?? 0;
+		content = next;
+		void tick().then(() => {
+			if (el) {
+				el.scrollTop = top;
+				requestAnimationFrame(() => (el.scrollTop = top));
+			}
+			shownVersion = shown;
+			decorations?.invalidate();
+		});
+	}
+
+	// The version whose text the editor has actually rendered, so the decoration source never
+	// maps a delta onto the wrong document during the swap.
+	let shownVersion: HistoryVersion | null = null;
+
+	$effect(() => {
+		const version = history?.version ?? null;
+		const ready = loaded && !!instance;
+		untrack(() => {
+			if (!ready) return;
+			if (version) {
+				if (liveBody === null) {
+					liveBody = instance?.getSource() ?? content;
+					liveSelection = instance?.getSelection() ?? null;
+				}
+				swapContent(version.text, version);
+				return;
+			}
+			if (liveBody === null) return;
+			swapContent(liveBody, null);
+			liveBody = null;
+			const selection = liveSelection;
+			liveSelection = null;
+			const h = handle;
+			void tick().then(async () => {
+				if (selection) await instance?.setSelection(selection);
+				if (h) await reloadFromDisk(h);
+			});
+		});
+	});
+
+	let decorations: DecorationSourceHandle | null = null;
+
+	$effect(() => {
+		const inst = instance;
+		const h = history;
+		if (!inst || !h) return;
+		const source = untrack(() =>
+			inst.getDecorations().addSource({
+				name: 'history',
+				provide: (doc) => {
+					const v = h.version;
+					return v && v === shownVersion ? historyDecorations(doc, v.delta) : [];
+				}
+			})
+		);
+		decorations = source;
+		return () => {
+			if (decorations === source) decorations = null;
+			untrack(() => source.dispose());
+		};
+	});
+
+	async function restoreVersion() {
+		const version = history?.version;
+		if (!version || !handle) return;
+		liveBody = null;
+		liveSelection = null;
+		const write = flushSave({ body: version.text });
+		historyOpen = false;
+		await write;
+	}
+
 	let zoom = $state(
 		untrack(() => tab.state.zoom ?? settings.get<number>('editor.font_size') ?? 16)
 	);
@@ -193,7 +333,11 @@
 	// The mode and font are global, not the tab's: every open document follows the setting as it
 	// changes.
 	let mode = $derived<PresentationMode>(
-		readOnly ? 'reading' : settings.get('editor.mode') === 'source' ? 'source' : 'live'
+		readOnly || previewing
+			? 'reading'
+			: settings.get('editor.mode') === 'source'
+				? 'source'
+				: 'live'
 	);
 	let font = $derived(settings.get<string>('editor.font') ?? 'sans-serif');
 
@@ -455,6 +599,7 @@
 			{frontmatterError}
 			onFrontmatterFix={fixFrontmatter}
 			bind:propsOpen
+			bind:historyOpen
 		/>
 	{/if}
 {/snippet}
@@ -465,6 +610,7 @@
 <div
 	class="doc-editor"
 	class:flow
+	class:history-open={historyOpen}
 	bind:this={wrapperEl}
 	style="--editor-font-size: {zoom}px; --font-editor: {font}; --font-code: var(--font-mono)"
 	onkeydowncapture={onKeydown}
@@ -479,6 +625,7 @@
 			{frontmatterError}
 			onFrontmatterFix={fixFrontmatter}
 			bind:propsOpen
+			bind:historyOpen
 		/>
 	{/if}
 	{#if loaded}
@@ -500,6 +647,11 @@
 	{/if}
 	{#if !flow}
 		<ScrollThumb scroller={scrollEl} top={THUMB_TOP_PX} />
+	{/if}
+	{#if historyOpen && history}
+		<div class="history-dock" use:portal={flow ? dockTarget : null}>
+			<HistoryPanel {history} onRestore={restoreVersion} onClose={() => (historyOpen = false)} />
+		</div>
 	{/if}
 </div>
 
@@ -529,5 +681,41 @@
 
 	.doc-editor :global(.editor::-webkit-scrollbar) {
 		display: none;
+	}
+
+	/* Docked over the document like the app's menus, so the last lines get room to scroll
+	   clear of it. A flow host hands over a dock target in its own pane; without one the dock
+	   falls back to the window. */
+	.history-dock {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 18px;
+		z-index: 5;
+		display: flex;
+		justify-content: center;
+		padding: 0 24px;
+		pointer-events: none;
+	}
+
+	.history-dock > :global(*) {
+		pointer-events: auto;
+	}
+
+	.doc-editor.flow .history-dock {
+		position: fixed;
+	}
+
+	.doc-editor.history-open :global(.editor > .block-list) {
+		padding-bottom: 160px;
+	}
+
+	.doc-editor :global(.hist-ins) {
+		background: var(--accent-a22);
+		border-radius: 2px;
+	}
+
+	.doc-editor :global(.hist-block) {
+		box-shadow: inset 3px 0 0 var(--color-accent);
 	}
 </style>
