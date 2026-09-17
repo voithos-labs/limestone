@@ -37,6 +37,37 @@ pub fn rewrite_frontmatter(path: &Path, mutate: impl Fn(&mut Value)) -> io::Resu
     fast_write(path, next.as_bytes())
 }
 
+pub fn rewrite_document(
+    path: &Path,
+    mutate_fm: Option<&dyn Fn(&mut Value)>,
+    mutate_body: &dyn Fn(&str) -> Option<String>,
+) -> io::Result<()> {
+    let content = fs::read_to_string(path)?;
+    let (existing, body) = split_content(&content);
+    if existing.is_none() && has_unparsed_fence(&content) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "existing frontmatter could not be parsed",
+        ));
+    }
+    let fm = match (existing, mutate_fm) {
+        (Some(mut fm), Some(mutate)) => {
+            mutate(&mut fm);
+            Some(fm)
+        }
+        (fm, _) => fm,
+    };
+    let body = mutate_body(body).unwrap_or_else(|| body.to_string());
+    let next = match fm {
+        Some(fm) => format_content(&fm, &body)?,
+        None => body,
+    };
+    if next == content {
+        return Ok(());
+    }
+    fast_write(path, next.as_bytes())
+}
+
 fn has_unparsed_fence(content: &str) -> bool {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {

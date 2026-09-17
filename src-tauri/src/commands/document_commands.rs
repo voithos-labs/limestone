@@ -1,4 +1,5 @@
 use crate::commands::source_commands::{source_root, source_uses_frontmatter};
+use crate::services::body::merge_body_tags;
 use crate::services::fs::{atomic_write, move_file, resolve_in_source, validate_file_name};
 use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
 use crate::AppData;
@@ -79,20 +80,20 @@ pub async fn write_document(
             .await
             .map_err(|e| e.to_string())?;
     if let Some(doc_id) = doc_id {
-        if let Some(fm) = &fm {
-            let tags: Vec<String> = fm
-                .get("tags")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
-            sync_tags(&mut tx, &doc_id, &tags)
-                .await
-                .map_err(|e| e.to_string())?;
-        }
+        let mut tags: Vec<String> = fm
+            .as_ref()
+            .and_then(|fm| fm.get("tags"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        merge_body_tags(&mut tags, body);
+        sync_tags(&mut tx, &doc_id, &tags)
+            .await
+            .map_err(|e| e.to_string())?;
         sync_folders(&mut tx, &source_id, &doc_id, &rel_path)
             .await
             .map_err(|e| e.to_string())?;
@@ -154,6 +155,11 @@ pub async fn set_document_tags(
         }
     })
     .map_err(|e| e.to_string())?;
+
+    let mut tags = tags;
+    if let Ok(contents) = std::fs::read_to_string(&full_path) {
+        merge_body_tags(&mut tags, frontmatter::split_content(&contents).1);
+    }
 
     let mut tx = app_data.db.begin().await.map_err(|e| e.to_string())?;
     sqlx::query("UPDATE documents SET mtime = ?1 WHERE id = ?2")

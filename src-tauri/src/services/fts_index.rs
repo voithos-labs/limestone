@@ -2,7 +2,9 @@ use rayon::prelude::*;
 use sqlx::SqlitePool;
 use std::collections::HashSet;
 
+use crate::services::body;
 use crate::services::frontmatter;
+use crate::services::source::tag_id;
 use crate::services::Source;
 
 const CHUNK_SIZE: usize = 500;
@@ -55,6 +57,21 @@ pub async fn index_fts(
                 .bind(&body)
                 .execute(&mut *tx)
                 .await?;
+                for tag in body::scan_tags(&body) {
+                    let tag_id = tag_id(&tag);
+                    sqlx::query("INSERT OR IGNORE INTO tags (id, slug) VALUES (?1, ?2)")
+                        .bind(&tag_id)
+                        .bind(&tag)
+                        .execute(&mut *tx)
+                        .await?;
+                    sqlx::query(
+                        "INSERT OR IGNORE INTO document_tags (document_id, tag_id) VALUES (?1, ?2)",
+                    )
+                    .bind(id)
+                    .bind(&tag_id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
             }
         }
         tx.commit().await?;
