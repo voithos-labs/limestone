@@ -3,6 +3,7 @@
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, FilterNode } from '$lib/models/View.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
+	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { rawStatefulValue } from '$lib/views/fieldValue';
 	import { wallClockToMs } from '$lib/views/dateFormat';
@@ -21,6 +22,7 @@
 		createSignal = 0,
 		docPicker,
 		tab,
+		editor,
 		settings,
 		findBarAnchor,
 		dockTarget
@@ -32,6 +34,7 @@
 		createSignal?: number;
 		docPicker?: DocPicker;
 		tab?: TabState;
+		editor?: EditorState;
 		settings: SettingsState;
 		/** The page's own box for the find bar, passed on to a day's entry. */
 		findBarAnchor?: HTMLElement | null;
@@ -638,6 +641,7 @@
 							labels={docLabels}
 							picker={docPicker}
 							{tab}
+							{editor}
 							{settings}
 							{findBarAnchor}
 							{dockTarget}

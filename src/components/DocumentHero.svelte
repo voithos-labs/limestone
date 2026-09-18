@@ -36,6 +36,7 @@
 		onDelete,
 		onDuplicated,
 		compact = false,
+		loaded = true,
 		frontmatterError = null,
 		onFrontmatterFix,
 		propsOpen = $bindable(false),
@@ -45,6 +46,7 @@
 		onDelete?: () => void;
 		onDuplicated?: (copy: DocHandle) => void;
 		compact?: boolean;
+		loaded?: boolean;
 		frontmatterError?: string | null;
 		onFrontmatterFix?: (mode: 'keep' | 'rebuild') => void;
 		propsOpen?: boolean;
@@ -74,7 +76,11 @@
 	let source = $state<Source>(untrack(() => handle.source));
 	let folderList: Folder[] = $state([]);
 	let sources: Source[] = $state([]);
-	let tagList: Tag[] = $state(untrack(() => handle.tags));
+	let tagList: Tag[] = $state(untrack(() => (loaded ? handle.tags : [])));
+
+	$effect(() => {
+		if (loaded) tagList = handle.tags;
+	});
 
 	const folders = $derived(folderList);
 

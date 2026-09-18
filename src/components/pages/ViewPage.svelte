@@ -478,6 +478,7 @@
 						{createSignal}
 						{docPicker}
 						{tab}
+						{editor}
 						{settings}
 						{findBarAnchor}
 						{dockTarget}
@@ -488,6 +489,7 @@
 						face={activeFace}
 						flow={bodyFlow}
 						picker={docPicker}
+						{editor}
 						{tab}
 						{settings}
 						{findBarAnchor}

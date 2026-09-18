@@ -2,6 +2,7 @@
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, FilterNode, MemberRow } from '$lib/models/View.svelte';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
+	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import DocHandle from '$lib/models/DocHandle';
 	import { getDefaultSourceId, listSources, pickCreationSource } from '$lib/models/Source';
 	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
@@ -23,6 +24,7 @@
 		labels = {},
 		picker,
 		tab,
+		editor,
 		settings,
 		findBarAnchor,
 		dockTarget,
@@ -37,6 +39,7 @@
 		labels?: { newTitle?: string; empty?: string; create?: string };
 		picker?: DocPicker;
 		tab?: TabState;
+		editor?: EditorState;
 		settings: SettingsState;
 		/** The page's own box for the find bar, which the document editor draws into. */
 		findBarAnchor?: HTMLElement | null;
@@ -297,6 +300,7 @@
 			<DocumentEditor
 				bind:this={docEditor}
 				tab={docTab}
+				{editor}
 				{settings}
 				{flow}
 				{findBarAnchor}
