@@ -26,6 +26,7 @@
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
 
 	let tags: Tag[] = $state([]);
+	let memberCounts: Map<string, number> = $state(new Map());
 	let query = $state('');
 	let activeIndex = $state(-1);
 	let busy = $state(false);
@@ -68,11 +69,17 @@
 
 	async function reload() {
 		try {
-			tags = await Tag.list();
+			[tags, memberCounts] = await Promise.all([Tag.list(), Tag.memberCounts()]);
 			snapshotOrder();
 		} catch (e) {
 			console.error('load tags failed', e);
 		}
+	}
+
+	function untagLabel(t: Tag): string {
+		const n = memberCounts.get(t.id) ?? 0;
+		if (n === 0) return 'Delete tag';
+		return n === 1 ? 'Untag 1 note' : `Untag ${n} notes`;
 	}
 
 	async function create() {
@@ -298,7 +305,7 @@
 							<ArrowLeft size={14} strokeWidth={2} />
 						</button>
 						<button class="confirm-btn" type="button" onclick={() => confirmDelete(t)}
-							>Confirm</button
+							>{untagLabel(t)}</button
 						>
 					{:else}
 						<button
@@ -544,6 +551,7 @@
 	.confirm-btn {
 		flex-shrink: 0;
 		align-self: center;
+		white-space: nowrap;
 		height: 24px;
 		padding: 0 10px;
 		border: 0;

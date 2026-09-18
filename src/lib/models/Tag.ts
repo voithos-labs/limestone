@@ -57,6 +57,18 @@ class Tag {
 		return rows.map((r) => new Tag(r));
 	}
 
+	static async memberCounts(): Promise<Map<string, number>> {
+		const rows = await select<{ tag_id: string; n: number }>(
+			`SELECT dt.tag_id, COUNT(*) AS n
+             FROM document_tags dt
+                      JOIN documents d ON d.id = dt.document_id
+             WHERE d.deleted_at IS NULL
+             GROUP BY dt.tag_id`,
+			[]
+		);
+		return new Map(rows.map((r) => [r.tag_id, r.n]));
+	}
+
 	static async fromID(id: string): Promise<Tag> {
 		const [row] = await select<TagRow>(`SELECT * FROM tags WHERE id = ?1`, [id]);
 		if (!row) throw new Error(`Tag not found: ${id}`);
