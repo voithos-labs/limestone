@@ -1,4 +1,4 @@
-const ILLEGAL_CHARS = /[<>:"|?*\\/]|\p{Cc}/u;
+const ILLEGAL_CHARS = /[<>:"|?*\\/\[\]#^]|\p{Cc}/u;
 const ILLEGAL_CHARS_ALL = new RegExp(ILLEGAL_CHARS.source, 'gu');
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 const MAX_NAME_BYTES = 255;
