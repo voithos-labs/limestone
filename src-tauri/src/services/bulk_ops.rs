@@ -12,6 +12,7 @@
 //! Structural ops (rename, remove) are recorded to an on-disk journal (i.e. write-ahead)
 //! so an interrupted op finishes on the next launch
 
+use crate::services::body;
 use crate::services::frontmatter;
 use crate::services::fs::{atomic_write, resolve_in_source};
 use crate::services::source::tag_id;
@@ -67,14 +68,25 @@ pub(crate) struct BulkOp {
     source_id: String,
     #[serde(default)]
     rel_paths: Option<Vec<String>>,
+    #[serde(default = "default_true")]
+    use_frontmatter: bool,
     action: BulkAction,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl BulkOp {
-    pub(crate) fn new(source_id: impl Into<String>, action: BulkAction) -> Self {
+    pub(crate) fn new(
+        source_id: impl Into<String>,
+        action: BulkAction,
+        use_frontmatter: bool,
+    ) -> Self {
         Self {
             source_id: source_id.into(),
             rel_paths: None,
+            use_frontmatter,
             action,
         }
     }
@@ -118,6 +130,9 @@ pub(crate) enum BulkAction {
     },
     RemoveTag {
         slug: String,
+    },
+    RewriteLinks {
+        replacements: Vec<(String, String)>,
     },
 }
 
@@ -166,6 +181,16 @@ impl BulkAction {
                 validate_tag(new_slug)
             }
             BulkAction::RemoveTag { slug } => validate_tag(slug),
+            BulkAction::RewriteLinks { replacements } => {
+                if replacements.is_empty() {
+                    return Err("no link replacements".into());
+                }
+                for (old, new) in replacements {
+                    validate_link_target(old)?;
+                    validate_link_target(new)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -325,6 +350,10 @@ async fn fetch_rel_paths(db: &SqlitePool, op: &BulkOp) -> Result<Vec<String>, St
             fetch_paths_with_tag(db, source_id, &tag_id(old_slug)).await
         }
         BulkAction::RemoveTag { slug } => fetch_paths_with_tag(db, source_id, &tag_id(slug)).await,
+        BulkAction::RewriteLinks { replacements } => {
+            let needles: Vec<&str> = replacements.iter().map(|(old, _)| old.as_str()).collect();
+            fetch_paths_mentioning(db, source_id, &needles).await
+        }
     }
 }
 
@@ -361,8 +390,10 @@ async fn execute(
             }
 
             let (slug, field, value) = (view_slug.clone(), field_name.clone(), value.clone());
-            write_files(app, source_path, rel_paths, move |fm| {
-                frontmatter::set_view_field(fm, &slug, &field, value.clone());
+            write_files(app, source_path, rel_paths, move |path| {
+                frontmatter::rewrite_frontmatter(path, |fm| {
+                    frontmatter::set_view_field(fm, &slug, &field, value.clone());
+                })
             })
             .await
         }
@@ -386,8 +417,10 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (slug, from, to) = (view_slug.clone(), old_name.clone(), new_name.clone());
-            write_files(app, source_path, rel_paths, move |fm| {
-                frontmatter::rename_view_field(fm, &slug, &from, &to);
+            write_files(app, source_path, rel_paths, move |path| {
+                frontmatter::rewrite_frontmatter(path, |fm| {
+                    frontmatter::rename_view_field(fm, &slug, &from, &to);
+                })
             })
             .await
         }
@@ -408,8 +441,10 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (slug, field) = (view_slug.clone(), field_name.clone());
-            write_files(app, source_path, rel_paths, move |fm| {
-                frontmatter::remove_view_field(fm, &slug, &field);
+            write_files(app, source_path, rel_paths, move |path| {
+                frontmatter::rewrite_frontmatter(path, |fm| {
+                    frontmatter::remove_view_field(fm, &slug, &field);
+                })
             })
             .await
         }
@@ -439,8 +474,10 @@ async fn execute(
                 old_value.clone(),
                 new_value.clone(),
             );
-            write_files(app, source_path, rel_paths, move |fm| {
-                frontmatter::rename_view_option(fm, &slug, &field, &from, &to);
+            write_files(app, source_path, rel_paths, move |path| {
+                frontmatter::rewrite_frontmatter(path, |fm| {
+                    frontmatter::rename_view_option(fm, &slug, &field, &from, &to);
+                })
             })
             .await
         }
@@ -460,8 +497,10 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (from, to) = (old_slug.clone(), new_slug.clone());
-            write_files(app, source_path, rel_paths, move |fm| {
-                frontmatter::rename_view(fm, &from, &to);
+            write_files(app, source_path, rel_paths, move |path| {
+                frontmatter::rewrite_frontmatter(path, |fm| {
+                    frontmatter::rename_view(fm, &from, &to);
+                })
             })
             .await
         }
@@ -491,8 +530,10 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (from, to) = (old_prefix.clone(), new_prefix.clone());
-            write_files(app, source_path, rel_paths, move |fm| {
-                frontmatter::rename_view_prefix(fm, &from, &to);
+            write_files(app, source_path, rel_paths, move |path| {
+                frontmatter::rewrite_frontmatter(path, |fm| {
+                    frontmatter::rename_view_prefix(fm, &from, &to);
+                })
             })
             .await
         }
@@ -544,8 +585,14 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (from, to) = (old_slug.clone(), new_slug.clone());
-            write_files(app, source_path, rel_paths, move |fm| {
-                frontmatter::rename_tag(fm, &from, &to);
+            let use_frontmatter = op.use_frontmatter;
+            write_files(app, source_path, rel_paths, move |path| {
+                frontmatter::rewrite_document(
+                    path,
+                    use_frontmatter
+                        .then_some(&|fm: &mut Value| frontmatter::rename_tag(fm, &from, &to)),
+                    &|text| body::rewrite_tags(text, &from, Some(&to)),
+                )
             })
             .await
         }
@@ -571,8 +618,22 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let slug = slug.clone();
-            write_files(app, source_path, rel_paths, move |fm| {
-                frontmatter::remove_tag(fm, &slug);
+            let use_frontmatter = op.use_frontmatter;
+            write_files(app, source_path, rel_paths, move |path| {
+                frontmatter::rewrite_document(
+                    path,
+                    use_frontmatter.then_some(&|fm: &mut Value| frontmatter::remove_tag(fm, &slug)),
+                    &|text| body::rewrite_tags(text, &slug, None),
+                )
+            })
+            .await
+        }
+        BulkAction::RewriteLinks { replacements } => {
+            let replacements = replacements.clone();
+            write_files(app, source_path, rel_paths, move |path| {
+                frontmatter::rewrite_document(path, None, &|text| {
+                    body::rewrite_links(text, &replacements)
+                })
             })
             .await
         }
@@ -583,7 +644,7 @@ async fn write_files(
     app: &AppHandle,
     source_path: &Path,
     rel_paths: Vec<String>,
-    mutate: impl Fn(&mut Value) + Send + Sync + 'static,
+    write: impl Fn(&Path) -> std::io::Result<()> + Send + Sync + 'static,
 ) -> Result<BulkResult, String> {
     let total = rel_paths.len();
     if total == 0 {
@@ -603,8 +664,7 @@ async fn write_files(
         let step = (total / 50).max(50);
 
         rel_paths.par_iter().for_each(|rel| {
-            let written = resolve_in_source(&source_path, rel)
-                .and_then(|path| frontmatter::rewrite_frontmatter(&path, &mutate));
+            let written = resolve_in_source(&source_path, rel).and_then(|path| write(&path));
             match written {
                 Ok(()) => {
                     let n = done.fetch_add(1, Ordering::Relaxed) + 1;
@@ -715,6 +775,61 @@ fn json_path(view_slug: &str, field: &str) -> String {
 
 fn json_view_path(view_slug: &str) -> String {
     format!("$.views.\"{view_slug}\"")
+}
+
+async fn fetch_paths_mentioning(
+    db: &SqlitePool,
+    source_id: &str,
+    needles: &[&str],
+) -> Result<Vec<String>, String> {
+    let mut phrases: Vec<String> = Vec::new();
+    for needle in needles {
+        let tokens: Vec<String> = needle
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|t| !t.is_empty())
+            .map(|t| t.replace('"', "\"\""))
+            .collect();
+        if tokens.is_empty() {
+            return fetch_all_paths(db, source_id).await;
+        }
+        phrases.push(format!("\"{}\"", tokens.join(" ")));
+    }
+    let matched: Result<Vec<(String,)>, _> = sqlx::query_as(
+        "SELECT d.rel_path FROM documents_fts f
+                  JOIN documents d ON d.rowid = f.rowid
+         WHERE documents_fts MATCH ?1 AND d.source_id = ?2 AND d.deleted_at IS NULL",
+    )
+    .bind(phrases.join(" OR "))
+    .bind(source_id)
+    .fetch_all(db)
+    .await;
+    match matched {
+        Ok(rows) => Ok(rows.into_iter().map(|(p,)| p).collect()),
+        Err(_) => fetch_all_paths(db, source_id).await,
+    }
+}
+
+async fn fetch_all_paths(db: &SqlitePool, source_id: &str) -> Result<Vec<String>, String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT rel_path FROM documents WHERE source_id = ?1 AND deleted_at IS NULL",
+    )
+    .bind(source_id)
+    .fetch_all(db)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
+}
+
+fn validate_link_target(s: &str) -> Result<(), String> {
+    if s.trim().is_empty() {
+        return Err("link target is empty".into());
+    }
+    if s.chars()
+        .any(|c| c.is_control() || matches!(c, '[' | ']' | '|' | '#' | '^'))
+    {
+        return Err(format!("link target has unsafe characters: {s}"));
+    }
+    Ok(())
 }
 
 fn validate_tag(s: &str) -> Result<(), String> {

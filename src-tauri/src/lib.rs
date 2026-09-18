@@ -281,6 +281,7 @@ pub fn run() {
             commands::bulk_ops_commands::bulk_rename_view_prefix,
             commands::bulk_ops_commands::bulk_rename_tag,
             commands::bulk_ops_commands::bulk_remove_tag,
+            commands::bulk_ops_commands::bulk_rewrite_links,
             commands::db_commands::sql_select,
             commands::db_commands::sql_execute,
             commands::asset_commands::import_global_asset,

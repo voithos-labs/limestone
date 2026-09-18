@@ -103,7 +103,7 @@ class Tag {
 		const results = await bulkPerSource(
 			'bulk_rename_tag',
 			{ oldSlug: tag.slug, newSlug },
-			{ frontmatterOnly: true, silent: true }
+			{ silent: true }
 		);
 		Tag.toastSkippedSources(results, 'renamed');
 		await remapIdsInSavedViews(tag.id, newId);
@@ -112,11 +112,7 @@ class Tag {
 
 	static async delete(tag: Tag): Promise<void> {
 		await flushAll();
-		const results = await bulkPerSource(
-			'bulk_remove_tag',
-			{ slug: tag.slug },
-			{ frontmatterOnly: true, silent: true }
-		);
+		const results = await bulkPerSource('bulk_remove_tag', { slug: tag.slug }, { silent: true });
 		Tag.toastSkippedSources(results, 'removed');
 	}
 }
