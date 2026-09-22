@@ -19,7 +19,6 @@
 		field,
 		sourceId,
 		autoOpenValue = false,
-		onFieldClick,
 		onOpChange,
 		onValueChange,
 		onRemove
@@ -35,7 +34,6 @@
 		field?: ViewField;
 		sourceId?: string;
 		autoOpenValue?: boolean;
-		onFieldClick?: () => void;
 		onOpChange?: (op: string) => void;
 		onValueChange?: (value: unknown) => void;
 		onRemove?: () => void;
@@ -67,16 +65,17 @@
 </script>
 
 <div class="chip">
-	<button class="seg seg-field" type="button" onclick={onFieldClick}>
+	<span class="seg seg-field">
 		<Icon size={13} strokeWidth={1.75} />
 		<span class="seg-label">{fieldName}</span>
-	</button>
+	</span>
 
 	<span class="divider"></span>
 
 	<button
 		class="seg seg-op"
 		class:open={opOpen}
+		class:static={!onOpChange}
 		type="button"
 		onclick={handleOpClick}
 		bind:this={opEl}
@@ -90,6 +89,7 @@
 			class="seg seg-value"
 			class:open={valueOpen}
 			class:empty={value === ''}
+			class:static={!onValueChange}
 			type="button"
 			onclick={handleValueClick}
 			bind:this={valueEl}
@@ -176,6 +176,15 @@
 	.seg:hover {
 		background: var(--chip-seg-hover);
 		color: var(--color-text-secondary);
+	}
+
+	.seg-field,
+	.seg-field:hover,
+	.seg.static,
+	.seg.static:hover {
+		background: transparent;
+		color: inherit;
+		cursor: default;
 	}
 
 	.seg:active {

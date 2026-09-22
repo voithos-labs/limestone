@@ -1,15 +1,10 @@
 <script lang="ts">
-	import { folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { untrack } from 'svelte';
 	import { flip } from 'svelte/animate';
-	import type { Component } from 'svelte';
 	import {
 		ChevronDown,
 		Table,
-		Columns3,
 		List,
-		Calendar,
-		Pin,
 		Layers,
 		Pencil,
 		Copy,
@@ -25,7 +20,6 @@
 		CalendarClock,
 		ScanLine,
 		ScanBarcode,
-		Columns3Cog,
 		ChevronRight
 	} from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
@@ -33,30 +27,17 @@
 		ViewFace,
 		ViewFaceType,
 		ViewField,
-		ViewFieldType,
 		FilterNode
 	} from '$lib/models/View.svelte';
-	import { VIEW_FIELD_SORTABLE, sanitizeName } from '$lib/models/View.svelte';
+	import { VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
-	import { getFieldIcon } from '$lib/views/filterDisplay';
+	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import Menu from './Menu.svelte';
-	import FaceFilters from './FaceFilters.svelte';
-	import ViewManageMenu from './ViewManageMenu.svelte';
 
 	let { view, face }: { view: View; face: ViewFace } = $props();
 
-	const FACE_ICON: Record<ViewFaceType, Component> = {
-		table: Table,
-		kanban: Columns3,
-		list: List,
-		grid: LayoutGrid,
-		doc: FileText,
-		calendar: Calendar,
-		pinned: Pin,
-		journal: NotebookText
-	};
-	const faceIcon = (t: ViewFaceType) => FACE_ICON[t] ?? Table;
+	const faceIcon = getFaceIcon;
 	const SwitchIcon = $derived(faceIcon(face.type));
 
 	// A journal is a day navigator around a body face, so the options that belong to
@@ -75,33 +56,6 @@
 
 	let groupEl: HTMLButtonElement | null = $state(null);
 	let groupOpen = $state(false);
-
-	// ── Fields (columns shown in this face) ───────────────────────────────────
-	let fieldsEl: HTMLButtonElement | null = $state(null);
-	let fieldsOpen = $state(false);
-	const shownCount = $derived(target.display_field_ids.length);
-
-	function toggleColumn(id: string) {
-		if (target.display_field_ids.includes(id)) {
-			target.display_field_ids = target.display_field_ids.filter((fid: string) => fid !== id);
-		} else {
-			target.display_field_ids = [...target.display_field_ids, id];
-		}
-	}
-
-	function addField(type: ViewFieldType): ViewField {
-		const field = view.addFieldOfType(type);
-		target.display_field_ids = [...target.display_field_ids, field.id];
-		return field;
-	}
-
-	function renameField(fieldId: string, raw: string) {
-		const f = view.fields.find((ff) => ff.id === fieldId);
-		if (!f) return;
-		const newName = sanitizeName(raw);
-		if (!newName || newName === f.name) return;
-		view.renameField(f, newName).catch((e) => console.error('rename field failed', e));
-	}
 
 	// ── List / grid / doc face options (sort) ────────────────────────────────
 	let sortEl: HTMLButtonElement | null = $state(null);
@@ -182,25 +136,6 @@
 		target.sort = [{ field_id: v, direction: sortDir }];
 	}
 
-	const faceFilterCount = $derived(
-		face.additive_filter.children.filter((n: FilterNode) => 'field_id' in n).length
-	);
-
-	const sourceScopeId = $derived.by(() => {
-		for (const n of view.filter.children) {
-			if (!('field_id' in n)) continue;
-			const f = view.fields.find((ff) => ff.id === n.field_id);
-			if (
-				f?.type === 'folder' &&
-				n.op === 'in' &&
-				typeof n.value === 'string' &&
-				isSourceRoot(n.value)
-			)
-				return folderIdSource(n.value);
-		}
-		return undefined;
-	});
-
 	const groupable = $derived(
 		view.fields.filter(
 			(f: ViewField) => f.type === 'select' || f.type === 'multiselect' || f.type === 'boolean'
@@ -233,7 +168,7 @@
 	function onPopLeave() {
 		if (dragId) return;
 		if (!closeOnSwapLeave) return;
-		if (groupOpen || addFaceOpen || renamingId || confirmFor || fieldsOpen) return;
+		if (groupOpen || addFaceOpen || renamingId || confirmFor) return;
 		if (sortOpen || bodyOpen || dateFieldOpen) return;
 		open = false;
 	}
@@ -393,7 +328,6 @@
 	function anyFlyoutOpen(): boolean {
 		return (
 			addFaceOpen ||
-			fieldsOpen ||
 			groupOpen ||
 			sortOpen ||
 			bodyOpen ||
@@ -451,7 +385,6 @@
 				renamingId = null;
 				groupOpen = false;
 				addFaceOpen = false;
-				fieldsOpen = false;
 				closeOnSwapLeave = false;
 			});
 			queueMicrotask(() => {
@@ -606,26 +539,8 @@
 		<div class="face-scope">
 			<SwitchIcon size={13} strokeWidth={2} />
 			<span class="face-scope-name">{face.label}</span>
-			<span class="face-scope-tag">Face Options</span>
+			<span class="face-scope-tag">Options</span>
 		</div>
-
-		<div class="divider"></div>
-
-		{#if target.type !== 'doc'}
-			<button
-				class="action group-toggle"
-				type="button"
-				data-nav
-				data-flyout
-				bind:this={fieldsEl}
-				onclick={() => (fieldsOpen = !fieldsOpen)}
-			>
-				<Columns3Cog size={14} strokeWidth={1.75} />
-				<span>Fields</span>
-				<span class="trailing">{shownCount} shown</span>
-				<ChevronRight size={13} strokeWidth={2} />
-			</button>
-		{/if}
 
 		{#if target.type === 'table'}
 			<button
@@ -697,27 +612,7 @@
 			</button>
 		{/if}
 
-		<div class="divider"></div>
-
-		<div class="pop-label">
-			Face Filters{#if faceFilterCount > 0}{' · '}{faceFilterCount}{/if}
-		</div>
-		<FaceFilters {view} {face} sourceId={sourceScopeId} />
 	</div>
-
-	<ViewManageMenu
-		bind:open={fieldsOpen}
-		anchor={fieldsEl}
-		fields={view.fields}
-		shownIds={target.display_field_ids}
-		canAddFields={!view.temporary && !!view.unit}
-		addHint={view.unit ? 'Save the view to add fields' : 'Fields belong to tags and folders'}
-		placement="right"
-		onToggleVisible={toggleColumn}
-		onDelete={(id) => view.removeField(id)}
-		onAddField={addField}
-		onRename={renameField}
-	/>
 
 	{#if target.type === 'table'}
 		<Menu
@@ -798,7 +693,7 @@
 	.pop {
 		position: fixed;
 		z-index: 1000;
-		width: 260px;
+		width: 240px;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;

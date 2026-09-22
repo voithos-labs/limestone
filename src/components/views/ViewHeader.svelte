@@ -1,35 +1,23 @@
 <script lang="ts">
 	import type View from '$lib/models/View.svelte';
-	import type { FilterNode, FilterLeaf, ViewField } from '$lib/models/View.svelte';
-	import { VIEW_FIELD_OPS, sanitizeName } from '$lib/models/View.svelte';
-	import Tag from '$lib/models/Tag';
-	import Folder, { folderIdSource, isSourceRoot } from '$lib/models/Folder';
-	import { getSource, sourceName } from '$lib/models/Source';
-	import FilterChipIsland from './FilterChipIsland.svelte';
-	import Menu from './Menu.svelte';
+	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
+	import { sanitizeName } from '$lib/models/View.svelte';
 	import FaceSwitcher from './FaceSwitcher.svelte';
+	import ViewManageMenu from './ViewManageMenu.svelte';
+	import FilterEditor from './FilterEditor.svelte';
 	import EmojiPicker from './EmojiPicker.svelte';
 	import DocPickerPanel from './DocPicker.svelte';
 	import type { DocPicker } from '$lib/views/docPicker.svelte';
+	import { getFaceIcon } from '$lib/views/filterDisplay';
 	import {
-		getFieldIcon,
-		getOpLabel,
-		opHasValue,
-		formatFilterValue,
-		opsFor
-	} from '$lib/views/filterDisplay';
-	import { fieldLabel } from '$lib/views/fieldValue';
-	import {
-		ListFilterPlus,
 		Funnel,
-		ChevronLeft,
-		ChevronRight,
 		ChevronDown,
 		Search,
 		EllipsisVertical,
+		Columns3Cog,
 		X
 	} from '@lucide/svelte';
-	import { onMount, untrack } from 'svelte';
+	import { untrack } from 'svelte';
 
 	let {
 		view,
@@ -46,6 +34,35 @@
 	const activeFace = $derived(
 		view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
 	);
+
+	// ── Fields (columns shown in the active face; a journal's body is the face) ───
+	const fieldTarget = $derived(
+		activeFace?.type === 'journal' ? (activeFace.body ?? activeFace) : activeFace
+	);
+	let fieldsEl: HTMLButtonElement | null = $state(null);
+	let fieldsOpen = $state(false);
+
+	function toggleColumn(id: string) {
+		const t = fieldTarget;
+		if (!t) return;
+		t.display_field_ids = t.display_field_ids.includes(id)
+			? t.display_field_ids.filter((fid) => fid !== id)
+			: [...t.display_field_ids, id];
+	}
+
+	function addField(type: ViewFieldType): ViewField {
+		const field = view.addFieldOfType(type);
+		if (fieldTarget) fieldTarget.display_field_ids = [...fieldTarget.display_field_ids, field.id];
+		return field;
+	}
+
+	function renameField(fieldId: string, raw: string) {
+		const f = view.fields.find((ff) => ff.id === fieldId);
+		if (!f) return;
+		const newName = sanitizeName(raw);
+		if (!newName || newName === f.name) return;
+		view.renameField(f, newName).catch((e) => console.error('rename field failed', e));
+	}
 
 	// a journal searches whatever it renders for the day
 	const effectiveType = $derived(
@@ -83,170 +100,39 @@
 		}
 	}
 
-	const fieldsById = $derived(new Map(view.fields.map((f: ViewField) => [f.id, f])));
+	// ── Filters popover: view filters and the active face's subfilters ─────────
+	let filtersEl: HTMLButtonElement | null = $state(null);
+	let filtersPopEl: HTMLDivElement | null = $state(null);
+	let filtersOpen = $state(false);
+	let filtersPos: { top: number; left: number } = $state({ top: 0, left: 0 });
 
-	const leafFilters: FilterLeaf[] = $derived(
-		view.filter.children.filter((n: FilterNode): n is FilterLeaf => 'field_id' in n)
-	);
+	function positionFilters() {
+		if (!filtersEl || !filtersPopEl) return;
+		const a = filtersEl.getBoundingClientRect();
+		const m = filtersPopEl.getBoundingClientRect();
+		let left = a.left;
+		if (left + m.width > window.innerWidth - 8) left = Math.max(8, a.right - m.width);
+		filtersPos = { top: a.bottom + 4, left };
+	}
 
-	const sourceScopeLeaf: FilterLeaf | undefined = $derived.by(() => {
-		for (const leaf of leafFilters) {
-			const field = fieldsById.get(leaf.field_id);
-			if (
-				field?.type === 'folder' &&
-				leaf.op === 'in' &&
-				typeof leaf.value === 'string' &&
-				isSourceRoot(leaf.value)
-			) {
-				return leaf;
-			}
-		}
-		return undefined;
-	});
-	const sourceScopeId: string | undefined = $derived(sourceScopeLeaf?.value as string | undefined);
-
-	let groupNames: Record<string, string> = $state({});
-	let sourceNames: Record<string, string> = $state({});
+	function onFiltersPointerDown(e: PointerEvent) {
+		if (!filtersOpen) return;
+		const t = e.target as HTMLElement;
+		if (filtersPopEl?.contains(t) || filtersEl?.contains(t)) return;
+		if (t.closest?.('.menu, .pop')) return;
+		filtersOpen = false;
+	}
 
 	$effect(() => {
-		const folderIds = new Set<string>();
-		const tagIds = new Set<string>();
-		const sourceIds = new Set<string>();
-		for (const leaf of leafFilters) {
-			const field = fieldsById.get(leaf.field_id);
-			if (!field) continue;
-			if (field.type === 'folder') {
-				if (typeof leaf.value === 'string') {
-					if (isSourceRoot(leaf.value)) sourceIds.add(folderIdSource(leaf.value));
-					else folderIds.add(leaf.value);
-				}
-			} else if (field.type === 'tags') {
-				if (Array.isArray(leaf.value)) {
-					for (const v of leaf.value) if (typeof v === 'string') tagIds.add(v);
-				}
-			}
-		}
-		for (const id of folderIds) {
-			if (id in groupNames) continue;
-			Folder.fromID(id)
-				.then((f) => {
-					groupNames = { ...groupNames, [id]: f.slug };
-				})
-				.catch(() => {
-					groupNames = { ...groupNames, [id]: id };
-				});
-		}
-		for (const id of tagIds) {
-			if (id in groupNames) continue;
-			Tag.fromID(id)
-				.then((t) => {
-					groupNames = { ...groupNames, [id]: t.slug };
-				})
-				.catch(() => {
-					groupNames = { ...groupNames, [id]: id };
-				});
-		}
-		for (const id of sourceIds) {
-			if (id in sourceNames) continue;
-			getSource(id)
-				.then((s) => {
-					sourceNames = { ...sourceNames, [id]: sourceName(s) };
-				})
-				.catch(() => {
-					sourceNames = { ...sourceNames, [id]: id };
-				});
-		}
+		if (!filtersOpen) return;
+		queueMicrotask(positionFilters);
+		window.addEventListener('resize', positionFilters);
+		document.addEventListener('pointerdown', onFiltersPointerDown);
+		return () => {
+			window.removeEventListener('resize', positionFilters);
+			document.removeEventListener('pointerdown', onFiltersPointerDown);
+		};
 	});
-
-	function displayValue(leaf: FilterLeaf, field: ViewField | undefined): string | undefined {
-		if (!opHasValue(leaf.op)) return undefined;
-		if (!field) return formatFilterValue(leaf.value);
-		if (field.type === 'tags') {
-			const arr = Array.isArray(leaf.value) ? leaf.value : [];
-			if (arr.length === 0) return '';
-			return arr.map((id) => groupNames[String(id)] ?? String(id)).join(', ');
-		}
-		if (field.type === 'folder') {
-			if (typeof leaf.value !== 'string') return '';
-			return groupNames[leaf.value] ?? sourceNames[leaf.value] ?? leaf.value;
-		}
-		if (field.type === 'boolean') {
-			return leaf.value ? 'Checked' : 'Unchecked';
-		}
-		return formatFilterValue(leaf.value);
-	}
-
-	function valuePillsFor(leaf: FilterLeaf, field: ViewField | undefined) {
-		if (!field || (leaf.op !== 'any_of' && leaf.op !== 'has_all')) return undefined;
-		const vals = Array.isArray(leaf.value)
-			? leaf.value.filter((v): v is string => typeof v === 'string')
-			: [];
-		if (vals.length === 0) return undefined;
-		const opts = (field.config?.options ?? []) as { value: string; color: number }[];
-		return vals.map((v) => ({ label: v, color: opts.find((o) => o.value === v)?.color ?? 0 }));
-	}
-
-	function removeFilter(node: FilterLeaf) {
-		const i = view.filter.children.indexOf(node);
-		if (i >= 0) view.filter.children.splice(i, 1);
-	}
-
-	function changeOp(node: FilterLeaf, newOp: string) {
-		const wasArray = node.op === 'any_of' || node.op === 'has_all';
-		const isArray = newOp === 'any_of' || newOp === 'has_all';
-		node.op = newOp;
-		if (wasArray !== isArray) node.value = isArray ? [] : null;
-	}
-
-	function changeValue(node: FilterLeaf, newValue: unknown) {
-		node.value = newValue;
-	}
-
-	function defaultValueFor(field: ViewField): unknown {
-		return field.type === 'tags' ? [] : null;
-	}
-
-	let addFilterEl: HTMLButtonElement | null = $state(null);
-	let addFilterOpen = $state(false);
-
-	const fieldPickerItems = $derived(
-		view.fields.map((f: ViewField) => ({
-			value: f.id,
-			label: fieldLabel(f),
-			icon: getFieldIcon(f.type)
-		}))
-	);
-
-	let pendingFocusLeaf: FilterLeaf | null = $state(null);
-
-	function addFilterByField(fieldId: string) {
-		const field = view.fields.find((f) => f.id === fieldId);
-		if (!field) return;
-		const ops = VIEW_FIELD_OPS[field.type] ?? [];
-		const op = ops[0] ?? 'eq';
-		view.filter.children.push({
-			field_id: field.id,
-			op,
-			value: defaultValueFor(field)
-		});
-		pendingFocusLeaf = view.filter.children[view.filter.children.length - 1] as FilterLeaf;
-		if (view.state.filters_collapsed) view.state.filters_collapsed = false;
-	}
-
-	let chipsWidth = $state(0);
-	let hasMounted = $state(false);
-	onMount(() => {
-		requestAnimationFrame(() => requestAnimationFrame(() => (hasMounted = true)));
-	});
-
-	// Translate vertical wheel into horizontal scroll over the overflowing bar
-	function onFilterWheel(e: WheelEvent) {
-		const el = e.currentTarget as HTMLElement;
-		if (el.scrollWidth <= el.clientWidth) return;
-		if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-		el.scrollLeft += e.deltaY;
-		e.preventDefault();
-	}
 
 	// ── Inline view-title editing, type-in-place. A unit view is named by its unit ────
 	let slugDraft = $state(untrack(() => view.slug));
@@ -364,7 +250,7 @@
 
 <EmojiPicker bind:open={emojiOpen} anchor={emojiAnchor} onPick={setEmoji} />
 
-<div class="filter-bar" onwheel={onFilterWheel}>
+<div class="filter-bar">
 	{#if !hasCover}
 		<div class="title-inline">
 			{@render titleBlock()}
@@ -374,67 +260,64 @@
 
 	<FaceSwitcher {view} face={activeFace} />
 
-	{#if leafFilters.length > 0}
+	{#if fieldTarget}
 		<button
 			class="collapse-toggle"
 			type="button"
-			aria-label={view.state.filters_collapsed ? 'Show filters' : 'Hide filters'}
-			onclick={() => (view.state.filters_collapsed = !view.state.filters_collapsed)}
+			aria-label="Fields"
+			title="Fields"
+			bind:this={fieldsEl}
+			onclick={() => (fieldsOpen = !fieldsOpen)}
 		>
-			<Funnel size={13} strokeWidth={1.75} />
-			{#if view.state.filters_collapsed}
-				<ChevronRight size={13} strokeWidth={2} />
-			{:else}
-				<ChevronLeft size={13} strokeWidth={2} />
-			{/if}
+			<Columns3Cog size={14} strokeWidth={1.75} />
 		</button>
+		<ViewManageMenu
+			bind:open={fieldsOpen}
+			anchor={fieldsEl}
+			title={view.unit ? `${view.slug} fields` : 'Fields'}
+			fields={view.fields}
+			shownIds={fieldTarget.display_field_ids}
+			canAddFields={!view.temporary && !!view.unit}
+			canToggle={fieldTarget.type !== 'doc'}
+			onToggleVisible={toggleColumn}
+			onDelete={(id) => view.removeField(id)}
+			onAddField={addField}
+			onRename={renameField}
+		/>
 	{/if}
 
-	<div
-		class="chips-wrap"
-		class:collapsed={view.state.filters_collapsed}
-		class:animate={hasMounted}
-		style:max-width={view.state.filters_collapsed ? '0px' : hasMounted ? chipsWidth + 'px' : 'none'}
+	<button
+		class="collapse-toggle"
+		type="button"
+		aria-label="Filters"
+		title="Filters"
+		bind:this={filtersEl}
+		onclick={() => (filtersOpen = !filtersOpen)}
 	>
-		<div class="chips-inner" bind:clientWidth={chipsWidth}>
-			{#each leafFilters as leaf (leaf)}
-				{@const field = fieldsById.get(leaf.field_id)}
-				<FilterChipIsland
-					icon={getFieldIcon(field?.type)}
-					fieldName={field ? fieldLabel(field) : 'unknown'}
-					operator={getOpLabel(leaf.op)}
-					opValue={leaf.op}
-					opOptions={opsFor(field?.type)}
-					value={displayValue(leaf, field)}
-					valuePills={valuePillsFor(leaf, field)}
-					rawValue={leaf.value}
-					{field}
-					sourceId={leaf === sourceScopeLeaf ? undefined : sourceScopeId}
-					autoOpenValue={leaf === pendingFocusLeaf}
-					onOpChange={(op) => changeOp(leaf, op)}
-					onValueChange={(v) => changeValue(leaf, v)}
-					onRemove={() => removeFilter(leaf)}
+		<Funnel size={14} strokeWidth={1.75} />
+	</button>
+
+	{#if filtersOpen}
+		<div
+			class="pop filters-pop"
+			bind:this={filtersPopEl}
+			style:top="{filtersPos.top}px"
+			style:left="{filtersPos.left}px"
+			role="menu"
+			tabindex="-1"
+		>
+			<FilterEditor {view} filter={view.filter} label="Filters" showUnit />
+			{#if activeFace}
+				<div class="divider"></div>
+				<FilterEditor
+					{view}
+					filter={activeFace.additive_filter}
+					label="{activeFace.label} subfilters"
+					icon={getFaceIcon(activeFace.type)}
 				/>
-			{/each}
-			<button
-				class="add-filter"
-				type="button"
-				aria-label="Add filter"
-				bind:this={addFilterEl}
-				onclick={() => (addFilterOpen = !addFilterOpen)}
-			>
-				<ListFilterPlus size={14} strokeWidth={2} />
-			</button>
+			{/if}
 		</div>
-	</div>
-	<Menu
-		bind:open={addFilterOpen}
-		anchor={addFilterEl}
-		items={fieldPickerItems}
-		onSelect={addFilterByField}
-		searchable={fieldPickerItems.length > 7}
-		placeholder="Search fields…"
-	/>
+	{/if}
 
 	<label class="search-chip" bind:this={searchChipEl}>
 		<Search size={13} strokeWidth={1.75} />
@@ -662,58 +545,24 @@
 		color: var(--color-text-primary);
 	}
 
-	.chips-wrap {
-		overflow: hidden;
-		flex-shrink: 0;
-	}
-
-	.chips-wrap.collapsed {
-		margin-left: -6px;
-	}
-
-	.chips-wrap.animate {
-		transition:
-			max-width 240ms ease,
-			margin-left 240ms ease;
-	}
-
-	.chips-inner {
-		display: flex;
-		gap: 6px;
-		width: max-content;
-	}
-
-	.chips-wrap.animate .chips-inner {
-		transition:
-			transform 240ms ease,
-			opacity 160ms ease;
-	}
-
-	.chips-wrap.collapsed .chips-inner {
-		opacity: 0;
-		transform: translateX(-10px);
-	}
-
-	.add-filter {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		height: 28px;
-		padding: 0 10px;
-		flex-shrink: 0;
-		background: var(--chip-bg);
-		border: none;
-		border-radius: 6px;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-		transition:
-			background-color 120ms ease,
-			color 120ms ease;
-	}
-
-	.add-filter:hover {
-		background: var(--chip-bg-hover);
+	.pop.filters-pop {
+		position: fixed;
+		z-index: 1000;
+		width: 240px;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		box-shadow: var(--menu-shadow);
+		padding: 4px;
+		font-family: var(--font-ui);
+		font-size: 13px;
 		color: var(--color-text-primary);
+	}
+
+	.filters-pop .divider {
+		height: 1px;
+		margin: 10px 6px 4px;
+		background: var(--color-border);
 	}
 
 	.more-btn {

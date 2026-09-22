@@ -237,8 +237,8 @@
 		if (view.temporary) return;
 		try {
 			const stored = (await listSavedViewJSON()).find((v) => v.id === view.id);
-			if (stored && JSON.stringify(stored.fields) !== JSON.stringify(view.fields)) {
-				view.fields = stored.fields;
+			if (stored && JSON.stringify(stored.fields) !== JSON.stringify(view.ownFields)) {
+				view.setOwnFields(stored.fields);
 			}
 		} catch (e) {
 			console.error('refresh view fields failed', e);

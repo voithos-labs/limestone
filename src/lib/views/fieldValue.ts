@@ -95,8 +95,6 @@ export function valueFor(field: ViewField, row: MemberRow): string {
 	switch (field.type) {
 		case 'title':
 			return row.title;
-		case 'path':
-			return row.rel_path;
 		case 'id':
 			return row.id;
 		case 'created_at':
@@ -149,7 +147,6 @@ const PRETTY_FIELD: Record<string, string> = {
 	id: 'ID',
 	tags: 'Tags',
 	folder: 'Location',
-	path: 'Path',
 	created_at: 'Created',
 	updated_at: 'Updated'
 };

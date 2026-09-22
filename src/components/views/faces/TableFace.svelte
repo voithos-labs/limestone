@@ -19,6 +19,8 @@
 		isLeafActive,
 		isDerived,
 		isLockedField,
+		isBuiltinField,
+		BUILTIN_UNITS,
 		CREATABLE_FIELD_TYPES,
 		sanitizeName,
 		describeBulkFailure
@@ -60,7 +62,8 @@
 		Folder as FolderIcon,
 		Notebook,
 		Ellipsis,
-		X
+		X,
+		Hash
 	} from '@lucide/svelte';
 	import {
 		defaultNoteDir,
@@ -201,8 +204,6 @@
 	// Fixed table layout: every column has a definite width (stable, no wobble, like notion)
 	function defaultWidth(type: ViewFieldType): number {
 		switch (type) {
-			case 'path':
-				return 300;
 			case 'text':
 				return 200;
 			case 'multiselect':
@@ -627,25 +628,31 @@
 	let addColEl: HTMLElement | null = $state(null);
 
 	const addColItems = $derived.by(() => {
-		const items: any[] = view.fields
-			.filter((f) => !face.display_field_ids.includes(f.id))
-			.map((f) => ({ value: `show:${f.id}`, label: fieldLabel(f), icon: getFieldIcon(f.type) }));
+		const hidden = view.fields.filter((f) => !face.display_field_ids.includes(f.id));
+		const show = (f: ViewField) => ({
+			value: `show:${f.id}`,
+			label: fieldLabel(f),
+			icon: getFieldIcon(f.type)
+		});
+		const items: any[] = hidden.filter((f) => !isBuiltinField(f)).map(show);
+		// registry fields sit under their unit so it's clear where they come from
+		for (const u of Object.values(BUILTIN_UNITS)) {
+			const group = hidden.filter((f) => f.unit === u.unit && isBuiltinField(f));
+			if (group.length === 0) continue;
+			items.push({
+				value: `builtin:${u.unit}`,
+				label: u.unit.slice('tag:'.length),
+				icon: Hash,
+				children: group.map(show)
+			});
+		}
 		if (!view.temporary && view.unit) {
 			if (items.length) items.push({ kind: 'divider' });
 			for (const t of CREATABLE_FIELD_TYPES) {
 				items.push({ value: `new:${t}`, label: `New ${t}`, icon: getFieldIcon(t) });
 			}
 		}
-		if (items.length === 0) {
-			items.push({
-				value: 'noop',
-				label: !view.unit
-					? 'Fields belong to tags and folders'
-					: view.temporary
-						? 'Save the view to add fields'
-						: 'All fields shown'
-			});
-		}
+		if (items.length === 0) items.push({ value: 'noop', label: 'All fields shown' });
 		return items;
 	});
 
@@ -1295,13 +1302,7 @@
 		}
 		if (field.type === 'folder') {
 			await moveRowToFolder(row, typeof value === 'string' ? value : null, folderDir);
-			const pathField = view.fields.find((f) => f.type === 'path');
-			if (
-				row.id !== DRAFT_ID &&
-				(fieldAffectsView(field.id) || (pathField && fieldAffectsView(pathField.id)))
-			) {
-				load(true);
-			}
+			if (row.id !== DRAFT_ID && fieldAffectsView(field.id)) load(true);
 			return;
 		}
 		if (row.id === DRAFT_ID) {
@@ -1376,7 +1377,7 @@
 	function cellClassFor(type: ViewFieldType): string {
 		if (type === 'title') return 'cell-title';
 		if (type === 'created_at' || type === 'updated_at') return 'cell-time';
-		if (type === 'path' || type === 'id') return 'cell-mono';
+		if (type === 'id') return 'cell-mono';
 		// Pill cells clip cleanly at the edge rather than appending a "…"
 		if (type === 'select' || type === 'multiselect' || type === 'tags')
 			return 'cell-default cell-pill';

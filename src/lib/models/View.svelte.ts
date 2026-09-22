@@ -177,7 +177,6 @@ const BUILTIN_FIELD_TYPES = [
 	'id',
 	'tags',
 	'folder',
-	'path',
 	'created_at',
 	'updated_at'
 ] as const;
@@ -383,8 +382,7 @@ export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	title: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
 	id: ['eq', 'neq'],
 	tags: ['has_any', 'has_all', 'has_none'],
-	folder: ['in', 'not_in'],
-	path: ['contains', 'not_contains', 'starts_with'],
+	folder: ['in', 'not_in', 'contains', 'not_contains', 'starts_with'],
 	created_at: ['before', 'on_or_before', 'after', 'on_or_after'],
 	updated_at: ['before', 'on_or_before', 'after', 'on_or_after']
 };
@@ -412,7 +410,7 @@ export const VIEW_FIELD_SORTABLE: ReadonlySet<ViewFieldType> = new Set([
 	'select',
 	'title',
 	'id',
-	'path',
+	'folder',
 	'created_at',
 	'updated_at'
 ]);
@@ -455,15 +453,14 @@ function resolveColumn(field: ViewField): string {
 			return 'd.id';
 		case 'title':
 			return 'd.title';
-		case 'path':
+		case 'folder':
 			return 'd.rel_path';
 		case 'created_at':
 			return 'd.created_at';
 		case 'updated_at':
 			return 'd.updated_at';
 		case 'tags':
-		case 'folder':
-			throw new Error(`${field.type} field has no scalar column; handle separately`);
+			throw new Error(`tags field has no scalar column; handle separately`);
 		default:
 			return `json_extract(d.properties, '$.views."${pathSeg(fieldKey(field), 'unit key')}"."${pathSeg(field.name, 'field name')}"')`;
 	}
@@ -491,6 +488,15 @@ function compileUnit(unitId: string): CompiledFilter {
 }
 
 function compileFolderLeaf(op: string, value: unknown): CompiledFilter {
+	// text ops match the location as written; membership ops take a folder id
+	switch (op) {
+		case 'contains':
+			return { sql: `d.rel_path LIKE '%' || ? || '%'`, params: [value] };
+		case 'not_contains':
+			return { sql: `d.rel_path NOT LIKE '%' || ? || '%'`, params: [value] };
+		case 'starts_with':
+			return { sql: `d.rel_path LIKE ? || '%'`, params: [value] };
+	}
 	// a folder id carries its path, so a subtree is an id range. A child extends its parent
 	// with '/' (0x2F), whose successor is '0' (0x30); the source root has no separator before
 	// its children, so its bound comes from the successor of its trailing ':' (0x3A)
@@ -659,7 +665,7 @@ function compileLeafSql(field: ViewField, op: string, value: unknown): CompiledF
 			}
 			return { sql: `${expr} NOT LIKE '%' || ? || '%'`, params: [value] };
 		case 'is_empty':
-			if (field.type === 'text' || field.type === 'title' || field.type === 'path') {
+			if (field.type === 'text' || field.type === 'title') {
 				return { sql: `(${expr} IS NULL OR ${expr} = '')`, params: [] };
 			}
 			if (field.type === 'multiselect') {
@@ -667,7 +673,7 @@ function compileLeafSql(field: ViewField, op: string, value: unknown): CompiledF
 			}
 			return { sql: `${expr} IS NULL`, params: [] };
 		case 'is_not_empty':
-			if (field.type === 'text' || field.type === 'title' || field.type === 'path') {
+			if (field.type === 'text' || field.type === 'title') {
 				return { sql: `(${expr} IS NOT NULL AND ${expr} <> '')`, params: [] };
 			}
 			if (field.type === 'multiselect') {
@@ -862,12 +868,11 @@ class View {
 		this.unit = json.unit ?? null;
 		this.createdAt = json.created_at;
 		this.updatedAt = json.updated_at;
-		this.fields = [
-			...json.fields
-				.filter((f) => !isBuiltinField(f))
-				.map((f) => (this.unit && !isDerived(f.type) && !f.unit ? { ...f, unit: this.unit } : f)),
-			...builtinFields()
-		];
+		this.setOwnFields(
+			json.fields.map((f) =>
+				this.unit && !isDerived(f.type) && !f.unit ? { ...f, unit: this.unit } : f
+			)
+		);
 		this.filter = json.filter;
 		this.faces = json.faces.map((j) => new ViewFace(j));
 		this.state = json.state ?? {};
@@ -902,7 +907,7 @@ class View {
 		if (!this.pristine) return;
 		const snap = JSON.parse(this.pristine);
 		this.slug = snap.slug;
-		this.fields = [...snap.fields, ...builtinFields()];
+		this.setOwnFields(snap.fields);
 		this.filter = snap.filter;
 		this.faces = snap.faces.map((j: ViewFaceJSON) => new ViewFace(j));
 	}
@@ -963,6 +968,10 @@ class View {
 	// fields this view defines, i.e. everything but the registry overlay
 	get ownFields(): ViewField[] {
 		return this.fields.filter((f) => !isBuiltinField(f));
+	}
+
+	setOwnFields(fields: ViewField[]): void {
+		this.fields = [...fields.filter((f) => !isBuiltinField(f)), ...builtinFields()];
 	}
 
 	private initDefaultFaces(): void {

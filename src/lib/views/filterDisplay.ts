@@ -9,12 +9,33 @@ import {
 	Tag,
 	Folder,
 	Fingerprint,
-	Route,
 	CalendarPlus2,
 	CalendarClock,
-	Filter
+	Filter,
+	Table,
+	Columns3,
+	List,
+	LayoutGrid,
+	FileText,
+	Pin,
+	NotebookText
 } from '@lucide/svelte';
-import { VIEW_FIELD_OPS, type ViewFieldType } from '$lib/models/View.svelte';
+import { VIEW_FIELD_OPS, type ViewFaceType, type ViewFieldType } from '$lib/models/View.svelte';
+
+const FACE_ICONS: Record<ViewFaceType, Component> = {
+	table: Table,
+	kanban: Columns3,
+	list: List,
+	grid: LayoutGrid,
+	doc: FileText,
+	calendar: Calendar,
+	pinned: Pin,
+	journal: NotebookText
+};
+
+export function getFaceIcon(type: ViewFaceType): Component {
+	return FACE_ICONS[type] ?? Table;
+}
 
 export interface OpOption {
 	value: string;
@@ -32,7 +53,6 @@ export const FIELD_TYPE_ICONS: Record<ViewFieldType, Component> = {
 	id: Fingerprint,
 	tags: Tag,
 	folder: Folder,
-	path: Route,
 	created_at: CalendarPlus2,
 	updated_at: CalendarClock
 };

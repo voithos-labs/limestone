@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { Plus } from '@lucide/svelte';
+	import type { Component } from 'svelte';
 	import type View from '$lib/models/View.svelte';
-	import type { ViewFace, ViewField, FilterLeaf, FilterNode } from '$lib/models/View.svelte';
+	import type { FilterCompound, ViewField, FilterLeaf, FilterNode } from '$lib/models/View.svelte';
 	import { VIEW_FIELD_OPS } from '$lib/models/View.svelte';
 	import Tag from '$lib/models/Tag';
 	import Folder, { folderIdSource, isSourceRoot } from '$lib/models/Folder';
@@ -14,22 +15,50 @@
 		opsFor
 	} from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
+	import { Tags, Folder as FolderIcon } from '@lucide/svelte';
 	import FilterChipIsland from './FilterChipIsland.svelte';
 	import Menu from './Menu.svelte';
 
+	// edits the leaves of one 'and' compound: a view's filter or a face's subfilter
 	let {
 		view,
-		face,
-		sourceId
+		filter,
+		label,
+		icon,
+		showUnit = false
 	}: {
 		view: View;
-		face: ViewFace;
-		sourceId?: string;
+		filter: FilterCompound;
+		label: string;
+		icon?: Component;
+		showUnit?: boolean; // a unit view's implicit scope, shown as a chip that can't be edited
 	} = $props();
+	const Icon = $derived(icon);
+	const unitChip = $derived(
+		showUnit && view.unit
+			? view.unit.startsWith('tag:')
+				? { icon: Tags, fieldName: 'Tags', operator: 'any', value: view.slug }
+				: { icon: FolderIcon, fieldName: 'Location', operator: 'in', value: view.slug }
+			: null
+	);
 
 	const fieldsById = $derived(new Map(view.fields.map((f: ViewField) => [f.id, f])));
 	const leaves = $derived(
-		face.additive_filter.children.filter((n: FilterNode): n is FilterLeaf => 'field_id' in n)
+		filter.children.filter((n: FilterNode): n is FilterLeaf => 'field_id' in n)
+	);
+
+	// a view scoped to one source narrows every other folder pick to that source
+	const sourceScopeLeaf = $derived.by(() => {
+		for (const n of view.filter.children) {
+			if (!('field_id' in n)) continue;
+			const f = fieldsById.get(n.field_id);
+			if (f?.type === 'folder' && n.op === 'in' && typeof n.value === 'string' && isSourceRoot(n.value))
+				return n;
+		}
+		return undefined;
+	});
+	const sourceId = $derived(
+		sourceScopeLeaf ? folderIdSource(sourceScopeLeaf.value as string) : undefined
 	);
 
 	let groupNames: Record<string, string> = $state({});
@@ -43,7 +72,7 @@
 			const field = fieldsById.get(leaf.field_id);
 			if (!field) continue;
 			if (field.type === 'folder') {
-				if (typeof leaf.value === 'string') {
+				if (typeof leaf.value === 'string' && (leaf.op === 'in' || leaf.op === 'not_in')) {
 					if (isSourceRoot(leaf.value)) sourceIds.add(folderIdSource(leaf.value));
 					else folderIds.add(leaf.value);
 				}
@@ -110,11 +139,20 @@
 		return vals.map((v) => ({ label: v, color: opts.find((o) => o.value === v)?.color ?? 0 }));
 	}
 
+	// what kind of value an op takes; the value survives an op change within one kind
+	function valueKind(field: ViewField | undefined, op: string): string {
+		if (op === 'is_empty' || op === 'is_not_empty') return 'none';
+		if (op === 'any_of' || op === 'has_all' || op === 'has_any' || op === 'has_none') return 'list';
+		if (field?.type === 'folder') return op === 'in' || op === 'not_in' ? 'folder' : 'text';
+		return 'scalar';
+	}
+
 	function changeOp(node: FilterLeaf, newOp: string) {
-		const wasArray = node.op === 'any_of' || node.op === 'has_all';
-		const isArray = newOp === 'any_of' || newOp === 'has_all';
+		const field = fieldsById.get(node.field_id);
+		const was = valueKind(field, node.op);
+		const now = valueKind(field, newOp);
 		node.op = newOp;
-		if (wasArray !== isArray) node.value = isArray ? [] : null;
+		if (was !== now && now !== 'none' && was !== 'none') node.value = now === 'list' ? [] : null;
 	}
 
 	function changeValue(node: FilterLeaf, v: unknown) {
@@ -122,8 +160,8 @@
 	}
 
 	function removeFilter(node: FilterLeaf) {
-		const i = face.additive_filter.children.indexOf(node);
-		if (i >= 0) face.additive_filter.children.splice(i, 1);
+		const i = filter.children.indexOf(node);
+		if (i >= 0) filter.children.splice(i, 1);
 	}
 
 	function defaultValueFor(field: ViewField): unknown {
@@ -137,10 +175,8 @@
 		if (!field) return;
 		const ops = VIEW_FIELD_OPS[field.type] ?? [];
 		const op = ops[0] ?? 'eq';
-		face.additive_filter.children.push({ field_id: field.id, op, value: defaultValueFor(field) });
-		pendingFocusLeaf = face.additive_filter.children[
-			face.additive_filter.children.length - 1
-		] as FilterLeaf;
+		filter.children.push({ field_id: field.id, op, value: defaultValueFor(field) });
+		pendingFocusLeaf = filter.children[filter.children.length - 1] as FilterLeaf;
 	}
 
 	const fieldPickerItems = $derived(
@@ -155,7 +191,31 @@
 	let addOpen = $state(false);
 </script>
 
+<div class="ff-head">
+	{#if Icon}<Icon size={12} strokeWidth={2} />{/if}
+	<span>{label}</span>
+	<button
+		class="ff-add"
+		type="button"
+		aria-label="Add filter"
+		title="Add filter"
+		bind:this={addEl}
+		onclick={() => (addOpen = !addOpen)}
+	>
+		<Plus size={14} strokeWidth={2} />
+	</button>
+</div>
 <div class="ff">
+	{#if unitChip}
+		<div class="ff-chip">
+			<FilterChipIsland
+				icon={unitChip.icon}
+				fieldName={unitChip.fieldName}
+				operator={unitChip.operator}
+				value={unitChip.value}
+			/>
+		</div>
+	{/if}
 	{#each leaves as leaf (leaf)}
 		{@const field = fieldsById.get(leaf.field_id)}
 		<div class="ff-chip">
@@ -169,7 +229,7 @@
 				valuePills={valuePillsFor(leaf, field)}
 				rawValue={leaf.value}
 				{field}
-				{sourceId}
+				sourceId={leaf === sourceScopeLeaf ? undefined : sourceId}
 				autoOpenValue={leaf === pendingFocusLeaf}
 				onOpChange={(op) => changeOp(leaf, op)}
 				onValueChange={(v) => changeValue(leaf, v)}
@@ -177,11 +237,6 @@
 			/>
 		</div>
 	{/each}
-
-	<button class="ff-add" type="button" bind:this={addEl} onclick={() => (addOpen = !addOpen)}>
-		<Plus size={14} strokeWidth={1.75} />
-		<span>Add filter</span>
-	</button>
 </div>
 
 <Menu
@@ -223,28 +278,34 @@
 		box-shadow: var(--menu-shadow);
 	}
 
-	.ff-add {
+	.ff-head {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		width: 100%;
-		padding: 6px 8px;
+		gap: 5px;
+		padding: 4px 4px 4px 8px;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--color-ui-muted);
+	}
+
+	.ff-add {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		margin-left: auto;
+		width: 22px;
+		height: 22px;
 		border: 0;
 		background: transparent;
 		border-radius: 5px;
 		color: var(--color-ui-muted);
-		font: inherit;
-		font-size: 13px;
-		text-align: left;
 		cursor: pointer;
 	}
 
 	.ff-add:hover {
 		background: var(--menu-item-hover);
 		color: var(--color-text-primary);
-	}
-
-	.ff-add :global(svg) {
-		flex-shrink: 0;
 	}
 </style>
