@@ -6,6 +6,7 @@
 	import DocHandle from '$lib/models/DocHandle';
 	import { getDefaultSourceId, listSources, pickCreationSource } from '$lib/models/Source';
 	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
+	import { seedProperties } from '$lib/views/fieldValue';
 	import Folder from '$lib/models/Folder';
 	import type { DocPicker } from '$lib/views/docPicker.svelte';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
@@ -243,9 +244,7 @@
 
 			const dir = folderId ? folderPath(folderId) : '';
 			const groupIds = [...ctx.tagGroupIds];
-			const properties = Object.keys(ctx.fieldValues).length
-				? { views: { [view.propKey]: ctx.fieldValues } }
-				: {};
+			const properties = seedProperties(view.fields, ctx.fieldValues);
 
 			const doc = await DocHandle.createFromTitle(source, {
 				title: title?.trim() || labels.newTitle || 'Untitled',

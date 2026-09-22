@@ -63,7 +63,7 @@
 	const editingField = $derived(editingEntry?.fields.find((f) => f.id === editing?.fieldId));
 	const editingValue = $derived.by(() => {
 		if (!editingEntry || !editingField || !row) return null;
-		return rawStatefulValue(row, editingEntry.view.propKey, editingField.name);
+		return rawStatefulValue(row, editingField);
 	});
 
 	// save on editor destruct (close)
@@ -92,7 +92,7 @@
 		try {
 			row = {
 				...current,
-				properties: withStatefulValue(current.properties, view.propKey, field.name, value)
+				properties: withStatefulValue(current.properties, field, value)
 			};
 			const result = await view.writeFieldValue(handle.source.id, field, value, [current.id]);
 			if (result.failed > 0) {
@@ -109,7 +109,7 @@
 	function onCellClick(e: MouseEvent, view: View, field: ViewField) {
 		if (!row) return;
 		if (field.type === 'boolean') {
-			const cur = rawStatefulValue(row, view.propKey, field.name);
+			const cur = rawStatefulValue(row, field);
 			writeCell(view, field, cur === true ? false : true);
 			return;
 		}
@@ -149,7 +149,7 @@
 									type="button"
 									onclick={(e) => onCellClick(e, entry.view, field)}
 								>
-									<CellValue {field} row={row!} viewSlug={entry.view.propKey} />
+									<CellValue {field} row={row!} />
 								</button>
 							</div>
 						{/each}

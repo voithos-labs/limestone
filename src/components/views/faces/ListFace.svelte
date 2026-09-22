@@ -9,6 +9,7 @@
 	} from '$lib/models/View.svelte';
 	import { isLeafActive } from '$lib/models/View.svelte';
 	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
+	import { seedProperties } from '$lib/views/fieldValue';
 	import { select } from '$lib/services/db';
 	import { searchDocuments } from '$lib/services/search';
 	import type { SearchResult } from '$lib/types/SearchResult';
@@ -132,7 +133,7 @@
 
 	$effect(() => {
 		const sig = [
-			view.propKey,
+			view.unit ?? '',
 			nodeSig(view.filter),
 			nodeSig(face.additive_filter),
 			scope ? nodeSig(scope) : '',
@@ -361,14 +362,11 @@
 			if (!source) throw new Error('No source available to create in');
 			const dir = createCtx.folderGroupId ? folderPath(createCtx.folderGroupId) : '';
 			const groupIds = [...createCtx.tagGroupIds];
-			const props = Object.keys(createCtx.fieldValues).length
-				? { views: { [view.propKey]: createCtx.fieldValues } }
-				: {};
 			const doc = await DocHandle.createFromTitle(source, {
 				title: 'Untitled',
 				dir,
 				groupIds,
-				properties: props
+				properties: seedProperties(view.fields, createCtx.fieldValues)
 			});
 			// keep the note inside the view's date scope (e.g. a journal body on a past day)
 			const createdAt = createMetaDate(createCtx, 'created_at');
@@ -433,7 +431,6 @@
 						<FaceCard
 							{row}
 							fields={metaFields}
-							viewSlug={view.propKey}
 							{sources}
 							tags={tagSlugsFor(row.id)}
 							preview={previews[row.id] ?? ''}

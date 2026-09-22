@@ -89,23 +89,6 @@ pub async fn bulk_rename_view_field(
 }
 
 #[tauri::command]
-pub async fn bulk_rename_view(
-    app_data: State<'_, AppData>,
-    app: AppHandle,
-    source_id: String,
-    old_slug: String,
-    new_slug: String,
-) -> Result<BulkResult, String> {
-    run(
-        &app_data,
-        &app,
-        &source_id,
-        BulkAction::RenameView { old_slug, new_slug },
-    )
-    .await
-}
-
-#[tauri::command]
 pub async fn bulk_rename_view_prefix(
     app_data: State<'_, AppData>,
     app: AppHandle,

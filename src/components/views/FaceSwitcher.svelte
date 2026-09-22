@@ -710,7 +710,8 @@
 		anchor={fieldsEl}
 		fields={view.fields}
 		shownIds={target.display_field_ids}
-		canAddFields={!view.temporary}
+		canAddFields={!view.temporary && !!view.unit}
+		addHint={view.unit ? 'Save the view to add fields' : 'Fields belong to tags and folders'}
 		placement="right"
 		onToggleVisible={toggleColumn}
 		onDelete={(id) => view.removeField(id)}

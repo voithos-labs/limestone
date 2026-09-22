@@ -38,7 +38,8 @@
 		isEditable,
 		isMetaField,
 		fieldLabel,
-		withStatefulValue
+		withStatefulValue,
+		seedProperties
 	} from '$lib/views/fieldValue';
 	import { toWallClock } from '$lib/views/dateFormat';
 	import { select } from '$lib/services/db';
@@ -361,7 +362,7 @@
 
 	function fullSignature(): string {
 		return [
-			view.propKey,
+			view.unit ?? '',
 			nodeSig(view.filter),
 			nodeSig(face.additive_filter),
 			scope ? nodeSig(scope) : '',
@@ -628,7 +629,7 @@
 		const items: any[] = view.fields
 			.filter((f) => !face.display_field_ids.includes(f.id))
 			.map((f) => ({ value: `show:${f.id}`, label: fieldLabel(f), icon: getFieldIcon(f.type) }));
-		if (!view.temporary) {
+		if (!view.temporary && view.unit) {
 			if (items.length) items.push({ kind: 'divider' });
 			for (const t of CREATABLE_FIELD_TYPES) {
 				items.push({ value: `new:${t}`, label: `New ${t}`, icon: getFieldIcon(t) });
@@ -637,7 +638,11 @@
 		if (items.length === 0) {
 			items.push({
 				value: 'noop',
-				label: view.temporary ? 'Save the view to add fields' : 'All fields shown'
+				label: !view.unit
+					? 'Fields belong to tags and folders'
+					: view.temporary
+						? 'Save the view to add fields'
+						: 'All fields shown'
 			});
 		}
 		return items;
@@ -771,13 +776,12 @@
 		menuOpen = true;
 	}
 
-	// thin wrappers binding this view's slug / sources to the shared helpers
-	const rawStatefulValue = (field: ViewField, row: Row) =>
-		rawStateful(row, view.propKey, field.name);
-	const statefulValue = (field: ViewField, row: Row) => stateful(row, view.propKey, field.name);
-	const rawArrayValue = (field: ViewField, row: Row) => rawArray(row, view.propKey, field.name);
+	// thin wrappers binding this view's sources to the shared helpers
+	const rawStatefulValue = (field: ViewField, row: Row) => rawStateful(row, field);
+	const statefulValue = (field: ViewField, row: Row) => stateful(row, field);
+	const rawArrayValue = (field: ViewField, row: Row) => rawArray(row, field);
 	const tagClass = tagClassOf;
-	const valueFor = (field: ViewField, row: Row) => valueOf(field, row, view.propKey);
+	const valueFor = (field: ViewField, row: Row) => valueOf(field, row);
 	const sourceName = (id: string) => sourceNameOf(sources, id);
 
 	// ── Draft (new-row) state ───────────────────────────────────────────────────
@@ -804,7 +808,7 @@
 		rel_path: '',
 		created_at: draft.createdAt,
 		updated_at: draft.createdAt,
-		properties: JSON.stringify({ views: { [view.propKey]: draft.values } }),
+		properties: JSON.stringify(seedProperties(view.fields, draft.values)),
 		source_id: createCtx.sourceId ?? ''
 	}));
 
@@ -1304,7 +1308,7 @@
 		}
 		try {
 			const result = await view.writeFieldValue(row.source_id, field, value, [row.id]);
-			applyLocal(row.id, field.name, value);
+			applyLocal(row.id, field, value);
 			if (result.failed > 0) {
 				toasts.push(describeBulkFailure(result), {
 					action: { label: 'Retry', run: () => writeCell(field, row, value) }
@@ -1359,15 +1363,13 @@
 		}
 	}
 
-	function applyLocal(rowId: string, name: string, value: unknown) {
+	function applyLocal(rowId: string, field: ViewField, value: unknown) {
 		rows = rows.map((r) =>
-			r.id === rowId
-				? { ...r, properties: withStatefulValue(r.properties, view.propKey, name, value) }
-				: r
+			r.id === rowId ? { ...r, properties: withStatefulValue(r.properties, field, value) } : r
 		);
 	}
 
-	const titleFor = (field: ViewField, row: Row) => titleOf(field, row, view.propKey);
+	const titleFor = (field: ViewField, row: Row) => titleOf(field, row);
 
 	function cellClassFor(type: ViewFieldType): string {
 		if (type === 'title') return 'cell-title';
@@ -1616,14 +1618,11 @@
 			const source = await resolveCreateSource();
 			const dir = folderDirLabel;
 			const groupIds = [...createCtx.tagGroupIds];
-			const props = Object.keys(draft.values).length
-				? { views: { [view.propKey]: draft.values } }
-				: {};
 			const doc = await DocHandle.createFromTitle(source, {
 				title,
 				dir,
 				groupIds,
-				properties: props
+				properties: seedProperties(view.fields, draft.values)
 			});
 			// e.g. a journal body scoped to a past day: the note must carry that day's
 			// date or it drops straight back out of the view it was created in
@@ -1661,7 +1660,7 @@
 {/if}
 
 {#snippet cellInner(field: ViewField, row: Row)}
-	<CellValue {field} {row} viewSlug={view.propKey} {sources} tags={tagsFor(row.id)} />
+	<CellValue {field} {row} {sources} tags={tagsFor(row.id)} />
 {/snippet}
 
 <LeanScroll {flow}>

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type View from '$lib/models/View.svelte';
 	import type { FilterNode, FilterLeaf, ViewField } from '$lib/models/View.svelte';
-	import { VIEW_FIELD_OPS, sanitizeName, isViewSlugTaken } from '$lib/models/View.svelte';
+	import { VIEW_FIELD_OPS, sanitizeName } from '$lib/models/View.svelte';
 	import Tag from '$lib/models/Tag';
 	import Folder, { folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { getSource, sourceName } from '$lib/models/Source';
@@ -248,50 +248,21 @@
 		e.preventDefault();
 	}
 
-	// ── Inline view-title (slug) editing — type-in-place, saved views only ────
+	// ── Inline view-title editing, type-in-place. A unit view is named by its unit ────
 	let slugDraft = $state(untrack(() => view.slug));
-	let slugTaken = $state(false);
-	let slugCheckToken = 0;
+	const slugEmpty = $derived(!sanitizeName(slugDraft));
 
 	$effect(() => {
-		const next = sanitizeName(slugDraft);
-		const token = ++slugCheckToken;
-		if (view.temporary) {
+		if (view.temporary && !view.unit) {
+			const next = sanitizeName(slugDraft);
 			if (next) view.slug = next;
-			slugTaken = !next;
-			return;
 		}
-		if (!next || next === view.slug) {
-			slugTaken = !next;
-			return;
-		}
-		isViewSlugTaken(next, view.id).then((taken) => {
-			if (token === slugCheckToken) slugTaken = taken;
-		});
 	});
 
-	async function commitSlug() {
+	function commitSlug() {
 		const next = sanitizeName(slugDraft);
-		if (!next) {
-			slugDraft = view.slug;
-			return;
-		}
-		if (view.temporary) {
-			view.slug = next;
-			slugDraft = next;
-			return;
-		}
-		if (next === view.slug) {
-			slugDraft = view.slug;
-			return;
-		}
-		try {
-			await view.renameSlug(next);
-			slugDraft = view.slug;
-		} catch (e) {
-			console.error(e);
-			slugDraft = view.slug;
-		}
+		if (next) view.renameSlug(next);
+		slugDraft = view.slug;
 	}
 
 	function slugKey(e: KeyboardEvent) {
@@ -328,10 +299,11 @@
 		<span class="title-ghost">{slugDraft || ' '}</span>
 		<input
 			class="title-input"
-			class:invalid={slugTaken}
+			class:invalid={slugEmpty}
 			bind:value={slugDraft}
 			onblur={commitSlug}
 			onkeydown={slugKey}
+			readonly={!!view.unit}
 			spellcheck="false"
 		/>
 	</span>
@@ -643,6 +615,10 @@
 		text-decoration: underline;
 		text-decoration-color: var(--error-fg);
 		text-underline-offset: 3px;
+	}
+
+	.title-input[readonly] {
+		cursor: default;
 	}
 
 	.filter-bar {

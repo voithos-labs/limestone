@@ -116,10 +116,6 @@ pub(crate) enum BulkAction {
         old_value: String,
         new_value: String,
     },
-    RenameView {
-        old_slug: String,
-        new_slug: String,
-    },
     RenameViewPrefix {
         old_prefix: String,
         new_prefix: String,
@@ -164,10 +160,6 @@ impl BulkAction {
                 validate_ident(view_slug, "view slug")?;
                 validate_ident(old_name, "field name")?;
                 validate_ident(new_name, "new field name")
-            }
-            BulkAction::RenameView { old_slug, new_slug } => {
-                validate_ident(old_slug, "view slug")?;
-                validate_ident(new_slug, "new view slug")
             }
             BulkAction::RenameViewPrefix {
                 old_prefix,
@@ -340,9 +332,6 @@ async fn fetch_rel_paths(db: &SqlitePool, op: &BulkOp) -> Result<Vec<String>, St
             .map_err(|e| e.to_string())?;
             Ok(rows.into_iter().map(|(p,)| p).collect())
         }
-        BulkAction::RenameView { old_slug, .. } => {
-            fetch_paths_with_field(db, source_id, &json_view_path(old_slug)).await
-        }
         BulkAction::RenameViewPrefix { old_prefix, .. } => {
             fetch_paths_with_view_prefix(db, source_id, old_prefix).await
         }
@@ -477,29 +466,6 @@ async fn execute(
             write_files(app, source_path, rel_paths, move |path| {
                 frontmatter::rewrite_frontmatter(path, |fm| {
                     frontmatter::rename_view_option(fm, &slug, &field, &from, &to);
-                })
-            })
-            .await
-        }
-        BulkAction::RenameView { old_slug, new_slug } => {
-            let old_path = json_view_path(old_slug);
-            let new_path = json_view_path(new_slug);
-            sqlx::query(
-                "UPDATE documents
-                 SET properties = json_remove(json_set(properties, ?1, json_extract(properties, ?2)), ?2)
-                 WHERE source_id = ?3 AND json_extract(properties, ?2) IS NOT NULL",
-            )
-            .bind(&new_path)
-            .bind(&old_path)
-            .bind(source_id)
-            .execute(db)
-            .await
-            .map_err(|e| e.to_string())?;
-
-            let (from, to) = (old_slug.clone(), new_slug.clone());
-            write_files(app, source_path, rel_paths, move |path| {
-                frontmatter::rewrite_frontmatter(path, |fm| {
-                    frontmatter::rename_view(fm, &from, &to);
                 })
             })
             .await
@@ -771,10 +737,6 @@ async fn fetch_paths_with_tag(
 
 fn json_path(view_slug: &str, field: &str) -> String {
     format!("$.views.\"{view_slug}\".\"{field}\"")
-}
-
-fn json_view_path(view_slug: &str) -> String {
-    format!("$.views.\"{view_slug}\"")
 }
 
 async fn fetch_paths_mentioning(

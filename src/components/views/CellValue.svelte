@@ -16,20 +16,18 @@
 	let {
 		field,
 		row,
-		viewSlug,
 		sources = [],
 		tags = []
 	}: {
 		field: ViewField;
 		row: MemberRow;
-		viewSlug: string;
 		sources?: Source[];
 		tags?: string[];
 	} = $props();
 </script>
 
 {#if field.type === 'boolean'}
-	{@const on = rawStatefulValue(row, viewSlug, field.name) === true}
+	{@const on = rawStatefulValue(row, field) === true}
 	<span class="bool" class:on>
 		{#if on}<Square size={15} strokeWidth={2} fill="currentColor" />{:else}<Square
 				size={15}
@@ -37,10 +35,10 @@
 			/>{/if}
 	</span>
 {:else if field.type === 'select'}
-	{@const v = statefulValue(row, viewSlug, field.name)}
+	{@const v = statefulValue(row, field)}
 	{#if v}<span class="pill {tagClass(field, v)}">{v}</span>{:else}<span class="muted">—</span>{/if}
 {:else if field.type === 'multiselect'}
-	{@const arr = rawArrayValue(row, viewSlug, field.name)}
+	{@const arr = rawArrayValue(row, field)}
 	{#if arr.length}
 		<span class="pills">
 			{#each arr as t (t)}<span class="pill {tagClass(field, t)}">{t}</span>{/each}
@@ -55,7 +53,7 @@
 {:else if field.type === 'folder'}
 	<FolderCrumb dir={folderDir(row.rel_path)} rootLabel={sourceName(sources, row.source_id)} />
 {:else}
-	{valueFor(field, row, viewSlug)}
+	{valueFor(field, row)}
 {/if}
 
 <style>

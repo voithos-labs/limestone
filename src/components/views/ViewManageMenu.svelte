@@ -23,6 +23,7 @@
 		fields,
 		shownIds,
 		canAddFields = true,
+		addHint = 'Save the view to add fields',
 		placement = 'bottom',
 		onToggleVisible,
 		onDelete,
@@ -34,6 +35,7 @@
 		fields: ViewField[];
 		shownIds: string[];
 		canAddFields?: boolean;
+		addHint?: string;
 		placement?: 'bottom' | 'right';
 		onToggleVisible: (fieldId: string) => void;
 		onDelete: (fieldId: string) => void;
@@ -379,7 +381,7 @@
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 		{:else}
-			<div class="add-hint">Save the view to add fields</div>
+			<div class="add-hint">{addHint}</div>
 		{/if}
 	</div>
 
