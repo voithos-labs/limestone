@@ -15,6 +15,7 @@
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import MasonryFace from '../views/faces/MasonryFace.svelte';
+	import DashboardFace from '../views/faces/DashboardFace.svelte';
 	import DocFace from '../views/faces/DocFace.svelte';
 	import { DocPicker } from '$lib/views/docPicker.svelte';
 	import { convertFileSrc } from '@tauri-apps/api/core';
@@ -377,9 +378,9 @@
 		if (value === 'confirm-delete') deleteView();
 	}
 
-	function onOpenRow(rowId: string) {
+	function onOpenRow(rowId: string, newTab = false) {
 		DocHandle.fromID(rowId)
-			.then((d) => editor.openDoc(d))
+			.then((d) => (newTab || !tab ? editor.openDoc(d) : editor.showDocInTab(tab, d)))
 			.catch(console.error);
 	}
 </script>
@@ -500,6 +501,8 @@
 					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{:else if activeFace?.type === 'masonry'}
 					<MasonryFace {view} face={activeFace} {onOpenRow} {createSignal} />
+				{:else if activeFace?.type === 'dashboard'}
+					<DashboardFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{:else}
 					<TableFace {view} face={activeFace} {onOpenRow} {createSignal} flow={bodyFlow} />
 				{/if}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { isSourceRoot } from '$lib/models/Folder';
+	import { getViewIcon } from '$lib/views/filterDisplay';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { FocusTarget, TabState } from '$lib/models/EditorState.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -13,10 +13,6 @@
 		Library,
 		Bookmark,
 		ChevronDown,
-		Box,
-		Hash,
-		Folder,
-		FolderInput,
 		X,
 		Plus,
 		TextSearch,
@@ -30,30 +26,6 @@
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import type View from '$lib/models/View.svelte';
-
-	function viewTabIcon(view: View) {
-		if (view.unit) {
-			if (view.unit.startsWith('tag:')) return Hash;
-			return isSourceRoot(view.unit) ? FolderInput : Folder;
-		}
-		const typesById = new Map(view.fields.map((f) => [f.id, f.type]));
-		let hasTags = false;
-		let hasFolder = false;
-		let hasSource = false;
-		for (const n of view.filter.children) {
-			if (!('field_id' in n)) continue;
-			const t = typesById.get(n.field_id);
-			if (t === 'tags') hasTags = true;
-			else if (t === 'folder') {
-				if (typeof n.value === 'string' && isSourceRoot(n.value)) hasSource = true;
-				else hasFolder = true;
-			}
-		}
-		if (hasTags) return Hash;
-		if (hasFolder) return Folder;
-		if (hasSource) return FolderInput;
-		return Box;
-	}
 
 	let { editor, settings }: { editor: EditorState; settings: SettingsState } = $props();
 
@@ -284,7 +256,7 @@
 					{#if d.content.view.emoji}
 						<span class="tab-emoji">{d.content.view.emoji}</span>
 					{:else}
-						{@const TabIcon = viewTabIcon(d.content.view)}
+						{@const TabIcon = getViewIcon(d.content.view)}
 						<TabIcon size={13} />
 					{/if}
 				{:else if d.content.type === 'new'}

@@ -16,7 +16,6 @@
 		Search,
 		EllipsisVertical,
 		Columns3Cog,
-		LayoutArrowDown,
 		X
 	} from '@lucide/svelte';
 	import { untrack } from 'svelte';
@@ -46,7 +45,6 @@
 
 	// arranging fields is a list-face thing; the control sits in a quiet strip under the bar
 	// and only shows itself when the pointer is there
-	const isList = $derived(fieldTarget?.type === 'list');
 	let arrangeOpen = $state(false);
 
 	function toggleColumn(id: string) {
@@ -265,7 +263,7 @@
 		<div class="title-divider"></div>
 	{/if}
 
-	<FaceSwitcher {view} face={activeFace} />
+	<FaceSwitcher {view} face={activeFace} onArrange={() => (arrangeOpen = true)} />
 
 	{#if fieldTarget}
 		<button
@@ -374,13 +372,7 @@
 	{/if}
 </div>
 
-{#if isList && fieldTarget}
-	<div class="display-row" class:pinned={arrangeOpen}>
-		<button class="arrange" type="button" onclick={() => (arrangeOpen = true)}>
-			<LayoutArrowDown size={13} strokeWidth={1.75} />
-			<span>Arrange</span>
-		</button>
-	</div>
+{#if fieldTarget}
 	<ArrangeFields bind:open={arrangeOpen} {view} face={fieldTarget} />
 {/if}
 
@@ -525,7 +517,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		margin-bottom: 14px;
+		margin-bottom: 16px;
 		margin-left: -6px;
 		padding-left: 6px;
 		padding-right: 24px;
@@ -559,46 +551,6 @@
 
 	.collapse-toggle:hover {
 		background: var(--chip-bg-hover);
-		color: var(--color-text-primary);
-	}
-
-	/* a thin strip under the bar; its control appears only when the pointer is over it */
-	.display-row {
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		height: 22px;
-		margin: 4px 24px 6px;
-	}
-
-	.arrange {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		height: 22px;
-		padding: 0 8px;
-		border: none;
-		border-radius: 5px;
-		background: transparent;
-		font-family: var(--font-ui);
-		font-size: 11.5px;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-		opacity: 0;
-		transition:
-			opacity 120ms ease,
-			background-color 120ms ease,
-			color 120ms ease;
-	}
-
-	.display-row:hover .arrange,
-	.display-row.pinned .arrange,
-	.arrange:focus-visible {
-		opacity: 1;
-	}
-
-	.arrange:hover {
-		background: var(--chip-bg);
 		color: var(--color-text-primary);
 	}
 

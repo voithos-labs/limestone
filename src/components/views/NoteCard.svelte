@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Check, EllipsisVertical, ArrowUpRight } from '@lucide/svelte';
+	import { Check, SquareArrowOutUpRight } from '@lucide/svelte';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
 	import type { FaceRows } from '$lib/views/FaceRows.svelte';
 	import type { Preview } from '$lib/views/previews';
@@ -19,7 +19,8 @@
 		meta = [],
 		editMode = false,
 		preview,
-		onOpen
+		onOpen,
+		onFocus
 	}: {
 		row: MemberRow;
 		rows: FaceRows;
@@ -29,7 +30,8 @@
 		meta?: ViewField[];
 		editMode?: boolean;
 		preview?: Preview;
-		onOpen?: (rowId: string) => void;
+		onOpen?: (rowId: string, newTab?: boolean) => void;
+		onFocus?: () => void;
 	} = $props();
 
 	const done = $derived(checkField ? rawStatefulValue(row, checkField) === true : false);
@@ -79,13 +81,14 @@
 	role="listitem"
 	data-id={row.id}
 	tabindex="-1"
-	onclick={() => {
-		if (!editMode) onOpen?.(row.id);
+	onclick={(e) => {
+		if (!editMode) onOpen?.(row.id, e.ctrlKey || e.metaKey);
+	}}
+	onauxclick={(e) => {
+		if (e.button === 1) onOpen?.(row.id, true);
 	}}
 	oncontextmenu={(e) => editors.menu(e, row.id)}
-	onkeydown={(e) => {
-		if (e.key === 'Enter' && !renaming) onOpen?.(row.id);
-	}}
+	onfocus={onFocus}
 >
 	<div class="head">
 		{#if checkField}
@@ -122,31 +125,19 @@
 				{@html highlightTitle(row.title || 'untitled', hit?.match_indices ?? [])}
 			</span>
 		{/if}
-		{#if editMode}
-			<button
-				class="card-btn"
-				type="button"
-				tabindex="-1"
-				aria-label="Open"
-				title="Open"
-				onclick={(e) => {
-					e.stopPropagation();
-					onOpen?.(row.id);
-				}}
-			>
-				<ArrowUpRight size={14} strokeWidth={1.75} />
-			</button>
-		{:else}
-			<button
-				class="card-btn"
-				type="button"
-				tabindex="-1"
-				aria-label="More"
-				onclick={(e) => editors.menu(e, row.id)}
-			>
-				<EllipsisVertical size={14} strokeWidth={1.75} />
-			</button>
-		{/if}
+		<button
+			class="card-btn"
+			type="button"
+			tabindex="-1"
+			aria-label="Open in new tab"
+			title="Open in new tab"
+			onclick={(e) => {
+				e.stopPropagation();
+				onOpen?.(row.id, true);
+			}}
+		>
+			<SquareArrowOutUpRight size={14} strokeWidth={1.75} />
+		</button>
 	</div>
 
 	<div class="body">

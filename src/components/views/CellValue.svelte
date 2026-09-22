@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Square, Hash } from '@lucide/svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
+	import { isBuiltinUnit } from '$lib/models/View.svelte';
 	import type { Source } from '$lib/models/Source';
 	import {
 		rawStatefulValue,
@@ -47,7 +48,9 @@
 {:else if field.type === 'tags'}
 	{#if tags.length}
 		<span class="pills">
-			{#each tags as t (t)}<span class="tag"><Hash size={11} />{t}</span>{/each}
+			{#each tags as t (t)}<span class="tag" class:builtin={isBuiltinUnit(`tag:${t}`)}
+					><Hash size={11} />{t}</span
+				>{/each}
 		</span>
 	{:else}<span class="muted">—</span>{/if}
 {:else if field.type === 'folder'}
@@ -106,6 +109,16 @@
 		color: var(--color-ui-dulled);
 		font-size: 11px;
 		white-space: nowrap;
+	}
+
+	/* a built-in tag is the app's, not the user's: inverted, in the accent */
+	.tag.builtin {
+		background: var(--color-accent);
+		color: #fff;
+	}
+
+	.tag.builtin :global(svg) {
+		opacity: 0.85;
 	}
 
 	.tag :global(svg) {

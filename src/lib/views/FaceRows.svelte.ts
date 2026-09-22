@@ -182,6 +182,8 @@ export class FaceRows {
 	// a value that is the view's own scope says nothing: the tag of a tag view, the folder of
 	// a folder view for notes sitting directly in it
 	get scopeTag(): string | null {
+		const hidden = this.face().config.hide_tag as string | undefined;
+		if (hidden) return hidden.slice('tag:'.length);
 		const u = this.view().unit;
 		return u?.startsWith('tag:') ? u.slice('tag:'.length) : null;
 	}

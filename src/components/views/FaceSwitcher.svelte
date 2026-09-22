@@ -6,6 +6,8 @@
 		Table,
 		List,
 		Layers,
+		Rows3,
+		Tags,
 		Pencil,
 		Copy,
 		Trash2,
@@ -15,6 +17,7 @@
 		FileText,
 		LayoutDashboard,
 		LayoutGrid,
+		LayoutPanelTop,
 		ArrowUpAZ,
 		ArrowDownAZ,
 		ArrowDownUp,
@@ -22,6 +25,7 @@
 		ScanLine,
 		ScanBarcode,
 		PencilLine,
+		LayoutArrowDown,
 		ChevronRight
 	} from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
@@ -31,8 +35,13 @@
 	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import Menu from './Menu.svelte';
+	import { dashboardSections, DASH_SECTION_LABEL } from '$lib/views/dashboard';
 
-	let { view, face }: { view: View; face: ViewFace } = $props();
+	let {
+		view,
+		face,
+		onArrange
+	}: { view: View; face: ViewFace; onArrange?: () => void } = $props();
 
 	const faceIcon = getFaceIcon;
 	const SwitchIcon = $derived(faceIcon(face));
@@ -122,6 +131,28 @@
 	const editInPlace = $derived(target.config.edit_in_place === true);
 	const isCards = $derived(target.config.layout === 'grid');
 
+	// a project face's sections: which ones show
+	let sectionsEl: HTMLButtonElement | null = $state(null);
+	let sectionsOpen = $state(false);
+	const sectionItems = $derived(
+		dashboardSections(target).map((s) => ({
+			value: s.id,
+			label: DASH_SECTION_LABEL[s.id],
+			keepOpen: true
+		}))
+	);
+	const shownSections = $derived(
+		dashboardSections(target)
+			.filter((s) => !s.hidden)
+			.map((s) => s.id)
+	);
+	function toggleSection(id: string) {
+		const all = dashboardSections(target);
+		const next = all.map((s) => (s.id === id ? { ...s, hidden: !s.hidden } : s));
+		if (next.every((s) => s.hidden)) return;
+		target.config.sections = next;
+	}
+
 	function toggleActivity() {
 		face.config.show_activity = !showActivity;
 	}
@@ -176,6 +207,7 @@
 	let addFaceOpen = $state(false);
 	let addFaceEl: HTMLElement | null = $state(null);
 	const ADD_FACE_ITEMS = [
+		{ value: 'dashboard', label: 'Dashboard', icon: LayoutPanelTop },
 		{ value: 'list', label: 'List', icon: List },
 		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
 		{ value: 'masonry', label: 'Masonry', icon: LayoutDashboard },
@@ -331,6 +363,7 @@
 	function anyFlyoutOpen(): boolean {
 		return (
 			addFaceOpen ||
+			sectionsOpen ||
 			groupOpen ||
 			sortOpen ||
 			bodyOpen ||
@@ -388,6 +421,7 @@
 				renamingId = null;
 				groupOpen = false;
 				addFaceOpen = false;
+				sectionsOpen = false;
 				closeOnSwapLeave = false;
 			});
 			queueMicrotask(() => {
@@ -547,6 +581,32 @@
 			<span class="face-scope-tag">Options</span>
 		</div>
 
+		{#if target.type === 'dashboard'}
+			<button
+				class="action group-toggle"
+				type="button"
+				data-nav
+				onclick={() => (target.config.hide_chips = !target.config.hide_chips)}
+			>
+				<Tags size={14} strokeWidth={1.75} />
+				<span>Quick filters</span>
+				<span class="trailing">{target.config.hide_chips ? 'Off' : 'On'}</span>
+			</button>
+			<button
+				class="action group-toggle"
+				type="button"
+				data-nav
+				data-flyout
+				bind:this={sectionsEl}
+				onclick={() => (sectionsOpen = !sectionsOpen)}
+			>
+				<Rows3 size={14} strokeWidth={1.75} />
+				<span>Sections</span>
+				<span class="trailing">{shownSections.length} of {sectionItems.length}</span>
+				<ChevronRight size={13} strokeWidth={2} />
+			</button>
+		{/if}
+
 		{#if target.type === 'list'}
 			<button
 				class="action group-toggle"
@@ -571,6 +631,18 @@
 				<PencilLine size={14} strokeWidth={1.75} />
 				<span>Edit in place</span>
 				<span class="trailing">{editInPlace ? 'On' : 'Off'}</span>
+			</button>
+			<button
+				class="action"
+				type="button"
+				data-nav
+				onclick={() => {
+					open = false;
+					onArrange?.();
+				}}
+			>
+				<LayoutArrowDown size={14} strokeWidth={1.75} />
+				<span>Arrange fields</span>
 			</button>
 		{/if}
 
@@ -644,6 +716,19 @@
 			</button>
 		{/if}
 	</div>
+
+	{#if target.type === 'dashboard'}
+		<Menu
+			bind:open={sectionsOpen}
+			anchor={sectionsEl}
+			items={sectionItems}
+			multiple
+			selectedValues={shownSections}
+			onSelect={toggleSection}
+			minWidth={170}
+			placement="right"
+		/>
+	{/if}
 
 	{#if target.type === 'table'}
 		<Menu

@@ -24,9 +24,10 @@
 		TriangleAlert,
 		FileText,
 		RefreshCw,
-		History
+		History,
+		ArrowLeft
 	} from '@lucide/svelte';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, type Component } from 'svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { flushAll } from '$lib/util/flush';
@@ -40,7 +41,8 @@
 		frontmatterError = null,
 		onFrontmatterFix,
 		propsOpen = $bindable(false),
-		historyOpen = $bindable(false)
+		historyOpen = $bindable(false),
+		back
 	}: {
 		handle: DocHandle;
 		onDelete?: () => void;
@@ -51,6 +53,8 @@
 		onFrontmatterFix?: (mode: 'keep' | 'rebuild') => void;
 		propsOpen?: boolean;
 		historyOpen?: boolean;
+		// where this tab was before, if it navigated here
+		back?: { label: string; icon: Component; emoji?: string; go: () => void };
 	} = $props();
 
 	let fmMenuOpen = $state(false);
@@ -236,6 +240,51 @@
 	// ── Kebab menu ─────────────────────────────────────────────────────────────
 	let menuOpen = $state(false);
 	let menuAnchor: HTMLElement | null = $state(null);
+
+	// The back card sits under the meta row, or beside the title when the pane leaves room for
+	// it there, and lifts off to float at the top of the scroller once the reader scrolls past
+	// it. Its slot keeps the space so the document doesn't jump
+	let innerEl: HTMLElement | null = $state(null);
+	let innerWidth = $state(0);
+	let backSlot: HTMLElement | null = $state(null);
+	let backEl: HTMLElement | null = $state(null);
+	let gutter = $state(false);
+	let cardWidth = $state(0);
+	let floating = $state(false);
+	let floatAt = $state({ x: 0, y: 0 });
+	const FLOAT_INSET = 8;
+	const GUTTER_GAP = 16;
+	$effect(() => {
+		void innerWidth;
+		const slot = backSlot;
+		const inner = innerEl;
+		if (!slot || !inner) return;
+		const host = inner.closest('.content-area') ?? document.body;
+		let scroller: HTMLElement | null = slot.parentElement;
+		while (scroller) {
+			const oy = getComputedStyle(scroller).overflowY;
+			if (oy === 'auto' || oy === 'scroll') break;
+			scroller = scroller.parentElement;
+		}
+		if (!scroller) return;
+		const update = () => {
+			const room =
+				inner.getBoundingClientRect().left + 24 - host.getBoundingClientRect().left - GUTTER_GAP;
+			if (!floating && backEl) cardWidth = backEl.offsetWidth;
+			gutter = room >= cardWidth;
+			const top = scroller!.getBoundingClientRect().top + FLOAT_INSET;
+			const r = slot.getBoundingClientRect();
+			floating = r.top < top;
+			floatAt = { x: r.left, y: top };
+		};
+		update();
+		scroller.addEventListener('scroll', update, { passive: true });
+		window.addEventListener('resize', update);
+		return () => {
+			scroller!.removeEventListener('scroll', update);
+			window.removeEventListener('resize', update);
+		};
+	});
 	let confirmingDelete = $state(false);
 
 	// Properties panel: the toggle lives in the meta bar, the panel renders below.
@@ -319,8 +368,34 @@
 	});
 </script>
 
+{#snippet backCard()}
+		<div class="back-slot" class:gutter style:width={gutter ? `${cardWidth}px` : null} bind:this={backSlot}>
+			<button
+				class="back"
+				class:floating
+				bind:this={backEl}
+				style:left={floating ? `${floatAt.x}px` : null}
+				style:top={floating ? `${floatAt.y}px` : null}
+				type="button"
+				title="Back"
+				onclick={back.go}
+			>
+				<span class="back-arrow"><ArrowLeft size={14} strokeWidth={2} /></span>
+				<span class="back-place">
+					{#if back.emoji}
+						<span class="back-emoji">{back.emoji}</span>
+					{:else}
+						<back.icon size={12} strokeWidth={1.75} />
+					{/if}
+					<span class="back-label">{back.label}</span>
+				</span>
+			</button>
+		</div>
+{/snippet}
+
 <div class="doc-hero">
-	<div class="hero-inner" class:compact>
+	<div class="hero-inner" class:compact bind:this={innerEl} bind:clientWidth={innerWidth}>
+		{#if back && gutter}{@render backCard()}{/if}
 		<button
 			class="kebab"
 			bind:this={menuAnchor}
@@ -349,6 +424,7 @@
 			</span>
 
 			<div class="meta-row">
+				{#if back && !gutter}{@render backCard()}{/if}
 				<button
 					class="loc-chip"
 					bind:this={pickAnchor}
@@ -414,8 +490,7 @@
 
 		{#if source.use_frontmatter}
 			<DocProperties {handle} open={propsOpen} onCount={(n) => (propCount = n)} />
-		{/if}
-	</div>
+		{/if}	</div>
 </div>
 
 <Menu
@@ -489,7 +564,7 @@
 	:global(:root[data-doc-header='full']) .meta-row {
 		justify-content: flex-start;
 		margin-top: 10px;
-		transform: none;
+		top: 0;
 	}
 
 	/* Full header: the meta stacks under the title, so the history chip goes up beside the
@@ -590,6 +665,101 @@
 		top: 2px;
 	}
 
+	/* A small card naming the place the reader came from: arrow, then the place's own icon
+	   and name. It floats at the top of the scroller once scrolled past; the slot holds its
+	   space so the document doesn't jump when it lifts off. */
+	/* The slot leads the meta row, or moves into the gutter beside the title on a wide pane */
+	.back-slot {
+		flex-shrink: 0;
+		height: 24px;
+		margin-right: 4px;
+	}
+
+	.back-slot.gutter {
+		position: absolute;
+		top: 34px;
+		right: calc(100% - 8px);
+		margin: 0;
+		white-space: nowrap;
+	}
+
+	.hero-inner.compact .back-slot.gutter {
+		top: 2px;
+	}
+
+	.back-slot.gutter .back {
+		max-width: none;
+	}
+
+	.back {
+		display: inline-flex;
+		align-items: center;
+		gap: 0;
+		height: 24px;
+		max-width: 100%;
+		padding: 0;
+		border: none;
+		border-radius: 6px;
+		background: var(--color-accent);
+		font-family: var(--font-ui);
+		font-size: 12px;
+		font-weight: 500;
+		color: #fff;
+		cursor: pointer;
+		transition:
+			filter 120ms ease,
+			box-shadow 120ms ease;
+	}
+
+	.back.floating {
+		position: fixed;
+		z-index: 4;
+		box-shadow: var(--menu-shadow);
+	}
+
+	.back-arrow {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		padding: 0 7px;
+		opacity: 0.75;
+	}
+
+	/* The place is its own tinted segment of the card */
+	.back-place {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		min-width: 0;
+		height: 24px;
+		padding: 0 8px 0 6px;
+		background: rgba(255, 255, 255, 0.16);
+	}
+
+	.back-place > :global(svg) {
+		flex-shrink: 0;
+		opacity: 0.85;
+	}
+
+	.back-emoji {
+		font-size: 10px;
+		line-height: 1;
+	}
+
+	.back-label {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	.back:hover .back-arrow {
+		opacity: 1;
+	}
+
+	.back:hover {
+		filter: brightness(1.08);
+	}
+
 	.kebab:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
@@ -603,7 +773,8 @@
 		gap: 6px;
 		flex: 1 1 340px;
 		min-width: 0;
-		transform: translateY(-1px);
+		position: relative;
+		top: -1px;
 		font-family: var(--font-ui);
 		font-size: 12px;
 		color: var(--color-ui-muted);

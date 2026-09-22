@@ -30,7 +30,9 @@
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks-plugin';
 	import { historyDecorations } from './history-decorations';
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
-	import type { TabState } from '$lib/models/EditorState.svelte.js';
+	import { TabState } from '$lib/models/EditorState.svelte.js';
+	import { getViewIcon } from '$lib/views/filterDisplay';
+	import { TextAlignStart } from '@lucide/svelte';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
@@ -59,6 +61,17 @@
 	} = $props();
 
 	let handle = $derived(tab.handle);
+	const back = $derived.by(() => {
+		const prev = tab.back?.content;
+		if (!prev || !editor) return undefined;
+		const view = prev.type === 'view' ? prev.view : undefined;
+		return {
+			label: TabState.titleOf(prev),
+			icon: view ? getViewIcon(view) : TextAlignStart,
+			emoji: view?.emoji,
+			go: () => editor!.goBack(tab)
+		};
+	});
 	let instance = $state<EditorInstance>();
 	let wrapperEl = $state<HTMLDivElement | null>(null);
 	// aragonite's own `.editor` element, which is the scroller outside flow mode. Found by query
@@ -658,6 +671,7 @@
 			onFrontmatterFix={fixFrontmatter}
 			bind:propsOpen
 			bind:historyOpen
+			{back}
 		/>
 	{/if}
 {/snippet}
@@ -686,6 +700,7 @@
 			onFrontmatterFix={fixFrontmatter}
 			bind:propsOpen
 			bind:historyOpen
+			{back}
 		/>
 	{/if}
 	{#if loaded}

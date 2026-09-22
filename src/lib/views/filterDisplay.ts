@@ -16,11 +16,16 @@ import {
 	List,
 	LayoutDashboard,
 	LayoutGrid,
+	LayoutPanelTop,
 	FileText,
 	Pin,
-	NotebookText
+	NotebookText,
+	Box,
+	FolderInput
 } from '@lucide/svelte';
+import { isSourceRoot } from '$lib/models/Folder';
 import { VIEW_FIELD_OPS, type ViewFaceType, type ViewFieldType } from '$lib/models/View.svelte';
+import type View from '$lib/models/View.svelte';
 import type { ViewFace } from '$lib/models/View.svelte';
 
 const FACE_ICONS: Record<ViewFaceType, Component> = {
@@ -28,6 +33,7 @@ const FACE_ICONS: Record<ViewFaceType, Component> = {
 	kanban: Columns3,
 	list: List,
 	masonry: LayoutDashboard,
+	dashboard: LayoutPanelTop,
 	doc: FileText,
 	calendar: Calendar,
 	pinned: Pin,
@@ -37,6 +43,31 @@ const FACE_ICONS: Record<ViewFaceType, Component> = {
 export function getFaceIcon(face: Pick<ViewFace, 'type' | 'isCards'>): Component {
 	if (face.isCards) return LayoutGrid;
 	return FACE_ICONS[face.type] ?? Table;
+}
+
+// what a view is about, for tabs and anywhere else it stands in for a place
+export function getViewIcon(view: View): Component {
+	if (view.unit) {
+		if (view.unit.startsWith('tag:')) return Hash;
+		return isSourceRoot(view.unit) ? FolderInput : Folder;
+	}
+	const typesById = new Map(view.fields.map((f) => [f.id, f.type]));
+	let hasTags = false;
+	let hasFolder = false;
+	let hasSource = false;
+	for (const n of view.filter.children) {
+		if (!('field_id' in n)) continue;
+		const t = typesById.get(n.field_id);
+		if (t === 'tags') hasTags = true;
+		else if (t === 'folder') {
+			if (typeof n.value === 'string' && isSourceRoot(n.value)) hasSource = true;
+			else hasFolder = true;
+		}
+	}
+	if (hasTags) return Hash;
+	if (hasFolder) return Folder;
+	if (hasSource) return FolderInput;
+	return Box;
 }
 
 export interface OpOption {

@@ -9,7 +9,7 @@
 	import RowChips from '../RowChips.svelte';
 	import RowEditors from '../RowEditors.svelte';
 	import NoteCard from '../NoteCard.svelte';
-	import { Check, EllipsisVertical, ArrowUpRight, Plus } from '@lucide/svelte';
+	import { Check, SquareArrowOutUpRight, Plus } from '@lucide/svelte';
 	import { onMount, tick } from 'svelte';
 
 	let {
@@ -21,7 +21,7 @@
 	}: {
 		view: View;
 		face: ViewFace;
-		onOpenRow?: (rowId: string) => void;
+		onOpenRow?: (rowId: string, newTab?: boolean) => void;
 		createSignal?: number;
 		scope?: FilterNode | null;
 	} = $props();
@@ -124,34 +124,113 @@
 		node.select();
 	}
 
-	// ── Keyboard: arrows move, Enter opens, Space toggles the checkbox ──────────
+	// ── Keyboard ───────────────────────────────────────────────────────────────
+	// Arrows move between items (rows: up/down; cards: all four, a row at a time vertically),
+	// Home/End jump, Enter opens, Space ticks the checkbox, Escape lets go. Any open menu or
+	// popover owns the keyboard instead, as does any text field. With nothing focused, the first
+	// list on the page takes the first arrow press and focuses its first (or last) item
 	let listEl: HTMLDivElement | null = $state(null);
 	let focusIdx = $state(-1);
 
-	function focusRow(i: number) {
-		const els = Array.from(listEl?.querySelectorAll<HTMLElement>('.row[data-id]') ?? []);
+	const ITEM = '[data-id].row, [data-id].card';
+
+	function items(): HTMLElement[] {
+		return Array.from(listEl?.querySelectorAll<HTMLElement>(ITEM) ?? []);
+	}
+
+	function focusItem(i: number) {
+		const els = items();
 		if (els.length === 0) return;
 		focusIdx = Math.max(0, Math.min(els.length - 1, i));
-		els[focusIdx].focus();
+		els[focusIdx].focus({ preventScroll: true });
+		els[focusIdx].scrollIntoView({ block: 'nearest' });
+	}
+
+	// how many cards share the first card's row: that's the vertical stride
+	function perRow(): number {
+		const els = items();
+		if (els.length < 2) return 1;
+		const top = els[0].offsetTop;
+		let n = 1;
+		while (n < els.length && els[n].offsetTop === top) n++;
+		return n;
+	}
+
+	function keyboardBusy(): boolean {
+		const a = document.activeElement as HTMLElement | null;
+		if (a && (a.matches('input, textarea, select') || a.isContentEditable)) return true;
+		return !!document.querySelector('.menu, .pop, .overlay, .ctx-menu, [role="dialog"]');
 	}
 
 	function onListKey(e: KeyboardEvent) {
-		if (e.target instanceof HTMLInputElement || renamingId) return;
+		if (keyboardBusy() || renamingId) return;
 		const row = rows.rows[focusIdx];
-		if (e.key === 'ArrowDown') {
-			e.preventDefault();
-			focusRow(focusIdx + 1);
-		} else if (e.key === 'ArrowUp') {
-			e.preventDefault();
-			focusRow(focusIdx - 1);
-		} else if (e.key === 'Enter' && row) {
-			e.preventDefault();
-			onOpenRow?.(row.id);
-		} else if (e.key === ' ' && row && checkField) {
-			e.preventDefault();
-			rows.toggle(row, checkField);
+		const grid = layout === 'grid';
+		const stride = grid ? perRow() : 1;
+		switch (e.key) {
+			case 'ArrowDown':
+				e.preventDefault();
+				focusItem(focusIdx + stride);
+				break;
+			case 'ArrowUp':
+				e.preventDefault();
+				focusItem(focusIdx - stride);
+				break;
+			case 'ArrowRight':
+				if (!grid) return;
+				e.preventDefault();
+				focusItem(focusIdx + 1);
+				break;
+			case 'ArrowLeft':
+				if (!grid) return;
+				e.preventDefault();
+				focusItem(focusIdx - 1);
+				break;
+			case 'Home':
+				e.preventDefault();
+				focusItem(0);
+				break;
+			case 'End':
+				e.preventDefault();
+				focusItem(items().length - 1);
+				break;
+			case 'Enter':
+				if (!row) return;
+				e.preventDefault();
+				onOpenRow?.(row.id);
+				break;
+			case ' ':
+				if (!row || !checkField) return;
+				e.preventDefault();
+				rows.toggle(row, checkField);
+				break;
+			case 'Escape':
+				(document.activeElement as HTMLElement | null)?.blur();
+				focusIdx = -1;
+				break;
 		}
 	}
+
+	// the page's first list catches an arrow press when nothing that uses arrows has focus:
+	// the body, a scroller, a container clicked into. Otherwise the browser scrolls the page
+	function onDocKey(e: KeyboardEvent) {
+		if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+		if (e.defaultPrevented || keyboardBusy()) return;
+		const a = document.activeElement as HTMLElement | null;
+		if (a && a !== document.body && a !== document.documentElement) {
+			if (a.matches('button, a, [role="button"], [role="menuitem"], [tabindex="0"]')) return;
+			if (a.closest('.list-face, .grid')) return;
+		}
+		const first = document.querySelector<HTMLElement>(ITEM);
+		if (!first || !listEl?.contains(first)) return;
+		e.preventDefault();
+		focusItem(e.key === 'ArrowDown' ? 0 : items().length - 1);
+	}
+
+	$effect(() => {
+		document.addEventListener('keydown', onDocKey);
+		return () => document.removeEventListener('keydown', onDocKey);
+	});
 
 	// ── Create: an inline row at the bottom, Enter to add ───────────────────────
 	let newTitle = $state('');
@@ -221,9 +300,10 @@
 {/if}
 
 {#if layout === 'grid'}
-	<div class="grid" role="list">
-		{#each rows.rows as row (row.id)}
+	<div class="grid" role="list" bind:this={listEl} tabindex="-1" onkeydown={onListKey}>
+		{#each rows.rows as row, i (row.id)}
 			<NoteCard
+				onFocus={() => (focusIdx = i)}
 				{row}
 				{rows}
 				{editors}
@@ -259,9 +339,12 @@
 				class:editable={editMode}
 				role="listitem"
 				data-id={row.id}
-				tabindex={i === focusIdx ? 0 : -1}
-				onclick={() => {
-					if (!editMode) onOpenRow?.(row.id);
+				tabindex="-1"
+				onclick={(e) => {
+					if (!editMode) onOpenRow?.(row.id, e.ctrlKey || e.metaKey);
+				}}
+				onauxclick={(e) => {
+					if (e.button === 1) onOpenRow?.(row.id, true);
 				}}
 				onfocus={() => (focusIdx = i)}
 				oncontextmenu={(e) => editors.menu(e, row.id)}
@@ -329,31 +412,19 @@
 						onTags={(r, a) => editors.tags(r, a)}
 					/>
 				</span>
-				{#if editMode}
-					<button
-						class="row-btn"
-						type="button"
-						tabindex="-1"
-						aria-label="Open"
-						title="Open"
-						onclick={(e) => {
-							e.stopPropagation();
-							onOpenRow?.(row.id);
-						}}
-					>
-						<ArrowUpRight size={14} strokeWidth={1.75} />
-					</button>
-				{:else}
-					<button
-						class="row-btn"
-						type="button"
-						tabindex="-1"
-						aria-label="More"
-						onclick={(e) => editors.menu(e, row.id)}
-					>
-						<EllipsisVertical size={14} strokeWidth={1.75} />
-					</button>
-				{/if}
+				<button
+					class="row-btn"
+					type="button"
+					tabindex="-1"
+					aria-label="Open in new tab"
+					title="Open in new tab"
+					onclick={(e) => {
+						e.stopPropagation();
+						onOpenRow?.(row.id, true);
+					}}
+				>
+					<SquareArrowOutUpRight size={14} strokeWidth={1.75} />
+				</button>
 			</div>
 		{/each}
 
@@ -369,7 +440,7 @@
 					class="new-input"
 					class:taken={titleTaken}
 					type="text"
-					placeholder={checkField ? 'New todo, Enter to add' : 'New note, Enter to add'}
+					placeholder={checkField ? 'New todo' : 'New note'}
 					bind:value={newTitle}
 					bind:this={newEl}
 					onkeydown={onNewKey}
@@ -412,6 +483,7 @@
 	}
 
 	.grid {
+		outline: none;
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 		gap: 16px;
@@ -489,6 +561,7 @@
 
 	/* a real checkbox: hollow until done, then filled with the accent */
 	.box {
+		box-sizing: border-box;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -601,16 +674,18 @@
 		white-space: nowrap;
 	}
 
+	/* the row's end cap: full height, flush to the row's edge, dipped on hover */
 	.row-btn {
 		flex: 0 0 auto;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 22px;
-		height: 22px;
+		align-self: stretch;
+		width: 40px;
+		margin: 0 -10px 0 -4px;
 		padding: 0;
 		border: 0;
-		border-radius: 6px;
+		border-radius: 0 8px 8px 0;
 		background: transparent;
 		color: var(--color-ui-muted);
 		cursor: pointer;
@@ -640,19 +715,18 @@
 		background: transparent;
 	}
 
-	.new-mark {
-		opacity: 0.6;
-	}
-
-	.row.new:focus-within .new-mark {
-		opacity: 1;
-	}
-
+	/* the draft mark is the checkbox's ghost: same size, same corner, dashed */
 	.dashed {
-		width: 14px;
-		height: 14px;
-		border: 1.5px dashed currentColor;
-		border-radius: 3px;
+		box-sizing: border-box;
+		width: 18px;
+		height: 18px;
+		border: 1.5px dashed var(--color-ui-muted);
+		border-radius: 5px;
+		opacity: 0.7;
+	}
+
+	.row.new:focus-within .dashed {
+		opacity: 1;
 	}
 
 	.new-input {

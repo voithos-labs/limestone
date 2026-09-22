@@ -63,6 +63,8 @@ export class TabState {
 	content: TabContent = $state() as TabContent;
 	state: Record<string, any> = $state({});
 	pinned: boolean = $state(false);
+	// places this tab showed before the current one, most recent last; not persisted
+	history: { content: TabContent; state: Record<string, any> }[] = $state([]);
 
 	constructor(content: TabContent, state: Record<string, any> = {}, pinned = false) {
 		this.content = content;
@@ -75,28 +77,40 @@ export class TabState {
 	}
 
 	get id(): string {
-		switch (this.content.type) {
+		return TabState.idOf(this.content);
+	}
+
+	static idOf(content: TabContent): string {
+		switch (content.type) {
 			case 'markdown':
-				return this.content.handle.id;
+				return content.handle.id;
 			case 'view':
-				return this.content.view.id;
+				return content.view.id;
 			case 'new':
 			case 'licenses':
-				return this.content.id;
+				return content.id;
 		}
 	}
 
 	get title(): string {
-		switch (this.content.type) {
+		return TabState.titleOf(this.content);
+	}
+
+	static titleOf(content: TabContent): string {
+		switch (content.type) {
 			case 'markdown':
-				return this.content.handle.title;
+				return content.handle.title;
 			case 'view':
-				return this.content.view.slug;
+				return content.view.slug;
 			case 'new':
 				return 'new tab';
 			case 'licenses':
 				return 'Licenses';
 		}
+	}
+
+	get back(): { content: TabContent; state: Record<string, any> } | undefined {
+		return this.history[this.history.length - 1];
 	}
 
 	// dep
@@ -322,23 +336,48 @@ class EditorState {
 		this.focusTab({ kind: 'tab', id: view.id });
 	}
 
-	// a place navigates within its tab, like a folder window: the tab keeps its slot and takes
-	// the new view's identity. If that view is already open elsewhere, go there instead
+	// a tab navigates like a browser tab: it keeps its slot and takes the new content's identity,
+	// remembering where it was so the reader can go back. If that content is already open in
+	// another tab, go there instead
 	showViewInTab(tab: TabState, view: View) {
-		const existing = this.tabs.find(
-			(t) => t.content.type === 'view' && t.content.view.id === view.id
-		);
+		this.showInTab(tab, { type: 'view', view });
+	}
+
+	showDocInTab(tab: TabState, doc: DocHandle) {
+		this.showInTab(tab, { type: 'markdown', handle: doc });
+	}
+
+	private showInTab(tab: TabState, content: TabContent) {
+		const id = TabState.idOf(content);
+		if (id === tab.id) return;
+		const existing = this.tabs.find((t) => t.id === id);
+		if (existing) {
+			this.focusTab({ kind: 'tab', id });
+			return;
+		}
+		tab.history.push({ content: tab.content, state: tab.state });
+		this.swapContent(tab, content, {});
+	}
+
+	goBack(tab: TabState) {
+		const prev = tab.history.pop();
+		if (!prev) return;
+		const existing = this.tabs.find((t) => t !== tab && t.id === TabState.idOf(prev.content));
 		if (existing) {
 			this.focusTab({ kind: 'tab', id: existing.id });
 			return;
 		}
+		this.swapContent(tab, prev.content, prev.state);
+	}
+
+	private swapContent(tab: TabState, content: TabContent, state: Record<string, any>) {
 		const oldId = tab.id;
-		tab.content = { type: 'view', view };
-		tab.state = {};
+		tab.content = content;
+		tab.state = state;
 		this.tabAccessOrderById = this.tabAccessOrderById.filter((v) => v !== oldId);
 		this.focusOrder = this.focusOrder.filter((t) => !(t.kind === 'tab' && t.id === oldId));
 		if (this.focused?.kind === 'tab' && this.focused.id === oldId) this.focused = null;
-		this.focusTab({ kind: 'tab', id: view.id });
+		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	openNewTab() {

@@ -151,6 +151,17 @@ export const actions: Action[] = [
 		}
 	},
 	{
+		id: 'nav.back',
+		title: 'Back',
+		category: 'navigation',
+		defaultKeys: ['alt+arrowleft', 'mod+['],
+		run: (session) => {
+			const ed = session.editors[0];
+			const tab = ed.focusedTab;
+			if (tab) ed.goBack(tab);
+		}
+	},
+	{
 		id: 'nav.library',
 		title: 'Open library',
 		category: 'navigation',

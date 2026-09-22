@@ -38,7 +38,7 @@
 	}: {
 		view: View;
 		face: ViewFace;
-		onOpenRow?: (rowId: string) => void;
+		onOpenRow?: (rowId: string, newTab?: boolean) => void;
 		createSignal?: number;
 		scope?: FilterNode | null;
 		createCard?: boolean;

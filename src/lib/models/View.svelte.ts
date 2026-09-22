@@ -55,7 +55,7 @@ import { toasts } from '$lib/toasts.svelte';
 import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
 
 export type ViewFaceType =
-	'table' | 'list' | 'masonry' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
+	'table' | 'list' | 'masonry' | 'dashboard' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
 
 interface ViewFaceJSON {
 	id: string;
@@ -72,6 +72,7 @@ const FACE_TYPE_LABEL: Record<ViewFaceType, string> = {
 	table: 'Table',
 	list: 'List',
 	masonry: 'Masonry',
+	dashboard: 'Dashboard',
 	doc: 'Document',
 	kanban: 'Board',
 	calendar: 'Calendar',

@@ -14,10 +14,11 @@
 	import Menu from '../views/Menu.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
+	import FolderChips from '../views/FolderChips.svelte';
+	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import {
 		ChevronRight,
 		ChevronDown,
-		EllipsisVertical,
 		Folder as FolderIcon,
 		FolderPlus,
 		FilePlus,
@@ -66,18 +67,6 @@
 	});
 	const projectChildren = $derived(children.filter((f) => projects.has(f.id)));
 	const plainChildren = $derived(children.filter((f) => !projects.has(f.id)));
-
-	// folders show three rows; the rest sit behind a quiet "show more"
-	const ROWS = 3;
-	const CHIP_MIN = 200;
-	const GAP = 10;
-	let foldersW = $state(0);
-	let showAll = $state(false);
-	const perRow = $derived(Math.max(1, Math.floor((foldersW + GAP) / (CHIP_MIN + GAP))));
-	const folderCap = $derived(ROWS * perRow);
-	const visibleFolders = $derived(
-		showAll || query ? plainChildren : plainChildren.slice(0, folderCap)
-	);
 	// where a search hit sits, relative to here
 	const relDir = (f: Folder) => {
 		const p = folderIdPath(f.id);
@@ -212,9 +201,9 @@
 		if (source) show(`folder:${sourceId}:`, sourceName(source));
 	}
 
-	function onOpenRow(rowId: string) {
+	function onOpenRow(rowId: string, newTab = false) {
 		DocHandle.fromID(rowId)
-			.then((d) => editor.openDoc(d))
+			.then((d) => (newTab || !tab ? editor.openDoc(d) : editor.showDocInTab(tab, d)))
 			.catch(console.error);
 	}
 
@@ -311,6 +300,31 @@
 		];
 	});
 
+	function chipContext(f: Folder): CtxEntry[] {
+		const isProject = projects.has(f.id);
+		return [
+			{ label: 'Open', icon: ChevronRight, action: () => openFolder(f) },
+			{
+				label: 'Reveal in file manager',
+				icon: ExternalLink,
+				action: () => {
+					if (source) revealItemInDir(`${source.path}/${folderIdPath(f.id)}`).catch(console.error);
+				}
+			},
+			{ divider: true },
+			{
+				label: isProject ? 'Stop being a project' : 'Turn into project',
+				icon: Bookmark,
+				action: () => {
+					View.forUnit(f.id, f.slug)
+						.then((v) => (isProject ? v.unsave() : v.save()))
+						.then(loadFolders)
+						.catch(console.error);
+				}
+			}
+		];
+	}
+
 	function openSubMenu(e: MouseEvent, f: Folder) {
 		e.stopPropagation();
 		subMenuEl = e.currentTarget as HTMLElement;
@@ -395,61 +409,32 @@
 				</label>
 			</header>
 
-			{#snippet folderChip(f: Folder)}
-				{@const where = query ? relDir(f) : ''}
-				{@const emoji = projects.get(f.id)?.emoji}
-				<div
-					class="folder"
-					role="button"
-					tabindex="0"
-					onclick={() => openFolder(f)}
-					onkeydown={(e) => {
-						if (e.key === 'Enter') openFolder(f);
-					}}
-				>
-					{#if emoji}
-						<span class="folder-emoji">{emoji}</span>
-					{:else if projects.has(f.id)}
-						<Bookmark size={16} strokeWidth={1.75} />
-					{:else}
-						<FolderIcon size={16} strokeWidth={1.75} />
-					{/if}
-					<span class="folder-name">
-						{f.slug}{#if where}<span class="folder-where">{where}</span>{/if}
-					</span>
-					<button
-						class="folder-menu"
-						type="button"
-						tabindex="-1"
-						aria-label="More"
-						onclick={(e) => openSubMenu(e, f)}
-					>
-						<EllipsisVertical size={14} strokeWidth={1.75} />
-					</button>
-				</div>
-			{/snippet}
-
 			{#if projectChildren.length > 0}
 				<div class="section-label">Projects</div>
-				<div class="folders">
-					{#each projectChildren as f (f.id)}
-						{@render folderChip(f)}
-					{/each}
+				<div class="strip">
+					<FolderChips
+						folders={projectChildren}
+						{projects}
+						whereOf={(f) => (query ? relDir(f) : '')}
+						onOpen={openFolder}
+						context={chipContext}
+						onMenu={openSubMenu}
+					/>
 				</div>
 			{/if}
 
 			{#if plainChildren.length > 0}
 				<div class="section-label">Folders</div>
-				<div class="folders" bind:clientWidth={foldersW}>
-					{#each visibleFolders as f (f.id)}
-						{@render folderChip(f)}
-					{/each}
+				<div class="strip">
+					<FolderChips
+						folders={plainChildren}
+						rows={query ? 99 : 3}
+						whereOf={(f) => (query ? relDir(f) : '')}
+						onOpen={openFolder}
+						context={chipContext}
+						onMenu={openSubMenu}
+					/>
 				</div>
-				{#if !query && plainChildren.length > folderCap}
-					<button class="show-more" type="button" onclick={() => (showAll = !showAll)}>
-						{showAll ? 'Show fewer' : `Show ${plainChildren.length - folderCap} more`}
-					</button>
-				{/if}
 			{/if}
 
 			<div class="section-label files">
@@ -730,6 +715,10 @@
 		margin: 0 auto;
 	}
 
+	.strip {
+		margin: 0 24px 6px;
+	}
+
 	.section-label {
 		display: flex;
 		align-items: center;
@@ -740,99 +729,4 @@
 	}
 
 	/* folders: compact chips in a grid, like a place's shelves */
-	.folders {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: 10px;
-		margin: 0 24px 6px;
-	}
-
-	.folder {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		height: 40px;
-		padding: 0 6px 0 12px;
-		border-radius: 8px;
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-		font-size: 13px;
-		cursor: pointer;
-		transition: background-color 80ms ease;
-	}
-
-	.folder:hover,
-	.folder:focus-visible {
-		background: var(--chip-bg-hover);
-		outline: none;
-	}
-
-	.folder > :global(svg) {
-		flex-shrink: 0;
-		color: var(--color-ui-muted);
-	}
-
-	.show-more {
-		display: block;
-		margin: 2px 24px 0;
-		padding: 4px 6px;
-		border: none;
-		border-radius: 5px;
-		background: transparent;
-		font: inherit;
-		font-size: 11.5px;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-	}
-
-	.show-more:hover {
-		color: var(--color-text-primary);
-		background: var(--chip-bg);
-	}
-
-	.folder-emoji {
-		width: 16px;
-		text-align: center;
-		font-size: 14px;
-		line-height: 1;
-	}
-
-	.folder-name {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-	}
-
-	.folder-where {
-		margin-left: 6px;
-		font-size: 11px;
-		color: var(--color-ui-muted);
-	}
-
-	.folder-menu {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		border: none;
-		border-radius: 6px;
-		background: transparent;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-		opacity: 0;
-		transition: opacity 80ms ease;
-	}
-
-	.folder:hover .folder-menu,
-	.folder:focus-within .folder-menu {
-		opacity: 1;
-	}
-
-	.folder-menu:hover {
-		background: var(--chip-bg-hover);
-		color: var(--color-text-primary);
-	}
 </style>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ArrowUpRight, Trash2 } from '@lucide/svelte';
+	import { ArrowUpRight, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
 	import type Tag from '$lib/models/Tag';
@@ -12,8 +12,11 @@
 
 	// The popovers a face needs once, whatever it draws its rows as: the value editor, the tag
 	// menu, and the row menu (from a button, or at the pointer on right-click)
-	let { view, rows, onOpen }: { view: View; rows: FaceRows; onOpen?: (rowId: string) => void } =
-		$props();
+	let {
+		view,
+		rows,
+		onOpen
+	}: { view: View; rows: FaceRows; onOpen?: (rowId: string, newTab?: boolean) => void } = $props();
 
 	// ── Value editor ───────────────────────────────────────────────────────────
 	let editing: { rowId: string; fieldId: string } | null = $state(null);
@@ -78,6 +81,7 @@
 	let ctxPos: { x: number; y: number } = $state({ x: 0, y: 0 });
 	const menuItems = [
 		{ value: 'open', label: 'Open', icon: ArrowUpRight },
+		{ value: 'open-tab', label: 'Open in new tab', icon: SquareArrowOutUpRight },
 		{ kind: 'divider' as const },
 		{ value: 'delete', label: 'Delete', icon: Trash2, danger: true }
 	];
@@ -102,6 +106,7 @@
 		menuRowId = null;
 		if (!rowId) return;
 		if (value === 'open') onOpen?.(rowId);
+		else if (value === 'open-tab') onOpen?.(rowId, true);
 		else if (value === 'delete') await rows.delete(rowId);
 	}
 
