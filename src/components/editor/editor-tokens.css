@@ -13,6 +13,8 @@
 	--selection-overlay-bg: var(--accent-a30);
 	--search-match-bg: var(--accent-a22);
 	--reorder-scope-bg: var(--accent-a14);
+	--syntax-task-checked: var(--color-accent);
+	--syntax-task-checked-tick: var(--color-accent-contrast);
 }
 
 /* The same page width every other page uses, and the same side padding as DocumentHero, so

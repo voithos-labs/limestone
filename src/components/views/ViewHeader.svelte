@@ -12,14 +12,22 @@
 	import EmojiPicker from './EmojiPicker.svelte';
 	import DocPickerPanel from './DocPicker.svelte';
 	import type { DocPicker } from '$lib/views/docPicker.svelte';
-	import { getFaceIcon } from '$lib/views/filterDisplay';
+	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
+	import { fieldLabel } from '$lib/views/fieldValue';
+	import { VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
+	import type { MenuEntry } from '$lib/views/menuTypes';
+	import Menu from './Menu.svelte';
 	import {
 		Funnel,
 		ChevronDown,
 		Search,
 		EllipsisVertical,
 		Columns3Cog,
-		X
+		X,
+		PencilLine,
+		ArrowDownUp,
+		ArrowUpAZ,
+		ArrowDownAZ
 	} from '@lucide/svelte';
 	import { untrack } from 'svelte';
 
@@ -113,6 +121,40 @@
 	let filtersEl: HTMLButtonElement | null = $state(null);
 	let filtersPopEl: HTMLDivElement | null = $state(null);
 	let filtersOpen = $state(false);
+
+	// ── Sort: lives with the filters, it's the same question (what rows, in what order) ──
+	const sortTarget = $derived(
+		activeFace && activeFace.type !== 'table' && activeFace.type !== 'dashboard'
+			? activeFace.type === 'journal'
+				? (activeFace.body ?? null)
+				: activeFace
+			: null
+	);
+	const sortFieldId = $derived(sortTarget?.sort[0]?.field_id ?? '');
+	const sortDir = $derived(sortTarget?.sort[0]?.direction ?? 'desc');
+	const sortField = $derived(view.fields.find((f) => f.id === sortFieldId));
+	let sortEl: HTMLButtonElement | null = $state(null);
+	let sortOpen = $state(false);
+	const sortItems = $derived.by((): MenuEntry[] => [
+		{ value: '', label: 'Default', icon: ArrowDownUp },
+		...view.fields
+			.filter((f) => VIEW_FIELD_SORTABLE.has(f.type))
+			.map((f) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }))
+	]);
+
+	function setSortField(v: string) {
+		sortOpen = false;
+		if (!sortTarget) return;
+		sortTarget.sort = v ? [{ field_id: v, direction: sortDir }] : [];
+	}
+
+	function flipSort() {
+		if (!sortTarget) return;
+		const fid = sortFieldId || view.fields.find((f) => f.type === 'updated_at')?.id;
+		if (fid) sortTarget.sort = [{ field_id: fid, direction: sortDir === 'asc' ? 'desc' : 'asc' }];
+	}
+
+	const editInPlace = $derived(fieldTarget?.config.edit_in_place === true);
 	let filtersPos: { top: number; left: number } = $state({ top: 0, left: 0 });
 
 	function positionFilters() {
@@ -298,7 +340,7 @@
 		<div class="title-divider"></div>
 	{/if}
 
-	<FaceSwitcher {view} face={activeFace} onArrange={() => (arrangeOpen = true)} />
+	<FaceSwitcher {view} face={activeFace} />
 
 	{#if fieldTarget}
 		<button
@@ -307,7 +349,10 @@
 			aria-label="Fields"
 			title="Fields"
 			bind:this={fieldsEl}
-			onclick={() => (fieldsOpen = !fieldsOpen)}
+			onclick={() => {
+				if (fieldTarget.type === 'list') arrangeOpen = true;
+				else fieldsOpen = !fieldsOpen;
+			}}
 		>
 			<Columns3Cog size={15} strokeWidth={1.75} />
 		</button>
@@ -356,7 +401,57 @@
 					icon={getFaceIcon(activeFace)}
 				/>
 			{/if}
+			{#if sortTarget}
+				<div class="divider"></div>
+				<div class="sort-row">
+					<span class="sort-label"><ArrowDownUp size={12} strokeWidth={1.75} />Sort</span>
+					<button
+						class="sort-field"
+						type="button"
+						bind:this={sortEl}
+						onclick={() => (sortOpen = !sortOpen)}
+					>
+						{sortField ? fieldLabel(sortField) : 'Default'}
+						<ChevronDown size={12} strokeWidth={2} />
+					</button>
+					<button
+						class="sort-dir"
+						type="button"
+						title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
+						onclick={flipSort}
+					>
+						{#if sortDir === 'asc'}
+							<ArrowUpAZ size={14} strokeWidth={1.75} />
+						{:else}
+							<ArrowDownAZ size={14} strokeWidth={1.75} />
+						{/if}
+					</button>
+				</div>
+			{/if}
 		</div>
+		<Menu
+			bind:open={sortOpen}
+			anchor={sortEl}
+			items={sortItems}
+			selectedValues={[sortFieldId]}
+			onSelect={setSortField}
+			minWidth={170}
+		/>
+	{/if}
+
+	{#if fieldTarget?.type === 'list'}
+		<button
+			class="collapse-toggle"
+			class:on={editInPlace}
+			type="button"
+			aria-label="Edit in place"
+			title="Edit in place"
+			onclick={() => {
+				if (fieldTarget) fieldTarget.config.edit_in_place = !editInPlace;
+			}}
+		>
+			<PencilLine size={15} strokeWidth={1.75} />
+		</button>
 	{/if}
 
 	<label class="search-chip" bind:this={searchChipEl}>
@@ -408,7 +503,15 @@
 </div>
 
 {#if fieldTarget}
-	<ArrangeFields bind:open={arrangeOpen} {view} face={fieldTarget} />
+	<ArrangeFields
+		bind:open={arrangeOpen}
+		{view}
+		face={fieldTarget}
+		canManage={!view.temporary && !!view.unit}
+		onAddField={addField}
+		onRename={renameField}
+		onDelete={(id) => view.removeField(id)}
+	/>
 {/if}
 
 {#if !hasCover && view.temporary && !view.unit}
@@ -544,7 +647,6 @@
 		text-underline-offset: 3px;
 	}
 
-
 	.filter-bar {
 		display: flex;
 		align-items: center;
@@ -586,6 +688,67 @@
 
 	.collapse-toggle:hover {
 		background: var(--chip-bg);
+		color: var(--color-text-primary);
+	}
+
+	.collapse-toggle.on {
+		background: var(--chip-bg);
+		color: var(--color-accent);
+	}
+
+	.sort-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 4px 4px 8px;
+	}
+
+	.sort-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--color-ui-muted);
+	}
+
+	.sort-field {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		margin-left: auto;
+		height: 22px;
+		padding: 0 6px 0 8px;
+		border: 0;
+		border-radius: 5px;
+		background: var(--chip-bg);
+		font: inherit;
+		font-size: 12px;
+		color: var(--color-text-primary);
+		cursor: pointer;
+	}
+
+	.sort-field:hover {
+		background: var(--chip-bg-hover);
+	}
+
+	.sort-dir {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+	}
+
+	.sort-dir:hover {
+		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
 

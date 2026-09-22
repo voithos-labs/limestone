@@ -1,6 +1,6 @@
 import type View from '$lib/models/View.svelte';
 import type { FilterNode, MemberRow, SortKey, ViewFace, ViewField } from '$lib/models/View.svelte';
-import { describeBulkFailure, isLeafActive } from '$lib/models/View.svelte';
+import { describeBulkFailure, isBuiltinUnit, isLeafActive } from '$lib/models/View.svelte';
 import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
 import { rawStatefulValue, seedProperties, withStatefulValue } from '$lib/views/fieldValue';
 import { listInlineByDefault } from '$lib/views/listLayout';
@@ -35,6 +35,11 @@ function sortSig(keys: SortKey[]): string {
  * runs its load on the signature it exposes, and renders; cards and rows share the same
  * mutations so a list, a grid and a board behave identically
  */
+// built-in tags lead: they say what a note is before the user's own tags say what it's about
+function orderTags(tags: RowTag[]): RowTag[] {
+	return [...tags].sort((a, b) => Number(isBuiltinUnit(b.id)) - Number(isBuiltinUnit(a.id)));
+}
+
 export class FaceRows {
 	rows: MemberRow[] = $state([]);
 	total = $state(0);
@@ -174,6 +179,7 @@ export class FaceRows {
 			);
 			const next: Record<string, RowTag[]> = {};
 			for (const h of hits) (next[h.doc_id] ??= []).push({ id: h.id, slug: h.slug });
+			for (const id in next) next[id] = orderTags(next[id]);
 			return next;
 		} catch {
 			return {};
@@ -263,7 +269,7 @@ export class FaceRows {
 		try {
 			const doc = await DocHandle.fromID(rowId);
 			await doc.setTags(slugs);
-			const tags = doc.tags.map((t) => ({ id: t.id, slug: t.slug }));
+			const tags = orderTags(doc.tags.map((t) => ({ id: t.id, slug: t.slug })));
 			this.rowTags = { ...this.rowTags, [rowId]: tags };
 			const fid = this.view().fields.find((f) => f.type === 'tags')?.id;
 			if (fid && this.fieldAffectsView(fid)) this.load(true);

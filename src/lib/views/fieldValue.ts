@@ -1,5 +1,10 @@
 import type { MemberRow, ViewField, ViewFieldType } from '$lib/models/View.svelte';
-import { CREATABLE_FIELD_TYPES, fieldKey, isDerived } from '$lib/models/View.svelte';
+import {
+	CREATABLE_FIELD_TYPES,
+	fieldKey,
+	isBuiltinField,
+	isDerived
+} from '$lib/models/View.svelte';
 import { sourceName as sourceFolderName, type Source } from '$lib/models/Source';
 import { formatDateFriendly, formatDateISO, formatViewDate } from './dateFormat';
 
@@ -151,5 +156,7 @@ const PRETTY_FIELD: Record<string, string> = {
 // built-ins show a pretty label until renamed then the user's name wins
 export function fieldLabel(field: ViewField): string {
 	if (field.name === field.type && PRETTY_FIELD[field.type]) return PRETTY_FIELD[field.type];
+	// registry names are lowercase keys; they read like the derived fields do
+	if (isBuiltinField(field)) return field.name.charAt(0).toUpperCase() + field.name.slice(1);
 	return field.name;
 }

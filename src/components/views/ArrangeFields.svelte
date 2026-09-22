@@ -1,18 +1,41 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { Check, Hash } from '@lucide/svelte';
+	import { tick, untrack } from 'svelte';
+	import { Check, Hash, Plus, Pencil, Trash2 } from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
-	import type { ViewFace, ViewField } from '$lib/models/View.svelte';
-	import { isDerived } from '$lib/models/View.svelte';
+	import type { ViewFace, ViewField, ViewFieldType } from '$lib/models/View.svelte';
+	import {
+		CREATABLE_FIELD_TYPES,
+		isBuiltinField,
+		isDerived,
+		isLockedField
+	} from '$lib/models/View.svelte';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import { listInlineByDefault, listPrefixed } from '$lib/views/listLayout';
+	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import Menu from './Menu.svelte';
 
+	// Arranging and managing a list's fields in one place: drag chips between the lanes of a
+	// schematic row (or card), right-click one to rename or delete it, add a new one below
 	let {
 		open = $bindable(false),
 		view,
-		face
-	}: { open: boolean; view: View; face: ViewFace } = $props();
+		face,
+		canManage = false,
+		onAddField,
+		onRename,
+		onDelete
+	}: {
+		open: boolean;
+		view: View;
+		face: ViewFace;
+		canManage?: boolean; // a saved unit view owns its fields; anything else only arranges
+		onAddField?: (type: ViewFieldType) => ViewField;
+		onRename?: (fieldId: string, name: string) => void;
+		onDelete?: (fieldId: string) => void;
+	} = $props();
+
+	const cards = $derived(face.config.layout === 'grid');
 
 	type Lane = 'check' | 'left' | 'right' | 'hidden';
 	type Model = { check: string | null; left: string[]; right: string[]; hidden: string[] };
@@ -89,10 +112,10 @@
 	function laneAt(x: number, y: number): Lane | null {
 		if (!popEl) return null;
 		for (const lane of ['check', 'left', 'right', 'hidden'] as Lane[]) {
-			const el = popEl.querySelector<HTMLElement>(`[data-lane="${lane}"]`);
-			if (!el) continue;
-			const r = el.getBoundingClientRect();
-			if (x >= r.left - 6 && x <= r.right + 6 && y >= r.top - 6 && y <= r.bottom + 6) return lane;
+			for (const el of popEl.querySelectorAll<HTMLElement>(`[data-lane="${lane}"]`)) {
+				const r = el.getBoundingClientRect();
+				if (x >= r.left - 6 && x <= r.right + 6 && y >= r.top - 6 && y <= r.bottom + 6) return lane;
+			}
 		}
 		return null;
 	}
@@ -186,31 +209,136 @@
 	const checkField = $derived(model.check ? fieldsById.get(model.check) : undefined);
 	const fieldsIn = (ids: string[]) =>
 		ids.map((id) => fieldsById.get(id)).filter((f): f is ViewField => !!f);
+	// the shelf splits: the view's own fields, and the registry's behind their unit's name
+	const hiddenOwn = $derived(fieldsIn(model.hidden).filter((f) => !isBuiltinField(f)));
+	const hiddenBuiltin = $derived(fieldsIn(model.hidden).filter(isBuiltinField));
+	const unitOf = (f: ViewField) => (f.unit ?? '').replace(/^tag:/, '');
+
+	// ── Manage: rename in place, delete with a second click, add from a type list ─────
+	let renamingId: string | null = $state(null);
+	let renameDraft = $state('');
+	let confirmId: string | null = $state(null);
+	let addOpen = $state(false);
+	let addEl: HTMLButtonElement | null = $state(null);
+	const addItems = CREATABLE_FIELD_TYPES.map((t) => ({
+		value: t,
+		label: t.charAt(0).toUpperCase() + t.slice(1),
+		icon: getFieldIcon(t)
+	}));
+
+	function chipMenu(f: ViewField): CtxEntry[] {
+		if (!canManage || isLockedField(f)) return [];
+		return [
+			{ label: 'Rename', icon: Pencil, action: () => startRename(f) },
+			{ label: 'Delete', icon: Trash2, danger: true, action: () => (confirmId = f.id) }
+		];
+	}
+
+	function startRename(f: ViewField) {
+		confirmId = null;
+		renamingId = f.id;
+		renameDraft = f.name;
+	}
+
+	function commitRename() {
+		const id = renamingId;
+		renamingId = null;
+		if (id && renameDraft.trim()) onRename?.(id, renameDraft.trim());
+	}
+
+	function renameKey(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			commitRename();
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			renamingId = null;
+		}
+	}
+
+	function focusSelect(node: HTMLInputElement) {
+		node.focus();
+		node.select();
+	}
+
+	function deleteConfirmed(f: ViewField) {
+		confirmId = null;
+		model = without(model, f.id);
+		apply(model);
+		onDelete?.(f.id);
+	}
+
+	async function addField(type: string) {
+		addOpen = false;
+		const f = onAddField?.(type as ViewFieldType);
+		if (!f) return;
+		await tick();
+		model = fromFace();
+		startRename(f);
+	}
 </script>
 
 {#snippet chip(f: ViewField, lane: Lane)}
 	{@const Icon = getFieldIcon(f.type)}
 	{@const pill = f.type === 'tags' || f.type === 'select' || f.type === 'multiselect'}
 	{@const labelled = lane === 'right' && listPrefixed(f.type)}
-	<span
-		class="chip"
-		class:pill
-		class:labelled
-		class:bare={lane === 'right' && !listPrefixed(f.type)}
-		class:ghosted={lane === 'hidden'}
-		class:dragging={dragId === f.id}
-		data-id={f.id}
-		role="presentation"
-		onpointerdown={(e) => armDrag(e, f.id)}
-	>
-		{#if f.type === 'tags'}
-			<Hash size={11} strokeWidth={2} />
-		{:else if lane === 'hidden' || pill || (labelled && isDerived(f.type))}
-			<Icon size={12} strokeWidth={1.75} />
-		{/if}
-		<span>{fieldLabel(f)}</span>
-		{#if labelled && f.type === 'boolean'}<span class="box"></span>{/if}
-	</span>
+	{#if confirmId === f.id}
+		<button
+			class="chip confirm"
+			type="button"
+			data-id={f.id}
+			onclick={(e) => {
+				e.stopPropagation();
+				deleteConfirmed(f);
+			}}
+		>
+			<Trash2 size={11} strokeWidth={2} />
+			<span>delete {fieldLabel(f)}?</span>
+		</button>
+	{:else}
+		<span
+			class="chip"
+			class:pill
+			class:labelled
+			class:bare={lane === 'right' && !listPrefixed(f.type)}
+			class:ghosted={lane === 'hidden'}
+			class:dragging={dragId === f.id}
+			class:managed={canManage && !isLockedField(f)}
+			data-id={f.id}
+			role="presentation"
+			use:ctxMenu={() => chipMenu(f)}
+			onpointerdown={(e) => {
+				if (renamingId !== f.id) armDrag(e, f.id);
+			}}
+			ondblclick={() => {
+				if (canManage && !isLockedField(f)) startRename(f);
+			}}
+		>
+			{#if f.type === 'tags'}
+				<Hash size={11} strokeWidth={2} />
+			{:else if lane === 'hidden' || pill || (labelled && isDerived(f.type))}
+				<Icon size={12} strokeWidth={1.75} />
+			{/if}
+			{#if isBuiltinField(f)}<span class="from">{unitOf(f)}:</span>{/if}
+			{#if renamingId === f.id}
+				<span class="rename">
+					<span class="rename-ghost">{renameDraft || ' '}</span>
+					<input
+						class="rename-input"
+						bind:value={renameDraft}
+						use:focusSelect
+						onblur={commitRename}
+						onkeydown={renameKey}
+						onpointerdown={(e) => e.stopPropagation()}
+						spellcheck="false"
+					/>
+				</span>
+			{:else}
+				<span>{fieldLabel(f)}</span>
+			{/if}
+			{#if labelled && f.type === 'boolean'}<span class="box"></span>{/if}
+		</span>
+	{/if}
 {/snippet}
 
 {#if open}
@@ -231,7 +359,48 @@
 		>
 			<h3 class="title-h">Drag to arrange fields</h3>
 
-			<div class="mock">
+			<div class="mock" class:card={cards} onclick={() => (confirmId = null)} role="presentation">
+				{#if cards}
+					<div class="card-head">
+						{@render checkSlot()}
+						<span class="title">Title</span>
+					</div>
+					<div class="card-preview"><span></span><span></span><span class="short"></span></div>
+					<div class="card-foot">
+						<div class="lane left" class:over={overLane === 'left'} data-lane="left">
+							{#each fieldsIn(model.left) as f (f.id)}
+								{@render chip(f, 'left')}
+							{/each}
+						</div>
+						<div class="lane right" class:over={overLane === 'right'} data-lane="right">
+							{#each fieldsIn(model.right) as f (f.id)}
+								{@render chip(f, 'right')}
+							{/each}
+						</div>
+					</div>
+				{:else}
+					{@render checkSlot()}
+					<span class="title">Title</span>
+					<div class="lane left" class:over={overLane === 'left'} data-lane="left">
+						{#each fieldsIn(model.left) as f (f.id)}
+							{@render chip(f, 'left')}
+						{/each}
+					</div>
+					<div class="lane right" class:over={overLane === 'right'} data-lane="right">
+						{#each fieldsIn(model.right) as f (f.id)}
+							{@render chip(f, 'right')}
+						{/each}
+					</div>
+				{/if}
+			</div>
+
+			<div class="legend" class:card={cards}>
+				<span class="lg check">check</span>
+				<span class="lg title"></span>
+				<span class="lg left">{cards ? 'foot left' : 'after title'}</span>
+				<span class="lg right">{cards ? 'foot right' : 'right'}</span>
+			</div>
+			{#snippet checkSlot()}
 				<div
 					class="slot check"
 					class:over={overLane === 'check' && !rejected}
@@ -252,25 +421,7 @@
 						<span class="box empty"></span>
 					{/if}
 				</div>
-				<span class="title">Title</span>
-				<div class="lane left" class:over={overLane === 'left'} data-lane="left">
-					{#each fieldsIn(model.left) as f (f.id)}
-						{@render chip(f, 'left')}
-					{/each}
-				</div>
-				<div class="lane right" class:over={overLane === 'right'} data-lane="right">
-					{#each fieldsIn(model.right) as f (f.id)}
-						{@render chip(f, 'right')}
-					{/each}
-				</div>
-			</div>
-
-			<div class="legend">
-				<span class="lg check">check</span>
-				<span class="lg title"></span>
-				<span class="lg left">after title</span>
-				<span class="lg right">right</span>
-			</div>
+			{/snippet}
 
 			{#if (overLane === 'check' && rejected) || checkField}
 				<div class="hint">
@@ -287,14 +438,39 @@
 
 			<div class="shelf" class:over={overLane === 'hidden'} data-lane="hidden">
 				<span class="shelf-label">other fields</span>
-				{#each fieldsIn(model.hidden) as f (f.id)}
+				{#each hiddenOwn as f (f.id)}
 					{@render chip(f, 'hidden')}
 				{:else}
-					<span class="shelf-empty">everything is shown</span>
+					{#if !canManage}<span class="shelf-empty">everything is shown</span>{/if}
 				{/each}
+				{#if canManage}
+					<button
+						class="add"
+						type="button"
+						bind:this={addEl}
+						onclick={(e) => {
+							e.stopPropagation();
+							addOpen = !addOpen;
+						}}
+					>
+						<Plus size={12} strokeWidth={2} />
+						<span>New field</span>
+					</button>
+				{/if}
 			</div>
+
+			{#if hiddenBuiltin.length > 0}
+				<div class="shelf builtin" class:over={overLane === 'hidden'} data-lane="hidden">
+					<span class="shelf-label">built-in fields</span>
+					{#each hiddenBuiltin as f (f.id)}
+						{@render chip(f, 'hidden')}
+					{/each}
+				</div>
+			{/if}
 		</div>
 	</div>
+
+	<Menu bind:open={addOpen} anchor={addEl} items={addItems} onSelect={addField} minWidth={160} />
 
 	{#if dragField}
 		<div class="ghost" style:top="{ghost.y}px" style:left="{ghost.x}px">
@@ -307,7 +483,7 @@
 	.overlay {
 		position: fixed;
 		inset: 0;
-		z-index: 1500;
+		z-index: 900;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -403,6 +579,109 @@
 	.title {
 		flex: 0 0 auto;
 		font-size: 15px;
+	}
+
+	/* the card variant: a tile with the head, a preview window and a two-lane foot */
+	.mock.card {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 10px;
+		height: auto;
+		width: 300px;
+		margin: 0 auto;
+		padding: 14px;
+		background: var(--chip-bg);
+	}
+
+	.card-head {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.card-preview {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 2px 0;
+	}
+
+	.card-preview span {
+		height: 7px;
+		border-radius: 4px;
+		background: var(--color-border);
+		opacity: 0.6;
+	}
+
+	.card-preview .short {
+		width: 55%;
+	}
+
+	.card-foot {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.legend.card {
+		display: none;
+	}
+
+	.chip.managed {
+		cursor: grab;
+	}
+
+	.chip.confirm {
+		gap: 5px;
+		border: none;
+		background: var(--error-bg);
+		color: var(--error-fg);
+		font: inherit;
+		font-size: 12px;
+		cursor: pointer;
+	}
+
+	.rename {
+		position: relative;
+		display: inline-grid;
+	}
+
+	.rename-ghost {
+		visibility: hidden;
+		white-space: pre;
+		grid-area: 1 / 1;
+	}
+
+	.rename-input {
+		grid-area: 1 / 1;
+		width: 0;
+		min-width: 100%;
+		padding: 0;
+		border: none;
+		background: transparent;
+		font: inherit;
+		color: inherit;
+		outline: none;
+	}
+
+	.add {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		height: 22px;
+		padding: 0 8px 0 6px;
+		border: 1px dashed var(--color-border);
+		border-radius: 6px;
+		background: transparent;
+		font: inherit;
+		font-size: 12px;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+	}
+
+	.add:hover {
+		color: var(--color-text-primary);
+		border-color: var(--color-ui-muted);
 	}
 
 	/* chips drawn as the list draws them */
@@ -549,6 +828,16 @@
 			background-color 100ms ease;
 	}
 
+	.shelf.builtin {
+		margin-top: 8px;
+		min-height: 0;
+	}
+
+	.chip .from {
+		margin-right: -2px;
+		color: var(--color-ui-muted);
+	}
+
 	.shelf-label {
 		width: 100%;
 		margin-bottom: 2px;
@@ -566,7 +855,7 @@
 
 	.ghost {
 		position: fixed;
-		z-index: 1501;
+		z-index: 901;
 		pointer-events: none;
 		transform: translate(-50%, -50%) rotate(-2deg) scale(1.05);
 		filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.25));

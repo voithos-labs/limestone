@@ -219,7 +219,7 @@
 		if (d) {
 			selectDay(d);
 			scrollBarTo(d);
-		}
+		} else if (sparkEl) sparkEl.scrollLeft = sparkEl.scrollWidth;
 		docPicker?.pick(id);
 	}
 	let jumpOpen = $state(false);
@@ -463,11 +463,11 @@
 		});
 	}
 
-	let didInitStrip = false;
+	// the strip scrolls to the selected day whenever it (re)mounts: first paint, and again
+	// after a search swapped it out for the hits list
 	$effect(() => {
-		if (!stripEl || didInitStrip) return;
-		didInitStrip = true;
-		scrollStripTo(selected);
+		if (!stripEl) return;
+		scrollStripTo(untrack(() => selected));
 	});
 
 	function selectDay(d: Date) {

@@ -18,30 +18,20 @@
 		LayoutDashboard,
 		LayoutGrid,
 		LayoutPanelTop,
-		ArrowUpAZ,
-		ArrowDownAZ,
-		ArrowDownUp,
 		CalendarClock,
 		ScanLine,
 		ScanBarcode,
-		PencilLine,
-		LayoutArrowDown,
 		ChevronRight
 	} from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '$lib/models/View.svelte';
-	import { VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import Menu from './Menu.svelte';
 	import { dashboardSections, DASH_SECTION_LABEL } from '$lib/views/dashboard';
 
-	let {
-		view,
-		face,
-		onArrange
-	}: { view: View; face: ViewFace; onArrange?: () => void } = $props();
+	let { view, face }: { view: View; face: ViewFace } = $props();
 
 	const faceIcon = getFaceIcon;
 	const SwitchIcon = $derived(faceIcon(face));
@@ -62,31 +52,6 @@
 
 	let groupEl: HTMLButtonElement | null = $state(null);
 	let groupOpen = $state(false);
-
-	// ── List / grid / doc face options (sort) ────────────────────────────────
-	let sortEl: HTMLButtonElement | null = $state(null);
-	let sortOpen = $state(false);
-
-	const sortFieldId = $derived(target.sort[0]?.field_id ?? '');
-	const sortDir = $derived(target.sort[0]?.direction ?? 'desc');
-	const sortLabel = $derived.by(() => {
-		const f = view.fields.find((ff) => ff.id === sortFieldId);
-		return f ? fieldLabel(f) : 'Default';
-	});
-
-	const sortItems = $derived.by((): MenuEntry[] => [
-		...view.fields
-			.filter((f: ViewField) => VIEW_FIELD_SORTABLE.has(f.type))
-			.map((f: ViewField) => ({
-				value: f.id,
-				label: fieldLabel(f),
-				icon: getFieldIcon(f.type),
-				keepOpen: true
-			})),
-		{ kind: 'divider' as const },
-		{ value: 'dir:asc', label: 'Ascending', icon: ArrowUpAZ, keepOpen: true },
-		{ value: 'dir:desc', label: 'Descending', icon: ArrowDownAZ, keepOpen: true }
-	]);
 
 	// ── Journal (compound face) ──────────────────────────────────────────────
 	let bodyEl: HTMLButtonElement | null = $state(null);
@@ -128,8 +93,6 @@
 	}
 
 	const showActivity = $derived(face.config.show_activity === true);
-	const editInPlace = $derived(target.config.edit_in_place === true);
-	const isCards = $derived(target.config.layout === 'grid');
 
 	// a project face's sections: which ones show
 	let sectionsEl: HTMLButtonElement | null = $state(null);
@@ -155,16 +118,6 @@
 
 	function toggleActivity() {
 		face.config.show_activity = !showActivity;
-	}
-
-	function setSort(v: string) {
-		if (v.startsWith('dir:')) {
-			const dir = v.slice(4) as 'asc' | 'desc';
-			const fid = sortFieldId || view.fields.find((f) => f.type === 'updated_at')?.id;
-			if (fid) target.sort = [{ field_id: fid, direction: dir }];
-			return;
-		}
-		target.sort = [{ field_id: v, direction: sortDir }];
 	}
 
 	const groupable = $derived(
@@ -200,7 +153,7 @@
 		if (dragId) return;
 		if (!closeOnSwapLeave) return;
 		if (groupOpen || addFaceOpen || renamingId || confirmFor) return;
-		if (sortOpen || bodyOpen || dateFieldOpen) return;
+		if (bodyOpen || dateFieldOpen) return;
 		open = false;
 	}
 
@@ -365,7 +318,6 @@
 			addFaceOpen ||
 			sectionsOpen ||
 			groupOpen ||
-			sortOpen ||
 			bodyOpen ||
 			dateFieldOpen ||
 			!!renamingId ||
@@ -607,45 +559,6 @@
 			</button>
 		{/if}
 
-		{#if target.type === 'list'}
-			<button
-				class="action group-toggle"
-				type="button"
-				data-nav
-				onclick={() => (target.config.layout = isCards ? 'list' : 'grid')}
-			>
-				{#if isCards}
-					<LayoutGrid size={14} strokeWidth={1.75} />
-				{:else}
-					<List size={14} strokeWidth={1.75} />
-				{/if}
-				<span>Layout</span>
-				<span class="trailing">{isCards ? 'Cards' : 'Rows'}</span>
-			</button>
-			<button
-				class="action group-toggle"
-				type="button"
-				data-nav
-				onclick={() => (target.config.edit_in_place = !editInPlace)}
-			>
-				<PencilLine size={14} strokeWidth={1.75} />
-				<span>Edit in place</span>
-				<span class="trailing">{editInPlace ? 'On' : 'Off'}</span>
-			</button>
-			<button
-				class="action"
-				type="button"
-				data-nav
-				onclick={() => {
-					open = false;
-					onArrange?.();
-				}}
-			>
-				<LayoutArrowDown size={14} strokeWidth={1.75} />
-				<span>Arrange fields</span>
-			</button>
-		{/if}
-
 		{#if target.type === 'table'}
 			<button
 				class="action group-toggle"
@@ -658,20 +571,6 @@
 				<Layers size={14} strokeWidth={1.75} />
 				<span>Group by</span>
 				<span class="trailing">{groupLabel}</span>
-				<ChevronRight size={13} strokeWidth={2} />
-			</button>
-		{:else}
-			<button
-				class="action group-toggle"
-				type="button"
-				data-nav
-				data-flyout
-				bind:this={sortEl}
-				onclick={() => (sortOpen = !sortOpen)}
-			>
-				<ArrowDownUp size={14} strokeWidth={1.75} />
-				<span>Sort by</span>
-				<span class="trailing">{sortLabel}</span>
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 		{/if}
@@ -737,17 +636,6 @@
 			items={groupItems}
 			selected={groupById ?? ''}
 			onSelect={setGroup}
-			minWidth={170}
-			placement="right"
-		/>
-	{:else}
-		<Menu
-			bind:open={sortOpen}
-			anchor={sortEl}
-			items={sortItems}
-			multiple
-			selectedValues={[sortFieldId, `dir:${sortDir}`]}
-			onSelect={setSort}
 			minWidth={170}
 			placement="right"
 		/>
