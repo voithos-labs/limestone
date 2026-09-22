@@ -5,7 +5,7 @@
 	import { getSource, touchSource, listSources, sourceName, type Source } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import Tag from '$lib/models/Tag';
-	import Folder, { folderId } from '$lib/models/Folder';
+	import Folder, { folderId, folderIdSource } from '$lib/models/Folder';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
 	import { searchDocuments } from '$lib/services/search';
 	import SearchResultRow from './SearchResultRow.svelte';
@@ -76,21 +76,27 @@
 			searchDocuments(q),
 			listSavedViewJSON().catch(() => [])
 		]);
+		// a project (a saved folder view) shows its source like a folder does, and stands in for
+		// the folder itself, which would otherwise appear twice
 		const viewResults: SearchResult[] = savedViews
 			.filter((v) => v.slug.toLowerCase().includes(ql))
 			.map((v) => ({
 				id: v.id,
 				title: v.slug,
 				rel_path: null,
-				source_id: null,
+				source_id: v.unit?.startsWith('folder:') ? folderIdSource(v.unit) : null,
 				score: 0,
 				match_indices: [],
 				kind: 'view' as const,
 				group_type: null,
 				emoji: v.emoji
 			}));
+		const projectUnits = new Set(savedViews.map((v) => v.unit).filter((u): u is string => !!u));
 		if (q !== query) return;
-		results = [...viewResults, ...docResults].slice(0, 25);
+		results = [
+			...viewResults,
+			...docResults.filter((r) => !(r.kind === 'group' && projectUnits.has(r.id)))
+		].slice(0, 25);
 		resultsFor = q;
 	}
 
