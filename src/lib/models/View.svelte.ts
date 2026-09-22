@@ -52,7 +52,7 @@ import { listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/services/db';
 import { load, type Store } from '@tauri-apps/plugin-store';
 import { toasts } from '$lib/toasts.svelte';
-import { wallClockToMs } from '$lib/views/dateFormat';
+import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
 
 export type ViewFaceType =
 	'table' | 'list' | 'grid' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
@@ -575,6 +575,7 @@ function compileLeafSql(field: ViewField, op: string, value: unknown): CompiledF
 
 	const dateLike =
 		field.type === 'date' || field.type === 'created_at' || field.type === 'updated_at';
+	if (dateLike) value = resolveRelativeDate(value) ?? value;
 	if (dateLike && typeof value === 'string' && DATE_ONLY_RE.test(value)) {
 		const compiled = compileDateOnlyLeaf(field, op, value, expr);
 		if (compiled) return compiled;

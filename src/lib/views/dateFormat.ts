@@ -85,6 +85,24 @@ export function toWallClock(input: string | number | Date): string | null {
 	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+// a filter value may name a day relative to now: today, tomorrow, yesterday, today+N, today-N
+const RELATIVE_RE = /^(today|tomorrow|yesterday)(?:([+-])(\d+))?$/;
+
+export function isRelativeDate(value: unknown): value is string {
+	return typeof value === 'string' && RELATIVE_RE.test(value.trim().toLowerCase());
+}
+
+export function resolveRelativeDate(value: unknown, now = new Date()): string | null {
+	if (typeof value !== 'string') return null;
+	const m = value.trim().toLowerCase().match(RELATIVE_RE);
+	if (!m) return null;
+	const base = m[1] === 'tomorrow' ? 1 : m[1] === 'yesterday' ? -1 : 0;
+	const offset = m[2] ? (m[2] === '-' ? -1 : 1) * +m[3] : 0;
+	const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + base + offset);
+	const p = (n: number) => String(n).padStart(2, '0');
+	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function wallClockToMs(value: unknown): number | null {
 	if (typeof value === 'number') return value;
 	if (typeof value !== 'string' || !value) return null;

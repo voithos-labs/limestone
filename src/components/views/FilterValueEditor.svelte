@@ -90,6 +90,7 @@
 		{anchor}
 		{value}
 		mode="date"
+		relative
 		clearable={field.type === 'date' || opValue !== ''}
 		onChange={(v) => onChange(v)}
 	/>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { ChevronLeft, ChevronRight, Clock, X } from '@lucide/svelte';
+	import { isRelativeDate, resolveRelativeDate } from '$lib/views/dateFormat';
 
 	let {
 		open = $bindable(false),
@@ -9,6 +10,7 @@
 		mode = 'date',
 		allowTime = true,
 		clearable = true,
+		relative = false,
 		onChange
 	}: {
 		open: boolean;
@@ -17,6 +19,7 @@
 		mode?: 'date' | 'datetime';
 		allowTime?: boolean;
 		clearable?: boolean;
+		relative?: boolean; // keep "today", "tomorrow" etc. as tokens instead of resolving them
 		onChange: (value: string | null) => void;
 	} = $props();
 
@@ -25,9 +28,12 @@
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
 	let textValue = $state('');
 	let textFocused = $state(false);
+	let relToken: string | null = $state(null);
 
 	// Non-empty text that doesn't parse, flag the input as invalid (red)
-	const textInvalid = $derived(textValue.trim() !== '' && parseFlexible(textValue) === null);
+	const textInvalid = $derived(
+		textValue.trim() !== '' && parseFlexible(textValue) === null && !isRelativeDate(textValue)
+	);
 
 	const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 	const MONTHS = [
@@ -234,6 +240,12 @@
 	}
 
 	function commitText() {
+		if (relative && isRelativeDate(textValue)) {
+			onChange(textValue.trim().toLowerCase());
+			open = false;
+			return;
+		}
+		relToken = null;
 		const p = parseFlexible(textValue);
 		if (!p) {
 			textValue = selectionText();
@@ -311,6 +323,7 @@
 	}
 
 	function pickDay(c: { y: number; m: number; d: number }) {
+		relToken = null;
 		selY = c.y;
 		selM = c.m;
 		selD = c.d;
@@ -376,7 +389,8 @@
 		if (open && !wasOpen) {
 			wasOpen = true;
 			untrack(() => {
-				const p = parse(value);
+				relToken = relative && isRelativeDate(value) ? value : null;
+				const p = parse(resolveRelativeDate(value) ?? value);
 				if (p) {
 					selY = p.y;
 					selM = p.m;
@@ -396,7 +410,7 @@
 				}
 				// default to the locale's 12/24h preference
 				meridiem = prefers24h() ? '24' : hh >= 12 ? 'PM' : 'AM';
-				textValue = selectionText();
+				textValue = relToken ?? selectionText();
 				cursor = null;
 			});
 			requestAnimationFrame(() => {
@@ -428,7 +442,7 @@
 		mm;
 		showTime;
 		meridiem;
-		if (open && !textFocused) untrack(() => (textValue = selectionText()));
+		if (open && !textFocused) untrack(() => (textValue = relToken ?? selectionText()));
 	});
 
 	// Reposition when the popup's height changes (time row / footer toggling)
