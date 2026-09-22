@@ -13,6 +13,7 @@
 	import ListFace from '../views/faces/ListFace.svelte';
 	import Menu from '../views/Menu.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
+	import SourceDialog from '../SourceDialog.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
 	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
@@ -23,6 +24,7 @@
 		FolderPlus,
 		FilePlus,
 		Pencil,
+		Settings,
 		Trash2,
 		ExternalLink,
 		Search,
@@ -212,13 +214,16 @@
 	let menuOpen = $state(false);
 	let menuEl: HTMLElement | null = $state(null);
 	let nameOpen = $state(false);
+	let sourceDialogOpen = $state(false);
 	let nameMode: 'new-folder' | 'rename' = $state('new-folder');
 
 	const menuItems = $derived([
 		{ value: 'new-note', label: 'New note', icon: FilePlus },
 		{ value: 'new-folder', label: 'New folder', icon: FolderPlus },
 		{ kind: 'divider' as const },
-		...(isRoot ? [] : [{ value: 'rename', label: 'Rename', icon: Pencil }]),
+		isRoot
+			? { value: 'configure', label: 'Configure source', icon: Settings }
+			: { value: 'rename', label: 'Rename', icon: Pencil },
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
 		...(view.temporary
 			? [{ value: 'project', label: 'Turn into project', icon: Bookmark }]
@@ -247,6 +252,9 @@
 				break;
 			case 'reveal':
 				if (source) revealItemInDir(`${source.path}/${path}`).catch(console.error);
+				break;
+			case 'configure':
+				if (source) sourceDialogOpen = true;
 				break;
 			case 'project':
 				await view.save();
@@ -508,6 +516,12 @@
 	items={subMenuItems}
 	onSelect={onSubMenuSelect}
 	minWidth={180}
+/>
+<SourceDialog
+	bind:open={sourceDialogOpen}
+	mode="edit"
+	{source}
+	onSaved={() => getSource(sourceId).then((s) => (source = s))}
 />
 <InputPopover
 	bind:open={nameOpen}

@@ -145,6 +145,12 @@
 
 	// ── Inline view-title editing, type-in-place. A unit view is named by its unit ────
 	let slugDraft = $state(untrack(() => view.slug));
+	let titleEl: HTMLInputElement | null = $state(null);
+
+	export function focusTitle() {
+		titleEl?.focus();
+		titleEl?.select();
+	}
 	const slugEmpty = $derived(!sanitizeName(slugDraft));
 
 	$effect(() => {
@@ -220,6 +226,7 @@
 		<input
 			class="title-input"
 			class:invalid={slugEmpty}
+			bind:this={titleEl}
 			bind:value={slugDraft}
 			onblur={commitSlug}
 			onkeydown={slugKey}
@@ -265,7 +272,7 @@
 {/snippet}
 
 {#snippet actionButton()}
-	{#if view.temporary}
+	{#if view.temporary && !view.unit}
 		{@render saveButton()}
 	{:else if !view.cover}
 		{@render moreButton()}
@@ -395,7 +402,7 @@
 		{/if}
 	</label>
 
-	{#if !hasCover && !view.temporary}
+	{#if !hasCover && (!view.temporary || view.unit)}
 		{@render moreButton()}
 	{/if}
 </div>
@@ -404,7 +411,7 @@
 	<ArrangeFields bind:open={arrangeOpen} {view} face={fieldTarget} />
 {/if}
 
-{#if !hasCover && view.temporary && (!view.unit || view.isDirty)}
+{#if !hasCover && view.temporary && !view.unit}
 	<div class="save-row">
 		{@render saveButton()}
 	</div>

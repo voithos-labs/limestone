@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { folderIdSource, isSourceRoot } from '$lib/models/Folder';
+	import Folder, { folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
+	import Tag from '$lib/models/Tag';
+	import InputPopover from '../views/InputPopover.svelte';
+	import { revealItemInDir } from '@tauri-apps/plugin-opener';
+	import { toasts } from '$lib/toasts.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
 	import View from '$lib/models/View.svelte';
@@ -8,7 +12,8 @@
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { listSources } from '$lib/models/Source';
+	import { listSources, type Source } from '$lib/models/Source';
+	import SourceDialog from '../SourceDialog.svelte';
 	import DocHandle from '$lib/models/DocHandle';
 	import ViewHeader from '../views/ViewHeader.svelte';
 	import TableFace from '../views/faces/TableFace.svelte';
@@ -23,7 +28,22 @@
 	import CoverSourceDialog from '../CoverSourceDialog.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
-	import { Crop, X, Check, EllipsisVertical, Trash2, ImageUp, Plus, Copy } from '@lucide/svelte';
+	import {
+		Crop,
+		X,
+		Check,
+		EllipsisVertical,
+		Trash2,
+		ImageUp,
+		Plus,
+		Copy,
+		FilePlus,
+		FolderPlus,
+		Pencil,
+		ExternalLink,
+		Bookmark,
+		Settings
+	} from '@lucide/svelte';
 
 	let {
 		view,
@@ -324,9 +344,57 @@
 		if (!moreOpen) confirmingDelete = false;
 	});
 
+	// a project's menu is its folder's (or tag's) menu, the same one the folder page shows;
+	// only a free view gets the view-shaped one
+	const unitKind = $derived(
+		view.unit?.startsWith('folder:') ? 'folder' : view.unit?.startsWith('tag:') ? 'tag' : null
+	);
+	const unitIsRoot = $derived(unitKind === 'folder' && isSourceRoot(view.unit!));
+	let header: ViewHeader | null = $state(null);
+	let newFolderOpen = $state(false);
+
 	const moreItems = $derived.by(() => {
 		const items: MenuEntry[] = [];
-		if (!view.cover) items.push({ value: 'add-cover', label: 'Add cover', icon: ImageUp });
+		const cover: MenuEntry[] = view.cover
+			? []
+			: [{ value: 'add-cover', label: 'Add cover', icon: ImageUp }];
+		if (unitKind) {
+			items.push({ value: 'new-note', label: 'New note', icon: FilePlus });
+			if (unitKind === 'folder') {
+				items.push({ value: 'new-folder', label: 'New folder', icon: FolderPlus });
+			}
+			items.push({ kind: 'divider' });
+			if (unitIsRoot) {
+				items.push({ value: 'configure', label: 'Configure source', icon: Settings });
+			} else {
+				items.push({ value: 'rename', label: 'Rename', icon: Pencil });
+			}
+			if (unitKind === 'folder') {
+				items.push({ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink });
+			}
+			items.push(...cover);
+			items.push({ kind: 'divider' });
+			items.push(
+				view.temporary
+					? { value: 'project', label: 'Turn into project', icon: Bookmark }
+					: { value: 'unproject', label: 'Stop being a project', icon: Bookmark }
+			);
+			if (!unitIsRoot) {
+				const what = unitKind === 'folder' ? 'folder' : 'tag';
+				items.push(
+					confirmingDelete
+						? {
+								value: 'confirm-delete',
+								label: `Confirm delete ${what}`,
+								icon: Trash2,
+								danger: true
+							}
+						: { value: 'delete', label: `Delete ${what}`, icon: Trash2, keepOpen: true }
+				);
+			}
+			return items;
+		}
+		items.push(...cover);
 		items.push({ value: 'duplicate', label: 'Duplicate view', icon: Copy });
 		items.push(
 			confirmingDelete
@@ -335,6 +403,55 @@
 		);
 		return items;
 	});
+
+	async function createFolder(name: string) {
+		newFolderOpen = false;
+		if (!name || !view.unit) return;
+		try {
+			const sourceId = folderIdSource(view.unit);
+			const path = folderIdPath(view.unit);
+			const created = await Folder.create(
+				name,
+				sourceId,
+				path ? { id: view.unit, path } : undefined
+			);
+			const next = await View.forUnit(created.id, created.slug);
+			if (tab) editor.showViewInTab(tab, next);
+			else editor.openView(next);
+		} catch (e) {
+			toasts.push(Folder.describeOpError(e, "That folder couldn't be created."));
+		}
+	}
+
+	let sourceDialogOpen = $state(false);
+	let dialogSource: Source | null = $state(null);
+	async function configureSource() {
+		if (!view.unit) return;
+		dialogSource = (await listSources()).find((s) => s.id === folderIdSource(view.unit!)) ?? null;
+		if (dialogSource) sourceDialogOpen = true;
+	}
+
+	async function revealUnit() {
+		if (!view.unit) return;
+		const src = (await listSources()).find((s) => s.id === folderIdSource(view.unit!));
+		if (!src) return;
+		const path = folderIdPath(view.unit);
+		revealItemInDir(path ? `${src.path}/${path}` : src.path).catch(console.error);
+	}
+
+	async function deleteUnit() {
+		if (!view.unit) return;
+		if (unitKind === 'tag') {
+			try {
+				await Tag.delete(await Tag.fromID(view.unit));
+				editor.closeTab(view.id, false);
+			} catch (e) {
+				console.error('delete tag failed', e);
+			}
+		} else {
+			toasts.push('Deleting folders is not wired up yet. Delete it in your file manager.');
+		}
+	}
 
 	function openMore(e: MouseEvent) {
 		moreAnchor = e.currentTarget as HTMLElement;
@@ -375,7 +492,14 @@
 		moreOpen = false;
 		if (value === 'add-cover') pickCover();
 		if (value === 'duplicate') duplicateView();
-		if (value === 'confirm-delete') deleteView();
+		if (value === 'confirm-delete') unitKind ? deleteUnit() : deleteView();
+		if (value === 'new-note') createSignal++;
+		if (value === 'new-folder') newFolderOpen = true;
+		if (value === 'rename') header?.focusTitle();
+		if (value === 'configure') configureSource();
+		if (value === 'reveal') revealUnit();
+		if (value === 'project') view.save().catch((e) => console.error('save view failed', e));
+		if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));
 	}
 
 	function onOpenRow(rowId: string, newTab = false) {
@@ -461,6 +585,7 @@
 
 				<div class="view-chrome" class:has-cover={!!view.cover}>
 					<ViewHeader
+						bind:this={header}
 						{view}
 						hasCover={!!view.cover}
 						{docPicker}
@@ -532,6 +657,14 @@
 	onSelect={onMoreSelect}
 	minWidth={170}
 />
+<InputPopover
+	bind:open={newFolderOpen}
+	anchor={newFolderOpen ? moreAnchor : null}
+	value=""
+	placeholder="New folder"
+	onChange={(v) => createFolder(String(v ?? ''))}
+/>
+<SourceDialog bind:open={sourceDialogOpen} mode="edit" source={dialogSource} onSaved={() => {}} />
 <CoverSourceDialog
 	bind:open={coverDialogOpen}
 	onPicked={(ref) => {
