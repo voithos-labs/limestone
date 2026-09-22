@@ -210,8 +210,6 @@
 				return 200;
 			case 'tags':
 				return 200;
-			case 'id':
-				return 220;
 			case 'select':
 				return 150;
 			case 'folder':
@@ -1377,7 +1375,6 @@
 	function cellClassFor(type: ViewFieldType): string {
 		if (type === 'title') return 'cell-title';
 		if (type === 'created_at' || type === 'updated_at') return 'cell-time';
-		if (type === 'id') return 'cell-mono';
 		// Pill cells clip cleanly at the edge rather than appending a "…"
 		if (type === 'select' || type === 'multiselect' || type === 'tags')
 			return 'cell-default cell-pill';

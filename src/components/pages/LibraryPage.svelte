@@ -39,7 +39,7 @@
 	// never saved, no filters, just the sort.
 	const recentView = View.create('Recent');
 	recentView.temporary = true;
-	const recentFace = recentView.addFace('grid');
+	const recentFace = recentView.addFace('masonry');
 	recentView.faces = [recentFace];
 	recentView.state.active_face_id = recentFace.id;
 	{

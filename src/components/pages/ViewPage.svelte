@@ -14,6 +14,7 @@
 	import TableFace from '../views/faces/TableFace.svelte';
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
+	import MasonryFace from '../views/faces/MasonryFace.svelte';
 	import DocFace from '../views/faces/DocFace.svelte';
 	import { DocPicker } from '$lib/views/docPicker.svelte';
 	import { convertFileSrc } from '@tauri-apps/api/core';
@@ -51,7 +52,7 @@
 	// a doc face makes its own entry, and a journal's card bodies get the fab back
 	const showNewFab = $derived(
 		activeFace?.type === 'journal'
-			? activeFace.body?.type === 'grid' || activeFace.body?.type === 'list'
+			? activeFace.body?.type === 'masonry' || activeFace.body?.type === 'list'
 			: activeFace?.type !== 'doc'
 	);
 
@@ -495,8 +496,10 @@
 						{findBarAnchor}
 						{dockTarget}
 					/>
-				{:else if activeFace?.type === 'list' || activeFace?.type === 'grid'}
+				{:else if activeFace?.type === 'list'}
 					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
+				{:else if activeFace?.type === 'masonry'}
+					<MasonryFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{:else}
 					<TableFace {view} face={activeFace} {onOpenRow} {createSignal} flow={bodyFlow} />
 				{/if}

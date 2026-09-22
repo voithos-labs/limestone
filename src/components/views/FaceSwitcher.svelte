@@ -13,6 +13,7 @@
 		ArrowLeft,
 		NotebookText,
 		FileText,
+		LayoutDashboard,
 		LayoutGrid,
 		ArrowUpAZ,
 		ArrowDownAZ,
@@ -20,15 +21,11 @@
 		CalendarClock,
 		ScanLine,
 		ScanBarcode,
+		PencilLine,
 		ChevronRight
 	} from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
-	import type {
-		ViewFace,
-		ViewFaceType,
-		ViewField,
-		FilterNode
-	} from '$lib/models/View.svelte';
+	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '$lib/models/View.svelte';
 	import { VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
@@ -38,7 +35,7 @@
 	let { view, face }: { view: View; face: ViewFace } = $props();
 
 	const faceIcon = getFaceIcon;
-	const SwitchIcon = $derived(faceIcon(face.type));
+	const SwitchIcon = $derived(faceIcon(face));
 
 	// A journal is a day navigator around a body face, so the options that belong to
 	// what's actually drawn (fields, sort, grouping) act on the body.
@@ -89,7 +86,8 @@
 	const bodyValue = $derived(face.body?.type ?? 'doc');
 	const BODY_ITEMS = [
 		{ value: 'doc', label: 'Document', icon: FileText },
-		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
+		{ value: 'list', label: 'List', icon: List },
+		{ value: 'masonry', label: 'Masonry', icon: LayoutDashboard },
 		{ value: 'table', label: 'Table', icon: Table }
 	];
 	const bodyLabel = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.label ?? 'Document');
@@ -121,6 +119,8 @@
 	}
 
 	const showActivity = $derived(face.config.show_activity === true);
+	const editInPlace = $derived(target.config.edit_in_place === true);
+	const isCards = $derived(target.config.layout === 'grid');
 
 	function toggleActivity() {
 		face.config.show_activity = !showActivity;
@@ -176,16 +176,19 @@
 	let addFaceOpen = $state(false);
 	let addFaceEl: HTMLElement | null = $state(null);
 	const ADD_FACE_ITEMS = [
-		{ value: 'table', label: 'Table', icon: Table },
-		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
 		{ value: 'list', label: 'List', icon: List },
+		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
+		{ value: 'masonry', label: 'Masonry', icon: LayoutDashboard },
+		{ value: 'table', label: 'Table', icon: Table },
 		{ value: 'doc', label: 'Document', icon: FileText },
 		{ value: 'journal', label: 'Journal', icon: NotebookText }
 	];
 
+	// a grid is a list face that starts in cards
 	function addFaceOfType(type: string) {
 		addFaceOpen = false;
-		const f = view.addFace(type as ViewFaceType);
+		const f = view.addFace((type === 'grid' ? 'list' : type) as ViewFaceType);
+		if (type === 'grid') f.config.layout = 'grid';
 		view.state.active_face_id = f.id;
 		startRename(f);
 	}
@@ -455,7 +458,7 @@
 							/>
 						</span>
 					{:else}
-						{@const RowIcon = faceIcon(f.type)}
+						{@const RowIcon = faceIcon(f)}
 						<button
 							class="name"
 							type="button"
@@ -524,6 +527,7 @@
 			>
 				<Plus size={14} strokeWidth={1.75} />
 				<span>Add face</span>
+				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 			<Menu
 				bind:open={addFaceOpen}
@@ -531,6 +535,7 @@
 				items={ADD_FACE_ITEMS}
 				onSelect={addFaceOfType}
 				minWidth={150}
+				placement="right"
 			/>
 		</div>
 
@@ -541,6 +546,33 @@
 			<span class="face-scope-name">{face.label}</span>
 			<span class="face-scope-tag">Options</span>
 		</div>
+
+		{#if target.type === 'list'}
+			<button
+				class="action group-toggle"
+				type="button"
+				data-nav
+				onclick={() => (target.config.layout = isCards ? 'list' : 'grid')}
+			>
+				{#if isCards}
+					<LayoutGrid size={14} strokeWidth={1.75} />
+				{:else}
+					<List size={14} strokeWidth={1.75} />
+				{/if}
+				<span>Layout</span>
+				<span class="trailing">{isCards ? 'Cards' : 'Rows'}</span>
+			</button>
+			<button
+				class="action group-toggle"
+				type="button"
+				data-nav
+				onclick={() => (target.config.edit_in_place = !editInPlace)}
+			>
+				<PencilLine size={14} strokeWidth={1.75} />
+				<span>Edit in place</span>
+				<span class="trailing">{editInPlace ? 'On' : 'Off'}</span>
+			</button>
+		{/if}
 
 		{#if target.type === 'table'}
 			<button
@@ -611,7 +643,6 @@
 				<span class="trailing">{showActivity ? 'On' : 'Off'}</span>
 			</button>
 		{/if}
-
 	</div>
 
 	{#if target.type === 'table'}
@@ -958,7 +989,8 @@
 		color: var(--color-ui-muted);
 	}
 
-	.group-toggle span:first-of-type {
+	.group-toggle span:first-of-type,
+	.add-face span:first-of-type {
 		flex: 1;
 	}
 

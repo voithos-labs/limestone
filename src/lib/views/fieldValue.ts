@@ -95,8 +95,6 @@ export function valueFor(field: ViewField, row: MemberRow): string {
 	switch (field.type) {
 		case 'title':
 			return row.title;
-		case 'id':
-			return row.id;
 		case 'created_at':
 			return formatDateFriendly(row.created_at);
 		case 'updated_at':
@@ -144,7 +142,6 @@ export function isMetaField(type: ViewFieldType): boolean {
 
 const PRETTY_FIELD: Record<string, string> = {
 	title: 'Title',
-	id: 'ID',
 	tags: 'Tags',
 	folder: 'Location',
 	created_at: 'Created',

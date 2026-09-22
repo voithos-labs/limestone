@@ -55,7 +55,7 @@ import { toasts } from '$lib/toasts.svelte';
 import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
 
 export type ViewFaceType =
-	'table' | 'list' | 'grid' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
+	'table' | 'list' | 'masonry' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
 
 interface ViewFaceJSON {
 	id: string;
@@ -71,7 +71,7 @@ interface ViewFaceJSON {
 const FACE_TYPE_LABEL: Record<ViewFaceType, string> = {
 	table: 'Table',
 	list: 'List',
-	grid: 'Grid',
+	masonry: 'Masonry',
 	doc: 'Document',
 	kanban: 'Board',
 	calendar: 'Calendar',
@@ -108,8 +108,13 @@ export class ViewFace {
 				: null;
 	}
 
+	// a list face drawn as cards reads as a grid
+	get isCards(): boolean {
+		return this.type === 'list' && this.config.layout === 'grid';
+	}
+
 	get label(): string {
-		return this.name || FACE_TYPE_LABEL[this.type];
+		return this.name || (this.isCards ? 'Grid' : FACE_TYPE_LABEL[this.type]);
 	}
 
 	static create(
@@ -172,14 +177,7 @@ export class ViewFace {
 
 // built-ins: derived (mapped) from existing document attributes
 
-const BUILTIN_FIELD_TYPES = [
-	'title',
-	'id',
-	'tags',
-	'folder',
-	'created_at',
-	'updated_at'
-] as const;
+const BUILTIN_FIELD_TYPES = ['title', 'tags', 'folder', 'created_at', 'updated_at'] as const;
 
 // idk probably some more this seems fine for now
 export type ViewFieldType =
@@ -380,7 +378,6 @@ export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	multiselect: ['contains', 'not_contains', 'has_all', 'is_empty', 'is_not_empty'], // might prune multiselect
 	// BUILT-INS
 	title: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
-	id: ['eq', 'neq'],
 	tags: ['has_any', 'has_all', 'has_none'],
 	folder: ['in', 'not_in', 'contains', 'not_contains', 'starts_with'],
 	created_at: ['before', 'on_or_before', 'after', 'on_or_after'],
@@ -409,7 +406,6 @@ export const VIEW_FIELD_SORTABLE: ReadonlySet<ViewFieldType> = new Set([
 	'boolean',
 	'select',
 	'title',
-	'id',
 	'folder',
 	'created_at',
 	'updated_at'
@@ -449,8 +445,6 @@ export function sanitizeName(raw: string): string {
 
 function resolveColumn(field: ViewField): string {
 	switch (field.type) {
-		case 'id':
-			return 'd.id';
 		case 'title':
 			return 'd.title';
 		case 'folder':
@@ -970,12 +964,16 @@ class View {
 		return this.fields.filter((f) => !isBuiltinField(f));
 	}
 
+	// the id field is gone: a uuid is nothing to display or filter by hand, so saved views lose it
 	setOwnFields(fields: ViewField[]): void {
-		this.fields = [...fields.filter((f) => !isBuiltinField(f)), ...builtinFields()];
+		this.fields = [
+			...fields.filter((f) => !isBuiltinField(f) && (f.type as string) !== 'id'),
+			...builtinFields()
+		];
 	}
 
 	private initDefaultFaces(): void {
-		this.faces = [ViewFace.create('grid', this.defaultFaceFieldIds())];
+		this.faces = [ViewFace.create('list', this.defaultFaceFieldIds())];
 	}
 
 	private defaultFaceFieldIds(): string[] {

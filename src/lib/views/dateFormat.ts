@@ -10,6 +10,25 @@ function shortTime(d: Date): string {
 		.replace(/[\s.]/g, '');
 }
 
+// the friendly form without a time of day, for cards and other tight spots
+export function formatDateCompact(input: string | number | Date | null | undefined): string {
+	if (input === null || input === undefined || input === '') return '';
+	const m = typeof input === 'string' ? input.match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+	const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : parseDate(input);
+	if (!d) return String(input);
+	const now = new Date();
+	if (d.toDateString() === now.toDateString()) return 'Today';
+	const yesterday = new Date(now);
+	yesterday.setDate(yesterday.getDate() - 1);
+	if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+	const tomorrow = new Date(now);
+	tomorrow.setDate(tomorrow.getDate() + 1);
+	if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+	const sameYear = d.getFullYear() === now.getFullYear();
+	if (sameYear) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+	return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function formatDateFriendly(input: string | number | Date | null | undefined): string {
 	if (input === null || input === undefined || input === '') return '';
 	const d = parseDate(input);

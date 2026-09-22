@@ -8,33 +8,35 @@ import {
 	Tags,
 	Tag,
 	Folder,
-	Fingerprint,
 	CalendarPlus2,
 	CalendarClock,
 	Filter,
 	Table,
 	Columns3,
 	List,
+	LayoutDashboard,
 	LayoutGrid,
 	FileText,
 	Pin,
 	NotebookText
 } from '@lucide/svelte';
 import { VIEW_FIELD_OPS, type ViewFaceType, type ViewFieldType } from '$lib/models/View.svelte';
+import type { ViewFace } from '$lib/models/View.svelte';
 
 const FACE_ICONS: Record<ViewFaceType, Component> = {
 	table: Table,
 	kanban: Columns3,
 	list: List,
-	grid: LayoutGrid,
+	masonry: LayoutDashboard,
 	doc: FileText,
 	calendar: Calendar,
 	pinned: Pin,
 	journal: NotebookText
 };
 
-export function getFaceIcon(type: ViewFaceType): Component {
-	return FACE_ICONS[type] ?? Table;
+export function getFaceIcon(face: Pick<ViewFace, 'type' | 'isCards'>): Component {
+	if (face.isCards) return LayoutGrid;
+	return FACE_ICONS[face.type] ?? Table;
 }
 
 export interface OpOption {
@@ -50,7 +52,6 @@ export const FIELD_TYPE_ICONS: Record<ViewFieldType, Component> = {
 	select: CircleDot,
 	multiselect: Tags,
 	title: CaseSensitive,
-	id: Fingerprint,
 	tags: Tag,
 	folder: Folder,
 	created_at: CalendarPlus2,

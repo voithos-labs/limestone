@@ -52,7 +52,12 @@
 		for (const n of view.filter.children) {
 			if (!('field_id' in n)) continue;
 			const f = fieldsById.get(n.field_id);
-			if (f?.type === 'folder' && n.op === 'in' && typeof n.value === 'string' && isSourceRoot(n.value))
+			if (
+				f?.type === 'folder' &&
+				n.op === 'in' &&
+				typeof n.value === 'string' &&
+				isSourceRoot(n.value)
+			)
 				return n;
 		}
 		return undefined;
@@ -270,7 +275,7 @@
 
 	.ff-chip:hover,
 	.ff-chip:focus-within,
-	.ff-chip:has(.seg.open) {
+	.ff-chip:has(:global(.seg.open)) {
 		max-width: none;
 		overflow: visible;
 		z-index: 5;
