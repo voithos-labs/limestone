@@ -105,8 +105,13 @@ export class FaceRows {
 					out = [];
 				} else {
 					const members = await view.getMembers({ face, scope, ids_in: ids, limit: ids.length });
-					const byId = new Map(members.map((m) => [m.id, m]));
-					out = ids.map((id) => byId.get(id)).filter((r): r is MemberRow => !!r);
+					if (face.config.keep_sort) {
+						// a face that is itself a timeline keeps its order under search
+						out = members;
+					} else {
+						const byId = new Map(members.map((m) => [m.id, m]));
+						out = ids.map((id) => byId.get(id)).filter((r): r is MemberRow => !!r);
+					}
 				}
 			} else {
 				out = await view.getMembers({ face, scope, limit: PAGE });

@@ -387,7 +387,7 @@
 				</nav>
 
 				<label class="search">
-					<Search size={13} strokeWidth={1.75} />
+					<Search size={14} strokeWidth={1.75} />
 					<input
 						type="text"
 						placeholder="Search in {isRoot && source
@@ -601,16 +601,16 @@
 	.search {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		height: 28px;
+		gap: 7px;
+		height: 32px;
 		flex: 0 1 320px;
 		min-width: 120px;
 		margin-left: auto;
-		padding: 0 12px;
+		padding: 0 13px;
 		background: var(--chip-bg);
 		border-radius: 999px;
 		color: var(--color-ui-muted);
-		font-size: 12px;
+		font-size: 13px;
 	}
 
 	.search input {

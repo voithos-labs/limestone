@@ -2,6 +2,9 @@
 	import type View from '$lib/models/View.svelte';
 	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
 	import { sanitizeName } from '$lib/models/View.svelte';
+	import Folder, { folderIdSource, folderIdPath } from '$lib/models/Folder';
+	import Tag, { tagSlug } from '$lib/models/Tag';
+	import { toasts } from '$lib/toasts.svelte';
 	import FaceSwitcher from './FaceSwitcher.svelte';
 	import ViewManageMenu from './ViewManageMenu.svelte';
 	import ArrangeFields from './ArrangeFields.svelte';
@@ -76,9 +79,10 @@
 
 	const searchMode = $derived(effectiveType === 'table' ? 'title' : 'hybrid');
 
-	// A doc face draws one document, so its search picks which one,
-	// a dropdown under this bar instead of filtering rows in place
-	const picking = $derived(effectiveType === 'doc' ? docPicker : undefined);
+	// A doc face draws one document, so its search picks which one, a dropdown under this bar
+	// instead of filtering rows in place. A journal searches in place (its hits list) even
+	// with a doc body, so only a bare doc face picks
+	const picking = $derived(activeFace?.type === 'doc' ? docPicker : undefined);
 
 	let searchChipEl: HTMLElement | null = $state(null);
 	$effect(() => {
@@ -152,7 +156,32 @@
 
 	function commitSlug() {
 		const next = sanitizeName(slugDraft);
-		if (next) view.renameSlug(next);
+		if (next && view.unit) void renameUnit(view.unit, next);
+		else if (next) view.renameSlug(next);
+		slugDraft = view.slug;
+	}
+
+	// a unit view is named by its unit, so renaming the title renames the folder or tag
+	async function renameUnit(unit: string, name: string) {
+		if (name === view.slug) return;
+		try {
+			if (unit.startsWith('folder:')) {
+				const sourceId = folderIdSource(unit);
+				const path = folderIdPath(unit);
+				if (!path) return;
+				const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
+				const newId = await Folder.move(sourceId, path, `${parent}${name}`);
+				view.retarget(unit, newId, true);
+				view.slug = (await Folder.fromID(newId)).slug;
+			} else if (unit.startsWith('tag:')) {
+				const tag = await Tag.fromID(unit);
+				const newId = await Tag.rename(tag, name);
+				view.retarget(unit, newId);
+				view.slug = tagSlug(name);
+			}
+		} catch (e) {
+			toasts.push(Folder.describeOpError(e, "That couldn't be renamed."));
+		}
 		slugDraft = view.slug;
 	}
 
@@ -194,7 +223,6 @@
 			bind:value={slugDraft}
 			onblur={commitSlug}
 			onkeydown={slugKey}
-			readonly={!!view.unit}
 			spellcheck="false"
 		/>
 	</span>
@@ -274,7 +302,7 @@
 			bind:this={fieldsEl}
 			onclick={() => (fieldsOpen = !fieldsOpen)}
 		>
-			<Columns3Cog size={14} strokeWidth={1.75} />
+			<Columns3Cog size={15} strokeWidth={1.75} />
 		</button>
 		<ViewManageMenu
 			bind:open={fieldsOpen}
@@ -299,7 +327,7 @@
 		bind:this={filtersEl}
 		onclick={() => (filtersOpen = !filtersOpen)}
 	>
-		<Funnel size={14} strokeWidth={1.75} />
+		<Funnel size={15} strokeWidth={1.75} />
 	</button>
 
 	{#if filtersOpen}
@@ -325,15 +353,15 @@
 	{/if}
 
 	<label class="search-chip" bind:this={searchChipEl}>
-		<Search size={13} strokeWidth={1.75} />
+		<Search size={14} strokeWidth={1.75} />
 		<input
 			type="text"
 			class="search-input"
 			placeholder={picking
-				? 'find a document...'
+				? 'Find a document'
 				: searchMode === 'hybrid'
-					? 'quick search...'
-					: 'search...'}
+					? 'Search'
+					: 'Search titles'}
 			value={view.state.search ?? ''}
 			oninput={(e) => {
 				view.state.search = (e.currentTarget as HTMLInputElement).value;
@@ -407,8 +435,8 @@
 
 	.title-divider {
 		width: 1px;
-		height: 20px;
-		margin-right: 5px;
+		height: 22px;
+		margin-right: 6px;
 		background: var(--color-border);
 		border-radius: 999px;
 		flex-shrink: 0;
@@ -509,14 +537,11 @@
 		text-underline-offset: 3px;
 	}
 
-	.title-input[readonly] {
-		cursor: default;
-	}
 
 	.filter-bar {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: 8px;
 		margin-bottom: 16px;
 		margin-left: -6px;
 		padding-left: 6px;
@@ -531,17 +556,20 @@
 		display: none;
 	}
 
+	/* the two icon buttons stay quiet between the bar's anchors: the face on the left,
+	   the search on the right */
 	.collapse-toggle {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: 2px;
-		height: 28px;
-		padding: 0 7px;
+		width: 32px;
+		height: 32px;
+		padding: 0;
 		flex-shrink: 0;
-		background: var(--chip-bg);
+		background: transparent;
 		border: none;
-		border-radius: 6px;
+		border-radius: 8px;
 		color: var(--color-ui-muted);
 		cursor: pointer;
 		transition:
@@ -550,7 +578,7 @@
 	}
 
 	.collapse-toggle:hover {
-		background: var(--chip-bg-hover);
+		background: var(--chip-bg);
 		color: var(--color-text-primary);
 	}
 
@@ -579,12 +607,12 @@
 		align-items: center;
 		justify-content: center;
 		margin-left: auto;
-		width: 28px;
-		height: 28px;
+		width: 32px;
+		height: 32px;
 		padding: 0;
 		border: none;
-		border-radius: 6px;
-		background: var(--chip-bg);
+		border-radius: 8px;
+		background: transparent;
 		color: var(--color-ui-muted);
 		cursor: pointer;
 		transition:
@@ -594,7 +622,7 @@
 
 	.more-btn:hover {
 		color: var(--color-text-primary);
-		background: var(--chip-bg-hover);
+		background: var(--chip-bg);
 	}
 
 	.save-row {
@@ -638,16 +666,16 @@
 	.search-chip {
 		display: inline-flex;
 		align-items: center;
-		gap: 5px;
-		height: 28px;
-		padding: 0 9px;
+		gap: 7px;
+		height: 32px;
+		padding: 0 13px;
 		flex: 1;
 		min-width: 80px;
 		background: var(--chip-bg);
-		border-radius: 6px;
+		border-radius: 999px;
 		color: var(--color-ui-muted);
 		font-family: var(--font-ui);
-		font-size: 12px;
+		font-size: 13px;
 		line-height: 1.45;
 		transition:
 			background-color 120ms ease,

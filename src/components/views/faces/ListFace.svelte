@@ -17,13 +17,17 @@
 		face,
 		onOpenRow,
 		createSignal = 0,
-		scope = null
+		scope = null,
+		onTotal,
+		autoFocus = true
 	}: {
 		view: View;
 		face: ViewFace;
 		onOpenRow?: (rowId: string, newTab?: boolean) => void;
 		createSignal?: number;
 		scope?: FilterNode | null;
+		onTotal?: (n: number) => void; // how many rows the current search and scope leave
+		autoFocus?: boolean; // the first row takes focus once loaded, if nothing else has it
 	} = $props();
 
 	const rows = new FaceRows(
@@ -32,6 +36,10 @@
 		() => scope
 	);
 	let editors: RowEditors = $state()!;
+
+	$effect(() => {
+		if (!rows.loading) onTotal?.(rows.total);
+	});
 
 	// browse: click a row to open, empties hidden. edit: click a value to change it, an explicit
 	// Open button, empties shown as placeholders so they can be set
@@ -137,6 +145,17 @@
 	function items(): HTMLElement[] {
 		return Array.from(listEl?.querySelectorAll<HTMLElement>(ITEM) ?? []);
 	}
+
+	// the first row is selected on arrival, so the list reads as a place with a cursor in it
+	let focusedOnce = false;
+	$effect(() => {
+		if (!autoFocus || rows.loading || focusedOnce || rows.rows.length === 0) return;
+		focusedOnce = true;
+		const a = document.activeElement as HTMLElement | null;
+		const free = !a || a === document.body || !!a.closest('.view-body');
+		if (!free || a?.closest('input, textarea, [contenteditable], .editor')) return;
+		tick().then(() => focusItem(0));
+	});
 
 	function focusItem(i: number) {
 		const els = items();

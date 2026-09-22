@@ -238,9 +238,25 @@
 	}
 
 	// ── Sections: order, collapsed, hidden, all on the face ─────────────────────
+	// under a search, a section with nothing to show steps aside; the lists report what
+	// the search left them
+	const searching = $derived(!!(view.state.search as string | undefined)?.trim());
+	let todoTotal = $state(-1);
+	let notesTotal = $state(-1);
+	$effect(() => {
+		void view.state.search;
+		todoTotal = -1;
+		notesTotal = -1;
+	});
 	const sections = $derived(dashboardSections(face));
 	const visible = $derived(
-		sections.filter((s) => !s.hidden && (s.id !== 'folders' || subfolders.length > 0))
+		sections.filter((s) => {
+			if (s.hidden) return false;
+			if (s.id === 'folders') return subfolders.length > 0;
+			if (!searching) return true;
+			const total = s.id === 'todo' ? todoTotal : notesTotal;
+			return total !== 0;
+		})
 	);
 
 	function patch(id: string, p: Partial<DashSection>) {
@@ -358,7 +374,7 @@
 					type="button"
 					onclick={() => (view.state.dash_tag = selectedTag === c.id ? null : c.id)}
 				>
-					{#if c.kind === 'folder'}<FolderIcon size={12} strokeWidth={1.75} />{:else}<Hash
+					{#if c.kind === 'folder'}<FolderIcon size={11} strokeWidth={1.75} />{:else}<Hash
 							size={11}
 							strokeWidth={2}
 						/>{/if}{c.slug}
@@ -387,15 +403,20 @@
 					<span class="sec-title">{DASH_SECTION_LABEL[sec.id]}</span>
 					<span class="sec-count">
 						{sec.id === 'todo'
-							? `${openCount} open`
+							? searching && todoTotal >= 0
+								? todoTotal
+								: `${openCount} open`
 							: sec.id === 'docs'
-								? notesCount
+								? searching && notesTotal >= 0
+									? notesTotal
+									: notesCount
 								: subfolders.length}
 					</span>
 					<span class="sec-caret" class:collapsed={sec.collapsed}>
 						<ChevronDown size={13} strokeWidth={2} />
 					</span>
 				</button>
+				<span class="sec-rule"></span>
 				{#if sec.id === 'todo'}
 					<button
 						class="sec-action"
@@ -430,9 +451,24 @@
 						/>
 					</div>
 				{:else if sec.id === 'todo'}
-					<ListFace {view} face={todoFace} {onOpenRow} createSignal={todoSignal} scope={tagScope} />
+					<ListFace
+						{view}
+						face={todoFace}
+						{onOpenRow}
+						createSignal={todoSignal}
+						scope={tagScope}
+						autoFocus={false}
+						onTotal={(n) => (todoTotal = n)}
+					/>
 				{:else}
-					<ListFace {view} face={notesFace} {onOpenRow} scope={tagScope} />
+					<ListFace
+						{view}
+						face={notesFace}
+						{onOpenRow}
+						scope={tagScope}
+						autoFocus={false}
+						onTotal={(n) => (notesTotal = n)}
+					/>
 				{/if}
 			{/if}
 		</section>
@@ -451,7 +487,7 @@
 	.chips {
 		display: flex;
 		flex-wrap: nowrap;
-		gap: 8px;
+		gap: 6px;
 		margin: 0 24px;
 		overflow-x: auto;
 		scrollbar-width: none;
@@ -469,13 +505,13 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		height: 30px;
-		padding: 0 12px;
+		height: 24px;
+		padding: 0 9px;
 		border: 1px solid var(--color-border);
-		border-radius: 7px;
+		border-radius: 6px;
 		background: transparent;
 		font: inherit;
-		font-size: 13px;
+		font-size: 12px;
 		color: var(--color-text-secondary);
 		cursor: pointer;
 		transition:
@@ -496,8 +532,8 @@
 	}
 
 	.chip .n {
-		margin-left: 5px;
-		font-size: 11px;
+		margin-left: 4px;
+		font-size: 10.5px;
 		color: var(--color-ui-muted);
 	}
 
@@ -512,8 +548,16 @@
 		transition: opacity 100ms ease;
 	}
 
+	/* a quiet rule runs the header row out from the title to its action */
+	.sec-rule {
+		flex: 1;
+		height: 1px;
+		margin: 0 14px 0 10px;
+		background: var(--chip-divider);
+	}
+
 	.strip {
-		margin: 4px 24px 0;
+		margin: 4px 24px 6px;
 	}
 
 	section.dragging {
@@ -592,7 +636,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		margin-left: auto;
+		flex-shrink: 0;
 		padding: 2px 6px;
 		border: none;
 		border-radius: 5px;

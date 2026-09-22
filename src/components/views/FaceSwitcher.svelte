@@ -447,7 +447,7 @@
 </script>
 
 <button class="face-switch" type="button" bind:this={anchorEl} onclick={() => (open = !open)}>
-	<SwitchIcon size={14} strokeWidth={1.75} />
+	<SwitchIcon size={15} strokeWidth={1.75} />
 	<span>{face.label}</span>
 	<ChevronDown size={13} strokeWidth={2} />
 </button>
@@ -779,16 +779,16 @@
 	.face-switch {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		height: 28px;
-		padding: 0 9px;
+		gap: 7px;
+		height: 32px;
+		padding: 0 11px 0 10px;
 		flex-shrink: 0;
 		background: var(--chip-bg);
 		border: none;
-		border-radius: 6px;
+		border-radius: 8px;
 		color: var(--color-text-secondary);
 		font-family: var(--font-ui);
-		font-size: 12px;
+		font-size: 13px;
 		font-weight: 500;
 		cursor: pointer;
 		transition:

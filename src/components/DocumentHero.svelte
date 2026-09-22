@@ -252,7 +252,7 @@
 	let cardWidth = $state(0);
 	let floating = $state(false);
 	let floatAt = $state({ x: 0, y: 0 });
-	const FLOAT_INSET = 8;
+	const FLOAT_INSET = 14;
 	const GUTTER_GAP = 16;
 	$effect(() => {
 		void innerWidth;
@@ -369,6 +369,7 @@
 </script>
 
 {#snippet backCard()}
+	{#if back}
 		<div class="back-slot" class:gutter style:width={gutter ? `${cardWidth}px` : null} bind:this={backSlot}>
 			<button
 				class="back"
@@ -391,6 +392,7 @@
 				</span>
 			</button>
 		</div>
+	{/if}
 {/snippet}
 
 <div class="doc-hero">
@@ -424,7 +426,10 @@
 			</span>
 
 			<div class="meta-row">
-				{#if back && !gutter}{@render backCard()}{/if}
+				{#if back && !gutter}
+					{@render backCard()}
+					<span class="meta-sep"></span>
+				{/if}
 				<button
 					class="loc-chip"
 					bind:this={pickAnchor}
@@ -564,7 +569,6 @@
 	:global(:root[data-doc-header='full']) .meta-row {
 		justify-content: flex-start;
 		margin-top: 10px;
-		top: 0;
 	}
 
 	/* Full header: the meta stacks under the title, so the history chip goes up beside the
@@ -672,7 +676,14 @@
 	.back-slot {
 		flex-shrink: 0;
 		height: 24px;
-		margin-right: 4px;
+	}
+
+	.meta-sep {
+		flex-shrink: 0;
+		width: 1px;
+		height: 16px;
+		margin: 0 4px;
+		background: var(--color-border);
 	}
 
 	.back-slot.gutter {
@@ -736,6 +747,10 @@
 		background: rgba(255, 255, 255, 0.16);
 	}
 
+	:global(:root[data-theme-type='dark']) .back-place {
+		background: rgba(0, 0, 0, 0.18);
+	}
+
 	.back-place > :global(svg) {
 		flex-shrink: 0;
 		opacity: 0.85;
@@ -773,8 +788,7 @@
 		gap: 6px;
 		flex: 1 1 340px;
 		min-width: 0;
-		position: relative;
-		top: -1px;
+		margin-top: -1px;
 		font-family: var(--font-ui);
 		font-size: 12px;
 		color: var(--color-ui-muted);
@@ -914,7 +928,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		height: 18px;
+		height: 20px;
 		padding: 0 9px 0 6px;
 		border-radius: 999px;
 		border: 1px dashed var(--color-border);
@@ -932,7 +946,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		height: 18px;
+		height: 20px;
 		padding: 0 9px 0 6px;
 		border-radius: 999px;
 		background: var(--chip-bg);

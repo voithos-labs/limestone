@@ -821,26 +821,29 @@ export async function isViewSaved(id: string): Promise<boolean> {
 	return (await listSavedViewJSON()).some((v) => v.id === id);
 }
 
+export function remapIds(v: unknown, oldId: string, newId: string, subpaths = false): unknown {
+	if (typeof v === 'string') {
+		if (v === oldId) return newId;
+		if (subpaths && v.startsWith(oldId + '/')) return newId + v.slice(oldId.length);
+		return v;
+	}
+	if (Array.isArray(v)) return v.map((x) => remapIds(x, oldId, newId, subpaths));
+	if (v && typeof v === 'object') {
+		return Object.fromEntries(
+			Object.entries(v).map(([k, val]) => [k, remapIds(val, oldId, newId, subpaths)])
+		);
+	}
+	return v;
+}
+
 export async function remapIdsInSavedViews(
 	oldId: string,
 	newId: string,
 	subpaths = false
 ): Promise<void> {
-	const remap = (v: unknown): unknown => {
-		if (typeof v === 'string') {
-			if (v === oldId) return newId;
-			if (subpaths && v.startsWith(oldId + '/')) return newId + v.slice(oldId.length);
-			return v;
-		}
-		if (Array.isArray(v)) return v.map(remap);
-		if (v && typeof v === 'object') {
-			return Object.fromEntries(Object.entries(v).map(([k, val]) => [k, remap(val)]));
-		}
-		return v;
-	};
 	const s = await getViewStore();
 	const all = (await s.get<ViewJSON[]>('views')) ?? [];
-	await s.set('views', remap(all));
+	await s.set('views', remapIds(all, oldId, newId, subpaths));
 	await s.save();
 }
 
@@ -1210,6 +1213,16 @@ class View {
 	renameSlug(newSlug: string): void {
 		if (this.unit || !isValidName(newSlug)) return;
 		this.slug = newSlug;
+	}
+
+	// after the unit itself was renamed on disk: point this open view at the new id so its next
+	// autosave doesn't write the old one back over the remapped store
+	retarget(oldId: string, newId: string, subpaths = false): void {
+		const r = (v: unknown) => remapIds(v, oldId, newId, subpaths);
+		this.unit = r(this.unit) as string | null;
+		this.filter = r(this.filter) as FilterCompound;
+		for (const f of this.faces) f.additive_filter = r(f.additive_filter) as FilterCompound;
+		this.state = r(this.state) as Record<string, any>;
 	}
 
 	/** Rename a stateful field, moving its stored values to the new key, then update the model */
