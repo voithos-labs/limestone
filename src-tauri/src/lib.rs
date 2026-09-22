@@ -9,7 +9,7 @@ mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 pub async fn create_pool(
     path: &std::path::Path,

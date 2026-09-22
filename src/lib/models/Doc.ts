@@ -103,11 +103,29 @@ Even easier though would be <app-data-dir>/external_sources/<source>/<source shi
 Rel_path makes this easy enough on a fast disk, it's just a folder move when you want to actually
 place it somewhere on the device.
 
+--- 2026-09-18 ---
 
-TODO
-- [ ] include metadata in automerge history;; could live with it but not in it
-- [ ] customize uninstall not to clear app data dir actual note data, or at least more clearly label
-your shit -- or just add a flag for sources that push for flat storage (folders are not scanned)
+Discard everything above.
+
+so from the above, I did end up seperating out folders and tags, because the old age model
+they were from had discohered.
+
+otherwise, locallly, I'm not doing so-called 'virtual' notes. It's extra machinery for... what?
+To avoid name conflicts? Fml, have your name conflicts and stuff it
+
+so do we need this orphaned Doc model? Yes, there is an actual shape here. Wrapping certain files
+etc. with document-shaped properties just makes sense, especially with how we want to display them
+in the UI next to your markdown documents.
+
+Example document types, inexhaustive:
+- PDFs,
+- hmm, well, mostly PDFs
+- Maybe URLs to documents, e.g. a Google Doc, which can open in your browser ;; but that feels
+kinda nasty
+- oh oh audio files
+- video files
+- other file-shaped things you reasonably may want to open in limestone
+
  */
 
 import type { Source } from '$lib/models/Source';

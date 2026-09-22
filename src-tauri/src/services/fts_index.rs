@@ -61,7 +61,7 @@ pub async fn index_fts(
                     let tag_id = tag_id(&tag);
                     sqlx::query("INSERT OR IGNORE INTO tags (id, slug) VALUES (?1, ?2)")
                         .bind(&tag_id)
-                        .bind(&tag)
+                        .bind(body::fold_tag(&tag))
                         .execute(&mut *tx)
                         .await?;
                     sqlx::query(

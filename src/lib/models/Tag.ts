@@ -20,7 +20,13 @@
  */
 
 import { select, execute } from '$lib/services/db';
-import { bulkPerSource, remapIdsInSavedViews, type BulkResult } from '$lib/models/View.svelte';
+import {
+	bulkPerSource,
+	deleteSavedView,
+	listSavedViewJSON,
+	remapIdsInSavedViews,
+	type BulkResult
+} from '$lib/models/View.svelte';
 import { sourceName, type Source } from '$lib/models/Source';
 import { toasts } from '$lib/toasts.svelte';
 import { flushAll } from '$lib/util/flush';
@@ -33,8 +39,12 @@ export interface TagRow {
 	accessed_at: number;
 }
 
+export function tagSlug(raw: string): string {
+	return raw.toLowerCase();
+}
+
 export function tagId(slug: string): string {
-	return `tag:${slug}`;
+	return `tag:${tagSlug(slug)}`;
 }
 
 class Tag {
@@ -52,9 +62,24 @@ class Tag {
 		this.accessedAt = new Date(row.accessed_at);
 	}
 
+	private static bare(id: string): Tag {
+		return new Tag({
+			id,
+			slug: id.slice('tag:'.length),
+			created_at: 0,
+			updated_at: 0,
+			accessed_at: 0
+		});
+	}
+
 	static async list(): Promise<Tag[]> {
-		const rows = await select<TagRow>(`SELECT * FROM tags ORDER BY slug ASC`, []);
-		return rows.map((r) => new Tag(r));
+		const rows = await select<TagRow>(`SELECT * FROM tags`, []);
+		const tags = rows.map((r) => new Tag(r));
+		const indexed = new Set(tags.map((t) => t.id));
+		for (const v of await listSavedViewJSON()) {
+			if (v.unit?.startsWith('tag:') && !indexed.has(v.unit)) tags.push(Tag.bare(v.unit));
+		}
+		return tags.sort((a, b) => a.slug.localeCompare(b.slug));
 	}
 
 	static async memberCounts(): Promise<Map<string, number>> {
@@ -71,22 +96,19 @@ class Tag {
 
 	static async fromID(id: string): Promise<Tag> {
 		const [row] = await select<TagRow>(`SELECT * FROM tags WHERE id = ?1`, [id]);
-		if (!row) throw new Error(`Tag not found: ${id}`);
-		return new Tag(row);
+		return row ? new Tag(row) : Tag.bare(id);
 	}
 
 	static async fromIDs(ids: string[]): Promise<Tag[]> {
 		if (ids.length === 0) return [];
 		const placeholders = ids.map((_, i) => `?${i + 1}`).join(', ');
 		const rows = await select<TagRow>(`SELECT * FROM tags WHERE id IN (${placeholders})`, ids);
-		return rows.map((r) => new Tag(r));
+		const byId = new Map(rows.map((r) => [r.id, new Tag(r)]));
+		return ids.map((id) => byId.get(id) ?? Tag.bare(id));
 	}
 
 	static async fromSlugs(slugs: string[]): Promise<Tag[]> {
-		if (slugs.length === 0) return [];
-		const placeholders = slugs.map((_, i) => `?${i + 1}`).join(', ');
-		const rows = await select<TagRow>(`SELECT * FROM tags WHERE slug IN (${placeholders})`, slugs);
-		return rows.map((r) => new Tag(r));
+		return Tag.fromIDs([...new Set(slugs.map(tagId))]);
 	}
 
 	async touch(): Promise<void> {
@@ -108,7 +130,8 @@ class Tag {
 		}
 	}
 
-	static async rename(tag: Tag, newSlug: string): Promise<string> {
+	static async rename(tag: Tag, rawSlug: string): Promise<string> {
+		const newSlug = tagSlug(rawSlug);
 		const newId = tagId(newSlug);
 		if (newId === tag.id) return newId;
 		await flushAll();
@@ -126,6 +149,8 @@ class Tag {
 		await flushAll();
 		const results = await bulkPerSource('bulk_remove_tag', { slug: tag.slug }, { silent: true });
 		Tag.toastSkippedSources(results, 'removed');
+		const view = (await listSavedViewJSON()).find((v) => v.unit === tag.id);
+		if (view) await deleteSavedView(view.id);
 	}
 }
 

@@ -79,6 +79,10 @@ export function deriveCreateContext(
 		}
 	}
 
+	if (view.unit?.startsWith('tag:')) tagGroupIds.push(view.unit);
+	else if (view.unit && isSourceRoot(view.unit)) folderSourceId = folderIdSource(view.unit);
+	else if (view.unit) folderIds.push(view.unit);
+
 	for (const leaf of leaves) {
 		const field = fieldsById.get(leaf.field_id);
 		if (!field) continue;

@@ -1,3 +1,4 @@
+use crate::services::body::same_tag;
 use crate::services::fs::fast_write;
 use serde_json::{Map, Value};
 use std::fs;
@@ -250,7 +251,7 @@ pub fn rename_tag(fm: &mut Value, from: &str, to: &str) {
     let mut out: Vec<Value> = Vec::with_capacity(arr.len());
     for item in arr.iter() {
         let next = match item.as_str() {
-            Some(s) if s == from => Value::String(to.to_string()),
+            Some(s) if same_tag(s, from) => Value::String(to.to_string()),
             _ => item.clone(),
         };
         if !out.contains(&next) {
@@ -267,7 +268,7 @@ pub fn remove_tag(fm: &mut Value, slug: &str) {
     let Some(arr) = root.get_mut("tags").and_then(Value::as_array_mut) else {
         return;
     };
-    arr.retain(|v| v.as_str() != Some(slug));
+    arr.retain(|v| !v.as_str().is_some_and(|s| same_tag(s, slug)));
     if arr.is_empty() {
         root.remove("tags");
     }
@@ -375,5 +376,14 @@ mod tests {
         let mut v = json!({ "tags": ["a"] });
         rename_view_prefix(&mut v, "projects/", "work/");
         assert_eq!(v, json!({ "tags": ["a"] }));
+    }
+
+    #[test]
+    fn tag_rewrites_ignore_case() {
+        let mut v = json!({ "tags": ["Todo", "keep"] });
+        rename_tag(&mut v, "todo", "task");
+        assert_eq!(v, json!({ "tags": ["task", "keep"] }));
+        remove_tag(&mut v, "TASK");
+        assert_eq!(v, json!({ "tags": ["keep"] }));
     }
 }

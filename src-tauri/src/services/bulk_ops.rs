@@ -548,7 +548,7 @@ async fn execute(
                                WHERE dt.tag_id = ?3 AND d.source_id = ?4)",
             )
             .bind(&new_id)
-            .bind(new_slug)
+            .bind(body::fold_tag(new_slug))
             .bind(&old_id)
             .bind(source_id)
             .execute(db)

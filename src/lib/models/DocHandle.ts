@@ -33,7 +33,7 @@ import { rewriteLinksForMove } from '$lib/services/links.svelte';
 import { toasts } from '$lib/toasts.svelte';
 import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
-import Tag, { type TagRow } from './Tag';
+import Tag, { tagSlug, type TagRow } from './Tag';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
@@ -259,7 +259,7 @@ class DocHandle {
 			id: this.id,
 			sourceId: this.source.id,
 			relPath: this._relPath,
-			tags: slugs
+			tags: [...new Set(slugs.map(tagSlug))]
 		});
 		await this.fetchTags();
 	}

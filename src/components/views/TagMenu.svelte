@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { Hash, Search, Plus, Pencil, Trash2, ArrowLeft } from '@lucide/svelte';
-	import Tag from '$lib/models/Tag';
+	import Tag, { tagId } from '$lib/models/Tag';
 
 	let {
 		open = $bindable(false),
@@ -108,7 +108,7 @@
 	function renameInvalid(t: Tag): boolean {
 		const s = renameDraft.trim();
 		if (s === '' || s === t.slug) return false;
-		return tags.some((o) => o.id !== t.id && o.slug === s);
+		return tags.some((o) => o.id !== t.id && o.id === tagId(s));
 	}
 
 	async function commitRename(t: Tag) {

@@ -11,12 +11,20 @@ struct Tag {
     name: Range<usize>,
 }
 
+pub fn fold_tag(tag: &str) -> String {
+    tag.to_lowercase()
+}
+
+pub fn same_tag(a: &str, b: &str) -> bool {
+    fold_tag(a) == fold_tag(b)
+}
+
 pub fn scan_tags(body: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for span in prose_spans(body) {
         for tag in tags_in(body, span) {
             let name = &body[tag.name];
-            if !out.iter().any(|t| t.eq_ignore_ascii_case(name)) {
+            if !out.iter().any(|t| same_tag(t, name)) {
                 out.push(name.to_string());
             }
         }
@@ -26,7 +34,7 @@ pub fn scan_tags(body: &str) -> Vec<String> {
 
 pub fn merge_body_tags(tags: &mut Vec<String>, body: &str) {
     for tag in scan_tags(body) {
-        if !tags.iter().any(|t| t.eq_ignore_ascii_case(&tag)) {
+        if !tags.iter().any(|t| same_tag(t, &tag)) {
             tags.push(tag);
         }
     }
@@ -52,7 +60,7 @@ pub fn rewrite_tags(body: &str, old: &str, new: Option<&str>) -> Option<String> 
     let mut edits: Vec<(Range<usize>, &str)> = Vec::new();
     for span in prose_spans(body) {
         for tag in tags_in(body, span) {
-            if !body[tag.name.clone()].eq_ignore_ascii_case(old) {
+            if !same_tag(&body[tag.name.clone()], old) {
                 continue;
             }
             match new {
