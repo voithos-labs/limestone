@@ -77,7 +77,10 @@
 			const field = fieldsById.get(leaf.field_id);
 			if (!field) continue;
 			if (field.type === 'folder') {
-				if (typeof leaf.value === 'string' && (leaf.op === 'in' || leaf.op === 'not_in')) {
+				if (
+					typeof leaf.value === 'string' &&
+					(leaf.op === 'in' || leaf.op === 'not_in' || leaf.op === 'is')
+				) {
 					if (isSourceRoot(leaf.value)) sourceIds.add(folderIdSource(leaf.value));
 					else folderIds.add(leaf.value);
 				}
@@ -148,7 +151,8 @@
 	function valueKind(field: ViewField | undefined, op: string): string {
 		if (op === 'is_empty' || op === 'is_not_empty') return 'none';
 		if (op === 'any_of' || op === 'has_all' || op === 'has_any' || op === 'has_none') return 'list';
-		if (field?.type === 'folder') return op === 'in' || op === 'not_in' ? 'folder' : 'text';
+		if (field?.type === 'folder')
+			return op === 'in' || op === 'not_in' || op === 'is' ? 'folder' : 'text';
 		return 'scalar';
 	}
 

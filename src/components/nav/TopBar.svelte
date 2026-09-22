@@ -32,6 +32,10 @@
 	import type View from '$lib/models/View.svelte';
 
 	function viewTabIcon(view: View) {
+		if (view.unit) {
+			if (view.unit.startsWith('tag:')) return Hash;
+			return isSourceRoot(view.unit) ? Notebook : Folder;
+		}
 		const typesById = new Map(view.fields.map((f) => [f.id, f.type]));
 		let hasTags = false;
 		let hasFolder = false;

@@ -67,6 +67,7 @@ export function getFieldIcon(type: ViewFieldType | undefined): Component {
 
 export const OP_LABELS: Record<string, string> = {
 	eq: 'is',
+	is: 'exactly in',
 	neq: 'is not',
 	contains: 'contains',
 	not_contains: 'does not contain',

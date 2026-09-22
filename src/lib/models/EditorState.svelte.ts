@@ -60,7 +60,7 @@ export type TabJSON =
 // 'view' inlines the full JSON
 
 export class TabState {
-	content: TabContent;
+	content: TabContent = $state() as TabContent;
 	state: Record<string, any> = $state({});
 	pinned: boolean = $state(false);
 
@@ -319,6 +319,25 @@ class EditorState {
 
 	openView(view: View) {
 		this.openTab(TabState.forView(view));
+		this.focusTab({ kind: 'tab', id: view.id });
+	}
+
+	// a place navigates within its tab, like a folder window: the tab keeps its slot and takes
+	// the new view's identity. If that view is already open elsewhere, go there instead
+	showViewInTab(tab: TabState, view: View) {
+		const existing = this.tabs.find(
+			(t) => t.content.type === 'view' && t.content.view.id === view.id
+		);
+		if (existing) {
+			this.focusTab({ kind: 'tab', id: existing.id });
+			return;
+		}
+		const oldId = tab.id;
+		tab.content = { type: 'view', view };
+		tab.state = {};
+		this.tabAccessOrderById = this.tabAccessOrderById.filter((v) => v !== oldId);
+		this.focusOrder = this.focusOrder.filter((t) => !(t.kind === 'tab' && t.id === oldId));
+		if (this.focused?.kind === 'tab' && this.focused.id === oldId) this.focused = null;
 		this.focusTab({ kind: 'tab', id: view.id });
 	}
 

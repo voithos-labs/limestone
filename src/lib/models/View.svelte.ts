@@ -379,7 +379,7 @@ export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	// BUILT-INS
 	title: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
 	tags: ['has_any', 'has_all', 'has_none'],
-	folder: ['in', 'not_in', 'contains', 'not_contains', 'starts_with'],
+	folder: ['in', 'not_in', 'is', 'contains', 'not_contains', 'starts_with'],
 	created_at: ['before', 'on_or_before', 'after', 'on_or_after'],
 	updated_at: ['before', 'on_or_before', 'after', 'on_or_after']
 };
@@ -482,8 +482,11 @@ function compileUnit(unitId: string): CompiledFilter {
 }
 
 function compileFolderLeaf(op: string, value: unknown): CompiledFilter {
-	// text ops match the location as written; membership ops take a folder id
+	// text ops match the location as written; membership ops take a folder id, 'is' the folder
+	// itself with no descent
 	switch (op) {
+		case 'is':
+			return { sql: `d.folder_id = ?`, params: [value] };
 		case 'contains':
 			return { sql: `d.rel_path LIKE '%' || ? || '%'`, params: [value] };
 		case 'not_contains':

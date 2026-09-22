@@ -9,6 +9,7 @@
 	import LibraryPage from '../components/pages/LibraryPage.svelte';
 	import SettingsPage from '../components/pages/SettingsPage.svelte';
 	import ViewPage from '../components/pages/ViewPage.svelte';
+	import FolderPage from '../components/pages/FolderPage.svelte';
 	import NewTabPage from '../components/pages/NewTabPage.svelte';
 	import LicensesPage from '../components/pages/LicensesPage.svelte';
 	import DocumentEditor from '../components/editor/DocumentEditor.svelte';
@@ -190,7 +191,9 @@
 		<main class="content-area">
 			{#if tab}
 				{#key tab.id}
-					{#if tab.content.type === 'view'}
+					{#if tab.content.type === 'view' && tab.content.view.unit?.startsWith('folder:') && tab.content.view.temporary}
+						<FolderPage view={tab.content.view} {tab} {editor} settings={session.settings} />
+					{:else if tab.content.type === 'view'}
 						<ViewPage view={tab.content.view} {tab} {editor} settings={session.settings} />
 					{:else if tab.content.type === 'markdown'}
 						<DocumentEditor {tab} {editor} settings={session.settings} />
