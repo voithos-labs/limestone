@@ -58,10 +58,14 @@ pub async fn index_fts(
                 .execute(&mut *tx)
                 .await?;
                 for tag in body::scan_tags(&body) {
-                    let tag_id = tag_id(&tag);
+                    let slug = body::fold_tag(&tag);
+                    if slug.is_empty() {
+                        continue;
+                    }
+                    let tag_id = tag_id(&slug);
                     sqlx::query("INSERT OR IGNORE INTO tags (id, slug) VALUES (?1, ?2)")
                         .bind(&tag_id)
-                        .bind(body::fold_tag(&tag))
+                        .bind(&slug)
                         .execute(&mut *tx)
                         .await?;
                     sqlx::query(

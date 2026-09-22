@@ -471,11 +471,17 @@ function resolveColumn(field: ViewField): string {
 
 /**
  * A unit view is 1:1 with an organization unit; a source is its root folder. The unit id both
- * scopes the view and names the frontmatter namespace its stateful props live under, so folders
- * key on a source-relative path with a trailing slash and tags key on their bare slug
+ * scopes the view and names the frontmatter namespace its stateful props live under: tags key on
+ * their bare slug, folders on their source-relative path wrapped in slashes (root is "/"). A tag
+ * never ends with a slash and is never only slashes, so the two can't collide
  */
 export function unitPropKey(unitId: string): string {
-	return unitId.startsWith('tag:') ? unitId.slice('tag:'.length) : `${folderIdPath(unitId)}/`;
+	if (unitId.startsWith('tag:')) return unitId.slice('tag:'.length);
+	return folderPropKey(folderIdPath(unitId));
+}
+
+export function folderPropKey(path: string): string {
+	return path ? `/${path}/` : '/';
 }
 
 function compileUnit(unitId: string): CompiledFilter {

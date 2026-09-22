@@ -839,10 +839,14 @@ pub(crate) async fn sync_tags(
         .await?;
 
     for tag in tags {
-        let id = tag_id(tag);
+        let slug = fold_tag(tag);
+        if slug.is_empty() {
+            continue;
+        }
+        let id = tag_id(&slug);
         sqlx::query("INSERT OR IGNORE INTO tags (id, slug) VALUES (?1, ?2)")
             .bind(&id)
-            .bind(fold_tag(tag))
+            .bind(&slug)
             .execute(&mut **tx)
             .await?;
 

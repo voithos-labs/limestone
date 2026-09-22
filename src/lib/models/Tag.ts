@@ -41,8 +41,11 @@ export interface TagRow {
 	accessed_at: number;
 }
 
+// lowercase, no trailing slash, as Obsidian reads them; a leading slash is part of the name.
+// A tag of only slashes folds to nothing, since "/" alone would be the source root's prop key
 export function tagSlug(raw: string): string {
-	return raw.toLowerCase();
+	const t = raw.toLowerCase().replace(/\/+$/, '');
+	return /^\/*$/.test(t) ? '' : t;
 }
 
 export function tagId(slug: string): string {

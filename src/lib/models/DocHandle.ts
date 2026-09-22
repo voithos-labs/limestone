@@ -259,7 +259,7 @@ class DocHandle {
 			id: this.id,
 			sourceId: this.source.id,
 			relPath: this._relPath,
-			tags: [...new Set(slugs.map(tagSlug))]
+			tags: [...new Set(slugs.map(tagSlug).filter(Boolean))]
 		});
 		await this.fetchTags();
 	}

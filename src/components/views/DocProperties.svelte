@@ -2,7 +2,12 @@
 	import type DocHandle from '$lib/models/DocHandle';
 	import View from '$lib/models/View.svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
-	import { isDerived, describeBulkFailure } from '$lib/models/View.svelte';
+	import {
+		BUILTIN_UNITS,
+		isBuiltinUnit,
+		isDerived,
+		describeBulkFailure
+	} from '$lib/models/View.svelte';
 	import { toasts } from '$lib/toasts.svelte';
 	import { fieldLabel, withStatefulValue, rawStatefulValue } from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
@@ -34,11 +39,19 @@
 
 	async function load() {
 		try {
-			const saved = await View.listSaved();
+			// saved views show their own fields; a built-in unit shows its registry fields once,
+			// and only when the note is a member
+			const views = [
+				...(await View.listSaved()),
+				...(await Promise.all(
+					Object.keys(BUILTIN_UNITS).map((id) => View.forUnit(id, id.slice('tag:'.length)))
+				))
+			];
 			const found: Entry[] = [];
 			let hit: MemberRow | null = null;
-			for (const view of saved) {
-				const fields = view.fields.filter((f) => !isDerived(f.type));
+			for (const view of views) {
+				const own = view.unit && isBuiltinUnit(view.unit) ? view.fields : view.ownFields;
+				const fields = own.filter((f) => !isDerived(f.type));
 				if (fields.length === 0) continue;
 				const members = (await view.getMembers({ ids_in: [handle.id] })) as MemberRow[];
 				if (members.length === 0) continue;
@@ -71,7 +84,7 @@
 
 	function saveEditedView(): Promise<void> | void {
 		const entry = untrack(() => editingEntry);
-		if (!entry) return;
+		if (!entry || entry.view.temporary) return;
 		return entry.view.save().catch((e) => console.error('save view failed', e));
 	}
 

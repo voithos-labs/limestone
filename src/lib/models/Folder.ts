@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { select, execute } from '$lib/services/db';
-import { remapIdsInSavedViews, renameUnitViewPrefix } from '$lib/models/View.svelte';
+import { folderPropKey, remapIdsInSavedViews, renameUnitViewPrefix } from '$lib/models/View.svelte';
 import { flushAll } from '$lib/util/flush';
 
 export interface FolderRow {
@@ -118,7 +118,7 @@ class Folder {
 		await flushAll();
 		await invoke('move_folder', { sourceId, oldRelDir: oldPath, newRelDir: newPath });
 		const newId = folderId(sourceId, newPath);
-		await renameUnitViewPrefix(`${oldPath}/`, `${newPath}/`);
+		await renameUnitViewPrefix(folderPropKey(oldPath), folderPropKey(newPath));
 		await remapIdsInSavedViews(folderId(sourceId, oldPath), newId, true);
 		const moved = await Folder.fromID(newId);
 		await moved.touch();

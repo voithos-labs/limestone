@@ -11,8 +11,14 @@ struct Tag {
     name: Range<usize>,
 }
 
+// lowercase, no trailing slash, as Obsidian reads them; a leading slash is part of the name.
+// A tag of only slashes folds to nothing, since "/" alone would be the source root's prop key
 pub fn fold_tag(tag: &str) -> String {
-    tag.to_lowercase()
+    let t = tag.trim_end_matches('/');
+    if t.chars().all(|c| c == '/') {
+        return String::new();
+    }
+    t.to_lowercase()
 }
 
 pub fn same_tag(a: &str, b: &str) -> bool {

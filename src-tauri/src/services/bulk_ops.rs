@@ -549,14 +549,29 @@ async fn execute(
             .execute(db)
             .await
             .map_err(|e| e.to_string())?;
+            // the tag's props live under its slug, so they move with it
+            let (old_key, new_key) = (json_unit_path(old_slug), json_unit_path(new_slug));
+            sqlx::query(
+                "UPDATE documents
+                 SET properties = json_remove(json_set(properties, ?1, json_extract(properties, ?2)), ?2)
+                 WHERE source_id = ?3 AND json_extract(properties, ?2) IS NOT NULL",
+            )
+            .bind(&new_key)
+            .bind(&old_key)
+            .bind(source_id)
+            .execute(db)
+            .await
+            .map_err(|e| e.to_string())?;
 
             let (from, to) = (old_slug.clone(), new_slug.clone());
             let use_frontmatter = op.use_frontmatter;
             write_files(app, source_path, rel_paths, move |path| {
                 frontmatter::rewrite_document(
                     path,
-                    use_frontmatter
-                        .then_some(&|fm: &mut Value| frontmatter::rename_tag(fm, &from, &to)),
+                    use_frontmatter.then_some(&|fm: &mut Value| {
+                        frontmatter::rename_tag(fm, &from, &to);
+                        frontmatter::rename_unit_key(fm, &from, &to);
+                    }),
                     &|text| body::rewrite_tags(text, &from, Some(&to)),
                 )
             })
@@ -735,6 +750,10 @@ async fn fetch_paths_with_tag(
     Ok(rows.into_iter().map(|(p,)| p).collect())
 }
 
+fn json_unit_path(unit_key: &str) -> String {
+    format!("$.views.\"{unit_key}\"")
+}
+
 fn json_path(view_slug: &str, field: &str) -> String {
     format!("$.views.\"{view_slug}\".\"{field}\"")
 }
@@ -798,7 +817,8 @@ fn validate_tag(s: &str) -> Result<(), String> {
     if s.trim().is_empty() {
         return Err("tag is empty".into());
     }
-    if s.chars().any(|c| c.is_control()) {
+    // a tag slug is also a JSON path segment for its props
+    if s.chars().any(|c| c == '"' || c == '\\' || c.is_control()) {
         return Err(format!("tag has unsafe characters: {s}"));
     }
     Ok(())

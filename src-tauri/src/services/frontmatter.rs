@@ -153,6 +153,20 @@ pub fn rename_view_field(fm: &mut Value, slug: &str, from: &str, to: &str) {
     }
 }
 
+/// Move a whole unit namespace, `views.<from>` to `views.<to>`
+pub fn rename_unit_key(fm: &mut Value, from: &str, to: &str) {
+    let Some(views) = fm
+        .as_object_mut()
+        .and_then(|r| r.get_mut("views"))
+        .and_then(Value::as_object_mut)
+    else {
+        return;
+    };
+    if let Some(val) = views.remove(from) {
+        views.insert(to.to_string(), val);
+    }
+}
+
 /// Rename every `views.<key>` whose key starts with `from`, swapping that prefix for `to`
 pub fn rename_view_prefix(fm: &mut Value, from: &str, to: &str) {
     let Some(views) = fm.as_object_mut().and_then(|r| r.get_mut("views")) else {
@@ -363,6 +377,16 @@ mod tests {
         let mut v = json!({ "tags": ["a"] });
         rename_view_prefix(&mut v, "projects/", "work/");
         assert_eq!(v, json!({ "tags": ["a"] }));
+    }
+
+    #[test]
+    fn unit_key_move_is_exact() {
+        let mut v = json!({ "views": { "read": { "n": 1 }, "reading": { "n": 2 } } });
+        rename_unit_key(&mut v, "read", "papers");
+        assert_eq!(
+            v,
+            json!({ "views": { "reading": { "n": 2 }, "papers": { "n": 1 } } })
+        );
     }
 
     #[test]
