@@ -207,6 +207,63 @@ export function isDerived(type: ViewFieldType): boolean {
 	return (BUILTIN_FIELD_TYPES as readonly string[]).includes(type);
 }
 
+// ── Built-in units ───────────────────────────────────────────────────────────────────
+
+/**
+ * Units whose definition comes from code. Their fields are overlaid onto every view at load
+ * and never persisted, so changing the registry changes every view at once
+ */
+
+export interface BuiltinUnit {
+	unit: string;
+	emoji: string;
+	fields: ViewField[];
+	display: string[];
+}
+
+function builtinField(unit: string, name: string, type: ViewFieldType): ViewField {
+	return { id: `${unit}/${name}`, name, type, config: {}, unit };
+}
+
+const TODO = 'tag:todo';
+
+export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
+	[TODO]: {
+		unit: TODO,
+		emoji: '✓',
+		fields: [
+			builtinField(TODO, 'done', 'boolean'),
+			builtinField(TODO, 'due', 'date'),
+			builtinField(TODO, 'scheduled', 'date')
+		],
+		display: [`${TODO}/done`, `${TODO}/due`, `${TODO}/scheduled`]
+	}
+};
+
+const BUILTIN_FIELD_IDS = new Set(
+	Object.values(BUILTIN_UNITS).flatMap((u) => u.fields.map((f) => f.id))
+);
+
+// fresh copies: views hold their fields in $state and write config in place
+function builtinFields(): ViewField[] {
+	return Object.values(BUILTIN_UNITS).flatMap((u) =>
+		u.fields.map((f) => ({ ...f, config: { ...f.config } }))
+	);
+}
+
+export function isBuiltinUnit(unitId: string): boolean {
+	return unitId in BUILTIN_UNITS;
+}
+
+export function isBuiltinField(field: Pick<ViewField, 'id'>): boolean {
+	return BUILTIN_FIELD_IDS.has(field.id);
+}
+
+// derived and registry fields can't be renamed, retyped or removed
+export function isLockedField(field: ViewField): boolean {
+	return isDerived(field.type) || isBuiltinField(field);
+}
+
 export interface ViewField {
 	id: string; // uuid
 	name: string; // all lowercase, alphanumeric, '-' and '_'
@@ -798,9 +855,12 @@ class View {
 		this.unit = json.unit ?? null;
 		this.createdAt = json.created_at;
 		this.updatedAt = json.updated_at;
-		this.fields = json.fields.map((f) =>
-			this.unit && !isDerived(f.type) && !f.unit ? { ...f, unit: this.unit } : f
-		);
+		this.fields = [
+			...json.fields
+				.filter((f) => !isBuiltinField(f))
+				.map((f) => (this.unit && !isDerived(f.type) && !f.unit ? { ...f, unit: this.unit } : f)),
+			...builtinFields()
+		];
 		this.filter = json.filter;
 		this.faces = json.faces.map((j) => new ViewFace(j));
 		this.state = json.state ?? {};
@@ -817,7 +877,7 @@ class View {
 	private snapshot(): string {
 		return JSON.stringify({
 			slug: this.slug,
-			fields: this.fields,
+			fields: this.ownFields,
 			filter: this.filter,
 			faces: this.faces
 		});
@@ -835,7 +895,7 @@ class View {
 		if (!this.pristine) return;
 		const snap = JSON.parse(this.pristine);
 		this.slug = snap.slug;
-		this.fields = snap.fields;
+		this.fields = [...snap.fields, ...builtinFields()];
 		this.filter = snap.filter;
 		this.faces = snap.faces.map((j: ViewFaceJSON) => new ViewFace(j));
 	}
@@ -864,6 +924,13 @@ class View {
 		const view = View.create(name);
 		view.unit = unitId;
 		view.temporary = true;
+		const builtin = BUILTIN_UNITS[unitId];
+		if (builtin) {
+			view.emoji = builtin.emoji;
+			const title = view.fields.find((f) => f.type === 'title')!.id;
+			const [done, ...rest] = builtin.display;
+			view.faces = [ViewFace.create('table', [done, title, ...rest])];
+		}
 		view.markPristine();
 		return view;
 	}
@@ -883,7 +950,12 @@ class View {
 	}
 
 	private initDefaultFields(): void {
-		this.fields = BUILTIN_FIELD_TYPES.map((t) => createViewField(t, t));
+		this.fields = [...BUILTIN_FIELD_TYPES.map((t) => createViewField(t, t)), ...builtinFields()];
+	}
+
+	// fields this view defines, i.e. everything but the registry overlay
+	get ownFields(): ViewField[] {
+		return this.fields.filter((f) => !isBuiltinField(f));
 	}
 
 	private initDefaultFaces(): void {
@@ -939,6 +1011,7 @@ class View {
 	}
 
 	removeField(fieldId: string) {
+		if (isBuiltinField({ id: fieldId })) return;
 		this.fields = this.fields.filter((f) => f.id !== fieldId);
 		pruneFieldFromFilter(this.filter, fieldId);
 		for (const face of this.faces) {
@@ -984,7 +1057,7 @@ class View {
 	detachUnit(): void {
 		const unitId = this.unit;
 		if (!unitId) return;
-		for (const f of this.fields.filter((f) => !isDerived(f.type))) this.removeField(f.id);
+		for (const f of this.ownFields.filter((f) => !isDerived(f.type))) this.removeField(f.id);
 		const isTag = unitId.startsWith('tag:');
 		const type: ViewFieldType = isTag ? 'tags' : 'folder';
 		let field = this.fields.find((f) => f.type === type);
@@ -1029,7 +1102,7 @@ class View {
 			unit: this.unit,
 			created_at: this.createdAt,
 			updated_at: this.updatedAt,
-			fields: this.fields,
+			fields: this.ownFields,
 			filter: this.filter,
 			faces: this.faces,
 			state: this.state,
@@ -1124,13 +1197,14 @@ class View {
 	/** Rename a stateful field, moving its stored values to the new key, then update the model */
 	async renameField(field: ViewField, newName: string): Promise<void> {
 		const oldName = field.name;
-		if (!isValidName(newName) || newName === oldName) return;
+		if (isBuiltinField(field) || !isValidName(newName) || newName === oldName) return;
 		this.fields = this.fields.map((f) => (f.id === field.id ? { ...f, name: newName } : f));
 		await bulkPerSource('bulk_rename_view_field', { viewSlug: fieldKey(field), oldName, newName });
 	}
 
 	/** Rename a select/multiselect option value across all stored documents */
 	async renameOption(field: ViewField, oldValue: string, newValue: string): Promise<void> {
+		if (isBuiltinField(field)) return;
 		await bulkPerSource('bulk_rename_view_option', {
 			viewSlug: fieldKey(field),
 			fieldName: field.name,

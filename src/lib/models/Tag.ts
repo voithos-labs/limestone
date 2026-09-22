@@ -21,8 +21,10 @@
 
 import { select, execute } from '$lib/services/db';
 import {
+	BUILTIN_UNITS,
 	bulkPerSource,
 	deleteSavedView,
+	isBuiltinUnit,
 	listSavedViewJSON,
 	remapIdsInSavedViews,
 	type BulkResult
@@ -75,9 +77,16 @@ class Tag {
 	static async list(): Promise<Tag[]> {
 		const rows = await select<TagRow>(`SELECT * FROM tags`, []);
 		const tags = rows.map((r) => new Tag(r));
-		const indexed = new Set(tags.map((t) => t.id));
-		for (const v of await listSavedViewJSON()) {
-			if (v.unit?.startsWith('tag:') && !indexed.has(v.unit)) tags.push(Tag.bare(v.unit));
+		const defined = [
+			...Object.keys(BUILTIN_UNITS),
+			...(await listSavedViewJSON()).map((v) => v.unit ?? '')
+		];
+		const listed = new Set(tags.map((t) => t.id));
+		for (const id of defined) {
+			if (id.startsWith('tag:') && !listed.has(id)) {
+				listed.add(id);
+				tags.push(Tag.bare(id));
+			}
 		}
 		return tags.sort((a, b) => a.slug.localeCompare(b.slug));
 	}
@@ -133,7 +142,7 @@ class Tag {
 	static async rename(tag: Tag, rawSlug: string): Promise<string> {
 		const newSlug = tagSlug(rawSlug);
 		const newId = tagId(newSlug);
-		if (newId === tag.id) return newId;
+		if (newId === tag.id || isBuiltinUnit(tag.id)) return tag.id;
 		await flushAll();
 		const results = await bulkPerSource(
 			'bulk_rename_tag',
@@ -146,6 +155,7 @@ class Tag {
 	}
 
 	static async delete(tag: Tag): Promise<void> {
+		if (isBuiltinUnit(tag.id)) return;
 		await flushAll();
 		const results = await bulkPerSource('bulk_remove_tag', { slug: tag.slug }, { silent: true });
 		Tag.toastSkippedSources(results, 'removed');

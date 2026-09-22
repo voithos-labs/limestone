@@ -12,7 +12,7 @@
 		EyeOff
 	} from '@lucide/svelte';
 	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
-	import { CREATABLE_FIELD_TYPES, isDerived } from '$lib/models/View.svelte';
+	import { CREATABLE_FIELD_TYPES, isDerived, isLockedField } from '$lib/models/View.svelte';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import Menu from './Menu.svelte';
@@ -60,7 +60,7 @@
 	let editDraft = $state('');
 
 	function startEdit(field: ViewField) {
-		if (isDerived(field.type)) return;
+		if (isLockedField(field)) return;
 		editingId = field.id;
 		editDraft = field.name;
 	}
@@ -238,7 +238,7 @@
 								onkeydown={editKey}
 								spellcheck="false"
 							/>
-						{:else if !isDerived(field.type)}
+						{:else if !isLockedField(field)}
 							<button
 								class="name-text editable"
 								type="button"
@@ -293,7 +293,7 @@
 									<Triangle size={14} strokeWidth={1.75} />
 								</button>
 							{/if}
-							{#if !isDerived(field.type)}
+							{#if !isLockedField(field)}
 								<button
 									class="icon-btn danger"
 									type="button"

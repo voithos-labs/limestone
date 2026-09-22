@@ -18,6 +18,7 @@
 	import {
 		isLeafActive,
 		isDerived,
+		isLockedField,
 		CREATABLE_FIELD_TYPES,
 		sanitizeName,
 		describeBulkFailure
@@ -611,7 +612,7 @@
 			{ kind: 'divider' },
 			{ value: 'hide', label: 'Hide', icon: EyeOff }
 		];
-		if (!isDerived(menuField.type)) {
+		if (!isLockedField(menuField)) {
 			items.push(
 				confirmingDelete
 					? { value: 'delete_confirm', label: 'Confirm delete', icon: Trash2 }
@@ -726,6 +727,7 @@
 			setFieldName(fid, raw);
 			return;
 		}
+		if (isLockedField(f)) return;
 
 		// Stateful fields: the name is the storage key (views.<slug>.<name>), so
 		// it must be a safe identifier, and existing values have to be moved from

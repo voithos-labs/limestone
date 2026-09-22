@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { Hash, Search, Plus, Pencil, Trash2, ArrowLeft } from '@lucide/svelte';
 	import Tag, { tagId } from '$lib/models/Tag';
+	import { isBuiltinUnit } from '$lib/models/View.svelte';
 
 	let {
 		open = $bindable(false),
@@ -308,22 +309,24 @@
 							>{untagLabel(t)}</button
 						>
 					{:else}
-						<button
-							class="icon-btn"
-							type="button"
-							aria-label="Rename"
-							onclick={() => startRename(t)}
-						>
-							<Pencil size={13} strokeWidth={1.75} />
-						</button>
-						<button
-							class="icon-btn"
-							type="button"
-							aria-label="Delete"
-							onclick={() => (confirmId = t.id)}
-						>
-							<Trash2 size={13} strokeWidth={1.75} />
-						</button>
+						{#if !isBuiltinUnit(t.id)}
+							<button
+								class="icon-btn"
+								type="button"
+								aria-label="Rename"
+								onclick={() => startRename(t)}
+							>
+								<Pencil size={13} strokeWidth={1.75} />
+							</button>
+							<button
+								class="icon-btn"
+								type="button"
+								aria-label="Delete"
+								onclick={() => (confirmId = t.id)}
+							>
+								<Trash2 size={13} strokeWidth={1.75} />
+							</button>
+						{/if}
 						<span class="check" class:shown={selectedIds.includes(t.id)}>
 							<span class="dot"></span>
 						</span>
