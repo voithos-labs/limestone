@@ -16,7 +16,7 @@
 		Box,
 		Hash,
 		Folder,
-		Notebook,
+		FolderInput,
 		X,
 		Plus,
 		TextSearch,
@@ -34,7 +34,7 @@
 	function viewTabIcon(view: View) {
 		if (view.unit) {
 			if (view.unit.startsWith('tag:')) return Hash;
-			return isSourceRoot(view.unit) ? Notebook : Folder;
+			return isSourceRoot(view.unit) ? FolderInput : Folder;
 		}
 		const typesById = new Map(view.fields.map((f) => [f.id, f.type]));
 		let hasTags = false;
@@ -51,7 +51,7 @@
 		}
 		if (hasTags) return Hash;
 		if (hasFolder) return Folder;
-		if (hasSource) return Notebook;
+		if (hasSource) return FolderInput;
 		return Box;
 	}
 

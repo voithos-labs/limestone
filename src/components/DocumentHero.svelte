@@ -16,7 +16,7 @@
 		Hash,
 		EllipsisVertical,
 		Trash2,
-		Notebook,
+		FolderInput,
 		Plus,
 		Copy,
 		SlidersHorizontal,
@@ -355,7 +355,7 @@
 					title="Move document"
 					onclick={() => (folderOpen = !folderOpen)}
 				>
-					<Notebook size={12} />
+					<FolderInput size={12} />
 					<span class="loc-part src">{srcName}</span>
 					{#each dirParts as part}
 						<span class="crumb-sep">/</span>

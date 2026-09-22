@@ -29,7 +29,7 @@
 		List,
 		LayoutGrid,
 		Bookmark,
-		Notebook,
+		FolderInput,
 		CalendarClock
 	} from '@lucide/svelte';
 
@@ -341,7 +341,7 @@
 		<div class="inner">
 			<header class="head">
 				<span class="place-icon">
-					{#if isRoot}<Notebook size={18} strokeWidth={1.75} />{:else}<FolderIcon
+					{#if isRoot}<FolderInput size={18} strokeWidth={1.75} />{:else}<FolderIcon
 							size={18}
 							strokeWidth={1.75}
 						/>{/if}
@@ -664,22 +664,23 @@
 		align-items: center;
 		gap: 5px;
 		height: 24px;
-		padding: 0 8px;
-		border: none;
+		padding: 0 6px;
+		border: 1px solid transparent;
 		border-radius: 6px;
-		background: var(--chip-bg);
+		background: transparent;
 		font: inherit;
 		font-size: 12px;
-		color: var(--color-text-secondary);
+		color: var(--color-ui-muted);
 		cursor: pointer;
 	}
 
 	.chip-btn:hover {
-		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
 
+	/* a chosen range gets the same box the chosen layout does */
 	.chip-btn.set {
+		border-color: var(--color-border);
 		color: var(--color-text-primary);
 	}
 

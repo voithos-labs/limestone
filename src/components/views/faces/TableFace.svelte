@@ -60,7 +60,7 @@
 		SquareArrowOutUpRight,
 		SquareCheck,
 		Folder as FolderIcon,
-		Notebook,
+		FolderInput,
 		Ellipsis,
 		X,
 		Hash
@@ -1748,7 +1748,7 @@
 									{#if folderDirLabel}
 										<FolderIcon size={13} strokeWidth={1.75} />
 									{:else}
-										<Notebook size={13} strokeWidth={1.75} />
+										<FolderInput size={13} strokeWidth={1.75} />
 									{/if}
 									<span class="nr-float-label">
 										{needsFolderChoice
