@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Check, SquareArrowOutUpRight } from '@lucide/svelte';
+	import { startMove, endMove } from '$lib/views/dragMove';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
 	import type { FaceRows } from '$lib/views/FaceRows.svelte';
 	import type { Preview } from '$lib/views/previews';
@@ -20,6 +21,7 @@
 		editMode = false,
 		preview,
 		onOpen,
+		moveable = false,
 		onFocus
 	}: {
 		row: MemberRow;
@@ -31,6 +33,7 @@
 		editMode?: boolean;
 		preview?: Preview;
 		onOpen?: (rowId: string, newTab?: boolean) => void;
+		moveable?: boolean;
 		onFocus?: () => void;
 	} = $props();
 
@@ -82,6 +85,9 @@
 	role="listitem"
 	data-id={row.id}
 	tabindex="-1"
+	draggable={moveable}
+	ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
+	ondragend={endMove}
 	onclick={(e) => {
 		if (!editMode) onOpen?.(row.id, e.ctrlKey || e.metaKey);
 	}}
@@ -210,7 +216,7 @@
 
 	.card:focus-visible {
 		outline: none;
-		box-shadow: inset 0 0 0 1.5px var(--color-accent);
+		background: var(--chip-bg-hover);
 	}
 
 	.head {

@@ -174,9 +174,12 @@
 				...(showDone ? [] : [{ field_id: doneId, op: 'eq', value: false }])
 			]
 		};
+		const sort = sortFor('todo_sort', { field_id: dueId, direction: 'asc' });
+		const manual = sort.field_id === MANUAL;
 		todoFace.sort = [
-			{ ...sortFor('todo_sort', { field_id: dueId, direction: 'asc' }), nulls: 'last' }
+			{ ...(manual ? { field_id: dueId, direction: 'asc' as const } : sort), nulls: 'last' }
 		];
+		todoFace.config.order = manual ? [...((face.config.todo_order as string[]) ?? [])] : undefined;
 	});
 
 	$effect(() => {
@@ -190,14 +193,29 @@
 			op: 'and',
 			children: [{ field_id: tagsId, op: 'has_none', value: [TODO] }]
 		};
-		notesFace.sort = [sortFor('docs_sort', { field_id: updatedId, direction: 'desc' })];
+		const sort = sortFor('docs_sort', { field_id: updatedId, direction: 'desc' });
+		const manual = sort.field_id === MANUAL;
+		notesFace.sort = [manual ? { field_id: updatedId, direction: 'desc' } : sort];
+		notesFace.config.order = manual ? [...((face.config.docs_order as string[]) ?? [])] : undefined;
 	});
 
 	// each section sorts on its own key, chosen from the section menu or the header
 	type Sort = { field_id: string; direction: 'asc' | 'desc' };
+	const MANUAL = 'manual';
 	function sortFor(key: string, def: Sort): Sort {
 		const saved = face.config[key] as Sort | undefined;
-		return saved?.field_id && view.fields.some((f) => f.id === saved.field_id) ? saved : def;
+		if (!saved?.field_id) return def;
+		if (saved.field_id === MANUAL) return saved;
+		return view.fields.some((f) => f.id === saved.field_id) ? saved : def;
+	}
+
+	// a drag writes the section's order and makes it the sort; newcomers land at the end
+	function onReorder(section: 'todo' | 'docs', ids: string[]) {
+		face.config[`${section}_order`] = ids;
+		const cur = face.config[`${section}_sort`] as Sort | undefined;
+		if (cur?.field_id !== MANUAL) {
+			face.config[`${section}_sort`] = { field_id: MANUAL, direction: 'asc' };
+		}
 	}
 	function sortEntries(key: 'todo_sort' | 'docs_sort'): CtxEntry[] {
 		const cur =
@@ -206,6 +224,14 @@
 				: sortFor('docs_sort', { field_id: updatedId, direction: 'desc' });
 		const set = (next: Sort) => (face.config[key] = next);
 		return [
+			{
+				label: 'Manual',
+				icon: GripVertical,
+				checked: cur.field_id === MANUAL,
+				keepOpen: true,
+				action: () => set({ field_id: MANUAL, direction: 'asc' })
+			},
+			{ divider: true },
 			...view.fields
 				.filter((f) => VIEW_FIELD_SORTABLE.has(f.type))
 				.map((f): CtxEntry => ({
@@ -573,6 +599,7 @@
 						scope={tagScope}
 						autoFocus={false}
 						onTotal={(n) => (todoTotal = n)}
+						onReorder={(ids) => onReorder('todo', ids)}
 					/>
 				{:else}
 					<ListFace
@@ -582,6 +609,7 @@
 						scope={tagScope}
 						autoFocus={false}
 						onTotal={(n) => (notesTotal = n)}
+						onReorder={(ids) => onReorder('docs', ids)}
 					/>
 				{/if}
 			{/if}

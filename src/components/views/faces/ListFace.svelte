@@ -9,8 +9,9 @@
 	import RowChips from '../RowChips.svelte';
 	import RowEditors from '../RowEditors.svelte';
 	import NoteCard from '../NoteCard.svelte';
-	import { Check, SquareArrowOutUpRight, Plus } from '@lucide/svelte';
+	import { Check, SquareArrowOutUpRight, Plus, ChevronDown } from '@lucide/svelte';
 	import { onMount, tick } from 'svelte';
+	import { startMove, endMove } from '$lib/views/dragMove';
 
 	let {
 		view,
@@ -19,7 +20,9 @@
 		createSignal = 0,
 		scope = null,
 		onTotal,
-		autoFocus = true
+		autoFocus = true,
+		onReorder,
+		moveable = false
 	}: {
 		view: View;
 		face: ViewFace;
@@ -28,6 +31,8 @@
 		scope?: FilterNode | null;
 		onTotal?: (n: number) => void; // how many rows the current search and scope leave
 		autoFocus?: boolean; // the first row takes focus once loaded, if nothing else has it
+		onReorder?: (ids: string[]) => void; // rows drag into an order; the face keeps it unless told otherwise
+		moveable?: boolean; // rows drag out as documents to drop on a folder (no in-list reorder then)
 	} = $props();
 
 	const rows = new FaceRows(
@@ -157,9 +162,98 @@
 		tick().then(() => focusItem(0));
 	});
 
+	// ── Reorder: drag a row (no handle) and the others make room; the row's own click is
+	// swallowed once a drag happened so a drop never opens the note ────────────────────
+	const DRAG_PX = 4;
+	let reorderArm: { id: string; from: number; x: number; y: number } | null = null;
+	let drag: { id: string; from: number; to: number; dy: number; h: number } | null = $state(null);
+	let rowTops: number[] = [];
+	let swallowClick = false;
+
+	function armReorder(e: PointerEvent, id: string, i: number) {
+		if (moveable || e.button !== 0 || layout === 'grid') return;
+		const t = e.target as HTMLElement;
+		if (t.closest('button, input, a, .value, .rename-wrap')) return;
+		reorderArm = { id, from: i, x: e.clientX, y: e.clientY };
+		window.addEventListener('pointermove', onReorderMove);
+		window.addEventListener('pointerup', onReorderUp);
+		window.addEventListener('keydown', onReorderKey, true);
+	}
+
+	function onReorderMove(e: PointerEvent) {
+		const arm = reorderArm;
+		if (!arm) return;
+		if (!drag) {
+			if (Math.hypot(e.clientX - arm.x, e.clientY - arm.y) < DRAG_PX) return;
+			const els = items();
+			rowTops = els.map((el) => el.getBoundingClientRect().top);
+			const h = els[arm.from]?.getBoundingClientRect().height ?? 46;
+			drag = { id: arm.id, from: arm.from, to: arm.from, dy: 0, h };
+			(document.activeElement as HTMLElement | null)?.blur();
+		}
+		const d = drag;
+		const dy = e.clientY - arm.y;
+		// the dragged row's centre against the others' midpoints, the same rule as the tabs
+		const centre = rowTops[d.from] + d.h / 2 + dy;
+		let to = 0;
+		for (let i = 0; i < rowTops.length; i++) {
+			if (i === d.from) continue;
+			if (centre > rowTops[i] + d.h / 2) to = i < d.from ? i + 1 : i;
+		}
+		if (d.from > 0 && centre <= rowTops[0] + d.h / 2) to = 0;
+		drag = { ...d, dy, to: Math.max(0, Math.min(rowTops.length - 1, to)) };
+	}
+
+	function onReorderUp() {
+		const d = drag;
+		if (d) {
+			swallowClick = true;
+			if (d.to !== d.from) {
+				const ids = rows.rows.map((r) => r.id);
+				ids.splice(d.to, 0, ids.splice(d.from, 1)[0]);
+				rows.reorder(ids);
+				if (onReorder) onReorder(ids);
+				else face.config.order = ids;
+			}
+		}
+		endReorder();
+	}
+
+	function onReorderKey(e: KeyboardEvent) {
+		if (e.key === 'Escape' && drag) {
+			e.stopPropagation();
+			endReorder();
+		}
+	}
+
+	function endReorder() {
+		reorderArm = null;
+		drag = null;
+		window.removeEventListener('pointermove', onReorderMove);
+		window.removeEventListener('pointerup', onReorderUp);
+		window.removeEventListener('keydown', onReorderKey, true);
+	}
+
+	function rowShift(i: number): string | null {
+		const d = drag;
+		if (!d) return null;
+		if (i === d.from) return `translateY(${d.dy}px)`;
+		if (d.from < i && i <= d.to) return `translateY(${-d.h}px)`;
+		if (d.to <= i && i < d.from) return `translateY(${d.h}px)`;
+		return null;
+	}
+
+	function onListClickCapture(e: MouseEvent) {
+		if (!swallowClick) return;
+		swallowClick = false;
+		e.stopPropagation();
+		e.preventDefault();
+	}
+
 	// the cursor arriving takes over from the keyboard cursor: the focused row lets go so
 	// the hover highlight is the only one
 	function onListPointerMove() {
+		if (drag) return;
 		const a = document.activeElement as HTMLElement | null;
 		if (a && listEl?.contains(a) && a.matches('.row, .card')) a.blur();
 	}
@@ -346,6 +440,7 @@
 				{editMode}
 				preview={previews[row.id]}
 				onOpen={onOpenRow}
+				{moveable}
 			/>
 		{/each}
 		{#if !rows.loading}
@@ -359,17 +454,20 @@
 		<div class="empty">No matches</div>
 	{:else if !rows.loading && rows.total > rows.rows.length}
 		<button class="more" type="button" disabled={rows.loadingMore} onclick={() => rows.loadMore()}>
-			{rows.loadingMore ? 'Loading…' : `Show more · ${rows.total - rows.rows.length} left`}
+			<ChevronDown size={14} strokeWidth={1.75} />
+			<span>{rows.loadingMore ? 'Loading' : `${rows.total - rows.rows.length} more`}</span>
 		</button>
 	{/if}
 {:else}
 	<div
 		class="list-face"
+		class:reordering={!!drag}
 		bind:this={listEl}
 		role="list"
 		tabindex="-1"
 		onkeydown={onListKey}
 		onpointermove={onListPointerMove}
+		onclickcapture={onListClickCapture}
 	>
 		{#each rows.rows as row, i (row.id)}
 			{@const member = checkField ? rows.memberOf(row, checkField) : false}
@@ -378,9 +476,15 @@
 				class="row"
 				class:done
 				class:editable={editMode}
+				class:lifted={drag?.id === row.id}
+				style:transform={rowShift(i)}
 				role="listitem"
 				data-id={row.id}
 				tabindex="-1"
+				draggable={moveable}
+				ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
+				ondragend={endMove}
+				onpointerdown={(e) => armReorder(e, row.id, i)}
 				onclick={(e) => {
 					if (!editMode) onOpenRow?.(row.id, e.ctrlKey || e.metaKey);
 				}}
@@ -500,7 +604,8 @@
 				disabled={rows.loadingMore}
 				onclick={() => rows.loadMore()}
 			>
-				{rows.loadingMore ? 'Loading…' : `Show more · ${rows.total - rows.rows.length} left`}
+				<ChevronDown size={14} strokeWidth={1.75} />
+				<span>{rows.loadingMore ? 'Loading' : `${rows.total - rows.rows.length} more`}</span>
 			</button>
 		{/if}
 	</div>
@@ -575,6 +680,25 @@
 		cursor: default;
 	}
 
+	/* while a row is carried the others slide out of its way; the carried one rides above */
+	.list-face.reordering .row {
+		transition: transform 70ms ease-out;
+	}
+
+	.list-face.reordering,
+	.list-face.reordering .row {
+		cursor: grabbing;
+		user-select: none;
+	}
+
+	.row.lifted {
+		position: relative;
+		z-index: 2;
+		transition: none;
+		background: var(--color-bg);
+		box-shadow: var(--menu-shadow);
+	}
+
 	.row:hover,
 	.row:focus {
 		background: var(--row-hover-bg, rgba(127, 127, 127, 0.06));
@@ -582,7 +706,7 @@
 	}
 
 	.row:focus-visible {
-		box-shadow: inset 2px 0 0 var(--color-accent);
+		background: var(--chip-bg);
 	}
 
 	.check,
@@ -812,21 +936,40 @@
 		color: var(--color-ui-muted);
 	}
 
+	/* the tail of the list reads as one more quiet row: a chevron where the checkbox would
+	   be, the count where the title would be */
 	.more {
-		display: block;
-		width: calc(100% - 48px);
-		margin: 0 24px;
-		padding: 10px;
-		font-family: var(--font-ui);
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		width: calc(100% + 20px);
+		height: 40px;
+		margin: 0 -10px;
+		padding: 0 10px;
 		border: 0;
+		border-radius: 8px;
 		background: transparent;
 		font: inherit;
-		font-size: 12px;
-		color: var(--color-ui-muted);
+		font-family: var(--font-ui);
+		font-size: 12.5px;
+		color: var(--color-ui-dulled);
 		cursor: pointer;
+		transition:
+			background-color 80ms ease,
+			color 80ms ease;
+	}
+
+	.more :global(svg) {
+		flex-shrink: 0;
+		width: 18px;
 	}
 
 	.more:hover:not(:disabled) {
-		color: var(--color-text-primary);
+		background: var(--row-hover-bg, rgba(127, 127, 127, 0.06));
+		color: var(--color-text-secondary);
+	}
+
+	.more:disabled {
+		cursor: default;
 	}
 </style>

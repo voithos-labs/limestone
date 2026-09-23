@@ -27,7 +27,8 @@
 		TextCursorInput,
 		ArrowDownUp,
 		ArrowUpAZ,
-		ArrowDownAZ
+		ArrowDownAZ,
+		RotateCcw
 	} from '@lucide/svelte';
 	import { untrack } from 'svelte';
 
@@ -142,16 +143,28 @@
 			.map((f) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }))
 	]);
 
+	// a hand-made order (rows dragged in the list) overrides the sort until the sort is
+	// touched again or reset here
+	const manualOrder = $derived(
+		((sortTarget?.config.order as string[] | undefined) ?? []).length > 0
+	);
+
 	function setSortField(v: string) {
 		sortOpen = false;
 		if (!sortTarget) return;
+		sortTarget.config.order = undefined;
 		sortTarget.sort = v ? [{ field_id: v, direction: sortDir }] : [];
 	}
 
 	function flipSort() {
 		if (!sortTarget) return;
+		sortTarget.config.order = undefined;
 		const fid = sortFieldId || view.fields.find((f) => f.type === 'updated_at')?.id;
 		if (fid) sortTarget.sort = [{ field_id: fid, direction: sortDir === 'asc' ? 'desc' : 'asc' }];
+	}
+
+	function resetOrder() {
+		if (sortTarget) sortTarget.config.order = undefined;
 	}
 
 	const editInPlace = $derived(fieldTarget?.config.edit_in_place === true);
@@ -411,9 +424,14 @@
 						bind:this={sortEl}
 						onclick={() => (sortOpen = !sortOpen)}
 					>
-						{sortField ? fieldLabel(sortField) : 'Default'}
+						{manualOrder ? 'Manual' : sortField ? fieldLabel(sortField) : 'Default'}
 						<ChevronDown size={12} strokeWidth={2} />
 					</button>
+					{#if manualOrder}
+						<button class="sort-dir" type="button" title="Reset order" onclick={resetOrder}>
+							<RotateCcw size={13} strokeWidth={1.75} />
+						</button>
+					{/if}
 					<button
 						class="sort-dir"
 						type="button"

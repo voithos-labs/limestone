@@ -13,6 +13,7 @@
 	import ListFace from '../views/faces/ListFace.svelte';
 	import Menu from '../views/Menu.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
+	import { isMove, readMove, movingNow, type MovePayload } from '$lib/views/dragMove';
 	import SourceDialog from '../SourceDialog.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
@@ -209,6 +210,61 @@
 			.catch(console.error);
 	}
 
+	// ── Drag: documents and folders dropped on a folder chip or a crumb move there ──
+	let overCrumb: string | null = $state(null);
+
+	function crumbCanTake(targetPath: string, p: MovePayload | null): boolean {
+		if (p?.kind === 'folder') {
+			const fp = folderIdPath(p.id);
+			return fp !== targetPath && !targetPath.startsWith(fp + '/');
+		}
+		return targetPath !== path;
+	}
+
+	function onCrumbDragOver(e: DragEvent, targetPath: string) {
+		if (!isMove(e) || !crumbCanTake(targetPath, movingNow())) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		overCrumb = targetPath;
+	}
+
+	function onCrumbDrop(e: DragEvent, targetPath: string) {
+		overCrumb = null;
+		if (!isMove(e)) return;
+		e.preventDefault();
+		const p = readMove(e);
+		if (p && crumbCanTake(targetPath, p)) void moveInto(targetPath, p);
+	}
+
+	async function moveInto(targetPath: string, p: MovePayload) {
+		try {
+			if (p.kind === 'doc') {
+				const d = await DocHandle.fromID(p.id);
+				if (d.source.id !== sourceId) {
+					toasts.push('Drag between sources is not supported yet. Use Move from the document.');
+					return;
+				}
+				const file = d.relPath.split('/').pop() ?? d.relPath;
+				const newRel = targetPath ? `${targetPath}/${file}` : file;
+				if (newRel === d.relPath) return;
+				await d.moveToPath(newRel);
+			} else {
+				const fp = folderIdPath(p.id);
+				if (folderIdSource(p.id) !== sourceId || !fp) return;
+				if (targetPath === fp || targetPath.startsWith(fp + '/')) return;
+				const name = fp.split('/').pop() ?? fp;
+				const newPath = targetPath ? `${targetPath}/${name}` : name;
+				if (newPath === fp) return;
+				await Folder.move(sourceId, fp, newPath);
+			}
+			await loadFolders();
+		} catch (e) {
+			toasts.push(Folder.describeOpError(e, "That couldn't be moved."));
+		}
+	}
+
+	const chipDrop = (f: Folder, p: MovePayload) => moveInto(folderIdPath(f.id), p);
+
 	// ── Actions: the page's menu is the folder's menu ──────────────────────────
 	let createSignal = $state(0);
 	let menuOpen = $state(false);
@@ -369,7 +425,16 @@
 						/>{/if}
 				</span>
 				<nav class="crumbs" aria-label="Location">
-					<button class="crumb" class:current={isRoot} type="button" onclick={openRoot}>
+					<button
+						class="crumb"
+						class:current={isRoot}
+						class:over={overCrumb === ''}
+						type="button"
+						onclick={openRoot}
+						ondragover={(e) => onCrumbDragOver(e, '')}
+						ondragleave={() => overCrumb === '' && (overCrumb = null)}
+						ondrop={(e) => onCrumbDrop(e, '')}
+					>
 						{source ? sourceName(source) : ''}
 					</button>
 					{#each crumbs as c, i (c.path)}
@@ -377,8 +442,12 @@
 						<button
 							class="crumb"
 							class:current={i === crumbs.length - 1}
+							class:over={overCrumb === c.path}
 							type="button"
 							onclick={() => openCrumb(c.path)}
+							ondragover={(e) => onCrumbDragOver(e, c.path)}
+							ondragleave={() => overCrumb === c.path && (overCrumb = null)}
+							ondrop={(e) => onCrumbDrop(e, c.path)}
 						>
 							{c.slug}
 						</button>
@@ -427,6 +496,7 @@
 						onOpen={openFolder}
 						context={chipContext}
 						onMenu={openSubMenu}
+						onDrop={chipDrop}
 					/>
 				</div>
 			{/if}
@@ -441,6 +511,7 @@
 						onOpen={openFolder}
 						context={chipContext}
 						onMenu={openSubMenu}
+						onDrop={chipDrop}
 					/>
 				</div>
 			{/if}
@@ -484,7 +555,7 @@
 				</span>
 			</div>
 			{#if face}
-				<ListFace {view} {face} {onOpenRow} {createSignal} {scope} />
+				<ListFace {view} {face} {onOpenRow} {createSignal} {scope} moveable />
 			{/if}
 		</div>
 	</div>
@@ -605,6 +676,11 @@
 		background: transparent;
 		color: var(--color-ui-muted);
 		cursor: pointer;
+	}
+
+	.crumb.over {
+		background: var(--chip-bg-hover);
+		box-shadow: inset 0 0 0 1.5px var(--color-accent);
 	}
 
 	.crumb-menu:hover {

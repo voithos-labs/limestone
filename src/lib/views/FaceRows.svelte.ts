@@ -74,6 +74,7 @@ export class FaceRows {
 			nodeSig(face.additive_filter),
 			scope ? nodeSig(scope) : '',
 			sortSig(face.sort),
+			((face.config.order as string[] | undefined) ?? []).join(','),
 			this.query
 		].join('#');
 	}
@@ -124,6 +125,16 @@ export class FaceRows {
 			if (token !== this.token) return;
 			const tags = await this.fetchTags(out);
 			if (token !== this.token) return;
+
+			// a hand-ordered face: rows it knows go in that order, the rest follow as sorted
+			const order = face.config.order as string[] | undefined;
+			if (order?.length && !q) {
+				const rank = new Map(order.map((id, i) => [id, i]));
+				const known = out
+					.filter((r) => rank.has(r.id))
+					.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+				out = [...known, ...out.filter((r) => !rank.has(r.id))];
+			}
 
 			this.rows = out;
 			this.rowTags = tags;
@@ -245,6 +256,12 @@ export class FaceRows {
 				: n.field_id === fieldId && isLeafActive(n.op, n.value);
 		if (hit(this.view().filter) || hit(this.face().additive_filter)) return true;
 		return this.face().sort.some((s) => s.field_id === fieldId);
+	}
+
+	// the rows as the reader dragged them; the face's owner persists the order
+	reorder(ids: string[]): void {
+		const byId = new Map(this.rows.map((r) => [r.id, r]));
+		this.rows = ids.map((id) => byId.get(id)).filter((r): r is MemberRow => !!r);
 	}
 
 	patchRow(id: string, patch: Partial<MemberRow>): void {

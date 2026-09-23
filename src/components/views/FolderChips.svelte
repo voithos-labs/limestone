@@ -1,7 +1,21 @@
 <script lang="ts">
-	import { Folder as FolderIcon, Bookmark, EllipsisVertical } from '@lucide/svelte';
+	import {
+		Folder as FolderIcon,
+		Bookmark,
+		EllipsisVertical,
+		ChevronDown,
+		ChevronUp
+	} from '@lucide/svelte';
 	import type Folder from '$lib/models/Folder';
 	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import {
+		startMove,
+		endMove,
+		isMove,
+		readMove,
+		movingNow,
+		type MovePayload
+	} from '$lib/views/dragMove';
 
 	// Folders as a strip of compact chips: projects first with their own icon, plain folders
 	// after. Shows a few rows and tucks the rest behind a quiet "show more"
@@ -12,7 +26,8 @@
 		whereOf,
 		onOpen,
 		context,
-		onMenu
+		onMenu,
+		onDrop
 	}: {
 		folders: Folder[];
 		projects?: Map<string, { emoji: string }>;
@@ -21,7 +36,31 @@
 		onOpen: (f: Folder) => void;
 		context?: (f: Folder) => CtxEntry[];
 		onMenu?: (e: MouseEvent, f: Folder) => void;
+		onDrop?: (target: Folder, payload: MovePayload) => void; // chips take drops, and drag themselves
 	} = $props();
+
+	let overId: string | null = $state(null);
+
+	// a folder can't take itself or anything above it
+	function canTake(f: Folder, p: MovePayload | null): boolean {
+		if (p?.kind === 'folder') return p.id !== f.id && !f.id.startsWith(p.id + '/');
+		return true;
+	}
+
+	function onDragOver(e: DragEvent, f: Folder) {
+		if (!onDrop || !isMove(e) || !canTake(f, movingNow())) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		overId = f.id;
+	}
+
+	function onDragDrop(e: DragEvent, f: Folder) {
+		overId = null;
+		if (!onDrop || !isMove(e)) return;
+		e.preventDefault();
+		const p = readMove(e);
+		if (p && canTake(f, p)) onDrop(f, p);
+	}
 
 	const CHIP_MIN = 200;
 	const GAP = 10;
@@ -44,9 +83,18 @@
 		{@const where = whereOf?.(f) ?? ''}
 		<div
 			class="folder"
+			class:over={overId === f.id}
 			role="button"
 			tabindex="-1"
+			draggable={!!onDrop}
 			use:ctxMenu={() => context?.(f) ?? []}
+			ondragstart={(e) => startMove(e, { kind: 'folder', id: f.id })}
+			ondragend={endMove}
+			ondragover={(e) => onDragOver(e, f)}
+			ondragleave={() => {
+				if (overId === f.id) overId = null;
+			}}
+			ondrop={(e) => onDragDrop(e, f)}
 			onclick={() => onOpen(f)}
 			onkeydown={(e) => {
 				if (e.key === 'Enter') onOpen(f);
@@ -81,7 +129,11 @@
 </div>
 {#if ordered.length > cap}
 	<button class="show-more" type="button" onclick={() => (showAll = !showAll)}>
-		{showAll ? 'Show fewer' : `Show ${ordered.length - cap} more`}
+		{#if showAll}<ChevronUp size={13} strokeWidth={1.75} />{:else}<ChevronDown
+				size={13}
+				strokeWidth={1.75}
+			/>{/if}
+		<span>{showAll ? 'fewer' : `${ordered.length - cap} more`}</span>
 	</button>
 {/if}
 
@@ -111,6 +163,11 @@
 	.folder:focus-visible {
 		background: var(--chip-bg-hover);
 		outline: none;
+	}
+
+	.folder.over {
+		background: var(--chip-bg-hover);
+		box-shadow: inset 0 0 0 1.5px var(--color-accent);
 	}
 
 	.folder > :global(svg) {
@@ -165,21 +222,26 @@
 	}
 
 	.show-more {
-		display: block;
-		margin-top: 2px;
-		padding: 4px 6px;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+		padding: 4px 8px 4px 6px;
 		border: none;
-		border-radius: 5px;
+		border-radius: 6px;
 		background: transparent;
 		font: inherit;
 		font-family: var(--font-ui);
-		font-size: 11.5px;
-		color: var(--color-ui-muted);
+		font-size: 12px;
+		color: var(--color-ui-dulled);
 		cursor: pointer;
+		transition:
+			background-color 80ms ease,
+			color 80ms ease;
 	}
 
 	.show-more:hover {
-		color: var(--color-text-primary);
+		color: var(--color-text-secondary);
 		background: var(--chip-bg);
 	}
 </style>
