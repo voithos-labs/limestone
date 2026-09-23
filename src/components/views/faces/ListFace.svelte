@@ -4,7 +4,7 @@
 	import { onSourceReconciled } from '$lib/models/Source';
 	import { FaceRows } from '$lib/views/FaceRows.svelte';
 	import { PreviewCache, type Preview } from '$lib/views/previews';
-	import { rawStatefulValue } from '$lib/views/fieldValue';
+	import { rawStatefulValue, valueFor, fieldLabel } from '$lib/views/fieldValue';
 	import { highlightTitle } from '$lib/util/highlight';
 	import RowChips from '../RowChips.svelte';
 	import RowEditors from '../RowEditors.svelte';
@@ -47,6 +47,47 @@
 	$effect(() => {
 		if (!rows.loading) onTotal?.(rows.total);
 	});
+
+	// ── Group by: a presentation split over the loaded rows, headed like dashboard sections;
+	// rows keep their index into rows.rows so keyboard and reorder code is unchanged ─────
+	const groupField = $derived.by(() => {
+		const id = (face.config.group_by ?? null) as string | null;
+		return id ? (view.fields.find((f) => f.id === id) ?? null) : null;
+	});
+	let collapsedGroups = $state(new Set<string>());
+
+	function groupOf(row: MemberRow): { key: string; label: string } {
+		const f = groupField!;
+		if (f.type === 'boolean') {
+			const on = rawStatefulValue(row, f) === true;
+			return on
+				? { key: '1', label: fieldLabel(f) }
+				: { key: '0', label: `Not ${fieldLabel(f).toLowerCase()}` };
+		}
+		const v = valueFor(f, row);
+		return v ? { key: v, label: v } : { key: '', label: `No ${fieldLabel(f).toLowerCase()}` };
+	}
+
+	const groups = $derived.by(() => {
+		const all = rows.rows.map((row, i) => ({ row, i }));
+		if (!groupField) return [{ key: '', label: '', items: all }];
+		const map = new Map<string, { key: string; label: string; items: typeof all }>();
+		for (const it of all) {
+			const g = groupOf(it.row);
+			(map.get(g.key) ?? map.set(g.key, { ...g, items: [] }).get(g.key)!).items.push(it);
+		}
+		const out = [...map.values()];
+		const empty = out.findIndex((g) => g.key === '');
+		if (empty >= 0) out.push(...out.splice(empty, 1));
+		return out;
+	});
+
+	function toggleGroup(key: string) {
+		const next = new Set(collapsedGroups);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		collapsedGroups = next;
+	}
 
 	// browse: click a row to open, empties hidden. edit: click a value to change it, an explicit
 	// Open button, empties shown as placeholders so they can be set
@@ -173,7 +214,7 @@
 	let swallowClick = false;
 
 	function armReorder(e: PointerEvent, id: string, i: number) {
-		if (moveable || e.button !== 0 || layout === 'grid') return;
+		if (moveable || groupField || e.button !== 0 || layout === 'grid') return;
 		const t = e.target as HTMLElement;
 		if (t.closest('button, input, a, .value, .rename-wrap')) return;
 		reorderArm = { id, from: i, x: e.clientX, y: e.clientY };
@@ -430,20 +471,37 @@
 		onkeydown={onListKey}
 		onpointermove={onListPointerMove}
 	>
-		{#each rows.rows as row, i (row.id)}
-			<NoteCard
-				onFocus={() => (focusIdx = i)}
-				{row}
-				{rows}
-				{editors}
-				{checkField}
-				inline={lanes.inline}
-				meta={lanes.meta}
-				{editMode}
-				preview={previews[row.id]}
-				onOpen={onOpenRow}
-				{moveable}
-			/>
+		{#each groups as g (g.key)}
+			{#if groupField}
+				<button
+					class="group-head"
+					class:collapsed={collapsedGroups.has(g.key)}
+					type="button"
+					tabindex="-1"
+					onclick={() => toggleGroup(g.key)}
+				>
+					<span class="group-label">{g.label}</span>
+					<span class="group-count">{g.items.length}</span>
+					<span class="group-caret"><ChevronDown size={13} strokeWidth={2} /></span>
+				</button>
+			{/if}
+			{#if !collapsedGroups.has(g.key)}
+				{#each g.items as { row, i } (row.id)}
+					<NoteCard
+						onFocus={() => (focusIdx = i)}
+						{row}
+						{rows}
+						{editors}
+						{checkField}
+						inline={lanes.inline}
+						meta={lanes.meta}
+						{editMode}
+						preview={previews[row.id]}
+						onOpen={onOpenRow}
+						{moveable}
+					/>
+				{/each}
+			{/if}
 		{/each}
 		{#if !rows.loading}
 			<button class="new-card" type="button" onclick={() => createNote('', true)}>
@@ -472,110 +530,131 @@
 		onpointermove={onListPointerMove}
 		onclickcapture={onListClickCapture}
 	>
-		{#each rows.rows as row, i (row.id)}
-			{@const member = checkField ? rows.memberOf(row, checkField) : false}
-			{@const done = member && checkField ? rawStatefulValue(row, checkField) === true : false}
-			<div
-				class="row"
-				class:done
-				class:editable={editMode}
-				class:lifted={drag?.id === row.id}
-				style:transform={rowShift(i)}
-				role="listitem"
-				data-id={row.id}
-				tabindex="-1"
-				draggable={moveable}
-				ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
-				ondragend={endMove}
-				onpointerdown={(e) => armReorder(e, row.id, i)}
-				onclick={(e) => {
-					if (!editMode) onOpenRow?.(row.id, e.ctrlKey || e.metaKey);
-				}}
-				onauxclick={(e) => {
-					if (e.button === 1) onOpenRow?.(row.id, true);
-				}}
-				onfocus={() => (focusIdx = i)}
-				oncontextmenu={(e) => editors.menu(e, row.id)}
-			>
-				{#if checkField && member}
-					<button
-						class="check"
-						class:done
-						type="button"
-						tabindex="-1"
-						role="checkbox"
-						aria-checked={done}
-						aria-label={done ? 'Mark not done' : 'Mark done'}
-						onclick={(e) => {
-							e.stopPropagation();
-							rows.toggle(row, checkField);
-						}}
-					>
-						<span class="box"><Check size={12} strokeWidth={3} /></span>
-					</button>
-				{:else if checkField}
-					<span class="check inert" title="Not a todo"><span class="box"></span></span>
-				{/if}
-				{#if renamingId === row.id}
-					<span class="name rename-wrap" role="presentation" onclick={(e) => e.stopPropagation()}>
-						<span class="rename-ghost">{renameDraft || ' '}</span>
-						<input
-							class="rename"
-							bind:value={renameDraft}
-							use:renameFocus
-							onblur={commitRename}
-							onkeydown={onRenameKey}
-							spellcheck="false"
-						/>
-					</span>
-				{:else}
-					<span
-						class="name"
-						class:editable={editMode}
-						role="presentation"
-						onclick={(e) => startRename(e, row)}
-					>
-						{@html highlightTitle(
-							row.title || 'untitled',
-							rows.searchHits[row.id]?.match_indices ?? []
-						)}
-					</span>
-				{/if}
-				<span class="inline">
-					<RowChips
-						{row}
-						fields={lanes.inline}
-						{rows}
-						{editMode}
-						onEdit={(r, f, a) => editors.edit(r, f, a)}
-						onTags={(r, a) => editors.tags(r, a)}
-					/>
-				</span>
-				<span class="spacer"></span>
-				<span class="values">
-					<RowChips
-						{row}
-						fields={lanes.meta}
-						{rows}
-						{editMode}
-						onEdit={(r, f, a) => editors.edit(r, f, a)}
-						onTags={(r, a) => editors.tags(r, a)}
-					/>
-				</span>
+		{#each groups as g (g.key)}
+			{#if groupField}
 				<button
-					class="row-btn"
+					class="group-head"
+					class:collapsed={collapsedGroups.has(g.key)}
 					type="button"
 					tabindex="-1"
-					aria-label="Open in new tab"
-					title="Open in new tab"
-					onclick={(e) => {
-						e.stopPropagation();
-						onOpenRow?.(row.id, true);
-					}}
+					onclick={() => toggleGroup(g.key)}
 				>
-					<SquareArrowOutUpRight size={14} strokeWidth={1.75} />
+					<span class="group-label">{g.label}</span>
+					<span class="group-count">{g.items.length}</span>
+					<span class="group-caret"><ChevronDown size={13} strokeWidth={2} /></span>
 				</button>
-			</div>
+			{/if}
+			{#if !collapsedGroups.has(g.key)}
+				{#each g.items as { row, i } (row.id)}
+					{@const member = checkField ? rows.memberOf(row, checkField) : false}
+					{@const done = member && checkField ? rawStatefulValue(row, checkField) === true : false}
+					<div
+						class="row"
+						class:done
+						class:editable={editMode}
+						class:lifted={drag?.id === row.id}
+						style:transform={rowShift(i)}
+						role="listitem"
+						data-id={row.id}
+						tabindex="-1"
+						draggable={moveable}
+						ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
+						ondragend={endMove}
+						onpointerdown={(e) => armReorder(e, row.id, i)}
+						onclick={(e) => {
+							if (!editMode) onOpenRow?.(row.id, e.ctrlKey || e.metaKey);
+						}}
+						onauxclick={(e) => {
+							if (e.button === 1) onOpenRow?.(row.id, true);
+						}}
+						onfocus={() => (focusIdx = i)}
+						oncontextmenu={(e) => editors.menu(e, row.id)}
+					>
+						{#if checkField && member}
+							<button
+								class="check"
+								class:done
+								type="button"
+								tabindex="-1"
+								role="checkbox"
+								aria-checked={done}
+								aria-label={done ? 'Mark not done' : 'Mark done'}
+								onclick={(e) => {
+									e.stopPropagation();
+									rows.toggle(row, checkField);
+								}}
+							>
+								<span class="box"><Check size={12} strokeWidth={3} /></span>
+							</button>
+						{:else if checkField}
+							<span class="check inert" title="Not a todo"><span class="box"></span></span>
+						{/if}
+						{#if renamingId === row.id}
+							<span
+								class="name rename-wrap"
+								role="presentation"
+								onclick={(e) => e.stopPropagation()}
+							>
+								<span class="rename-ghost">{renameDraft || ' '}</span>
+								<input
+									class="rename"
+									bind:value={renameDraft}
+									use:renameFocus
+									onblur={commitRename}
+									onkeydown={onRenameKey}
+									spellcheck="false"
+								/>
+							</span>
+						{:else}
+							<span
+								class="name"
+								class:editable={editMode}
+								role="presentation"
+								onclick={(e) => startRename(e, row)}
+							>
+								{@html highlightTitle(
+									row.title || 'untitled',
+									rows.searchHits[row.id]?.match_indices ?? []
+								)}
+							</span>
+						{/if}
+						<span class="inline">
+							<RowChips
+								{row}
+								fields={lanes.inline}
+								{rows}
+								{editMode}
+								onEdit={(r, f, a) => editors.edit(r, f, a)}
+								onTags={(r, a) => editors.tags(r, a)}
+							/>
+						</span>
+						<span class="spacer"></span>
+						<span class="values">
+							<RowChips
+								{row}
+								fields={lanes.meta}
+								{rows}
+								{editMode}
+								onEdit={(r, f, a) => editors.edit(r, f, a)}
+								onTags={(r, a) => editors.tags(r, a)}
+							/>
+						</span>
+						<button
+							class="row-btn"
+							type="button"
+							tabindex="-1"
+							aria-label="Open in new tab"
+							title="Open in new tab"
+							onclick={(e) => {
+								e.stopPropagation();
+								onOpenRow?.(row.id, true);
+							}}
+						>
+							<SquareArrowOutUpRight size={14} strokeWidth={1.75} />
+						</button>
+					</div>
+				{/each}
+			{/if}
 		{/each}
 
 		{#if !rows.loading}
@@ -681,6 +760,59 @@
 
 	.row.editable {
 		cursor: default;
+	}
+
+	/* group headers read like the dashboard's section heads, one size down */
+	.group-head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		margin: 18px 0 4px;
+		padding: 0;
+		border: none;
+		background: transparent;
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.group-head:first-child {
+		margin-top: 4px;
+	}
+
+	.grid .group-head {
+		grid-column: 1 / -1;
+		margin-top: 8px;
+	}
+
+	.group-label {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.group-count {
+		font-size: 12px;
+		color: var(--color-ui-muted);
+	}
+
+	.group-caret {
+		display: inline-flex;
+		color: var(--color-ui-muted);
+		opacity: 0;
+		transition:
+			opacity 80ms ease,
+			transform 120ms ease;
+	}
+
+	.group-head:hover .group-caret,
+	.group-head.collapsed .group-caret {
+		opacity: 1;
+	}
+
+	.group-head.collapsed .group-caret {
+		transform: rotate(-90deg);
 	}
 
 	/* compact: a file listing rather than a reading list */

@@ -39,7 +39,7 @@
 	} = $props();
 
 	// the view's own scope is left out: every note here has it
-	const tags = $derived(rows.tagSlugsFor(row.id).filter((t) => t !== rows.scopeTag));
+	const tags = $derived(rows.tagSlugsFor(row.id).filter((t) => !rows.hiddenTags.has(t)));
 	const inScopeDir = $derived(rows.scopeDir !== null && folderDir(row.rel_path) === rows.scopeDir);
 
 	function hasValue(f: ViewField): boolean {

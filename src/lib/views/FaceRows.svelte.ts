@@ -219,6 +219,18 @@ export class FaceRows {
 		return u?.startsWith('tag:') ? u.slice('tag:'.length) : null;
 	}
 
+	// a built-in tag whose fields are on the row already says what the note is: the checkbox
+	// is the todo-ness, the pill would only repeat it
+	get hiddenTags(): Set<string> {
+		const out = new Set<string>();
+		const scope = this.scopeTag;
+		if (scope) out.add(scope);
+		for (const f of this.shown) {
+			if (f.unit && isBuiltinUnit(f.unit)) out.add(f.unit.slice('tag:'.length));
+		}
+		return out;
+	}
+
 	get scopeDir(): string | null {
 		const u = this.view().unit;
 		return u && !u.startsWith('tag:') ? folderIdPath(u) : null;

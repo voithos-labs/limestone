@@ -122,7 +122,11 @@
 
 	const groupable = $derived(
 		view.fields.filter(
-			(f: ViewField) => f.type === 'select' || f.type === 'multiselect' || f.type === 'boolean'
+			(f: ViewField) =>
+				f.type === 'select' ||
+				f.type === 'multiselect' ||
+				f.type === 'boolean' ||
+				f.type === 'folder'
 		)
 	);
 	const groupById = $derived((target.config.group_by ?? null) as string | null);
@@ -559,7 +563,7 @@
 			</button>
 		{/if}
 
-		{#if target.type === 'table'}
+		{#if target.type === 'table' || target.type === 'list'}
 			<button
 				class="action group-toggle"
 				type="button"
@@ -629,7 +633,7 @@
 		/>
 	{/if}
 
-	{#if target.type === 'table'}
+	{#if target.type === 'table' || target.type === 'list'}
 		<Menu
 			bind:open={groupOpen}
 			anchor={groupEl}

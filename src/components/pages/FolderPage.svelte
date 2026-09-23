@@ -918,10 +918,6 @@
 		margin-top: 14px;
 	}
 
-	.section-label.files {
-		margin-bottom: 4px;
-	}
-
 	/* the label is the fold toggle; its caret shows on hover, and stays while folded */
 	.fold {
 		display: inline-flex;
