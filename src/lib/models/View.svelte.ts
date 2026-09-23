@@ -55,7 +55,7 @@ import { toasts } from '$lib/toasts.svelte';
 import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
 
 export type ViewFaceType =
-	'table' | 'list' | 'masonry' | 'dashboard' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
+	'list' | 'masonry' | 'dashboard' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
 
 interface ViewFaceJSON {
 	id: string;
@@ -69,7 +69,6 @@ interface ViewFaceJSON {
 }
 
 const FACE_TYPE_LABEL: Record<ViewFaceType, string> = {
-	table: 'Table',
 	list: 'List',
 	masonry: 'Masonry',
 	dashboard: 'Dashboard',
@@ -942,7 +941,7 @@ class View {
 			view.emoji = builtin.emoji;
 			const title = view.fields.find((f) => f.type === 'title')!.id;
 			const [done, ...rest] = builtin.display;
-			view.faces = [ViewFace.create('table', [done, title, ...rest])];
+			view.faces = [ViewFace.create('list', [done, title, ...rest])];
 		}
 		view.markPristine();
 		return view;
@@ -991,7 +990,7 @@ class View {
 	}
 
 	// add a fresh face with the default columns, return it
-	addFace(type: ViewFaceType = 'table'): ViewFace {
+	addFace(type: ViewFaceType = 'list'): ViewFace {
 		const face = ViewFace.create(type, this.defaultFaceFieldIds());
 		this.faces = [...this.faces, face];
 		return face;

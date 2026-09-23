@@ -11,7 +11,6 @@ import {
 	CalendarPlus2,
 	CalendarClock,
 	Filter,
-	Table,
 	Columns3,
 	List,
 	LayoutDashboard,
@@ -29,7 +28,6 @@ import type View from '$lib/models/View.svelte';
 import type { ViewFace } from '$lib/models/View.svelte';
 
 const FACE_ICONS: Record<ViewFaceType, Component> = {
-	table: Table,
 	kanban: Columns3,
 	list: List,
 	masonry: LayoutDashboard,
@@ -42,7 +40,7 @@ const FACE_ICONS: Record<ViewFaceType, Component> = {
 
 export function getFaceIcon(face: Pick<ViewFace, 'type' | 'isCards'>): Component {
 	if (face.isCards) return LayoutGrid;
-	return FACE_ICONS[face.type] ?? Table;
+	return FACE_ICONS[face.type] ?? List;
 }
 
 // what a view is about, for tabs and anywhere else it stands in for a place

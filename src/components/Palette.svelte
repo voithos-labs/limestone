@@ -4,7 +4,6 @@
 		Search,
 		FileText,
 		List,
-		Table,
 		NotebookText,
 		Folder as FolderIcon,
 		FolderInput,
@@ -79,7 +78,7 @@
 		if (doc) openContent(TabState.forDoc(doc), newTab);
 	}
 
-	function newView(face: 'list' | 'table' | 'journal', slug: string) {
+	function newView(face: 'list' | 'journal', slug: string) {
 		return (newTab: boolean) => {
 			const v = View.create(slug);
 			v.temporary = true;
@@ -106,14 +105,6 @@
 			icon: List,
 			kind: 'command',
 			run: newView('list', 'New list')
-		},
-		{
-			id: 'new:table',
-			label: 'New table',
-			hint: 'A view of notes as a table',
-			icon: Table,
-			kind: 'command',
-			run: newView('table', 'New table')
 		},
 		{
 			id: 'new:journal',

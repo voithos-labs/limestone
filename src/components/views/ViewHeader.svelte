@@ -81,13 +81,6 @@
 		view.renameField(f, newName).catch((e) => console.error('rename field failed', e));
 	}
 
-	// a journal searches whatever it renders for the day
-	const effectiveType = $derived(
-		activeFace?.type === 'journal' ? activeFace.body?.type : activeFace?.type
-	);
-
-	const searchMode = $derived(effectiveType === 'table' ? 'title' : 'hybrid');
-
 	// A doc face draws one document, so its search picks which one, a dropdown under this bar
 	// instead of filtering rows in place. A journal searches in place (its hits list) even
 	// with a doc body, so only a bare doc face picks
@@ -125,7 +118,7 @@
 
 	// ── Sort: lives with the filters, it's the same question (what rows, in what order) ──
 	const sortTarget = $derived(
-		activeFace && activeFace.type !== 'table' && activeFace.type !== 'dashboard'
+		activeFace && activeFace.type !== 'dashboard'
 			? activeFace.type === 'journal'
 				? (activeFace.body ?? null)
 				: activeFace
@@ -477,11 +470,7 @@
 		<input
 			type="text"
 			class="search-input"
-			placeholder={picking
-				? 'Find a document'
-				: searchMode === 'hybrid'
-					? 'Search'
-					: 'Search titles'}
+			placeholder={picking ? 'Find a document' : 'Search'}
 			value={view.state.search ?? ''}
 			oninput={(e) => {
 				view.state.search = (e.currentTarget as HTMLInputElement).value;

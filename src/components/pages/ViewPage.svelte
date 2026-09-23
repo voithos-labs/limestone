@@ -16,7 +16,6 @@
 	import SourceDialog from '../SourceDialog.svelte';
 	import DocHandle from '$lib/models/DocHandle';
 	import ViewHeader from '../views/ViewHeader.svelte';
-	import TableFace from '../views/faces/TableFace.svelte';
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import MasonryFace from '../views/faces/MasonryFace.svelte';
@@ -633,8 +632,8 @@
 					<MasonryFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{:else if activeFace?.type === 'dashboard'}
 					<DashboardFace {view} face={activeFace} {onOpenRow} {createSignal} />
-				{:else}
-					<TableFace {view} face={activeFace} {onOpenRow} {createSignal} flow={bodyFlow} />
+				{:else if activeFace}
+					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{/if}
 			</div>
 		</div>

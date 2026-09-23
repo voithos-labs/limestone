@@ -12,7 +12,6 @@
 	import DocFace from './DocFace.svelte';
 	import ListFace from './ListFace.svelte';
 	import MasonryFace from './MasonryFace.svelte';
-	import TableFace from './TableFace.svelte';
 	import { onSourceReconciled } from '$lib/models/Source';
 
 	let {
@@ -694,10 +693,8 @@
 							/>
 						{:else if bodyFace.type === 'list'}
 							<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
-						{:else if bodyFace.type === 'masonry'}
-							<MasonryFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
 						{:else}
-							<TableFace {view} face={bodyFace} {onOpenRow} {flow} scope={bodyScope} />
+							<MasonryFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
 						{/if}
 					{/key}
 				</div>

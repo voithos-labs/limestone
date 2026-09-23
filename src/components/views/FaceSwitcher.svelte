@@ -3,7 +3,6 @@
 	import { flip } from 'svelte/animate';
 	import {
 		ChevronDown,
-		Table,
 		List,
 		Layers,
 		Rows3,
@@ -61,8 +60,7 @@
 	const BODY_ITEMS = [
 		{ value: 'doc', label: 'Document', icon: FileText },
 		{ value: 'list', label: 'List', icon: List },
-		{ value: 'masonry', label: 'Masonry', icon: LayoutDashboard },
-		{ value: 'table', label: 'Table', icon: Table }
+		{ value: 'masonry', label: 'Masonry', icon: LayoutDashboard }
 	];
 	const bodyLabel = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.label ?? 'Document');
 	const BodyIcon = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.icon ?? FileText);
@@ -168,7 +166,6 @@
 		{ value: 'list', label: 'List', icon: List },
 		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
 		{ value: 'masonry', label: 'Masonry', icon: LayoutDashboard },
-		{ value: 'table', label: 'Table', icon: Table },
 		{ value: 'doc', label: 'Document', icon: FileText },
 		{ value: 'journal', label: 'Journal', icon: NotebookText }
 	];
@@ -563,7 +560,7 @@
 			</button>
 		{/if}
 
-		{#if target.type === 'table' || target.type === 'list'}
+		{#if target.type === 'list'}
 			<button
 				class="action group-toggle"
 				type="button"
@@ -633,7 +630,7 @@
 		/>
 	{/if}
 
-	{#if target.type === 'table' || target.type === 'list'}
+	{#if target.type === 'list'}
 		<Menu
 			bind:open={groupOpen}
 			anchor={groupEl}
