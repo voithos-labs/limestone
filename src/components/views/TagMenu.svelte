@@ -1,6 +1,16 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Hash, Search, Plus, Pencil, Trash2, ArrowLeft } from '@lucide/svelte';
+	import {
+		Hash,
+		Plus,
+		Pencil,
+		Trash2,
+		ArrowLeft,
+		Check,
+		X,
+		EllipsisVertical
+	} from '@lucide/svelte';
+	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import Tag, { tagId } from '$lib/models/Tag';
 	import { isBuiltinUnit } from '$lib/models/View.svelte';
 
@@ -11,7 +21,9 @@
 		onToggle,
 		onCreate,
 		onMutated,
-		width = 240
+		width = 240,
+		query = $bindable(''),
+		inline = false
 	}: {
 		open: boolean;
 		anchor: HTMLElement | null;
@@ -20,6 +32,8 @@
 		onCreate?: (slug: string) => void | Promise<void>;
 		onMutated?: () => void;
 		width?: number;
+		query?: string; // the host can type into it from its own field
+		inline?: boolean; // the host draws the tokens and the input; only the list shows here
 	} = $props();
 
 	let menuEl: HTMLDivElement | null = $state(null);
@@ -28,7 +42,6 @@
 
 	let tags: Tag[] = $state([]);
 	let memberCounts: Map<string, number> = $state(new Map());
-	let query = $state('');
 	let activeIndex = $state(-1);
 	let busy = $state(false);
 
@@ -42,6 +55,7 @@
 		browseOrder = [...tags]
 			.sort(
 				(a, b) =>
+					Number(isBuiltinUnit(b.id)) - Number(isBuiltinUnit(a.id)) ||
 					Number(selectedIds.includes(b.id)) - Number(selectedIds.includes(a.id)) ||
 					a.slug.localeCompare(b.slug)
 			)
@@ -58,8 +72,10 @@
 	const filtered = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		if (!q) return browseTags;
-		return tags.filter((t) => t.slug.toLowerCase().includes(q));
+		return browseTags.filter((t) => t.slug.toLowerCase().includes(q));
 	});
+	// the first row after the built-ins gets a divider above it
+	const builtinCount = $derived(filtered.filter((t) => isBuiltinUnit(t.id)).length);
 
 	const showCreate = $derived(
 		!!onCreate &&
@@ -75,6 +91,21 @@
 		} catch (e) {
 			console.error('load tags failed', e);
 		}
+	}
+
+	// the row's menu: rename, and untag (which is delete once nothing carries it)
+	function rowMenu(t: Tag): CtxEntry[] {
+		if (isBuiltinUnit(t.id)) return [];
+		return [
+			{ label: 'Rename', icon: Pencil, action: () => startRename(t) },
+			{ label: untagLabel(t), icon: Trash2, danger: true, action: () => (confirmId = t.id) }
+		];
+	}
+
+	function openRowMenu(e: MouseEvent, t: Tag) {
+		e.stopPropagation();
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		contextMenu.show(r.right, r.bottom + 4, () => rowMenu(t));
 	}
 
 	function untagLabel(t: Tag): string {
@@ -169,8 +200,10 @@
 
 	function onDocPointerDown(e: PointerEvent) {
 		if (!open) return;
-		if (menuEl?.contains(e.target as Node)) return;
-		if (anchor?.contains(e.target as Node)) return;
+		const t = e.target as HTMLElement;
+		if (menuEl?.contains(t)) return;
+		if (anchor?.contains(t)) return;
+		if (t.closest?.('.ctx-menu')) return;
 		open = false;
 	}
 
@@ -217,7 +250,7 @@
 			reload().then(() => queueMicrotask(position));
 			queueMicrotask(() => {
 				position();
-				searchEl?.focus();
+				if (!inline) searchEl?.focus();
 			});
 			window.addEventListener('resize', position);
 			window.addEventListener('scroll', position, true);
@@ -256,27 +289,49 @@
 		role="menu"
 		tabindex="-1"
 	>
-		<div class="search-row">
-			<Search size={13} strokeWidth={1.75} />
-			<input
-				class="search-input"
-				type="text"
-				bind:value={query}
-				bind:this={searchEl}
-				placeholder={onCreate ? 'Search or create…' : 'Search tags…'}
-			/>
-		</div>
+		{#if !inline}
+			<div class="field" role="presentation" onclick={() => searchEl?.focus()}>
+				<input
+					class="search-input"
+					type="text"
+					bind:value={query}
+					bind:this={searchEl}
+					placeholder={onCreate ? 'Search or create a tag' : 'Search tags'}
+				/>
+			</div>
+		{/if}
 		<div class="list" onmouseleave={() => (activeIndex = -1)} role="presentation">
 			{#each filtered as t, i (t.id)}
+				{#if i === builtinCount && builtinCount > 0}
+					<div class="divider"></div>
+				{/if}
+				{@const on = selectedIds.includes(t.id)}
 				<div
 					class="row"
 					class:active={i === activeIndex}
-					class:selected={selectedIds.includes(t.id)}
+					class:selected={on}
 					class:confirming={confirmId === t.id}
 					onmouseenter={() => (activeIndex = i)}
+					use:ctxMenu={() => rowMenu(t)}
 					role="presentation"
 				>
-					{#if renamingId === t.id}
+					{#if confirmId === t.id}
+						<span class="name">
+							<Hash size={13} strokeWidth={1.75} />
+							<span class="name-text">{t.slug}</span>
+						</span>
+						<button
+							class="icon-btn"
+							type="button"
+							aria-label="Cancel"
+							onclick={() => (confirmId = null)}
+						>
+							<ArrowLeft size={14} strokeWidth={2} />
+						</button>
+						<button class="confirm-btn" type="button" onclick={() => confirmDelete(t)}
+							>{untagLabel(t)}</button
+						>
+					{:else if renamingId === t.id}
 						<span class="name">
 							<Hash size={13} strokeWidth={1.75} />
 							<input
@@ -291,45 +346,20 @@
 						</span>
 					{:else}
 						<button class="name" type="button" tabindex="-1" onclick={() => onToggle(t)}>
-							<Hash size={13} strokeWidth={1.75} />
-							<span class="name-text">{t.slug}</span>
+							<span class="box" class:on><Check size={11} strokeWidth={3} /></span>
+							<span class="name-text" class:builtin={isBuiltinUnit(t.id)}>{t.slug}</span>
 						</button>
-					{/if}
-
-					{#if confirmId === t.id}
-						<button
-							class="icon-btn"
-							type="button"
-							aria-label="Cancel"
-							onclick={() => (confirmId = null)}
-						>
-							<ArrowLeft size={14} strokeWidth={2} />
-						</button>
-						<button class="confirm-btn" type="button" onclick={() => confirmDelete(t)}
-							>{untagLabel(t)}</button
-						>
-					{:else}
 						{#if !isBuiltinUnit(t.id)}
 							<button
-								class="icon-btn"
+								class="icon-btn more"
 								type="button"
-								aria-label="Rename"
-								onclick={() => startRename(t)}
+								tabindex="-1"
+								aria-label="More"
+								onclick={(e) => openRowMenu(e, t)}
 							>
-								<Pencil size={13} strokeWidth={1.75} />
-							</button>
-							<button
-								class="icon-btn"
-								type="button"
-								aria-label="Delete"
-								onclick={() => (confirmId = t.id)}
-							>
-								<Trash2 size={13} strokeWidth={1.75} />
+								<EllipsisVertical size={13} strokeWidth={1.75} />
 							</button>
 						{/if}
-						<span class="check" class:shown={selectedIds.includes(t.id)}>
-							<span class="dot"></span>
-						</span>
 					{/if}
 				</div>
 			{:else}
@@ -345,8 +375,8 @@
 					role="presentation"
 				>
 					<button class="name" type="button" tabindex="-1" onclick={create}>
-						<Plus size={13} strokeWidth={1.75} />
-						<span class="name-text">Create "{query.trim()}"</span>
+						<span class="box plus"><Plus size={11} strokeWidth={2.5} /></span>
+						<span class="name-text">Create <b>{query.trim()}</b></span>
 					</button>
 				</div>
 			{/if}
@@ -367,7 +397,7 @@
 		font-size: 13px;
 		line-height: 1.4;
 		color: var(--color-text-primary);
-		max-height: 360px;
+		max-height: 300px;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -377,23 +407,22 @@
 		cursor: progress;
 	}
 
-	.search-row {
+	/* the field holds what's chosen as tokens, then the query; it's the whole top edge */
+	.field {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 8px;
+		gap: 4px;
 		margin: -4px -4px 4px;
-		padding: 8px 12px;
+		padding: 8px 10px;
 		border-bottom: 1px solid var(--menu-search-divider);
-		color: var(--color-ui-muted);
-	}
-
-	.search-row :global(svg) {
-		flex-shrink: 0;
+		cursor: text;
 	}
 
 	.search-input {
-		flex: 1;
-		min-width: 0;
+		flex: 1 1 24px;
+		min-width: 24px;
+		height: 20px;
 		border: 0;
 		background: transparent;
 		font: inherit;
@@ -464,13 +493,21 @@
 		color: var(--color-ui-muted);
 	}
 
-	.row.selected .name :global(svg) {
-		color: var(--color-accent);
-	}
-
 	.name-text {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.name-text :global(svg) {
+		opacity: 0.6;
+	}
+
+	.name-text b {
+		font-weight: 600;
 	}
 
 	.row.create .name-text {
@@ -526,29 +563,51 @@
 		color: var(--color-text-primary);
 	}
 
-	.check {
+	/* a checkbox leads each row, as in any picker; the count trails */
+	.box {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 20px;
 		flex-shrink: 0;
-		visibility: hidden;
+		width: 15px;
+		height: 15px;
+		border: 1.5px solid var(--color-ui-dulled);
+		border-radius: 4px;
+		color: transparent;
+		transition:
+			background-color 80ms ease,
+			border-color 80ms ease;
 	}
 
-	.check.shown {
-		visibility: visible;
-	}
-
-	.dot {
-		width: 5px;
-		height: 5px;
-		flex-shrink: 0;
-		border-radius: 50%;
+	.box.on {
 		background: var(--color-accent);
+		border-color: var(--color-accent);
+		color: #fff;
 	}
 
-	.row:hover .check {
-		display: none;
+	.box.plus {
+		border-style: dashed;
+		color: var(--color-ui-muted);
+	}
+
+	.name-text.builtin {
+		color: var(--color-accent);
+	}
+
+	.count {
+		margin-left: auto;
+		padding-left: 8px;
+		font-size: 11px;
+		color: var(--color-ui-muted);
+	}
+
+	.row .more {
+		opacity: 0;
+	}
+
+	.row.active .more,
+	.row:hover .more {
+		opacity: 1;
 	}
 
 	.confirm-btn {
@@ -570,6 +629,12 @@
 
 	.confirm-btn:hover {
 		background: var(--error-a18);
+	}
+
+	.divider {
+		height: 1px;
+		margin: 4px 6px;
+		background: var(--menu-search-divider);
 	}
 
 	.empty {

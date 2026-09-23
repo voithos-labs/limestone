@@ -50,6 +50,7 @@
 			const found: Entry[] = [];
 			let hit: MemberRow | null = null;
 			for (const view of views) {
+				if (view.unit === 'tag:todo') continue; // the hero's todo card draws these
 				const own = view.unit && isBuiltinUnit(view.unit) ? view.fields : view.ownFields;
 				const fields = own.filter((f) => !isDerived(f.type));
 				if (fields.length === 0) continue;

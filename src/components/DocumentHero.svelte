@@ -12,6 +12,7 @@
 	import TagMenu from './views/TagMenu.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
 	import DocProperties from './views/DocProperties.svelte';
+	import TodoCard from './TodoCard.svelte';
 	import {
 		Hash,
 		EllipsisVertical,
@@ -25,7 +26,8 @@
 		FileText,
 		RefreshCw,
 		History,
-		ArrowLeft
+		ArrowLeft,
+		X
 	} from '@lucide/svelte';
 	import { onMount, untrack, type Component } from 'svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -113,6 +115,30 @@
 			console.error('set tags failed', e);
 			tagList = handle.tags;
 		}
+	}
+
+	// the tag chip edits in place: open, and the chips grow an × and a query input; the menu
+	// under it is only the list of choices
+	let tagQuery = $state('');
+	let tagInputEl: HTMLInputElement | null = $state(null);
+	$effect(() => {
+		if (tagMenuOpen) queueMicrotask(() => tagInputEl?.focus());
+		else tagQuery = '';
+	});
+	function onTagInputKey(e: KeyboardEvent) {
+		if (e.key === 'Backspace' && tagQuery === '' && chipTags.length > 0) {
+			e.preventDefault();
+			void toggleTag(chipTags[chipTags.length - 1]);
+		}
+	}
+
+	// the todo card carries #todo: it's not among the chips, and its × is the way off
+	const TODO_ID = 'tag:todo';
+	const isTodo = $derived(tagList.some((t) => t.id === TODO_ID));
+	const chipTags = $derived(tagList.filter((t) => t.id !== TODO_ID));
+	function removeTodo() {
+		const t = tagList.find((x) => x.id === TODO_ID);
+		if (t) void toggleTag(t);
 	}
 
 	async function tagsMutated() {
@@ -370,7 +396,12 @@
 
 {#snippet backCard()}
 	{#if back}
-		<div class="back-slot" class:gutter style:width={gutter ? `${cardWidth}px` : null} bind:this={backSlot}>
+		<div
+			class="back-slot"
+			class:gutter
+			style:width={gutter ? `${cardWidth}px` : null}
+			bind:this={backSlot}
+		>
 			<button
 				class="back"
 				class:floating
@@ -444,21 +475,49 @@
 					{/each}
 				</button>
 				{#if source.use_frontmatter}
-					<button
+					<span
 						class="tags-chip"
-						class:has-tags={tagList.length > 0}
+						class:has-tags={chipTags.length > 0}
+						class:editing={tagMenuOpen}
 						bind:this={tagAnchor}
-						title="Edit tags"
-						onclick={() => (tagMenuOpen = !tagMenuOpen)}
+						role="button"
+						tabindex="-1"
+						title={tagMenuOpen ? '' : 'Edit tags'}
+						onclick={() => {
+							if (tagMenuOpen) tagInputEl?.focus();
+							else tagMenuOpen = true;
+						}}
 					>
-						{#if tagList.length}
-							{#each tagList as t (t.id)}
-								<span class="tag"><Hash size={11} />{t.slug}</span>
-							{/each}
-						{:else}
+						{#each chipTags as t (t.id)}
+							<span class="tag">
+								<Hash size={11} />{t.slug}
+								<button
+									class="tag-x"
+									type="button"
+									tabindex="-1"
+									aria-label="Remove {t.slug}"
+									onclick={(e) => {
+										e.stopPropagation();
+										void toggleTag(t);
+									}}
+								>
+									<X size={9} strokeWidth={2.5} />
+								</button>
+							</span>
+						{/each}
+						{#if tagMenuOpen}
+							<input
+								class="tag-input"
+								bind:this={tagInputEl}
+								bind:value={tagQuery}
+								onkeydown={onTagInputKey}
+								placeholder="Add tag"
+								spellcheck="false"
+							/>
+						{:else if !chipTags.length}
 							<span class="add-tags"><Plus size={11} />tag</span>
 						{/if}
-					</button>
+					</span>
 				{/if}
 				{#if source.use_frontmatter && frontmatterError}
 					<button
@@ -494,8 +553,12 @@
 		</div>
 
 		{#if source.use_frontmatter}
+			{#if isTodo}
+				<div class="todo-row"><TodoCard {handle} onRemove={removeTodo} /></div>
+			{/if}
 			<DocProperties {handle} open={propsOpen} onCount={(n) => (propCount = n)} />
-		{/if}	</div>
+		{/if}
+	</div>
 </div>
 
 <Menu
@@ -527,6 +590,8 @@
 />
 <TagMenu
 	bind:open={tagMenuOpen}
+	bind:query={tagQuery}
+	inline
 	anchor={tagAnchor}
 	selectedIds={tagList.map((t) => t.id)}
 	onToggle={toggleTag}
@@ -643,6 +708,10 @@
        Sized to the metadata row, not the title. */
 	/* The 22px button matches the title's line box, so it centres on the title line
        by simply starting where the row does. */
+	.todo-row {
+		margin-top: 10px;
+	}
+
 	.kebab {
 		position: absolute;
 		top: 34px;
@@ -913,17 +982,6 @@
 		cursor: pointer;
 	}
 
-	.tags-chip.has-tags:hover::after {
-		content: '';
-		position: absolute;
-		left: 2px;
-		right: 2px;
-		bottom: -3px;
-		height: 1px;
-		border-radius: 999px;
-		background: var(--color-border);
-	}
-
 	.add-tags {
 		display: inline-flex;
 		align-items: center;
@@ -957,5 +1015,47 @@
 
 	.tag :global(svg) {
 		opacity: 0.7;
+	}
+
+	.tags-chip:hover .tag {
+		background: var(--chip-bg-hover);
+	}
+
+	/* editing: the chip row is the field; chips get an × and a query input joins the end */
+	.tag-x {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+		margin: 0 -4px 0 1px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: transparent;
+		color: inherit;
+		opacity: 0.55;
+		cursor: pointer;
+	}
+
+	.tag-x:hover {
+		opacity: 1;
+		background: rgba(127, 127, 127, 0.25);
+	}
+
+	.tag-input {
+		width: 72px;
+		height: 20px;
+		padding: 0 4px;
+		border: none;
+		background: transparent;
+		font-family: var(--font-ui);
+		font-size: 11px;
+		color: var(--color-text-primary);
+		outline: none;
+	}
+
+	.tag-input::placeholder {
+		color: var(--color-ui-dulled);
 	}
 </style>

@@ -40,7 +40,7 @@ export function formatDateFriendly(input: string | number | Date | null | undefi
 	const min = Math.floor(sec / 60);
 	const hr = Math.floor(min / 60);
 
-	if (sec < 45) return 'just now';
+	if (min < 1) return 'just now';
 	if (min < 60) return `${min}m ago`;
 
 	const sameDay = d.toDateString() === now.toDateString();
