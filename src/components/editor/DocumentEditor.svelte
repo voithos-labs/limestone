@@ -464,6 +464,16 @@
 		// character offset and a scroller with the header outside it, neither of which exists here.
 		// Placing a caret focuses the document, so a reader typing elsewhere (quick search, a title
 		// field) keeps their field; the remembered caret stays on the tab for the next open.
+		// A fresh note wants its name first: the title takes focus, not the body
+		if (handle?.isDraft && !flow) {
+			const title = wrapperEl?.querySelector<HTMLInputElement>('.title-input');
+			if (title) {
+				title.focus();
+				title.select();
+				restored = true;
+				return;
+			}
+		}
 		// A flow host (the journal) owns the scroll, and placing a caret scrolls it into view: the
 		// reader switching day would be yanked to wherever that document's caret last was. The
 		// remembered caret stays on the tab for when it's opened on its own.

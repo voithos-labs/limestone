@@ -189,7 +189,15 @@
 {#if session}
 	{@const editor = session.editors[0]}
 	<div class="app-layout">
-		<TopBar {editor} settings={session.settings}></TopBar>
+		<TopBar
+			{editor}
+			settings={session.settings}
+			onAddSource={() => {
+				const vt = session!.getViewTab('settings');
+				vt.state = { ...(vt.state ?? {}), activeSection: 'sources', addSource: true };
+				editor.focusTab({ kind: 'settings' });
+			}}
+		></TopBar>
 		<main class="content-area">
 			{#if tab}
 				{#key tab.id}

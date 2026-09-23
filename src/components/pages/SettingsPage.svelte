@@ -277,6 +277,11 @@
 		accentSetting = (await getSetting<string>('appearance.accent')) ?? 'default';
 		const saved = viewTab.state?.activeSection;
 		activeSection = saved && sectionIds.includes(saved) ? saved : sectionIds[0];
+		// sent here to add a source (the bookmark menu): open the dialog straight away, once
+		if (viewTab.state?.addSource) {
+			viewTab.state.addSource = false;
+			addSource();
+		}
 		loadSources();
 		loadGeneral();
 	});

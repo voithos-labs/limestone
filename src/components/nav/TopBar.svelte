@@ -30,7 +30,11 @@
 	import View from '$lib/models/View.svelte';
 	import { FolderInput, SquareArrowOutUpRight } from '@lucide/svelte';
 
-	let { editor, settings }: { editor: EditorState; settings: SettingsState } = $props();
+	let {
+		editor,
+		settings,
+		onAddSource
+	}: { editor: EditorState; settings: SettingsState; onAddSource?: () => void } = $props();
 
 	let compactTabs = $derived(settings.get<boolean>('appearance.compact_tabs') ?? false);
 
@@ -60,18 +64,20 @@
 			{
 				label: 'Sources',
 				icon: FolderInput,
-				children: bmSources.length
-					? bmSources.map((s) => ({
-							label: sourceName(s),
-							icon: FolderInput,
-							action: () => openUnitView(folderId(s.id, ''), sourceName(s)),
-							aux: {
-								icon: SquareArrowOutUpRight,
-								label: 'Open in new tab',
-								action: () => openUnitView(folderId(s.id, ''), sourceName(s), true)
-							}
-						}))
-					: [{ label: 'No sources', disabled: true, action: () => {} }]
+				children: [
+					...bmSources.map((s): CtxEntry => ({
+						label: sourceName(s),
+						icon: FolderInput,
+						action: () => openUnitView(folderId(s.id, ''), sourceName(s)),
+						aux: {
+							icon: SquareArrowOutUpRight,
+							label: 'Open in new tab',
+							action: () => openUnitView(folderId(s.id, ''), sourceName(s), true)
+						}
+					})),
+					...(bmSources.length ? [{ divider: true } as CtxEntry] : []),
+					{ label: 'Add source', icon: Plus, action: () => onAddSource?.() }
+				]
 			},
 			{ divider: true },
 			...bmViews.map((v): CtxEntry => ({

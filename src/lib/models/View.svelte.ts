@@ -866,8 +866,8 @@ class View {
 		this.id = json.id;
 		this.slug = json.slug;
 		this.unit = json.unit ?? null;
-		this.createdAt = json.created_at;
-		this.updatedAt = json.updated_at;
+		this.createdAt = new Date(json.created_at);
+		this.updatedAt = new Date(json.updated_at);
 		this.setOwnFields(
 			json.fields.map((f) =>
 				this.unit && !isDerived(f.type) && !f.unit ? { ...f, unit: this.unit } : f
@@ -879,7 +879,8 @@ class View {
 		this.temporary = json.temporary ?? false;
 		this.emoji = json.emoji ?? '';
 		this.cover = json.cover ?? '';
-		this.accessedAt = json.accessed_at ?? json.updated_at;
+		// the store hands dates back as strings; the model always holds Dates
+		this.accessedAt = new Date(json.accessed_at ?? json.updated_at);
 		// a stateful field with no home has nowhere to read or write; drop it and its uses
 		for (const f of this.fields.filter((f) => !isDerived(f.type) && !f.unit))
 			this.removeField(f.id);
