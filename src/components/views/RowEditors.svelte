@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { ArrowUpRight, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
+	import {
+		ArrowUpRight,
+		SquareArrowOutUpRight,
+		SquareCheck,
+		SquareMinus,
+		Trash2
+	} from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
 	import type Tag from '$lib/models/Tag';
@@ -79,12 +85,17 @@
 	let menuRowId: string | null = $state(null);
 	let ctxEl: HTMLElement | null = $state(null);
 	let ctxPos: { x: number; y: number } = $state({ x: 0, y: 0 });
-	const menuItems = [
+	const menuIsTodo = $derived(!!menuRowId && rows.tagSlugsFor(menuRowId).includes('todo'));
+	const menuItems = $derived([
 		{ value: 'open', label: 'Open', icon: ArrowUpRight },
 		{ value: 'open-tab', label: 'Open in new tab', icon: SquareArrowOutUpRight },
 		{ kind: 'divider' as const },
+		menuIsTodo
+			? { value: 'untodo', label: 'Remove from #todo', icon: SquareMinus }
+			: { value: 'todo', label: 'Add to #todo', icon: SquareCheck },
+		{ kind: 'divider' as const },
 		{ value: 'delete', label: 'Delete', icon: Trash2, danger: true }
-	];
+	]);
 
 	// from a button it hangs off the button; from a right-click it opens at the pointer
 	export function menu(e: MouseEvent, rowId: string) {
@@ -107,6 +118,12 @@
 		if (!rowId) return;
 		if (value === 'open') onOpen?.(rowId);
 		else if (value === 'open-tab') onOpen?.(rowId, true);
+		else if (value === 'todo') await rows.setTags(rowId, [...rows.tagSlugsFor(rowId), 'todo']);
+		else if (value === 'untodo')
+			await rows.setTags(
+				rowId,
+				rows.tagSlugsFor(rowId).filter((s) => s !== 'todo')
+			);
 		else if (value === 'delete') await rows.delete(rowId);
 	}
 

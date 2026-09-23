@@ -77,7 +77,7 @@
 
 {#each fields as f (f.id)}
 	{@const has = hasValue(f)}
-	{#if has || editable(f)}
+	{#if rows.memberOf(row, f) && (has || editable(f))}
 		{@const Icon = getFieldIcon(f.type)}
 		<span
 			class="value"

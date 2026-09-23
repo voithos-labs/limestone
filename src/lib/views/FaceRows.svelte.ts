@@ -190,6 +190,15 @@ export class FaceRows {
 		return (this.rowTags[rowId] ?? []).map((t) => t.slug);
 	}
 
+	// a unit's fields count only on the unit's members: a todo checkbox on a note without
+	// the tag is inert, so it's drawn but not live. Folder units are always satisfied here,
+	// their views only ever hold their own subtree
+	memberOf(row: MemberRow, field: ViewField): boolean {
+		const unit = field.unit;
+		if (!unit || !unit.startsWith('tag:')) return true;
+		return (this.rowTags[row.id] ?? []).some((t) => t.id === unit);
+	}
+
 	// a value that is the view's own scope says nothing: the tag of a tag view, the folder of
 	// a folder view for notes sitting directly in it
 	get scopeTag(): string | null {

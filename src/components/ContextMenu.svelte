@@ -1,9 +1,48 @@
 <script lang="ts">
-	import { contextMenu, isCtxItem, type CtxItem } from '$lib/contextMenu.svelte';
+	import { contextMenu, isCtxItem, type CtxEntry, type CtxItem } from '$lib/contextMenu.svelte';
 	import { onMount } from 'svelte';
+	import { Check, ChevronRight } from '@lucide/svelte';
 
 	let menuEl: HTMLDivElement | null = $state(null);
 	let pos: { top: number; left: number } | null = $state(null);
+
+	// one flyout at a time, opened by hovering an item with children; it hangs off that
+	// item's right edge and falls back to the left when the viewport is short
+	let flyFor: number | null = $state(null);
+	let flyEl: HTMLDivElement | null = $state(null);
+	let flyPos: { top: number; left: number } | null = $state(null);
+	const flyItems = $derived.by((): CtxEntry[] => {
+		const e = flyFor === null ? undefined : contextMenu.items[flyFor];
+		return e && isCtxItem(e) ? (e.children ?? []) : [];
+	});
+
+	$effect(() => {
+		if (!contextMenu.open) flyFor = null;
+	});
+
+	function openFly(i: number, el: HTMLElement) {
+		const entry = contextMenu.items[i];
+		if (!entry || !isCtxItem(entry) || !entry.children) {
+			flyFor = null;
+			return;
+		}
+		flyFor = i;
+		const r = el.getBoundingClientRect();
+		flyPos = { top: r.top - 4, left: r.right + 2 };
+	}
+
+	$effect(() => {
+		if (flyFor === null || !flyEl || !flyPos) return;
+		const m = flyEl.getBoundingClientRect();
+		let { top, left } = flyPos;
+		if (left + m.width > window.innerWidth - 8) {
+			const anchor = menuEl?.getBoundingClientRect();
+			left = Math.max(8, (anchor?.left ?? left) - m.width - 2);
+		}
+		if (top + m.height > window.innerHeight - 8)
+			top = Math.max(8, window.innerHeight - 8 - m.height);
+		if (top !== flyPos.top || left !== flyPos.left) flyPos = { top, left };
+	});
 
 	// Clamp into the viewport once rendered (so it doesn't spill off-screen)
 	$effect(() => {
@@ -21,14 +60,15 @@
 	});
 
 	function select(item: CtxItem) {
-		if (item.disabled) return;
-		contextMenu.close();
-		item.action();
+		if (item.disabled || item.children) return;
+		if (!item.keepOpen) contextMenu.close();
+		item.action?.();
 	}
 
 	function onPointerDown(e: PointerEvent) {
 		if (!contextMenu.open) return;
-		if (menuEl?.contains(e.target as Node)) return;
+		const t = e.target as Node;
+		if (menuEl?.contains(t) || flyEl?.contains(t)) return;
 		contextMenu.close();
 	}
 
@@ -65,27 +105,57 @@
 		role="menu"
 		tabindex="-1"
 	>
-		{#each contextMenu.items as entry}
-			{#if isCtxItem(entry)}
-				{@const Icon = entry.icon}
-				<button
-					class="ctx-item"
-					class:danger={entry.danger}
-					type="button"
-					disabled={entry.disabled}
-					onclick={() => select(entry)}
-				>
-					{#if Icon}
-						<span class="ctx-icon"><Icon size={14} strokeWidth={1.75} /></span>
-					{/if}
-					<span class="ctx-label">{entry.label}</span>
-				</button>
-			{:else}
-				<div class="ctx-divider"></div>
-			{/if}
+		{#each contextMenu.items as entry, i}
+			{@render item(entry, i, false)}
 		{/each}
 	</div>
+	{#if flyFor !== null && flyItems.length > 0}
+		<div
+			class="ctx-menu fly"
+			bind:this={flyEl}
+			style:top="{flyPos?.top ?? 0}px"
+			style:left="{flyPos?.left ?? 0}px"
+			role="menu"
+			tabindex="-1"
+		>
+			{#each flyItems as entry, i}
+				{@render item(entry, i, true)}
+			{/each}
+		</div>
+	{/if}
 {/if}
+
+{#snippet item(entry: CtxEntry, i: number, inFly: boolean)}
+	{#if isCtxItem(entry)}
+		{@const Icon = entry.icon}
+		<button
+			class="ctx-item"
+			class:danger={entry.danger}
+			class:open={!inFly && flyFor === i}
+			type="button"
+			disabled={entry.disabled}
+			onclick={(e) => {
+				if (entry.children) openFly(i, e.currentTarget as HTMLElement);
+				else select(entry);
+			}}
+			onpointerenter={(e) => {
+				if (!inFly) openFly(i, e.currentTarget as HTMLElement);
+			}}
+		>
+			{#if Icon}
+				<span class="ctx-icon"><Icon size={14} strokeWidth={1.75} /></span>
+			{/if}
+			<span class="ctx-label">{entry.label}</span>
+			{#if entry.children}
+				<span class="ctx-more"><ChevronRight size={13} strokeWidth={2} /></span>
+			{:else if entry.checked}
+				<span class="ctx-more"><Check size={13} strokeWidth={2.5} /></span>
+			{/if}
+		</button>
+	{:else}
+		<div class="ctx-divider"></div>
+	{/if}
+{/snippet}
 
 <style>
 	.ctx-menu {
@@ -117,8 +187,17 @@
 		cursor: pointer;
 	}
 
-	.ctx-item:hover {
+	.ctx-item:hover,
+	.ctx-item.open {
 		background: var(--menu-item-hover);
+	}
+
+	.ctx-more {
+		display: inline-flex;
+		align-items: center;
+		margin-left: auto;
+		padding-left: 12px;
+		color: var(--color-ui-muted);
 	}
 
 	.ctx-item:disabled {

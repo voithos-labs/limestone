@@ -24,7 +24,7 @@
 		EllipsisVertical,
 		Columns3Cog,
 		X,
-		PencilLine,
+		TextCursorInput,
 		ArrowDownUp,
 		ArrowUpAZ,
 		ArrowDownAZ
@@ -450,7 +450,7 @@
 				if (fieldTarget) fieldTarget.config.edit_in_place = !editInPlace;
 			}}
 		>
-			<PencilLine size={15} strokeWidth={1.75} />
+			<TextCursorInput size={15} strokeWidth={1.75} />
 		</button>
 	{/if}
 
@@ -693,7 +693,7 @@
 
 	.collapse-toggle.on {
 		background: var(--chip-bg);
-		color: var(--color-accent);
+		color: var(--color-text-primary);
 	}
 
 	.sort-row {

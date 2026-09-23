@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import View, { ViewFace } from '$lib/models/View.svelte';
+	import View, { ViewFace, VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
+	import { fieldLabel } from '$lib/views/fieldValue';
+	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import type { FilterNode, ViewField } from '$lib/models/View.svelte';
 	import { onSourceReconciled } from '$lib/models/Source';
 	import { folderId as makeFolderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
@@ -16,12 +18,21 @@
 		GripVertical,
 		EyeOff
 	} from '@lucide/svelte';
-	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { dashboardSections, DASH_SECTION_LABEL, type DashSection } from '$lib/views/dashboard';
 	import Folder from '$lib/models/Folder';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import FolderChips from '../FolderChips.svelte';
-	import { ExternalLink, Bookmark } from '@lucide/svelte';
+	import {
+		ExternalLink,
+		Bookmark,
+		LayoutArrowDown,
+		Settings2,
+		ArrowDownUp,
+		ArrowUpAZ,
+		ArrowDownAZ
+	} from '@lucide/svelte';
+	import ArrangeFields from '../ArrangeFields.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { getSource, type Source } from '$lib/models/Source';
 
@@ -130,15 +141,32 @@
 
 	// ── The two sections, as list faces that live only here ────────────────────
 	const showDone = $derived(face.config.show_done === true);
-	const notesByName = $derived(face.config.notes_sort === 'name');
 
 	const todoFace = ViewFace.create('list');
 	const notesFace = ViewFace.create('list');
 
+	// each section's arrangement lives on the dashboard face; the section faces are rebuilt
+	// from it, and an arrangement made in the dialog is written back
+	type Layout = { display: string[]; right: string[] };
+	function layoutFor(key: string, def: Layout): Layout {
+		const saved = face.config[key] as Layout | undefined;
+		return saved?.display?.length ? saved : def;
+	}
+	function persistLayout(key: string, f: ViewFace) {
+		const next: Layout = { display: [...f.display_field_ids], right: [...(f.config.right ?? [])] };
+		const cur = face.config[key] as Layout | undefined;
+		if (JSON.stringify(cur) !== JSON.stringify(next)) face.config[key] = next;
+	}
+
 	$effect(() => {
-		todoFace.display_field_ids = [doneId, titleId, tagsId, folderId].filter(Boolean);
-		todoFace.config.right = [folderId];
+		const l = layoutFor('todo_layout', {
+			display: [doneId, titleId, tagsId, folderId, dueId].filter(Boolean),
+			right: [folderId, dueId]
+		});
+		todoFace.display_field_ids = [...l.display];
+		todoFace.config.right = [...l.right];
 		todoFace.config.hide_tag = TODO;
+		todoFace.config.edit_in_place = true;
 		todoFace.additive_filter = {
 			op: 'and',
 			children: [
@@ -146,20 +174,72 @@
 				...(showDone ? [] : [{ field_id: doneId, op: 'eq', value: false }])
 			]
 		};
-		todoFace.sort = [{ field_id: dueId, direction: 'asc', nulls: 'last' }];
+		todoFace.sort = [
+			{ ...sortFor('todo_sort', { field_id: dueId, direction: 'asc' }), nulls: 'last' }
+		];
 	});
 
 	$effect(() => {
-		notesFace.display_field_ids = [titleId, tagsId, updatedId].filter(Boolean);
-		notesFace.config.right = [tagsId, updatedId];
+		const l = layoutFor('docs_layout', {
+			display: [titleId, tagsId, updatedId].filter(Boolean),
+			right: [tagsId, updatedId]
+		});
+		notesFace.display_field_ids = [...l.display];
+		notesFace.config.right = [...l.right];
 		notesFace.additive_filter = {
 			op: 'and',
 			children: [{ field_id: tagsId, op: 'has_none', value: [TODO] }]
 		};
-		notesFace.sort = notesByName
-			? [{ field_id: titleId, direction: 'asc' }]
-			: [{ field_id: updatedId, direction: 'desc' }];
+		notesFace.sort = [sortFor('docs_sort', { field_id: updatedId, direction: 'desc' })];
 	});
+
+	// each section sorts on its own key, chosen from the section menu or the header
+	type Sort = { field_id: string; direction: 'asc' | 'desc' };
+	function sortFor(key: string, def: Sort): Sort {
+		const saved = face.config[key] as Sort | undefined;
+		return saved?.field_id && view.fields.some((f) => f.id === saved.field_id) ? saved : def;
+	}
+	function sortEntries(key: 'todo_sort' | 'docs_sort'): CtxEntry[] {
+		const cur =
+			key === 'todo_sort'
+				? sortFor('todo_sort', { field_id: dueId, direction: 'asc' })
+				: sortFor('docs_sort', { field_id: updatedId, direction: 'desc' });
+		const set = (next: Sort) => (face.config[key] = next);
+		return [
+			...view.fields
+				.filter((f) => VIEW_FIELD_SORTABLE.has(f.type))
+				.map((f): CtxEntry => ({
+					label: fieldLabel(f),
+					icon: getFieldIcon(f.type),
+					checked: cur.field_id === f.id,
+					keepOpen: true,
+					action: () => set({ field_id: f.id, direction: cur.direction })
+				})),
+			{ divider: true },
+			{
+				label: 'Ascending',
+				icon: ArrowUpAZ,
+				checked: cur.direction === 'asc',
+				keepOpen: true,
+				action: () => set({ field_id: cur.field_id, direction: 'asc' })
+			},
+			{
+				label: 'Descending',
+				icon: ArrowDownAZ,
+				checked: cur.direction === 'desc',
+				keepOpen: true,
+				action: () => set({ field_id: cur.field_id, direction: 'desc' })
+			}
+		];
+	}
+	const docsSort = $derived(sortFor('docs_sort', { field_id: updatedId, direction: 'desc' }));
+	const docsSortField = $derived(view.fields.find((f) => f.id === docsSort.field_id));
+
+	$effect(() => persistLayout('todo_layout', todoFace));
+	$effect(() => persistLayout('docs_layout', notesFace));
+
+	let arrangeOpen = $state(false);
+	let arrangeFace: ViewFace = $state(todoFace);
 
 	// counts for the section headers
 	let openCount = $state(0);
@@ -293,6 +373,24 @@
 				disabled: sections.at(-1)?.id === s.id
 			},
 			{ divider: true },
+			...(s.id === 'folders'
+				? []
+				: [
+						{
+							label: 'Sort by',
+							icon: ArrowDownUp,
+							children: sortEntries(s.id === 'todo' ? 'todo_sort' : 'docs_sort')
+						},
+						{
+							label: 'Arrange fields',
+							icon: LayoutArrowDown,
+							action: () => {
+								arrangeFace = s.id === 'todo' ? todoFace : notesFace;
+								arrangeOpen = true;
+							}
+						},
+						{ divider: true } as CtxEntry
+					]),
 			{ label: 'Hide section', icon: EyeOff, action: () => patch(s.id, { hidden: true }) }
 		];
 	}
@@ -416,6 +514,19 @@
 						<ChevronDown size={13} strokeWidth={2} />
 					</span>
 				</button>
+				<button
+					class="sec-cog"
+					type="button"
+					tabindex="-1"
+					aria-label="Section options"
+					onclick={(e) => {
+						e.stopPropagation();
+						const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+						contextMenu.show(r.left, r.bottom + 4, () => sectionMenu(sec));
+					}}
+				>
+					<Settings2 size={13} strokeWidth={1.75} />
+				</button>
 				<span class="sec-rule"></span>
 				{#if sec.id === 'todo'}
 					<button
@@ -429,10 +540,13 @@
 					<button
 						class="sec-action"
 						type="button"
-						onclick={() => (face.config.notes_sort = notesByName ? 'recent' : 'name')}
+						onclick={(e) => {
+							const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+							contextMenu.show(r.left, r.bottom + 4, () => sortEntries('docs_sort'));
+						}}
 					>
-						{notesByName ? 'name' : 'recent'}
-						{#if notesByName}<ArrowUp size={12} strokeWidth={2} />{:else}<ArrowDown
+						{docsSortField ? fieldLabel(docsSortField).toLowerCase() : 'recent'}
+						{#if docsSort.direction === 'asc'}<ArrowUp size={12} strokeWidth={2} />{:else}<ArrowDown
 								size={12}
 								strokeWidth={2}
 							/>{/if}
@@ -474,6 +588,8 @@
 		</section>
 	{/each}
 </div>
+
+<ArrangeFields bind:open={arrangeOpen} {view} face={arrangeFace} />
 
 <style>
 	.dash {
@@ -626,6 +742,35 @@
 	.sec:hover .sec-caret,
 	.sec-caret.collapsed {
 		opacity: 1;
+	}
+
+	/* the section's menu, on a cog past the caret; only there when the header is hovered */
+	.sec-cog {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		margin-left: 2px;
+		padding: 0;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+		opacity: 0;
+		transition:
+			opacity 80ms ease,
+			background-color 80ms ease;
+	}
+
+	.sec:hover .sec-cog {
+		opacity: 1;
+	}
+
+	.sec-cog:hover {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
 	}
 
 	.sec-caret.collapsed {

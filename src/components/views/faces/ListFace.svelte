@@ -157,6 +157,13 @@
 		tick().then(() => focusItem(0));
 	});
 
+	// the cursor arriving takes over from the keyboard cursor: the focused row lets go so
+	// the hover highlight is the only one
+	function onListPointerMove() {
+		const a = document.activeElement as HTMLElement | null;
+		if (a && listEl?.contains(a) && a.matches('.row, .card')) a.blur();
+	}
+
 	function focusItem(i: number) {
 		const els = items();
 		if (els.length === 0) return;
@@ -221,7 +228,7 @@
 			case ' ':
 				if (!row || !checkField) return;
 				e.preventDefault();
-				rows.toggle(row, checkField);
+				if (rows.memberOf(row, checkField)) rows.toggle(row, checkField);
 				break;
 			case 'Escape':
 				(document.activeElement as HTMLElement | null)?.blur();
@@ -319,7 +326,14 @@
 {/if}
 
 {#if layout === 'grid'}
-	<div class="grid" role="list" bind:this={listEl} tabindex="-1" onkeydown={onListKey}>
+	<div
+		class="grid"
+		role="list"
+		bind:this={listEl}
+		tabindex="-1"
+		onkeydown={onListKey}
+		onpointermove={onListPointerMove}
+	>
 		{#each rows.rows as row, i (row.id)}
 			<NoteCard
 				onFocus={() => (focusIdx = i)}
@@ -349,9 +363,17 @@
 		</button>
 	{/if}
 {:else}
-	<div class="list-face" bind:this={listEl} role="list" tabindex="-1" onkeydown={onListKey}>
+	<div
+		class="list-face"
+		bind:this={listEl}
+		role="list"
+		tabindex="-1"
+		onkeydown={onListKey}
+		onpointermove={onListPointerMove}
+	>
 		{#each rows.rows as row, i (row.id)}
-			{@const done = checkField ? rawStatefulValue(row, checkField) === true : false}
+			{@const member = checkField ? rows.memberOf(row, checkField) : false}
+			{@const done = member && checkField ? rawStatefulValue(row, checkField) === true : false}
 			<div
 				class="row"
 				class:done
@@ -368,7 +390,7 @@
 				onfocus={() => (focusIdx = i)}
 				oncontextmenu={(e) => editors.menu(e, row.id)}
 			>
-				{#if checkField}
+				{#if checkField && member}
 					<button
 						class="check"
 						class:done
@@ -384,6 +406,8 @@
 					>
 						<span class="box"><Check size={12} strokeWidth={3} /></span>
 					</button>
+				{:else if checkField}
+					<span class="check inert" title="Not a todo"><span class="box"></span></span>
 				{/if}
 				{#if renamingId === row.id}
 					<span class="name rename-wrap" role="presentation" onclick={(e) => e.stopPropagation()}>
@@ -597,6 +621,16 @@
 
 	.check:hover .box {
 		border-color: var(--color-text-secondary);
+	}
+
+	/* a note outside the checkbox's unit keeps the slot, but the box is only a trace */
+	.check.inert {
+		cursor: default;
+	}
+
+	.check.inert .box {
+		border-color: var(--color-border);
+		opacity: 0.55;
 	}
 
 	.check.done .box {

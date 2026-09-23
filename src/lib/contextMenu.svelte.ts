@@ -7,9 +7,12 @@ import type { Component } from 'svelte';
 export interface CtxItem {
 	label: string;
 	icon?: Component;
-	action: () => void;
+	action?: () => void;
 	danger?: boolean;
 	disabled?: boolean;
+	checked?: boolean; // drawn with a check, for a choice among several
+	keepOpen?: boolean; // the menu stays up after this action (toggles, choices)
+	children?: CtxEntry[]; // a flyout instead of an action
 }
 
 export interface CtxDivider {
@@ -22,16 +25,23 @@ export function isCtxItem(e: CtxEntry): e is CtxItem {
 	return !('divider' in e);
 }
 
+type CtxSource = CtxEntry[] | (() => CtxEntry[]);
+
 class ContextMenuController {
 	open = $state(false);
 	x = $state(0);
 	y = $state(0);
-	items = $state<CtxEntry[]>([]);
+	// a function source is re-read while the menu is up, so checks and toggles stay current
+	private source = $state<CtxSource>([]);
 
-	show(x: number, y: number, items: CtxEntry[]) {
+	get items(): CtxEntry[] {
+		return typeof this.source === 'function' ? this.source() : this.source;
+	}
+
+	show(x: number, y: number, items: CtxSource) {
 		this.x = x;
 		this.y = y;
-		this.items = items;
+		this.source = items;
 		this.open = true;
 	}
 
@@ -52,7 +62,7 @@ export function ctxMenu(node: HTMLElement, getItems: () => CtxEntry[] | null | u
 		if (!items || items.length === 0) return;
 		e.preventDefault();
 		e.stopPropagation();
-		contextMenu.show(e.clientX, e.clientY, items);
+		contextMenu.show(e.clientX, e.clientY, () => provide() ?? []);
 	}
 	node.addEventListener('contextmenu', handle);
 	return {

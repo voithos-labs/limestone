@@ -34,7 +34,8 @@
 		onFocus?: () => void;
 	} = $props();
 
-	const done = $derived(checkField ? rawStatefulValue(row, checkField) === true : false);
+	const member = $derived(checkField ? rows.memberOf(row, checkField) : false);
+	const done = $derived(member && checkField ? rawStatefulValue(row, checkField) === true : false);
 	const hit = $derived(rows.searchHits[row.id]);
 	const snippet = $derived(hit?.snippet?.trim() ? highlightSnippet(hit.snippet) : '');
 
@@ -91,7 +92,7 @@
 	onfocus={onFocus}
 >
 	<div class="head">
-		{#if checkField}
+		{#if checkField && member}
 			<button
 				class="check"
 				class:done
@@ -107,6 +108,8 @@
 			>
 				<span class="box"><Check size={11} strokeWidth={3} /></span>
 			</button>
+		{:else if checkField}
+			<span class="check inert" title="Not a todo"><span class="box"></span></span>
 		{/if}
 		{#if renaming}
 			<span class="name rename-wrap" role="presentation" onclick={(e) => e.stopPropagation()}>
@@ -244,6 +247,15 @@
 
 	.check:hover .box {
 		border-color: var(--color-text-secondary);
+	}
+
+	.check.inert {
+		cursor: default;
+	}
+
+	.check.inert .box {
+		border-color: var(--color-border);
+		opacity: 0.55;
 	}
 
 	.check.done .box {
