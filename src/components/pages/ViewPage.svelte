@@ -12,7 +12,7 @@
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { listSources, type Source } from '$lib/models/Source';
+	import { listSources, removeSource, type Source } from '$lib/models/Source';
 	import SourceDialog from '../SourceDialog.svelte';
 	import DocHandle from '$lib/models/DocHandle';
 	import ViewHeader from '../views/ViewHeader.svelte';
@@ -132,24 +132,6 @@
 		restoreTimer = setTimeout(endScrollRestore, 1500);
 	});
 
-	const FB_SNAP_TOP = 20;
-	const FB_SNAP_ZONE = 40;
-	let fbSnapTimer: ReturnType<typeof setTimeout> | null = null;
-
-	function snapFilterBar() {
-		if (!bodyFlow || !view.cover || !bodyEl) return;
-		const fb = bodyEl.querySelector('.filter-bar') as HTMLElement | null;
-		if (!fb) return;
-		const delta = fb.getBoundingClientRect().top - bodyEl.getBoundingClientRect().top - FB_SNAP_TOP;
-		if (delta === 0 || Math.abs(delta) > FB_SNAP_ZONE) return;
-		bodyEl.scrollTo({ top: bodyEl.scrollTop + delta, behavior: 'smooth' });
-	}
-
-	function queueFilterBarSnap() {
-		if (fbSnapTimer) clearTimeout(fbSnapTimer);
-		fbSnapTimer = setTimeout(snapFilterBar, 150);
-	}
-
 	// Bumped by the header's "+ New" button; the active face watches it and begins
 	// a create in whatever way fits its layout (table = floating draft row at top).
 	let createSignal = $state(0);
@@ -245,7 +227,6 @@
 
 	onDestroy(() => {
 		endScrollRestore();
-		if (fbSnapTimer) clearTimeout(fbSnapTimer);
 		if (saveTimer && !view.temporary) view.save().catch(() => {});
 	});
 
@@ -378,17 +359,23 @@
 					? { value: 'project', label: 'Turn into project', icon: Bookmark }
 					: { value: 'unproject', label: 'Stop being a project', icon: Bookmark }
 			);
-			if (!unitIsRoot) {
-				const what = unitKind === 'folder' ? 'folder' : 'tag';
+			{
+				const what = unitIsRoot ? 'source' : unitKind === 'folder' ? 'folder' : 'tag';
+				const verb = unitIsRoot ? 'remove' : 'delete';
 				items.push(
 					confirmingDelete
 						? {
 								value: 'confirm-delete',
-								label: `Confirm delete ${what}`,
+								label: `Confirm ${verb}`,
 								icon: Trash2,
 								danger: true
 							}
-						: { value: 'delete', label: `Delete ${what}`, icon: Trash2, keepOpen: true }
+						: {
+								value: 'delete',
+								label: `${verb[0].toUpperCase()}${verb.slice(1)} ${what}`,
+								icon: Trash2,
+								keepOpen: true
+							}
 				);
 			}
 			return items;
@@ -440,6 +427,15 @@
 
 	async function deleteUnit() {
 		if (!view.unit) return;
+		if (unitIsRoot) {
+			try {
+				await removeSource(folderIdSource(view.unit));
+				editor.closeTab(view.id, false);
+			} catch (e) {
+				toasts.push(String(e));
+			}
+			return;
+		}
 		if (unitKind === 'tag') {
 			try {
 				await Tag.delete(await Tag.fromID(view.unit));
@@ -531,7 +527,6 @@
 			class:flow={bodyFlow}
 			class:restoring={restoringScroll}
 			bind:this={bodyEl}
-			onwheel={queueFilterBarSnap}
 			onscroll={bodyScroll}
 		>
 			<div class="view-inner">
@@ -745,6 +740,8 @@
 		display: block;
 		overflow-y: auto;
 		scrollbar-width: none;
+		/* content swaps (a journal changing day) must not be "kept in place" by the browser */
+		overflow-anchor: none;
 	}
 
 	.view-body.flow::-webkit-scrollbar {

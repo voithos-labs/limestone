@@ -28,7 +28,7 @@
 	import { listSources, sourceName, type Source } from '$lib/models/Source';
 	import { folderId } from '$lib/models/Folder';
 	import View from '$lib/models/View.svelte';
-	import { FolderInput } from '@lucide/svelte';
+	import { FolderInput, SquareArrowOutUpRight } from '@lucide/svelte';
 
 	let { editor, settings }: { editor: EditorState; settings: SettingsState } = $props();
 
@@ -45,13 +45,13 @@
 	let bmViews: View[] = $state([]);
 
 	// the bookmark shows its pick on a transient surface, not a tab: gone once you go elsewhere
-	function openUnitView(unitId: string, name: string) {
+	function openUnitView(unitId: string, name: string, newTab = false) {
 		const existing = editor.tabs.find(
 			(t) => t.content.type === 'view' && t.content.view.unit === unitId
 		);
 		if (existing) return editor.focusTab({ kind: 'tab', id: existing.id });
 		View.forUnit(unitId, name)
-			.then((v) => editor.showPreview(TabState.forView(v)))
+			.then((v) => (newTab ? editor.openView(v) : editor.showPreview(TabState.forView(v))))
 			.catch(console.error);
 	}
 
@@ -64,7 +64,12 @@
 					? bmSources.map((s) => ({
 							label: sourceName(s),
 							icon: FolderInput,
-							action: () => openUnitView(folderId(s.id, ''), sourceName(s))
+							action: () => openUnitView(folderId(s.id, ''), sourceName(s)),
+							aux: {
+								icon: SquareArrowOutUpRight,
+								label: 'Open in new tab',
+								action: () => openUnitView(folderId(s.id, ''), sourceName(s), true)
+							}
 						}))
 					: [{ label: 'No sources', disabled: true, action: () => {} }]
 			},
@@ -72,6 +77,12 @@
 			...bmViews.map((v): CtxEntry => ({
 				label: v.slug,
 				icon: getViewIcon(v),
+				emoji: v.emoji || undefined,
+				aux: {
+					icon: SquareArrowOutUpRight,
+					label: 'Open in new tab',
+					action: () => editor.openView(v)
+				},
 				action: () => editor.showPreview(TabState.forView(v))
 			}))
 		];
@@ -85,7 +96,7 @@
 		} catch (err) {
 			console.error('bookmarks load failed', err);
 		}
-		contextMenu.show(r.left, r.bottom + 6, () => bookmarkEntries());
+		contextMenu.show(r.left, r.bottom + 6, () => bookmarkEntries(), { minWidth: 220 });
 	}
 
 	// ── Tab drag and drop ───────────────────────────────────────────────────────

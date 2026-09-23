@@ -19,6 +19,7 @@
 		LayoutPanelTop,
 		CalendarClock,
 		ScanLine,
+		Pin,
 		ScanBarcode,
 		ChevronRight
 	} from '@lucide/svelte';
@@ -91,6 +92,7 @@
 	}
 
 	const showActivity = $derived(face.config.show_activity === true);
+	const stickyDays = $derived(face.config.sticky_days !== false);
 
 	// a project face's sections: which ones show
 	let sectionsEl: HTMLButtonElement | null = $state(null);
@@ -613,6 +615,16 @@
 				{/if}
 				<span>Activity timeline</span>
 				<span class="trailing">{showActivity ? 'On' : 'Off'}</span>
+			</button>
+			<button
+				class="action group-toggle"
+				type="button"
+				data-nav
+				onclick={() => (face.config.sticky_days = !stickyDays)}
+			>
+				<Pin size={14} strokeWidth={1.75} />
+				<span>Sticky date bar</span>
+				<span class="trailing">{stickyDays ? 'On' : 'Off'}</span>
 			</button>
 		{/if}
 	</div>

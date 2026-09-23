@@ -7,7 +7,13 @@
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
-	import { getSource, onSourceReconciled, sourceName, type Source } from '$lib/models/Source';
+	import {
+		getSource,
+		onSourceReconciled,
+		removeSource,
+		sourceName,
+		type Source
+	} from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import { toasts } from '$lib/toasts.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
@@ -300,15 +306,31 @@
 		...(view.temporary
 			? [{ value: 'project', label: 'Turn into project', icon: Bookmark }]
 			: [{ value: 'unproject', label: 'Stop being a project', icon: Bookmark }]),
-		...(isRoot
-			? []
-			: [
-					{ kind: 'divider' as const },
-					confirmingDelete
-						? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
-						: { value: 'delete', label: 'Delete folder', icon: Trash2, keepOpen: true }
-				])
+		{ kind: 'divider' as const },
+		confirmingDelete
+			? {
+					value: 'confirm-delete',
+					label: isRoot ? 'Confirm remove' : 'Confirm delete',
+					icon: Trash2,
+					danger: true
+				}
+			: {
+					value: 'delete',
+					label: isRoot ? 'Remove source' : 'Delete folder',
+					icon: Trash2,
+					keepOpen: true
+				}
 	]);
+
+	// removing a source only forgets it: the folder on disk stays where it is
+	async function removeThisSource() {
+		try {
+			await removeSource(sourceId);
+			editor.closeTab(view.id, false);
+		} catch (e) {
+			toasts.push(String(e));
+		}
+	}
 
 	// the folder goes to the trash and the page steps up to its parent
 	async function deleteFolder() {
@@ -353,7 +375,8 @@
 				await view.unsave();
 				break;
 			case 'confirm-delete':
-				await deleteFolder();
+				if (isRoot) await removeThisSource();
+				else await deleteFolder();
 				break;
 		}
 	}

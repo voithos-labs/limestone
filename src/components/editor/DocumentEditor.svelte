@@ -464,7 +464,10 @@
 		// character offset and a scroller with the header outside it, neither of which exists here.
 		// Placing a caret focuses the document, so a reader typing elsewhere (quick search, a title
 		// field) keeps their field; the remembered caret stays on the tab for the next open.
-		if (!typingElsewhere()) {
+		// A flow host (the journal) owns the scroll, and placing a caret scrolls it into view: the
+		// reader switching day would be yanked to wherever that document's caret last was. The
+		// remembered caret stays on the tab for when it's opened on its own.
+		if (!typingElsewhere() && !flow) {
 			const selection = rememberedSelection();
 			// Restoring can fail (a file edited outside the app may no longer have the block that
 			// selection names), and setSelection reports that by returning false rather than throwing.
