@@ -585,6 +585,11 @@
 		color: #fff;
 	}
 
+	/* the row's icon rule would mute the tick; it stays white on the accent */
+	.box :global(svg) {
+		color: inherit;
+	}
+
 	.box.plus {
 		border-style: dashed;
 		color: var(--color-ui-muted);
