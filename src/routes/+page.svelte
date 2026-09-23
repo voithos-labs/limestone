@@ -13,6 +13,7 @@
 	import NewTabPage from '../components/pages/NewTabPage.svelte';
 	import LicensesPage from '../components/pages/LicensesPage.svelte';
 	import DocumentEditor from '../components/editor/DocumentEditor.svelte';
+	import Palette from '../components/Palette.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import { actionForKey, keyCapture } from '$lib/actions';
@@ -213,6 +214,7 @@
 		</main>
 	</div>
 	<ContextMenu />
+	<Palette {session} />
 {/if}
 
 <style>

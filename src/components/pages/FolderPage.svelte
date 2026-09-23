@@ -284,6 +284,11 @@
 	let sourceDialogOpen = $state(false);
 	let nameMode: 'new-folder' | 'rename' = $state('new-folder');
 
+	let confirmingDelete = $state(false);
+	$effect(() => {
+		if (!menuOpen) confirmingDelete = false;
+	});
+
 	const menuItems = $derived([
 		{ value: 'new-note', label: 'New note', icon: FilePlus },
 		{ value: 'new-folder', label: 'New folder', icon: FolderPlus },
@@ -304,10 +309,6 @@
 						: { value: 'delete', label: 'Delete folder', icon: Trash2, keepOpen: true }
 				])
 	]);
-	let confirmingDelete = $state(false);
-	$effect(() => {
-		if (!menuOpen) confirmingDelete = false;
-	});
 
 	// the folder goes to the trash and the page steps up to its parent
 	async function deleteFolder() {

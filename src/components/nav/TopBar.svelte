@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getViewIcon } from '$lib/views/filterDisplay';
+	import { palette } from '$lib/palette.svelte';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { FocusTarget, TabState } from '$lib/models/EditorState.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -283,7 +284,7 @@
 				</span>
 			</div>
 		{/each}
-		<button class="new-tab-btn" title="New tab" tabindex="-1" onclick={() => editor.openNewTab()}>
+		<button class="new-tab-btn" title="New" tabindex="-1" onclick={() => palette.show('/new ')}>
 			<Plus size={15} />
 		</button>
 	</div>

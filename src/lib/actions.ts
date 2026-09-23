@@ -1,4 +1,5 @@
 import type Session from '$lib/models/Session.svelte.js';
+import { palette } from '$lib/palette.svelte';
 import type { SettingsState } from '$lib/models/Settings.svelte';
 import DocHandle from '$lib/models/DocHandle';
 
@@ -101,25 +102,32 @@ export function keyTokens(spec: string): string[] {
 
 export const actions: Action[] = [
 	{
+		id: 'palette.open',
+		title: 'Search',
+		category: 'global',
+		defaultKeys: isLinux ? ['mod+k', 'mod+p'] : ['ctrl+space', 'mod+k', 'mod+p'],
+		run: () => palette.show()
+	},
+	{
 		id: 'tab.new',
-		title: 'New tab',
+		title: 'New',
 		category: 'tabs',
-		defaultKeys: isLinux ? ['mod+t'] : ['ctrl+space', 'mod+t'],
-		run: (session) => session.editors[0].openNewTab()
+		defaultKeys: ['mod+t'],
+		run: () => palette.show('/new ')
 	},
 	{
 		id: 'tab.next',
 		title: 'Next tab',
 		category: 'tabs',
-		defaultKeys: ['ctrl+tab', 'mod+alt+arrowright', 'ctrl+.'],
+		defaultKeys: ['ctrl+tab', 'mod+]', 'mod+alt+arrowright'],
 		run: (session) => session.editors[0].focusAdjacentTab(1)
 	},
 	{
 		id: 'tab.prev',
 		title: 'Previous tab',
 		category: 'tabs',
-		// No `ctrl+,` alias: settings took it, the way it reads on every other desktop app.
-		defaultKeys: ['ctrl+shift+tab', 'mod+alt+arrowleft'],
+		// `mod+,` stays with settings, the way it reads on every other desktop app
+		defaultKeys: ['ctrl+shift+tab', 'mod+[', 'mod+alt+arrowleft'],
 		run: (session) => session.editors[0].focusAdjacentTab(-1)
 	},
 	{
@@ -154,7 +162,7 @@ export const actions: Action[] = [
 		id: 'nav.back',
 		title: 'Back',
 		category: 'navigation',
-		defaultKeys: ['alt+arrowleft', 'mod+['],
+		defaultKeys: ['alt+arrowleft'],
 		run: (session) => {
 			const ed = session.editors[0];
 			const tab = ed.focusedTab;

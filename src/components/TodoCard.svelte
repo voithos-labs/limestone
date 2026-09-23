@@ -14,8 +14,8 @@
 	let { handle, onRemove }: { handle: DocHandle; onRemove: () => void } = $props();
 
 	const TODO = 'tag:todo';
-	let view: View | null = $state(null);
-	let row: MemberRow | null = $state(null);
+	let view = $state<View | null>(null);
+	let row = $state<MemberRow | null>(null);
 
 	const doneField = $derived(view?.fields.find((f) => f.id === `${TODO}/done`) ?? null);
 	const dueField = $derived(view?.fields.find((f) => f.id === `${TODO}/due`) ?? null);
