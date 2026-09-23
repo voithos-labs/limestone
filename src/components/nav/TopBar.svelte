@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { isSourceRoot } from '$lib/models/Folder';
+	import { getViewIcon } from '$lib/views/filterDisplay';
+	import { palette } from '$lib/palette.svelte';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import type { FocusTarget, TabState } from '$lib/models/EditorState.svelte.js';
+	import { TabState, type FocusTarget } from '$lib/models/EditorState.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import WindowControls from './WindowControls.svelte';
 	import { hostWindowStyle, resolveWindowStyle } from '$lib/services/platform';
@@ -10,13 +11,8 @@
 		Settings,
 		Search,
 		Cone,
-		Library,
 		Bookmark,
 		ChevronDown,
-		Box,
-		Hash,
-		Folder,
-		Notebook,
 		X,
 		Plus,
 		TextSearch,
@@ -28,28 +24,11 @@
 		Scale
 	} from '@lucide/svelte';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
-	import type View from '$lib/models/View.svelte';
-
-	function viewTabIcon(view: View) {
-		const typesById = new Map(view.fields.map((f) => [f.id, f.type]));
-		let hasTags = false;
-		let hasFolder = false;
-		let hasSource = false;
-		for (const n of view.filter.children) {
-			if (!('field_id' in n)) continue;
-			const t = typesById.get(n.field_id);
-			if (t === 'tags') hasTags = true;
-			else if (t === 'folder') {
-				if (typeof n.value === 'string' && isSourceRoot(n.value)) hasSource = true;
-				else hasFolder = true;
-			}
-		}
-		if (hasTags) return Hash;
-		if (hasFolder) return Folder;
-		if (hasSource) return Notebook;
-		return Box;
-	}
+	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { listSources, sourceName, type Source } from '$lib/models/Source';
+	import { folderId } from '$lib/models/Folder';
+	import View from '$lib/models/View.svelte';
+	import { FolderInput } from '@lucide/svelte';
 
 	let { editor, settings }: { editor: EditorState; settings: SettingsState } = $props();
 
@@ -60,6 +39,54 @@
 
 	const settingsTab: FocusTarget = { kind: 'settings' };
 	const searchTab: FocusTarget = { kind: 'search' };
+
+	// ── Bookmarks: not a tab, a menu of places. Sources in a flyout, then the saved views ──
+	let bmSources: Source[] = $state([]);
+	let bmViews: View[] = $state([]);
+
+	// the bookmark shows its pick on a transient surface, not a tab: gone once you go elsewhere
+	function openUnitView(unitId: string, name: string) {
+		const existing = editor.tabs.find(
+			(t) => t.content.type === 'view' && t.content.view.unit === unitId
+		);
+		if (existing) return editor.focusTab({ kind: 'tab', id: existing.id });
+		View.forUnit(unitId, name)
+			.then((v) => editor.showPreview(TabState.forView(v)))
+			.catch(console.error);
+	}
+
+	function bookmarkEntries(): CtxEntry[] {
+		return [
+			{
+				label: 'Sources',
+				icon: FolderInput,
+				children: bmSources.length
+					? bmSources.map((s) => ({
+							label: sourceName(s),
+							icon: FolderInput,
+							action: () => openUnitView(folderId(s.id, ''), sourceName(s))
+						}))
+					: [{ label: 'No sources', disabled: true, action: () => {} }]
+			},
+			{ divider: true },
+			...bmViews.map((v): CtxEntry => ({
+				label: v.slug,
+				icon: getViewIcon(v),
+				action: () => editor.showPreview(TabState.forView(v))
+			}))
+		];
+	}
+
+	async function openBookmarks(e: MouseEvent) {
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		try {
+			[bmSources, bmViews] = await Promise.all([listSources(), View.listSaved()]);
+			bmViews.sort((a, b) => b.accessedAt.getTime() - a.accessedAt.getTime());
+		} catch (err) {
+			console.error('bookmarks load failed', err);
+		}
+		contextMenu.show(r.left, r.bottom + 6, () => bookmarkEntries());
+	}
 
 	// ── Tab drag and drop ───────────────────────────────────────────────────────
 	let dragDocId: string | null = $state(null);
@@ -229,21 +256,17 @@
 	>
 		<Settings size={16} />
 	</div>
+	<!-- Bookmarks: a menu of places, not a tab -->
 	<div
-		class="tab icon-tab"
-		class:active={editor.isTabFocused(searchTab)}
-		onclick={() => editor.focusTab(searchTab)}
+		class="tab icon-tab bookmarks"
+		class:active={editor.focused?.kind === 'preview'}
+		onclick={openBookmarks}
 		role="button"
 		tabindex="-1"
 	>
-		<Library size={16} />
+		<Bookmark size={16} />
+		<ChevronDown size={12} strokeWidth={2} />
 	</div>
-
-	<!-- Bookmarks dropdown -->
-	<!--    <button class="dropdown-btn" title="Bookmarks">-->
-	<!--        <Bookmark size={16}/>-->
-	<!--        <ChevronDown size={12}/>-->
-	<!--    </button>-->
 
 	<!-- Divider -->
 	<div class="divider"></div>
@@ -280,7 +303,7 @@
 					{#if d.content.view.emoji}
 						<span class="tab-emoji">{d.content.view.emoji}</span>
 					{:else}
-						{@const TabIcon = viewTabIcon(d.content.view)}
+						{@const TabIcon = getViewIcon(d.content.view)}
 						<TabIcon size={13} />
 					{/if}
 				{:else if d.content.type === 'new'}
@@ -307,7 +330,7 @@
 				</span>
 			</div>
 		{/each}
-		<button class="new-tab-btn" title="New tab" tabindex="-1" onclick={() => editor.openNewTab()}>
+		<button class="new-tab-btn" title="New" tabindex="-1" onclick={() => palette.show('/new ')}>
 			<Plus size={15} />
 		</button>
 	</div>
@@ -435,6 +458,11 @@
 
 	.tab.icon-tab {
 		padding: 0 10px;
+	}
+
+	.tab.bookmarks {
+		gap: 4px;
+		padding: 0 8px 0 10px;
 	}
 
 	/* Collapsed pinned tabs: fixed-width icon-only anchors */

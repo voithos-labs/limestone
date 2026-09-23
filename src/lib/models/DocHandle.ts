@@ -29,9 +29,11 @@ import * as yaml from 'js-yaml';
 // Internal
 import { select, execute } from '$lib/services/db';
 import { addChangeHistory, removeHistory } from '$lib/services/history';
+import { rewriteLinksForMove } from '$lib/services/links.svelte';
+import { toasts } from '$lib/toasts.svelte';
 import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
-import Tag, { type TagRow } from './Tag';
+import Tag, { tagSlug, type TagRow } from './Tag';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
@@ -248,14 +250,7 @@ class DocHandle {
 	// ── Groups ───────────────────────────────────────────────────────────────────────
 
 	async fetchTags(): Promise<void> {
-		const rows = await select<TagRow>(
-			`SELECT t.*
-             FROM tags t
-                      JOIN document_tags dt ON dt.tag_id = t.id
-             WHERE dt.document_id = ?1`,
-			[this.id]
-		);
-		this.tags = rows.map((r) => new Tag(r));
+		await this.refreshMetaFromDisk();
 	}
 
 	async setTags(slugs: string[]): Promise<void> {
@@ -264,7 +259,7 @@ class DocHandle {
 			id: this.id,
 			sourceId: this.source.id,
 			relPath: this._relPath,
-			tags: slugs
+			tags: [...new Set(slugs.map(tagSlug).filter(Boolean))]
 		});
 		await this.fetchTags();
 	}
@@ -453,12 +448,25 @@ class DocHandle {
 
 	async moveToPath(newRelPath: string): Promise<void> {
 		await this.ensureFile();
+		const oldRelPath = this._relPath;
 		await invoke('move_document', {
 			sourceId: this.source.id,
-			relPath: this._relPath,
+			relPath: oldRelPath,
 			newRelPath
 		});
 		this._relPath = newRelPath;
+		await this.updateLinks(oldRelPath);
+	}
+
+	private async updateLinks(oldRelPath: string): Promise<void> {
+		try {
+			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this._relPath);
+		} catch (e) {
+			console.error('link rewrite failed', e);
+			toasts.push(
+				`"${this.title}" was moved, but links to it could not be updated. Search for [[${oldRelPath.replace(/\.md$/i, '')}]] to fix them by hand.`
+			);
+		}
 	}
 
 	/**
@@ -499,13 +507,15 @@ class DocHandle {
 	 */
 	async rename(newName: string): Promise<void> {
 		await this.ensureFile();
+		const oldRelPath = this._relPath;
 		const newRel: string = await invoke('rename_document', {
 			sourceId: this.source.id,
-			relPath: this._relPath,
+			relPath: oldRelPath,
 			newName
 		});
 		this._relPath = newRel;
 		this.title = newName.replace(/\.[^.]+$/, '');
+		await this.updateLinks(oldRelPath);
 	}
 
 	// ── Util ─────────────────────────────────────────────────────────────────────────

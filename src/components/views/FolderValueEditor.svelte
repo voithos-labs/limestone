@@ -7,8 +7,6 @@
 		FolderOpen,
 		FolderInput,
 		FolderPlus,
-		Notebook,
-		BookOpen,
 		ChevronRight,
 		Check,
 		ExternalLink,
@@ -972,7 +970,7 @@
 					onclick={() => pick('')}
 					onmouseenter={() => (activeIndex = 0)}
 				>
-					<Notebook size={13} strokeWidth={1.75} />
+					<FolderInput size={13} strokeWidth={1.75} />
 					<span class="name-label"
 						>{movingId
 							? rootCrumbLabel
@@ -1014,8 +1012,7 @@
 							onmouseenter={() => (activeIndex = i)}
 						>
 							{#if src}
-								<span class="row-icon"><Notebook size={13} strokeWidth={1.75} /></span>
-								<span class="row-icon open"><BookOpen size={13} strokeWidth={1.75} /></span>
+								<FolderInput size={13} strokeWidth={1.75} />
 							{:else}
 								<span class="row-icon"><FolderIcon size={13} strokeWidth={1.75} /></span>
 								<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
@@ -1076,7 +1073,7 @@
 								title="All sources"
 								onclick={() => jumpTo(null)}
 							>
-								<BookOpen size={11} strokeWidth={1.75} />
+								<FolderInput size={11} strokeWidth={1.75} />
 								{#if !focusId}
 									<span>YOUR SOURCES</span>
 								{/if}
@@ -1204,8 +1201,7 @@
 										onmouseenter={() => (activeIndex = navIndex)}
 									>
 										{#if src}
-											<span class="row-icon"><Notebook size={13} strokeWidth={1.75} /></span>
-											<span class="row-icon open"><BookOpen size={13} strokeWidth={1.75} /></span>
+											<FolderInput size={13} strokeWidth={1.75} />
 										{:else}
 											<span class="row-icon"><FolderIcon size={13} strokeWidth={1.75} /></span>
 											<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>

@@ -15,7 +15,6 @@
 	let {
 		row,
 		fields = [],
-		viewSlug,
 		sources = [],
 		tags = [],
 		preview = '',
@@ -26,7 +25,6 @@
 	}: {
 		row: MemberRow;
 		fields?: ViewField[];
-		viewSlug: string;
 		sources?: Source[];
 		tags?: string[];
 		preview?: string;
@@ -55,13 +53,13 @@
 			case 'tags':
 				return tags.length > 0;
 			case 'select':
-				return statefulValue(row, viewSlug, f.name) !== '';
+				return statefulValue(row, f) !== '';
 			case 'multiselect':
-				return rawArrayValue(row, viewSlug, f.name).length > 0;
+				return rawArrayValue(row, f).length > 0;
 			case 'boolean':
-				return rawStatefulValue(row, viewSlug, f.name) === true;
+				return rawStatefulValue(row, f) === true;
 			default: {
-				const v = valueFor(f, row, viewSlug);
+				const v = valueFor(f, row);
 				return v !== '' && v !== '—';
 			}
 		}
@@ -82,19 +80,19 @@
 		<span class="fc-fields">
 			{#each shown as f (f.id)}
 				{#if PILL_TYPES.has(f.type)}
-					<span class="fc-pills"><CellValue field={f} {row} {viewSlug} {sources} {tags} /></span>
+					<span class="fc-pills"><CellValue field={f} {row} {sources} {tags} /></span>
 				{:else if f.type === 'boolean'}
 					<span class="fc-line">
-						<CellValue field={f} {row} {viewSlug} {sources} />
+						<CellValue field={f} {row} {sources} />
 						<span class="fc-bool-label">{fieldLabel(f)}</span>
 					</span>
 				{:else if f.type === 'folder'}
-					<span class="fc-line"><CellValue field={f} {row} {viewSlug} {sources} /></span>
+					<span class="fc-line"><CellValue field={f} {row} {sources} /></span>
 				{:else}
 					{@const Icon = getFieldIcon(f.type)}
 					<span class="fc-line">
 						<span class="fc-icon"><Icon size={12} strokeWidth={1.75} /></span>
-						<span class="fc-val"><CellValue field={f} {row} {viewSlug} {sources} /></span>
+						<span class="fc-val"><CellValue field={f} {row} {sources} /></span>
 					</span>
 				{/if}
 			{/each}

@@ -1,38 +1,42 @@
 import type { MemberRow, ViewField, ViewFieldType } from '$lib/models/View.svelte';
-import { CREATABLE_FIELD_TYPES } from '$lib/models/View.svelte';
+import {
+	CREATABLE_FIELD_TYPES,
+	fieldKey,
+	isBuiltinField,
+	isDerived
+} from '$lib/models/View.svelte';
 import { sourceName as sourceFolderName, type Source } from '$lib/models/Source';
 import { formatDateFriendly, formatDateISO, formatViewDate } from './dateFormat';
 
-// reads a per-view stateful field value (views.<slug>.<field>) off a row's props
-export function rawStatefulValue(row: MemberRow, viewSlug: string, fieldName: string): unknown {
+// reads a stateful field value (views.<unit key>.<field>) off a row's props
+export function rawStatefulValue(row: MemberRow, field: ViewField): unknown {
 	try {
 		const props = JSON.parse(row.properties || '{}');
-		return props?.views?.[viewSlug]?.[fieldName] ?? null;
+		return props?.views?.[fieldKey(field)]?.[field.name] ?? null;
 	} catch {
 		return null;
 	}
 }
 
-export function statefulValue(row: MemberRow, viewSlug: string, fieldName: string): string {
-	const v = rawStatefulValue(row, viewSlug, fieldName);
+export function statefulValue(row: MemberRow, field: ViewField): string {
+	const v = rawStatefulValue(row, field);
 	if (v === undefined || v === null) return '';
 	if (Array.isArray(v)) return v.join(', ');
 	if (typeof v === 'boolean') return v ? '✓' : '';
 	return String(v);
 }
 
-export function rawArrayValue(row: MemberRow, viewSlug: string, fieldName: string): string[] {
-	const v = rawStatefulValue(row, viewSlug, fieldName);
+export function rawArrayValue(row: MemberRow, field: ViewField): string[] {
+	const v = rawStatefulValue(row, field);
 	if (Array.isArray(v)) return [...new Set(v.map(String))];
 	if (v === null || v === undefined || v === '') return [];
 	return [String(v)];
 }
 
-// returns a new properties JSON with views.<slug>.<field>
+// returns a new properties JSON with views.<unit key>.<field>
 export function withStatefulValue(
 	propertiesJson: string,
-	viewSlug: string,
-	fieldName: string,
+	field: ViewField,
 	value: unknown
 ): string {
 	let props: { views?: Record<string, Record<string, unknown>> };
@@ -41,12 +45,26 @@ export function withStatefulValue(
 	} catch {
 		props = {};
 	}
+	const key = fieldKey(field);
 	props.views ??= {};
-	props.views[viewSlug] ??= {};
+	props.views[key] ??= {};
 	const empty = value === null || value === '' || (Array.isArray(value) && value.length === 0);
-	if (empty) delete props.views[viewSlug][fieldName];
-	else props.views[viewSlug][fieldName] = value;
+	if (empty) delete props.views[key][field.name];
+	else props.views[key][field.name] = value;
 	return JSON.stringify(props);
+}
+
+// nests name-keyed seed values under each field's unit key
+export function seedProperties(
+	fields: ViewField[],
+	values: Record<string, unknown>
+): Record<string, unknown> {
+	const views: Record<string, Record<string, unknown>> = {};
+	for (const f of fields) {
+		if (isDerived(f.type) || !(f.name in values)) continue;
+		(views[fieldKey(f)] ??= {})[f.name] = values[f.name];
+	}
+	return Object.keys(views).length ? { views } : {};
 }
 
 // dir portion of a rel_path, normalized to forward slashes
@@ -78,20 +96,16 @@ export function tagClass(field: ViewField, value: string): string {
 }
 
 // plain-text value for a field on a row (used for titles, search, sort previews)
-export function valueFor(field: ViewField, row: MemberRow, viewSlug: string): string {
+export function valueFor(field: ViewField, row: MemberRow): string {
 	switch (field.type) {
 		case 'title':
 			return row.title;
-		case 'path':
-			return row.rel_path;
-		case 'id':
-			return row.id;
 		case 'created_at':
 			return formatDateFriendly(row.created_at);
 		case 'updated_at':
 			return formatDateFriendly(row.updated_at);
 		case 'date': {
-			const v = rawStatefulValue(row, viewSlug, field.name);
+			const v = rawStatefulValue(row, field);
 			return v == null ? '' : formatViewDate(v as string);
 		}
 		case 'folder':
@@ -99,19 +113,19 @@ export function valueFor(field: ViewField, row: MemberRow, viewSlug: string): st
 		case 'tags':
 			return '—';
 		default:
-			return statefulValue(row, viewSlug, field.name);
+			return statefulValue(row, field);
 	}
 }
 
 // hover/title-attr text; mostly valueFor, with full ISO for timestamps
-export function titleFor(field: ViewField, row: MemberRow, viewSlug: string): string {
+export function titleFor(field: ViewField, row: MemberRow): string {
 	switch (field.type) {
 		case 'created_at':
 			return formatDateISO(row.created_at);
 		case 'updated_at':
 			return formatDateISO(row.updated_at);
 		default:
-			return valueFor(field, row, viewSlug);
+			return valueFor(field, row);
 	}
 }
 
@@ -133,10 +147,8 @@ export function isMetaField(type: ViewFieldType): boolean {
 
 const PRETTY_FIELD: Record<string, string> = {
 	title: 'Title',
-	id: 'ID',
 	tags: 'Tags',
 	folder: 'Location',
-	path: 'Path',
 	created_at: 'Created',
 	updated_at: 'Updated'
 };
@@ -144,5 +156,7 @@ const PRETTY_FIELD: Record<string, string> = {
 // built-ins show a pretty label until renamed then the user's name wins
 export function fieldLabel(field: ViewField): string {
 	if (field.name === field.type && PRETTY_FIELD[field.type]) return PRETTY_FIELD[field.type];
+	// registry names are lowercase keys; they read like the derived fields do
+	if (isBuiltinField(field)) return field.name.charAt(0).toUpperCase() + field.name.slice(1);
 	return field.name;
 }

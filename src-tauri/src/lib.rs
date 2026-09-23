@@ -9,7 +9,7 @@ mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 pub async fn create_pool(
     path: &std::path::Path,
@@ -256,6 +256,7 @@ pub fn run() {
             commands::source_commands::make_dir,
             commands::source_commands::create_folder,
             commands::source_commands::move_folder,
+            commands::source_commands::delete_folder,
             commands::source_commands::reconcile_source,
             commands::source_commands::check_sources,
             commands::source_commands::update_source_path,
@@ -275,12 +276,12 @@ pub fn run() {
             commands::document_commands::delete_document,
             commands::bulk_ops_commands::bulk_set_view_field,
             commands::bulk_ops_commands::bulk_rename_view_field,
-            commands::bulk_ops_commands::bulk_rename_view,
             commands::bulk_ops_commands::bulk_rename_view_option,
             commands::bulk_ops_commands::bulk_remove_view_field,
             commands::bulk_ops_commands::bulk_rename_view_prefix,
             commands::bulk_ops_commands::bulk_rename_tag,
             commands::bulk_ops_commands::bulk_remove_tag,
+            commands::bulk_ops_commands::bulk_rewrite_links,
             commands::db_commands::sql_select,
             commands::db_commands::sql_execute,
             commands::asset_commands::import_global_asset,

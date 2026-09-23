@@ -1,3 +1,4 @@
+use crate::services::body::same_tag;
 use crate::services::fs::fast_write;
 use serde_json::{Map, Value};
 use std::fs;
@@ -31,6 +32,37 @@ pub fn rewrite_frontmatter(path: &Path, mutate: impl Fn(&mut Value)) -> io::Resu
     let mut fm = existing.unwrap_or_else(|| Value::Object(Map::new()));
     mutate(&mut fm);
     let next = format_content(&fm, body)?;
+    if next == content {
+        return Ok(());
+    }
+    fast_write(path, next.as_bytes())
+}
+
+pub fn rewrite_document(
+    path: &Path,
+    mutate_fm: Option<&dyn Fn(&mut Value)>,
+    mutate_body: &dyn Fn(&str) -> Option<String>,
+) -> io::Result<()> {
+    let content = fs::read_to_string(path)?;
+    let (existing, body) = split_content(&content);
+    if existing.is_none() && has_unparsed_fence(&content) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "existing frontmatter could not be parsed",
+        ));
+    }
+    let fm = match (existing, mutate_fm) {
+        (Some(mut fm), Some(mutate)) => {
+            mutate(&mut fm);
+            Some(fm)
+        }
+        (fm, _) => fm,
+    };
+    let body = mutate_body(body).unwrap_or_else(|| body.to_string());
+    let next = match fm {
+        Some(fm) => format_content(&fm, &body)?,
+        None => body,
+    };
     if next == content {
         return Ok(());
     }
@@ -121,12 +153,13 @@ pub fn rename_view_field(fm: &mut Value, slug: &str, from: &str, to: &str) {
     }
 }
 
-/// Rename a whole view namespace ;;;; move `views.<from>` to `views.<to>`
-pub fn rename_view(fm: &mut Value, from: &str, to: &str) {
-    let Some(views) = fm.as_object_mut().and_then(|r| r.get_mut("views")) else {
-        return;
-    };
-    let Some(views) = views.as_object_mut() else {
+/// Move a whole unit namespace, `views.<from>` to `views.<to>`
+pub fn rename_unit_key(fm: &mut Value, from: &str, to: &str) {
+    let Some(views) = fm
+        .as_object_mut()
+        .and_then(|r| r.get_mut("views"))
+        .and_then(Value::as_object_mut)
+    else {
         return;
     };
     if let Some(val) = views.remove(from) {
@@ -219,7 +252,7 @@ pub fn rename_tag(fm: &mut Value, from: &str, to: &str) {
     let mut out: Vec<Value> = Vec::with_capacity(arr.len());
     for item in arr.iter() {
         let next = match item.as_str() {
-            Some(s) if s == from => Value::String(to.to_string()),
+            Some(s) if same_tag(s, from) => Value::String(to.to_string()),
             _ => item.clone(),
         };
         if !out.contains(&next) {
@@ -236,7 +269,7 @@ pub fn remove_tag(fm: &mut Value, slug: &str) {
     let Some(arr) = root.get_mut("tags").and_then(Value::as_array_mut) else {
         return;
     };
-    arr.retain(|v| v.as_str() != Some(slug));
+    arr.retain(|v| !v.as_str().is_some_and(|s| same_tag(s, slug)));
     if arr.is_empty() {
         root.remove("tags");
     }
@@ -344,5 +377,24 @@ mod tests {
         let mut v = json!({ "tags": ["a"] });
         rename_view_prefix(&mut v, "projects/", "work/");
         assert_eq!(v, json!({ "tags": ["a"] }));
+    }
+
+    #[test]
+    fn unit_key_move_is_exact() {
+        let mut v = json!({ "views": { "read": { "n": 1 }, "reading": { "n": 2 } } });
+        rename_unit_key(&mut v, "read", "papers");
+        assert_eq!(
+            v,
+            json!({ "views": { "reading": { "n": 2 }, "papers": { "n": 1 } } })
+        );
+    }
+
+    #[test]
+    fn tag_rewrites_ignore_case() {
+        let mut v = json!({ "tags": ["Todo", "keep"] });
+        rename_tag(&mut v, "todo", "task");
+        assert_eq!(v, json!({ "tags": ["task", "keep"] }));
+        remove_tag(&mut v, "TASK");
+        assert_eq!(v, json!({ "tags": ["keep"] }));
     }
 }

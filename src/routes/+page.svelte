@@ -9,9 +9,11 @@
 	import LibraryPage from '../components/pages/LibraryPage.svelte';
 	import SettingsPage from '../components/pages/SettingsPage.svelte';
 	import ViewPage from '../components/pages/ViewPage.svelte';
+	import FolderPage from '../components/pages/FolderPage.svelte';
 	import NewTabPage from '../components/pages/NewTabPage.svelte';
 	import LicensesPage from '../components/pages/LicensesPage.svelte';
 	import DocumentEditor from '../components/editor/DocumentEditor.svelte';
+	import Palette from '../components/Palette.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import { actionForKey, keyCapture } from '$lib/actions';
@@ -176,6 +178,7 @@
 		const valid =
 			f?.kind === 'search' ||
 			f?.kind === 'settings' ||
+			(f?.kind === 'preview' && !!ed.preview) ||
 			(f?.kind === 'tab' && ed.tabs.some((t) => t.id === f.id));
 		if (!valid) ed.focusTab({ kind: 'search' });
 	});
@@ -190,7 +193,9 @@
 		<main class="content-area">
 			{#if tab}
 				{#key tab.id}
-					{#if tab.content.type === 'view'}
+					{#if tab.content.type === 'view' && tab.content.view.unit?.startsWith('folder:') && tab.content.view.temporary}
+						<FolderPage view={tab.content.view} {tab} {editor} settings={session.settings} />
+					{:else if tab.content.type === 'view'}
 						<ViewPage view={tab.content.view} {tab} {editor} settings={session.settings} />
 					{:else if tab.content.type === 'markdown'}
 						<DocumentEditor {tab} {editor} settings={session.settings} />
@@ -210,6 +215,7 @@
 		</main>
 	</div>
 	<ContextMenu />
+	<Palette {session} />
 {/if}
 
 <style>

@@ -1,0 +1,220 @@
+<script lang="ts">
+	import {
+		Folder as FolderIcon,
+		Bookmark,
+		EllipsisVertical,
+		ChevronDown,
+		ChevronUp
+	} from '@lucide/svelte';
+	import type Folder from '$lib/models/Folder';
+	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import {
+		startMove,
+		endMove,
+		isMove,
+		readMove,
+		movingNow,
+		type MovePayload
+	} from '$lib/views/dragMove';
+
+	// Folders as a strip of compact chips: projects first with their own icon, plain folders
+	// after. Shows a few rows and tucks the rest behind a quiet "show more"
+	let {
+		folders,
+		projects = new Map(),
+		rows = 3,
+		whereOf,
+		onOpen,
+		context,
+		onMenu,
+		onDrop,
+		showAll = $bindable(false),
+		onHidden
+	}: {
+		folders: Folder[];
+		projects?: Map<string, { emoji: string }>;
+		rows?: number;
+		whereOf?: (f: Folder) => string; // a location hint under search
+		onOpen: (f: Folder) => void;
+		context?: (f: Folder) => CtxEntry[];
+		onMenu?: (e: MouseEvent, f: Folder) => void;
+		onDrop?: (target: Folder, payload: MovePayload) => void; // chips take drops, and drag themselves
+		showAll?: boolean; // past the row cap; the page owns the toggle
+		onHidden?: (n: number) => void; // how many chips the cap is hiding
+	} = $props();
+
+	let overId: string | null = $state(null);
+
+	// a folder can't take itself or anything above it
+	function canTake(f: Folder, p: MovePayload | null): boolean {
+		if (p?.kind === 'folder') return p.id !== f.id && !f.id.startsWith(p.id + '/');
+		return true;
+	}
+
+	function onDragOver(e: DragEvent, f: Folder) {
+		if (!onDrop || !isMove(e) || !canTake(f, movingNow())) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		overId = f.id;
+	}
+
+	function onDragDrop(e: DragEvent, f: Folder) {
+		overId = null;
+		if (!onDrop || !isMove(e)) return;
+		e.preventDefault();
+		const p = readMove(e);
+		if (p && canTake(f, p)) onDrop(f, p);
+	}
+
+	const CHIP_MIN = 200;
+	const GAP = 10;
+	let width = $state(0);
+	const perRow = $derived(Math.max(1, Math.floor((width + GAP) / (CHIP_MIN + GAP))));
+	const cap = $derived(rows * perRow);
+	const ordered = $derived(
+		[...folders].sort(
+			(a, b) =>
+				Number(projects.has(b.id)) - Number(projects.has(a.id)) || a.slug.localeCompare(b.slug)
+		)
+	);
+	const shown = $derived(showAll ? ordered : ordered.slice(0, cap));
+	$effect(() => {
+		onHidden?.(showAll ? 0 : Math.max(0, ordered.length - cap));
+	});
+</script>
+
+<div class="folders" bind:clientWidth={width}>
+	{#each shown as f (f.id)}
+		{@const emoji = projects.get(f.id)?.emoji}
+		{@const where = whereOf?.(f) ?? ''}
+		<div
+			class="folder"
+			class:over={overId === f.id}
+			role="button"
+			tabindex="-1"
+			draggable={!!onDrop}
+			use:ctxMenu={() => context?.(f) ?? []}
+			ondragstart={(e) => startMove(e, { kind: 'folder', id: f.id })}
+			ondragend={endMove}
+			ondragover={(e) => onDragOver(e, f)}
+			ondragleave={() => {
+				if (overId === f.id) overId = null;
+			}}
+			ondrop={(e) => onDragDrop(e, f)}
+			onclick={() => onOpen(f)}
+			onkeydown={(e) => {
+				if (e.key === 'Enter') onOpen(f);
+			}}
+		>
+			{#if emoji}
+				<span class="emoji">{emoji}</span>
+			{:else if projects.has(f.id)}
+				<Bookmark size={16} strokeWidth={1.75} />
+			{:else}
+				<FolderIcon size={16} strokeWidth={1.75} />
+			{/if}
+			<span class="name">
+				{f.slug}{#if where}<span class="where">{where}</span>{/if}
+			</span>
+			{#if onMenu}
+				<button
+					class="menu"
+					type="button"
+					tabindex="-1"
+					aria-label="More"
+					onclick={(e) => {
+						e.stopPropagation();
+						onMenu(e, f);
+					}}
+				>
+					<EllipsisVertical size={14} strokeWidth={1.75} />
+				</button>
+			{/if}
+		</div>
+	{/each}
+</div>
+
+<style>
+	.folders {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+		gap: 10px;
+		font-family: var(--font-ui);
+	}
+
+	.folder {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		height: 40px;
+		padding: 0 6px 0 12px;
+		border-radius: 8px;
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
+		font-size: 13px;
+		cursor: pointer;
+		transition: background-color 80ms ease;
+	}
+
+	.folder:hover,
+	.folder:focus-visible {
+		background: var(--chip-bg-hover);
+		outline: none;
+	}
+
+	.folder.over {
+		background: var(--chip-bg-hover);
+		box-shadow: inset 0 0 0 1.5px var(--color-accent);
+	}
+
+	.folder > :global(svg) {
+		flex-shrink: 0;
+		color: var(--color-ui-muted);
+	}
+
+	.emoji {
+		width: 16px;
+		text-align: center;
+		font-size: 14px;
+		line-height: 1;
+	}
+
+	.name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	.where {
+		margin-left: 6px;
+		font-size: 11px;
+		color: var(--color-ui-muted);
+	}
+
+	.menu {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		border: none;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 80ms ease;
+	}
+
+	.folder:hover .menu,
+	.folder:focus-within .menu {
+		opacity: 1;
+	}
+
+	.menu:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+</style>

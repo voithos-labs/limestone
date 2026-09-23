@@ -1,7 +1,7 @@
 import type View from '$lib/models/View.svelte';
 import type { FilterNode, FilterLeaf, ViewFace, ViewField } from '$lib/models/View.svelte';
 import type Folder from '$lib/models/Folder';
-import { wallClockToMs } from '$lib/views/dateFormat';
+import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
 import { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 
 export interface CreateContext {
@@ -79,6 +79,10 @@ export function deriveCreateContext(
 		}
 	}
 
+	if (view.unit?.startsWith('tag:')) tagGroupIds.push(view.unit);
+	else if (view.unit && isSourceRoot(view.unit)) folderSourceId = folderIdSource(view.unit);
+	else if (view.unit) folderIds.push(view.unit);
+
 	for (const leaf of leaves) {
 		const field = fieldsById.get(leaf.field_id);
 		if (!field) continue;
@@ -96,7 +100,7 @@ export function deriveCreateContext(
 		} else if (field.type === 'created_at' || field.type === 'updated_at') {
 			// a day scope ("on or after <day>", "before <next day>") seeds
 			if (leaf.op === 'on_or_after' && typeof leaf.value === 'string') {
-				metaDates[field.type] = leaf.value;
+				metaDates[field.type] = resolveRelativeDate(leaf.value) ?? leaf.value;
 			}
 		} else {
 			collectFieldDefault(field, leaf, fieldValues);
@@ -152,7 +156,8 @@ function collectFieldDefault(
 	}
 	// a day scope is a range, so seed from its lower bound as well as from eq
 	if (field.type === 'date') {
-		if (leaf.op === 'eq' || leaf.op === 'on_or_after') out[field.name] = leaf.value;
+		if (leaf.op === 'eq' || leaf.op === 'on_or_after')
+			out[field.name] = resolveRelativeDate(leaf.value) ?? leaf.value;
 		return;
 	}
 	if (leaf.op === 'eq') out[field.name] = leaf.value;

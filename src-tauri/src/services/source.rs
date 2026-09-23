@@ -33,6 +33,7 @@
 //! 7. Cleanup orphaned tags
 //!
 
+use crate::services::body::fold_tag;
 use crate::services::frontmatter;
 use crate::services::fs::clean_location;
 use chrono::prelude::{DateTime, Utc};
@@ -701,7 +702,7 @@ pub async fn apply_plan(
 }
 
 pub(crate) fn tag_id(slug: &str) -> String {
-    format!("tag:{slug}")
+    format!("tag:{}", fold_tag(slug))
 }
 
 fn folder_id(source_id: &str, path: &str) -> String {
@@ -838,10 +839,14 @@ pub(crate) async fn sync_tags(
         .await?;
 
     for tag in tags {
-        let id = tag_id(tag);
+        let slug = fold_tag(tag);
+        if slug.is_empty() {
+            continue;
+        }
+        let id = tag_id(&slug);
         sqlx::query("INSERT OR IGNORE INTO tags (id, slug) VALUES (?1, ?2)")
             .bind(&id)
-            .bind(tag)
+            .bind(&slug)
             .execute(&mut **tx)
             .await?;
 

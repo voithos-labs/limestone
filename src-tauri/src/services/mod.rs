@@ -1,3 +1,4 @@
+pub mod body;
 pub mod bulk_ops;
 pub mod frontmatter;
 pub mod fs;

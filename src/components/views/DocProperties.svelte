@@ -2,7 +2,12 @@
 	import type DocHandle from '$lib/models/DocHandle';
 	import View from '$lib/models/View.svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
-	import { isDerived, describeBulkFailure } from '$lib/models/View.svelte';
+	import {
+		BUILTIN_UNITS,
+		isBuiltinUnit,
+		isDerived,
+		describeBulkFailure
+	} from '$lib/models/View.svelte';
 	import { toasts } from '$lib/toasts.svelte';
 	import { fieldLabel, withStatefulValue, rawStatefulValue } from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
@@ -34,11 +39,20 @@
 
 	async function load() {
 		try {
-			const saved = await View.listSaved();
+			// saved views show their own fields; a built-in unit shows its registry fields once,
+			// and only when the note is a member
+			const views = [
+				...(await View.listSaved()),
+				...(await Promise.all(
+					Object.keys(BUILTIN_UNITS).map((id) => View.forUnit(id, id.slice('tag:'.length)))
+				))
+			];
 			const found: Entry[] = [];
 			let hit: MemberRow | null = null;
-			for (const view of saved) {
-				const fields = view.fields.filter((f) => !isDerived(f.type));
+			for (const view of views) {
+				if (view.unit === 'tag:todo') continue; // the hero's todo card draws these
+				const own = view.unit && isBuiltinUnit(view.unit) ? view.fields : view.ownFields;
+				const fields = own.filter((f) => !isDerived(f.type));
 				if (fields.length === 0) continue;
 				const members = (await view.getMembers({ ids_in: [handle.id] })) as MemberRow[];
 				if (members.length === 0) continue;
@@ -63,7 +77,7 @@
 	const editingField = $derived(editingEntry?.fields.find((f) => f.id === editing?.fieldId));
 	const editingValue = $derived.by(() => {
 		if (!editingEntry || !editingField || !row) return null;
-		return rawStatefulValue(row, editingEntry.view.propKey, editingField.name);
+		return rawStatefulValue(row, editingField);
 	});
 
 	// save on editor destruct (close)
@@ -71,7 +85,7 @@
 
 	function saveEditedView(): Promise<void> | void {
 		const entry = untrack(() => editingEntry);
-		if (!entry) return;
+		if (!entry || entry.view.temporary) return;
 		return entry.view.save().catch((e) => console.error('save view failed', e));
 	}
 
@@ -92,7 +106,7 @@
 		try {
 			row = {
 				...current,
-				properties: withStatefulValue(current.properties, view.propKey, field.name, value)
+				properties: withStatefulValue(current.properties, field, value)
 			};
 			const result = await view.writeFieldValue(handle.source.id, field, value, [current.id]);
 			if (result.failed > 0) {
@@ -109,7 +123,7 @@
 	function onCellClick(e: MouseEvent, view: View, field: ViewField) {
 		if (!row) return;
 		if (field.type === 'boolean') {
-			const cur = rawStatefulValue(row, view.propKey, field.name);
+			const cur = rawStatefulValue(row, field);
 			writeCell(view, field, cur === true ? false : true);
 			return;
 		}
@@ -149,7 +163,7 @@
 									type="button"
 									onclick={(e) => onCellClick(e, entry.view, field)}
 								>
-									<CellValue {field} row={row!} viewSlug={entry.view.propKey} />
+									<CellValue {field} row={row!} />
 								</button>
 							</div>
 						{/each}

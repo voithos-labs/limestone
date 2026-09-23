@@ -11,10 +11,32 @@ async fn run(
     action: BulkAction,
 ) -> Result<BulkResult, String> {
     let root = source_root(app, source_id)?;
+    let use_frontmatter = source_uses_frontmatter(app, source_id);
     app_data
         .bulk
-        .run(&app_data.db, app, &root, BulkOp::new(source_id, action))
+        .run(
+            &app_data.db,
+            app,
+            &root,
+            BulkOp::new(source_id, action, use_frontmatter),
+        )
         .await
+}
+
+#[tauri::command]
+pub async fn bulk_rewrite_links(
+    app_data: State<'_, AppData>,
+    app: AppHandle,
+    source_id: String,
+    replacements: Vec<(String, String)>,
+) -> Result<BulkResult, String> {
+    run(
+        &app_data,
+        &app,
+        &source_id,
+        BulkAction::RewriteLinks { replacements },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -62,23 +84,6 @@ pub async fn bulk_rename_view_field(
             old_name,
             new_name,
         },
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn bulk_rename_view(
-    app_data: State<'_, AppData>,
-    app: AppHandle,
-    source_id: String,
-    old_slug: String,
-    new_slug: String,
-) -> Result<BulkResult, String> {
-    run(
-        &app_data,
-        &app,
-        &source_id,
-        BulkAction::RenameView { old_slug, new_slug },
     )
     .await
 }
@@ -155,11 +160,6 @@ pub async fn bulk_rename_tag(
     old_slug: String,
     new_slug: String,
 ) -> Result<BulkResult, String> {
-    if !source_uses_frontmatter(&app, &source_id) {
-        return Err(
-            "This source stores documents without frontmatter, so tags can't be saved here.".into(),
-        );
-    }
     run(
         &app_data,
         &app,
@@ -176,10 +176,5 @@ pub async fn bulk_remove_tag(
     source_id: String,
     slug: String,
 ) -> Result<BulkResult, String> {
-    if !source_uses_frontmatter(&app, &source_id) {
-        return Err(
-            "This source stores documents without frontmatter, so tags can't be saved here.".into(),
-        );
-    }
     run(&app_data, &app, &source_id, BulkAction::RemoveTag { slug }).await
 }

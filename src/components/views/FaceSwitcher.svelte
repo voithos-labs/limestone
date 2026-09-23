@@ -1,16 +1,12 @@
 <script lang="ts">
-	import { folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { untrack } from 'svelte';
 	import { flip } from 'svelte/animate';
-	import type { Component } from 'svelte';
 	import {
 		ChevronDown,
-		Table,
-		Columns3,
 		List,
-		Calendar,
-		Pin,
 		Layers,
+		Rows3,
+		Tags,
 		Pencil,
 		Copy,
 		Trash2,
@@ -18,46 +14,26 @@
 		ArrowLeft,
 		NotebookText,
 		FileText,
+		LayoutDashboard,
 		LayoutGrid,
-		ArrowUpAZ,
-		ArrowDownAZ,
-		ArrowDownUp,
+		LayoutPanelTop,
 		CalendarClock,
 		ScanLine,
 		ScanBarcode,
-		Columns3Cog,
 		ChevronRight
 	} from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
-	import type {
-		ViewFace,
-		ViewFaceType,
-		ViewField,
-		ViewFieldType,
-		FilterNode
-	} from '$lib/models/View.svelte';
-	import { VIEW_FIELD_SORTABLE, sanitizeName } from '$lib/models/View.svelte';
+	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '$lib/models/View.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
-	import { getFieldIcon } from '$lib/views/filterDisplay';
+	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import Menu from './Menu.svelte';
-	import FaceFilters from './FaceFilters.svelte';
-	import ViewManageMenu from './ViewManageMenu.svelte';
+	import { dashboardSections, DASH_SECTION_LABEL } from '$lib/views/dashboard';
 
 	let { view, face }: { view: View; face: ViewFace } = $props();
 
-	const FACE_ICON: Record<ViewFaceType, Component> = {
-		table: Table,
-		kanban: Columns3,
-		list: List,
-		grid: LayoutGrid,
-		doc: FileText,
-		calendar: Calendar,
-		pinned: Pin,
-		journal: NotebookText
-	};
-	const faceIcon = (t: ViewFaceType) => FACE_ICON[t] ?? Table;
-	const SwitchIcon = $derived(faceIcon(face.type));
+	const faceIcon = getFaceIcon;
+	const SwitchIcon = $derived(faceIcon(face));
 
 	// A journal is a day navigator around a body face, so the options that belong to
 	// what's actually drawn (fields, sort, grouping) act on the body.
@@ -76,58 +52,6 @@
 	let groupEl: HTMLButtonElement | null = $state(null);
 	let groupOpen = $state(false);
 
-	// ── Fields (columns shown in this face) ───────────────────────────────────
-	let fieldsEl: HTMLButtonElement | null = $state(null);
-	let fieldsOpen = $state(false);
-	const shownCount = $derived(target.display_field_ids.length);
-
-	function toggleColumn(id: string) {
-		if (target.display_field_ids.includes(id)) {
-			target.display_field_ids = target.display_field_ids.filter((fid: string) => fid !== id);
-		} else {
-			target.display_field_ids = [...target.display_field_ids, id];
-		}
-	}
-
-	function addField(type: ViewFieldType): ViewField {
-		const field = view.addFieldOfType(type);
-		target.display_field_ids = [...target.display_field_ids, field.id];
-		return field;
-	}
-
-	function renameField(fieldId: string, raw: string) {
-		const f = view.fields.find((ff) => ff.id === fieldId);
-		if (!f) return;
-		const newName = sanitizeName(raw);
-		if (!newName || newName === f.name) return;
-		view.renameField(f, newName).catch((e) => console.error('rename field failed', e));
-	}
-
-	// ── List / grid / doc face options (sort) ────────────────────────────────
-	let sortEl: HTMLButtonElement | null = $state(null);
-	let sortOpen = $state(false);
-
-	const sortFieldId = $derived(target.sort[0]?.field_id ?? '');
-	const sortDir = $derived(target.sort[0]?.direction ?? 'desc');
-	const sortLabel = $derived.by(() => {
-		const f = view.fields.find((ff) => ff.id === sortFieldId);
-		return f ? fieldLabel(f) : 'Default';
-	});
-
-	const sortItems = $derived.by((): MenuEntry[] => [
-		...view.fields
-			.filter((f: ViewField) => VIEW_FIELD_SORTABLE.has(f.type))
-			.map((f: ViewField) => ({
-				value: f.id,
-				label: fieldLabel(f),
-				icon: getFieldIcon(f.type),
-				keepOpen: true
-			})),
-		{ kind: 'divider' as const },
-		{ value: 'dir:asc', label: 'Ascending', icon: ArrowUpAZ, keepOpen: true },
-		{ value: 'dir:desc', label: 'Descending', icon: ArrowDownAZ, keepOpen: true }
-	]);
-
 	// ── Journal (compound face) ──────────────────────────────────────────────
 	let bodyEl: HTMLButtonElement | null = $state(null);
 	let bodyOpen = $state(false);
@@ -135,8 +59,8 @@
 	const bodyValue = $derived(face.body?.type ?? 'doc');
 	const BODY_ITEMS = [
 		{ value: 'doc', label: 'Document', icon: FileText },
-		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
-		{ value: 'table', label: 'Table', icon: Table }
+		{ value: 'list', label: 'List', icon: List },
+		{ value: 'masonry', label: 'Masonry', icon: LayoutDashboard }
 	];
 	const bodyLabel = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.label ?? 'Document');
 	const BodyIcon = $derived(BODY_ITEMS.find((i) => i.value === bodyValue)?.icon ?? FileText);
@@ -168,42 +92,39 @@
 
 	const showActivity = $derived(face.config.show_activity === true);
 
+	// a project face's sections: which ones show
+	let sectionsEl: HTMLButtonElement | null = $state(null);
+	let sectionsOpen = $state(false);
+	const sectionItems = $derived(
+		dashboardSections(target).map((s) => ({
+			value: s.id,
+			label: DASH_SECTION_LABEL[s.id],
+			keepOpen: true
+		}))
+	);
+	const shownSections = $derived(
+		dashboardSections(target)
+			.filter((s) => !s.hidden)
+			.map((s) => s.id)
+	);
+	function toggleSection(id: string) {
+		const all = dashboardSections(target);
+		const next = all.map((s) => (s.id === id ? { ...s, hidden: !s.hidden } : s));
+		if (next.every((s) => s.hidden)) return;
+		target.config.sections = next;
+	}
+
 	function toggleActivity() {
 		face.config.show_activity = !showActivity;
 	}
 
-	function setSort(v: string) {
-		if (v.startsWith('dir:')) {
-			const dir = v.slice(4) as 'asc' | 'desc';
-			const fid = sortFieldId || view.fields.find((f) => f.type === 'updated_at')?.id;
-			if (fid) target.sort = [{ field_id: fid, direction: dir }];
-			return;
-		}
-		target.sort = [{ field_id: v, direction: sortDir }];
-	}
-
-	const faceFilterCount = $derived(
-		face.additive_filter.children.filter((n: FilterNode) => 'field_id' in n).length
-	);
-
-	const sourceScopeId = $derived.by(() => {
-		for (const n of view.filter.children) {
-			if (!('field_id' in n)) continue;
-			const f = view.fields.find((ff) => ff.id === n.field_id);
-			if (
-				f?.type === 'folder' &&
-				n.op === 'in' &&
-				typeof n.value === 'string' &&
-				isSourceRoot(n.value)
-			)
-				return folderIdSource(n.value);
-		}
-		return undefined;
-	});
-
 	const groupable = $derived(
 		view.fields.filter(
-			(f: ViewField) => f.type === 'select' || f.type === 'multiselect' || f.type === 'boolean'
+			(f: ViewField) =>
+				f.type === 'select' ||
+				f.type === 'multiselect' ||
+				f.type === 'boolean' ||
+				f.type === 'folder'
 		)
 	);
 	const groupById = $derived((target.config.group_by ?? null) as string | null);
@@ -233,24 +154,27 @@
 	function onPopLeave() {
 		if (dragId) return;
 		if (!closeOnSwapLeave) return;
-		if (groupOpen || addFaceOpen || renamingId || confirmFor || fieldsOpen) return;
-		if (sortOpen || bodyOpen || dateFieldOpen) return;
+		if (groupOpen || addFaceOpen || renamingId || confirmFor) return;
+		if (bodyOpen || dateFieldOpen) return;
 		open = false;
 	}
 
 	let addFaceOpen = $state(false);
 	let addFaceEl: HTMLElement | null = $state(null);
 	const ADD_FACE_ITEMS = [
-		{ value: 'table', label: 'Table', icon: Table },
-		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
+		{ value: 'dashboard', label: 'Dashboard', icon: LayoutPanelTop },
 		{ value: 'list', label: 'List', icon: List },
+		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
+		{ value: 'masonry', label: 'Masonry', icon: LayoutDashboard },
 		{ value: 'doc', label: 'Document', icon: FileText },
 		{ value: 'journal', label: 'Journal', icon: NotebookText }
 	];
 
+	// a grid is a list face that starts in cards
 	function addFaceOfType(type: string) {
 		addFaceOpen = false;
-		const f = view.addFace(type as ViewFaceType);
+		const f = view.addFace((type === 'grid' ? 'list' : type) as ViewFaceType);
+		if (type === 'grid') f.config.layout = 'grid';
 		view.state.active_face_id = f.id;
 		startRename(f);
 	}
@@ -393,9 +317,8 @@
 	function anyFlyoutOpen(): boolean {
 		return (
 			addFaceOpen ||
-			fieldsOpen ||
+			sectionsOpen ||
 			groupOpen ||
-			sortOpen ||
 			bodyOpen ||
 			dateFieldOpen ||
 			!!renamingId ||
@@ -451,7 +374,7 @@
 				renamingId = null;
 				groupOpen = false;
 				addFaceOpen = false;
-				fieldsOpen = false;
+				sectionsOpen = false;
 				closeOnSwapLeave = false;
 			});
 			queueMicrotask(() => {
@@ -477,7 +400,7 @@
 </script>
 
 <button class="face-switch" type="button" bind:this={anchorEl} onclick={() => (open = !open)}>
-	<SwitchIcon size={14} strokeWidth={1.75} />
+	<SwitchIcon size={15} strokeWidth={1.75} />
 	<span>{face.label}</span>
 	<ChevronDown size={13} strokeWidth={2} />
 </button>
@@ -522,7 +445,7 @@
 							/>
 						</span>
 					{:else}
-						{@const RowIcon = faceIcon(f.type)}
+						{@const RowIcon = faceIcon(f)}
 						<button
 							class="name"
 							type="button"
@@ -591,6 +514,7 @@
 			>
 				<Plus size={14} strokeWidth={1.75} />
 				<span>Add face</span>
+				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 			<Menu
 				bind:open={addFaceOpen}
@@ -598,6 +522,7 @@
 				items={ADD_FACE_ITEMS}
 				onSelect={addFaceOfType}
 				minWidth={150}
+				placement="right"
 			/>
 		</div>
 
@@ -606,28 +531,36 @@
 		<div class="face-scope">
 			<SwitchIcon size={13} strokeWidth={2} />
 			<span class="face-scope-name">{face.label}</span>
-			<span class="face-scope-tag">Face Options</span>
+			<span class="face-scope-tag">Options</span>
 		</div>
 
-		<div class="divider"></div>
-
-		{#if target.type !== 'doc'}
+		{#if target.type === 'dashboard'}
+			<button
+				class="action group-toggle"
+				type="button"
+				data-nav
+				onclick={() => (target.config.hide_chips = !target.config.hide_chips)}
+			>
+				<Tags size={14} strokeWidth={1.75} />
+				<span>Quick filters</span>
+				<span class="trailing">{target.config.hide_chips ? 'Off' : 'On'}</span>
+			</button>
 			<button
 				class="action group-toggle"
 				type="button"
 				data-nav
 				data-flyout
-				bind:this={fieldsEl}
-				onclick={() => (fieldsOpen = !fieldsOpen)}
+				bind:this={sectionsEl}
+				onclick={() => (sectionsOpen = !sectionsOpen)}
 			>
-				<Columns3Cog size={14} strokeWidth={1.75} />
-				<span>Fields</span>
-				<span class="trailing">{shownCount} shown</span>
+				<Rows3 size={14} strokeWidth={1.75} />
+				<span>Sections</span>
+				<span class="trailing">{shownSections.length} of {sectionItems.length}</span>
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 		{/if}
 
-		{#if target.type === 'table'}
+		{#if target.type === 'list'}
 			<button
 				class="action group-toggle"
 				type="button"
@@ -639,20 +572,6 @@
 				<Layers size={14} strokeWidth={1.75} />
 				<span>Group by</span>
 				<span class="trailing">{groupLabel}</span>
-				<ChevronRight size={13} strokeWidth={2} />
-			</button>
-		{:else}
-			<button
-				class="action group-toggle"
-				type="button"
-				data-nav
-				data-flyout
-				bind:this={sortEl}
-				onclick={() => (sortOpen = !sortOpen)}
-			>
-				<ArrowDownUp size={14} strokeWidth={1.75} />
-				<span>Sort by</span>
-				<span class="trailing">{sortLabel}</span>
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 		{/if}
@@ -696,46 +615,28 @@
 				<span class="trailing">{showActivity ? 'On' : 'Off'}</span>
 			</button>
 		{/if}
-
-		<div class="divider"></div>
-
-		<div class="pop-label">
-			Face Filters{#if faceFilterCount > 0}{' · '}{faceFilterCount}{/if}
-		</div>
-		<FaceFilters {view} {face} sourceId={sourceScopeId} />
 	</div>
 
-	<ViewManageMenu
-		bind:open={fieldsOpen}
-		anchor={fieldsEl}
-		fields={view.fields}
-		shownIds={target.display_field_ids}
-		canAddFields={!view.temporary}
-		placement="right"
-		onToggleVisible={toggleColumn}
-		onDelete={(id) => view.removeField(id)}
-		onAddField={addField}
-		onRename={renameField}
-	/>
+	{#if target.type === 'dashboard'}
+		<Menu
+			bind:open={sectionsOpen}
+			anchor={sectionsEl}
+			items={sectionItems}
+			multiple
+			selectedValues={shownSections}
+			onSelect={toggleSection}
+			minWidth={170}
+			placement="right"
+		/>
+	{/if}
 
-	{#if target.type === 'table'}
+	{#if target.type === 'list'}
 		<Menu
 			bind:open={groupOpen}
 			anchor={groupEl}
 			items={groupItems}
 			selected={groupById ?? ''}
 			onSelect={setGroup}
-			minWidth={170}
-			placement="right"
-		/>
-	{:else}
-		<Menu
-			bind:open={sortOpen}
-			anchor={sortEl}
-			items={sortItems}
-			multiple
-			selectedValues={[sortFieldId, `dir:${sortDir}`]}
-			onSelect={setSort}
 			minWidth={170}
 			placement="right"
 		/>
@@ -767,16 +668,16 @@
 	.face-switch {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		height: 28px;
-		padding: 0 9px;
+		gap: 7px;
+		height: 32px;
+		padding: 0 11px 0 10px;
 		flex-shrink: 0;
 		background: var(--chip-bg);
 		border: none;
-		border-radius: 6px;
+		border-radius: 8px;
 		color: var(--color-text-secondary);
 		font-family: var(--font-ui);
-		font-size: 12px;
+		font-size: 13px;
 		font-weight: 500;
 		cursor: pointer;
 		transition:
@@ -797,7 +698,7 @@
 	.pop {
 		position: fixed;
 		z-index: 1000;
-		width: 260px;
+		width: 240px;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
@@ -1062,7 +963,8 @@
 		color: var(--color-ui-muted);
 	}
 
-	.group-toggle span:first-of-type {
+	.group-toggle span:first-of-type,
+	.add-face span:first-of-type {
 		flex: 1;
 	}
 

@@ -50,7 +50,7 @@
 		Copy,
 		Check,
 		FolderPlus,
-		Notebook,
+		FolderInput,
 		EllipsisVertical,
 		X,
 		Keyboard,
@@ -125,7 +125,7 @@
 			icon: c.id === 'appearance' ? Palette : c.id === 'editor' ? PenLine : undefined
 		})),
 		{ value: SHORTCUTS, label: 'Shortcuts', icon: Keyboard },
-		{ value: SOURCES, label: 'Sources', icon: Notebook }
+		{ value: SOURCES, label: 'Sources', icon: FolderInput }
 	];
 
 	function sectionLabel(id: string): string {
@@ -866,7 +866,7 @@
 							<div class="source-card" class:unavailable={session.missingSources.has(s.id)}>
 								<div class="src-main">
 									<div class="src-title-row">
-										<Notebook size={13} />
+										<FolderInput size={13} />
 										<span class="src-title">{sourceName(s)}</span>
 										{#if s.id === defaultSourceId}
 											<span class="src-default">Default</span>

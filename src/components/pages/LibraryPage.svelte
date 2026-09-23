@@ -20,7 +20,7 @@
 	import {
 		Box,
 		Plus,
-		Notebook,
+		FolderInput,
 		FilePlus,
 		FolderPlus,
 		GripVertical,
@@ -39,7 +39,7 @@
 	// never saved, no filters, just the sort.
 	const recentView = View.create('Recent');
 	recentView.temporary = true;
-	const recentFace = recentView.addFace('grid');
+	const recentFace = recentView.addFace('masonry');
 	recentView.faces = [recentFace];
 	recentView.state.active_face_id = recentFace.id;
 	{
@@ -331,7 +331,7 @@
 								{#if s.source.id === defaultSourceId}
 									<FoldersStar size={14} />
 								{:else}
-									<Notebook size={14} />
+									<FolderInput size={14} />
 								{/if}
 								<span class="vc-title">{s.view.slug}</span>
 							</button>

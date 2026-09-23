@@ -23,9 +23,16 @@
 	import { onDocChanged } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import DocHistory, { type HistoryVersion } from '$lib/models/DocHistory.svelte';
+	import View from '$lib/models/View.svelte';
+	import { tagId } from '$lib/models/Tag';
+	import { resolveWikiLink, touchLinkIndex } from '$lib/services/links.svelte';
+	import { joinRel, targetStem } from '$lib/wikilinks';
+	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks-plugin';
 	import { historyDecorations } from './history-decorations';
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
-	import type { TabState } from '$lib/models/EditorState.svelte.js';
+	import { TabState } from '$lib/models/EditorState.svelte.js';
+	import { getViewIcon } from '$lib/views/filterDisplay';
+	import { TextAlignStart } from '@lucide/svelte';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import DocumentHero from '../DocumentHero.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
@@ -54,6 +61,17 @@
 	} = $props();
 
 	let handle = $derived(tab.handle);
+	const back = $derived.by(() => {
+		const prev = tab.back?.content;
+		if (!prev || !editor) return undefined;
+		const view = prev.type === 'view' ? prev.view : undefined;
+		return {
+			label: TabState.titleOf(prev),
+			icon: view ? getViewIcon(view) : TextAlignStart,
+			emoji: view?.emoji,
+			go: () => editor!.goBack(tab)
+		};
+	});
 	let instance = $state<EditorInstance>();
 	let wrapperEl = $state<HTMLDivElement | null>(null);
 	// aragonite's own `.editor` element, which is the scroller outside flow mode. Found by query
@@ -509,8 +527,60 @@
 
 	function onLinkActivate(url: string, event: MouseEvent) {
 		event.preventDefault();
-		if (/^https?:/i.test(url)) void openUrl(url);
+		if (/^https?:/i.test(url)) {
+			void openUrl(url);
+			return;
+		}
+		if (HAS_SCHEME.test(url) || !handle) return;
+		const clean = decodeDestination(url).replace(/\\/g, '/');
+		if (!/\.md$/i.test(clean)) return;
+		const dir = handle.relPath.includes('/') ? handle.relPath.replace(/\/[^/]*$/, '') : '';
+		const target = clean.startsWith('.') ? joinRel(dir, clean) : clean.replace(/^\//, '');
+		void openWikiLink(target);
 	}
+
+	async function openWikiLink(target: string): Promise<void> {
+		const h = handle;
+		if (!h || !editor) return;
+		const hit = await resolveWikiLink(h.source.id, target);
+		if (hit) {
+			editor.openDoc(await DocHandle.fromID(hit.id));
+			return;
+		}
+		const slash = target.lastIndexOf('/');
+		const created = await DocHandle.createFromTitle(h.source, {
+			title: targetStem(target),
+			...(slash > 0 ? { dir: target.slice(0, slash) } : {})
+		});
+		touchLinkIndex();
+		editor.openDoc(created);
+	}
+
+	async function openTagView(slug: string): Promise<void> {
+		if (!editor) return;
+		const unitId = tagId(slug);
+		const existing = editor.tabs.find(
+			(t) => t.content.type === 'view' && t.content.view.unit === unitId
+		);
+		if (existing) {
+			editor.focusTab({ kind: 'tab', id: existing.id });
+			return;
+		}
+		editor.openView(await View.forUnit(unitId, slug));
+	}
+
+	function onActivate(e: Event): void {
+		const { kind, target } = (e as CustomEvent<ActivateDetail>).detail;
+		if (kind === 'wikilink' && target) void openWikiLink(target);
+		else if (kind === 'tag') void openTagView(target);
+	}
+
+	$effect(() => {
+		const el = wrapperEl;
+		if (!el) return;
+		el.addEventListener(ACTIVATE_EVENT, onActivate);
+		return () => el.removeEventListener(ACTIVATE_EVENT, onActivate);
+	});
 
 	const MIME_EXTS: Record<string, string> = {
 		'image/png': 'png',
@@ -595,11 +665,13 @@
 			{handle}
 			onDelete={deleteDoc}
 			onDuplicated={(d) => editor?.openDoc(d)}
+			{loaded}
 			compact={false}
 			{frontmatterError}
 			onFrontmatterFix={fixFrontmatter}
 			bind:propsOpen
 			bind:historyOpen
+			{back}
 		/>
 	{/if}
 {/snippet}
@@ -611,6 +683,7 @@
 	class="doc-editor"
 	class:flow
 	class:history-open={historyOpen}
+	data-source-id={handle?.source.id}
 	bind:this={wrapperEl}
 	style="--editor-font-size: {zoom}px; --font-editor: {font}; --font-code: var(--font-mono)"
 	onkeydowncapture={onKeydown}
@@ -621,11 +694,13 @@
 			{handle}
 			onDelete={deleteDoc}
 			onDuplicated={(d) => editor?.openDoc(d)}
+			{loaded}
 			compact
 			{frontmatterError}
 			onFrontmatterFix={fixFrontmatter}
 			bind:propsOpen
 			bind:historyOpen
+			{back}
 		/>
 	{/if}
 	{#if loaded}

@@ -90,10 +90,11 @@
 		{anchor}
 		{value}
 		mode="date"
+		relative
 		clearable={field.type === 'date' || opValue !== ''}
 		onChange={(v) => onChange(v)}
 	/>
-{:else if field.type === 'text' || field.type === 'title' || field.type === 'path' || field.type === 'number'}
+{:else if field.type === 'text' || field.type === 'title' || field.type === 'number' || (field.type === 'folder' && opValue !== 'in' && opValue !== 'not_in' && opValue !== 'is')}
 	<InputPopover
 		bind:open
 		{anchor}

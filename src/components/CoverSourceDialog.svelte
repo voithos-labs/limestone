@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
 	import { importGlobalAsset, importGlobalAssetBytes } from '$lib/services/assets';
-	import { getCurrentWebview } from '@tauri-apps/api/webview';
 	import { ImageUp, FolderOpen } from '@lucide/svelte';
 
 	let {
@@ -81,6 +80,22 @@
 		if (e.key === 'Escape') open = false;
 	}
 
+	// an image dragged in from the desktop arrives as a File, which is a Blob with a name
+	function onDragOver(e: DragEvent) {
+		if (!e.dataTransfer?.types.includes('Files')) return;
+		e.preventDefault();
+		e.dataTransfer.dropEffect = 'copy';
+		dragOver = true;
+	}
+
+	function onDrop(e: DragEvent) {
+		dragOver = false;
+		const f = e.dataTransfer?.files?.[0];
+		if (!f) return;
+		e.preventDefault();
+		importBlob(f, f.name);
+	}
+
 	let wasOpen = false;
 	$effect(() => {
 		if (open && !wasOpen) {
@@ -90,28 +105,9 @@
 			dragOver = false;
 			window.addEventListener('paste', onPaste);
 			window.addEventListener('keydown', onKey);
-			let un: (() => void) | undefined;
-			getCurrentWebview()
-				.onDragDropEvent((ev) => {
-					if (!open) return;
-					const payload = ev.payload;
-					if (payload.type === 'enter' || payload.type === 'over') {
-						dragOver = true;
-					} else if (payload.type === 'leave') {
-						dragOver = false;
-					} else if (payload.type === 'drop') {
-						dragOver = false;
-						const p = payload.paths?.[0];
-						if (p) importPath(p);
-					}
-				})
-				.then((f) => {
-					un = f;
-				});
 			return () => {
 				window.removeEventListener('paste', onPaste);
 				window.removeEventListener('keydown', onKey);
-				un?.();
 			};
 		}
 		if (!open) wasOpen = false;
@@ -119,7 +115,15 @@
 </script>
 
 {#if open}
-	<div class="overlay" onclick={() => (open = false)} onkeydown={onKey} role="presentation">
+	<div
+		class="overlay"
+		onclick={() => (open = false)}
+		onkeydown={onKey}
+		ondragover={onDragOver}
+		ondragleave={() => (dragOver = false)}
+		ondrop={onDrop}
+		role="presentation"
+	>
 		<div
 			class="dialog"
 			class:drag={dragOver}

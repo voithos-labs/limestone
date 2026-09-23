@@ -9,10 +9,17 @@
 		CircleSlash,
 		Triangle,
 		Eye,
-		EyeOff
+		EyeOff,
+		Hash
 	} from '@lucide/svelte';
 	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
-	import { CREATABLE_FIELD_TYPES, isDerived } from '$lib/models/View.svelte';
+	import {
+		BUILTIN_UNITS,
+		CREATABLE_FIELD_TYPES,
+		isBuiltinField,
+		isDerived,
+		isLockedField
+	} from '$lib/models/View.svelte';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import Menu from './Menu.svelte';
@@ -20,9 +27,11 @@
 	let {
 		open = $bindable(false),
 		anchor,
+		title = 'Fields',
 		fields,
 		shownIds,
 		canAddFields = true,
+		canToggle = true,
 		placement = 'bottom',
 		onToggleVisible,
 		onDelete,
@@ -31,9 +40,11 @@
 	}: {
 		open: boolean;
 		anchor: HTMLElement | null;
+		title?: string;
 		fields: ViewField[];
 		shownIds: string[];
 		canAddFields?: boolean;
+		canToggle?: boolean; // a doc face shows no columns, so there's nothing to hide
 		placement?: 'bottom' | 'right';
 		onToggleVisible: (fieldId: string) => void;
 		onDelete: (fieldId: string) => void;
@@ -42,8 +53,35 @@
 	} = $props();
 
 	const defaults = $derived(fields.filter((f) => isDerived(f.type)));
-	const custom = $derived(fields.filter((f) => !isDerived(f.type)));
-	const ordered = $derived([...defaults, ...custom]);
+	const custom = $derived(fields.filter((f) => !isDerived(f.type) && !isBuiltinField(f)));
+	// registry fields sit behind one flyout per unit so it's clear where they come from; a face
+	// with no columns (doc) has no use for them
+	const builtinGroups = $derived(
+		!canToggle
+			? []
+			: Object.values(BUILTIN_UNITS)
+					.map((u) => ({
+						unit: u,
+						fields: fields.filter((f) => f.unit === u.unit && isBuiltinField(f))
+					}))
+					.filter((g) => g.fields.length > 0)
+	);
+	let flyoutFor: string | null = $state(null);
+	let flyoutPos: { top: number; left: number } = $state({ top: 0, left: 0 });
+	const flyoutGroup = $derived(builtinGroups.find((g) => g.unit.unit === flyoutFor));
+	const own = $derived([...defaults, ...custom]);
+	const ordered = $derived([...own, ...(flyoutGroup?.fields ?? [])]);
+
+	function toggleFlyout(e: MouseEvent, unit: string) {
+		addOpen = false;
+		if (flyoutFor === unit) {
+			flyoutFor = null;
+			return;
+		}
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		flyoutPos = { top: r.top - 6, left: r.right + 8 };
+		flyoutFor = unit;
+	}
 	const shownSet = $derived(new Set(shownIds));
 
 	let popEl: HTMLDivElement | null = $state(null);
@@ -58,7 +96,7 @@
 	let editDraft = $state('');
 
 	function startEdit(field: ViewField) {
-		if (isDerived(field.type)) return;
+		if (isLockedField(field)) return;
 		editingId = field.id;
 		editDraft = field.name;
 	}
@@ -131,7 +169,7 @@
 		if (popEl?.contains(e.target as Node)) return;
 		if (anchor?.contains(e.target as Node)) return;
 		// the Add field flyout renders outside popEl, keep it from closing us
-		if ((e.target as HTMLElement).closest?.('.menu')) return;
+		if ((e.target as HTMLElement).closest?.('.menu, .pop')) return;
 		open = false;
 	}
 
@@ -159,6 +197,7 @@
 				confirmFor = null;
 				activeIndex = 0;
 				addOpen = false;
+				flyoutFor = null;
 				defaultFor = null;
 				editingId = null;
 			});
@@ -215,7 +254,6 @@
 		role="menu"
 		tabindex="-1"
 	>
-		<div class="pop-label">Fields</div>
 		<div class="list">
 			{#snippet fieldRow(field: ViewField, i: number, isShown: boolean)}
 				{@const Icon = getFieldIcon(field.type)}
@@ -236,7 +274,7 @@
 								onkeydown={editKey}
 								spellcheck="false"
 							/>
-						{:else if !isDerived(field.type)}
+						{:else if !isLockedField(field)}
 							<button
 								class="name-text editable"
 								type="button"
@@ -291,7 +329,7 @@
 									<Triangle size={14} strokeWidth={1.75} />
 								</button>
 							{/if}
-							{#if !isDerived(field.type)}
+							{#if !isLockedField(field)}
 								<button
 									class="icon-btn danger"
 									type="button"
@@ -308,8 +346,10 @@
 						{/if}
 						<button
 							class="icon-btn vis"
+							class:hidden={!canToggle}
 							type="button"
 							tabindex="-1"
+							disabled={!canToggle}
 							aria-label={isShown ? 'Hide in this face' : 'Show in this face'}
 							title={isShown ? 'Hide' : 'Show'}
 							onclick={(e) => {
@@ -352,34 +392,54 @@
 				{/if}
 			{/snippet}
 
-			<div class="section-label">Default</div>
-			{#each defaults as field, i (field.id)}
+			<div class="section-label">{title}</div>
+			{#each own as field, i (field.id)}
 				{@render fieldRow(field, i, shownSet.has(field.id))}
 			{/each}
 
-			<div class="section-label">User fields</div>
-			{#each custom as field, j (field.id)}
-				{@render fieldRow(field, defaults.length + j, shownSet.has(field.id))}
-			{:else}
-				<div class="empty">No custom fields yet</div>
-			{/each}
+			{#if builtinGroups.length > 0}
+				<div class="section-label">Built-in</div>
+				{#each builtinGroups as group (group.unit.unit)}
+					{@const shownHere = group.fields.filter((f) => shownSet.has(f.id)).length}
+					<button
+						class="add-toggle"
+						class:open={flyoutFor === group.unit.unit}
+						type="button"
+						onclick={(e) => toggleFlyout(e, group.unit.unit)}
+					>
+						<Hash size={14} strokeWidth={1.75} />
+						<span>{group.unit.unit.slice('tag:'.length)}</span>
+						{#if shownHere > 0}<span class="trailing">{shownHere} shown</span>{/if}
+						<ChevronRight size={13} strokeWidth={2} />
+					</button>
+				{/each}
+			{/if}
+
+			{#if flyoutGroup}
+				<div class="pop flyout" style:top="{flyoutPos.top}px" style:left="{flyoutPos.left}px">
+					<div class="section-label">#{flyoutGroup.unit.unit.slice('tag:'.length)} fields</div>
+					{#each flyoutGroup.fields as field, k (field.id)}
+						{@render fieldRow(field, own.length + k, shownSet.has(field.id))}
+					{/each}
+				</div>
+			{/if}
 		</div>
 
-		<div class="divider"></div>
-
 		{#if canAddFields}
+			<div class="divider"></div>
 			<button
 				class="add-toggle"
 				type="button"
 				bind:this={addEl}
-				onclick={() => (addOpen = !addOpen)}
+				onclick={() => {
+					flyoutFor = null;
+					addOpen = !addOpen;
+				}}
 			>
 				<Plus size={14} strokeWidth={1.75} />
 				<span>Add field</span>
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
-		{:else}
-			<div class="add-hint">Save the view to add fields</div>
 		{/if}
 	</div>
 
@@ -414,18 +474,25 @@
 		overflow: hidden;
 	}
 
-	.pop-label {
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--color-ui-muted);
-		padding: 4px 8px 6px;
-	}
-
 	.list {
 		overflow-y: auto;
 		flex: 1;
 		scrollbar-width: thin;
 		scrollbar-color: var(--menu-scrollbar-thumb) transparent;
+	}
+
+	.pop.flyout {
+		width: 200px;
+	}
+
+	.add-toggle.open {
+		background: var(--menu-item-hover);
+	}
+
+	.trailing {
+		margin-left: auto;
+		font-size: 11px;
+		color: var(--color-ui-muted);
 	}
 
 	.section-label {
@@ -435,6 +502,10 @@
 		text-transform: uppercase;
 		color: var(--color-ui-muted);
 		padding: 8px 8px 4px;
+	}
+
+	.icon-btn.vis.hidden {
+		visibility: hidden;
 	}
 
 	.row {
@@ -556,12 +627,6 @@
 		background: var(--error-a18);
 	}
 
-	.empty {
-		padding: 8px 10px;
-		color: var(--color-ui-muted);
-		font-size: 12px;
-	}
-
 	.divider {
 		height: 1px;
 		margin: 4px 6px;
@@ -586,12 +651,6 @@
 
 	.add-toggle:hover {
 		background: var(--menu-item-hover);
-	}
-
-	.add-hint {
-		padding: 6px 8px;
-		font-size: 12px;
-		color: var(--color-ui-muted);
 	}
 
 	.add-toggle :global(svg) {

@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import type View from '$lib/models/View.svelte';
-	import type { ViewFace, FilterNode } from '$lib/models/View.svelte';
+	import { ViewFace, type FilterNode } from '$lib/models/View.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
+	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { rawStatefulValue } from '$lib/views/fieldValue';
 	import { wallClockToMs } from '$lib/views/dateFormat';
@@ -10,7 +11,7 @@
 	import DateValueEditor from '../DateValueEditor.svelte';
 	import DocFace from './DocFace.svelte';
 	import ListFace from './ListFace.svelte';
-	import TableFace from './TableFace.svelte';
+	import MasonryFace from './MasonryFace.svelte';
 	import { onSourceReconciled } from '$lib/models/Source';
 
 	let {
@@ -21,6 +22,7 @@
 		createSignal = 0,
 		docPicker,
 		tab,
+		editor,
 		settings,
 		findBarAnchor,
 		dockTarget
@@ -28,10 +30,11 @@
 		view: View;
 		face: ViewFace;
 		flow?: boolean;
-		onOpenRow?: (rowId: string) => void;
+		onOpenRow?: (rowId: string, newTab?: boolean) => void;
 		createSignal?: number;
 		docPicker?: DocPicker;
 		tab?: TabState;
+		editor?: EditorState;
 		settings: SettingsState;
 		/** The page's own box for the find bar, passed on to a day's entry. */
 		findBarAnchor?: HTMLElement | null;
@@ -47,6 +50,7 @@
 	const WINDOW_DAYS = PAST_DAYS + FUTURE_DAYS + 2;
 	const JUMP_MARGIN = 180;
 	const SNAP_PX = 24;
+	const STRIP_PAD = 8; // the strip runs under the card's side padding so its fade ends at the edge
 	const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 	function startOfDay(d: Date): Date {
@@ -110,7 +114,7 @@
 		let raw: unknown;
 		if (field.type === 'created_at') raw = r.created_at;
 		else if (field.type === 'updated_at') raw = r.updated_at;
-		else raw = rawStatefulValue(r, view.propKey, field.name);
+		else raw = rawStatefulValue(r, field);
 		if (raw == null || raw === '') return null;
 		// A date-only string ("2026-07-13") parses as UTC via `new Date`, which lands on
 		// the previous day west of UTC and disagrees with the SQL day scope. wallClockToMs
@@ -181,6 +185,42 @@
 	});
 
 	const showActivity = $derived(face.config.show_activity === true);
+
+	// ── Search: the navigator steps aside for a flat list of hits across every day; picking
+	// one jumps the journal to that day and clears the search ──────────────────────────
+	const searching = $derived(!!(view.state.search as string | undefined)?.trim());
+	const searchFace = ViewFace.create('list');
+	$effect(() => {
+		const byType = (t: string) => view.fields.find((f) => f.type === t)?.id ?? '';
+		const titleId = byType('title');
+		const tagsId = byType('tags');
+		searchFace.display_field_ids = [titleId, tagsId, dateField?.id ?? ''].filter(Boolean);
+		searchFace.config.right = [tagsId, dateField?.id ?? ''].filter(Boolean);
+		searchFace.additive_filter = face.additive_filter;
+		searchFace.sort = dateField ? [{ field_id: dateField.id, direction: 'desc' }] : [];
+		searchFace.config.keep_sort = true;
+	});
+
+	async function jumpToHit(id: string, newTab?: boolean) {
+		if (newTab) {
+			onOpenRow?.(id, true);
+			return;
+		}
+		let d: Date | null = null;
+		try {
+			const [r] = await view.getMembers({ face: searchFace, ids_in: [id] });
+			d = r ? rowDate(r) : null;
+		} catch (e) {
+			console.error('journal jump failed', e);
+		}
+		view.state.search = '';
+		await tick();
+		if (d) {
+			selectDay(d);
+			scrollBarTo(d);
+		} else if (sparkEl) sparkEl.scrollLeft = sparkEl.scrollWidth;
+		docPicker?.pick(id);
+	}
 	let jumpOpen = $state(false);
 
 	function onJumpDate(v: string | null) {
@@ -363,8 +403,8 @@
 
 	function cellLeft(i: number): number {
 		const ti = todayIndex;
-		if (ti < 0 || i <= ti) return i * DAY_STEP;
-		return ti * DAY_STEP + TODAY_W + DAY_GAP + (i - ti - 1) * DAY_STEP;
+		if (ti < 0 || i <= ti) return STRIP_PAD + i * DAY_STEP;
+		return STRIP_PAD + ti * DAY_STEP + TODAY_W + DAY_GAP + (i - ti - 1) * DAY_STEP;
 	}
 
 	function cellWidth(i: number): number {
@@ -422,11 +462,11 @@
 		});
 	}
 
-	let didInitStrip = false;
+	// the strip scrolls to the selected day whenever it (re)mounts: first paint, and again
+	// after a search swapped it out for the hits list
 	$effect(() => {
-		if (!stripEl || didInitStrip) return;
-		didInitStrip = true;
-		scrollStripTo(selected);
+		if (!stripEl) return;
+		scrollStripTo(untrack(() => selected));
 	});
 
 	function selectDay(d: Date) {
@@ -531,76 +571,81 @@
 </script>
 
 <div class="journal" class:flow>
-	<div class="day-nav">
-		<div
-			class="days"
-			bind:this={stripEl}
-			bind:clientWidth={stripW}
-			onpointerdown={(e) => stripEl && dragScroll(stripEl, e, snapStrip)}
-			onwheel={stripWheel}
-			onscroll={stripScroll}
-			role="presentation"
-		>
-			{#each stripDays as d (dayKey(d))}
-				<button
-					class="day"
-					class:selected={sameDay(d, selected)}
-					class:today={sameDay(d, today)}
-					class:wide={sameDay(d, today)}
-					class:near={sameDay(d, yesterday) || sameDay(d, tomorrow)}
-					type="button"
-					onclick={() => {
-						if (dragMoved) return;
-						selected = d;
-						if (sameDay(d, today)) snapStrip(true);
-					}}
-				>
-					<span class="dow">{dayDow(d)}</span>
-					<span class="num">{sameDay(d, today) ? 'Today' : d.getDate()}</span>
-				</button>
-			{/each}
+	{#if searching}
+		<div class="hits">
+			<ListFace {view} face={searchFace} onOpenRow={jumpToHit} />
 		</div>
-
-		{#if showActivity}
+	{:else}
+		<div class="day-nav">
 			<div
-				class="spark"
-				bind:this={sparkEl}
-				bind:clientWidth={sparkW}
-				onpointerdown={(e) => sparkEl && dragScroll(sparkEl, e)}
-				onwheel={sparkWheel}
-				onscroll={sparkScroll}
+				class="days"
+				bind:this={stripEl}
+				bind:clientWidth={stripW}
+				onpointerdown={(e) => stripEl && dragScroll(stripEl, e, snapStrip)}
+				onwheel={stripWheel}
+				onscroll={stripScroll}
 				role="presentation"
 			>
-				<div class="spark-inner" style="width: {sparkContentW + 6}px">
-					<div class="spark-row">
-						{#each sparkDays as d (dayKey(d.date))}
-							<button
-								class="spark-cell"
-								class:on={d.on}
-								class:sel={sameDay(d.date, selected)}
-								type="button"
-								title={fullDate(d.date)}
-								aria-label={fullDate(d.date)}
-								onclick={() => {
-									if (!dragMoved) selectDay(d.date);
-								}}
-							></button>
-						{/each}
-					</div>
-					<div class="spark-months">
-						{#each sparkMonths as m (m.leftPx)}
-							<span class="spark-mlabel" style="left: {m.leftPx}px">{m.label}</span>
-						{/each}
-						{#if todayInWindow}
-							<span class="spark-mlabel today" style="right: {SPARK_STEP}px">Today</span>
-						{/if}
+				{#each stripDays as d (dayKey(d))}
+					<button
+						class="day"
+						class:selected={sameDay(d, selected)}
+						class:today={sameDay(d, today)}
+						class:wide={sameDay(d, today)}
+						class:near={sameDay(d, yesterday) || sameDay(d, tomorrow)}
+						type="button"
+						onclick={() => {
+							if (dragMoved) return;
+							selected = d;
+							if (sameDay(d, today)) snapStrip(true);
+						}}
+					>
+						<span class="dow">{dayDow(d)}</span>
+						<span class="num">{sameDay(d, today) ? 'Today' : d.getDate()}</span>
+					</button>
+				{/each}
+			</div>
+
+			{#if showActivity}
+				<div
+					class="spark"
+					bind:this={sparkEl}
+					bind:clientWidth={sparkW}
+					onpointerdown={(e) => sparkEl && dragScroll(sparkEl, e)}
+					onwheel={sparkWheel}
+					onscroll={sparkScroll}
+					role="presentation"
+				>
+					<div class="spark-inner" style="width: {sparkContentW + 6}px">
+						<div class="spark-row">
+							{#each sparkDays as d (dayKey(d.date))}
+								<button
+									class="spark-cell"
+									class:on={d.on}
+									class:sel={sameDay(d.date, selected)}
+									type="button"
+									title={fullDate(d.date)}
+									aria-label={fullDate(d.date)}
+									onclick={() => {
+										if (!dragMoved) selectDay(d.date);
+									}}
+								></button>
+							{/each}
+						</div>
+						<div class="spark-months">
+							{#each sparkMonths as m (m.leftPx)}
+								<span class="spark-mlabel" style="left: {m.leftPx}px">{m.label}</span>
+							{/each}
+							{#if todayInWindow}
+								<span class="spark-mlabel today" style="right: {SPARK_STEP}px">Today</span>
+							{/if}
+						</div>
 					</div>
 				</div>
-			</div>
-		{/if}
-
+			{/if}
+		</div>
 		<div class="controls">
-			<span class="util" bind:clientWidth={utilW}>
+			<span class="util" class:pinned={!atPresent} bind:clientWidth={utilW}>
 				<button
 					class="nav-year"
 					class:pinned={!atPresent}
@@ -611,7 +656,9 @@
 				>
 				{#if !atPresent}
 					<span class="nav-sep">·</span>
-					<button class="return-present" type="button" onclick={returnToPresent}>Today</button>
+					<button class="return-present" type="button" onclick={returnToPresent}
+						>Back to today</button
+					>
 				{/if}
 			</span>
 			{#if monthMarker}
@@ -622,37 +669,38 @@
 				>
 			{/if}
 		</div>
-	</div>
 
-	<div class="entry">
-		{#if bodyFace}
-			<div class="body-face" class:doc={bodyFace.type === 'doc'}>
-				{#key bodyFace.id}
-					{#if bodyFace.type === 'doc'}
-						<DocFace
-							{view}
-							face={bodyFace}
-							{flow}
-							scope={bodyScope}
-							queryScope={face.additive_filter}
-							labels={docLabels}
-							picker={docPicker}
-							{tab}
-							{settings}
-							{findBarAnchor}
-							{dockTarget}
-							onCreated={loadRows}
-							onPicked={onDocPicked}
-						/>
-					{:else if bodyFace.type === 'list' || bodyFace.type === 'grid'}
-						<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
-					{:else}
-						<TableFace {view} face={bodyFace} {onOpenRow} {flow} scope={bodyScope} />
-					{/if}
-				{/key}
-			</div>
-		{/if}
-	</div>
+		<div class="entry">
+			{#if bodyFace}
+				<div class="body-face" class:doc={bodyFace.type === 'doc'}>
+					{#key bodyFace.id}
+						{#if bodyFace.type === 'doc'}
+							<DocFace
+								{view}
+								face={bodyFace}
+								{flow}
+								scope={bodyScope}
+								queryScope={face.additive_filter}
+								labels={docLabels}
+								picker={docPicker}
+								{tab}
+								{editor}
+								{settings}
+								{findBarAnchor}
+								{dockTarget}
+								onCreated={loadRows}
+								onPicked={onDocPicked}
+							/>
+						{:else if bodyFace.type === 'list'}
+							<ListFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
+						{:else}
+							<MasonryFace {view} face={bodyFace} {onOpenRow} {createSignal} scope={bodyScope} />
+						{/if}
+					{/key}
+				</div>
+			{/if}
+		</div>
+	{/if}
 </div>
 
 <DateValueEditor
@@ -675,12 +723,16 @@
 		flex-direction: column;
 	}
 
+	/* the whole navigator rides on one card: strip, spark line and month controls */
 	.day-nav {
-		padding-top: 1px;
+		margin: -4px -8px 0;
+		padding: 6px 8px;
+		border-radius: 8px;
+		background: var(--chip-bg);
 	}
 
 	.spark {
-		padding: 12px 0 2px;
+		padding: 12px 0 0;
 		overflow-x: auto;
 		scrollbar-width: none;
 		touch-action: none;
@@ -768,6 +820,11 @@
 		margin: 24px -24px 0;
 	}
 
+	/* the list brings its own 24px gutter */
+	.hits {
+		margin: 0 -24px;
+	}
+
 	/* a document body reads as the day itself, so it sits tight under the strip */
 	.body-face.doc {
 		margin-top: 8px;
@@ -777,12 +834,20 @@
 		position: relative;
 		display: flex;
 		align-items: center;
-		padding-top: 4px;
+		padding: 6px 0 0;
 	}
 
 	.util {
 		display: inline-flex;
 		align-items: center;
+		height: 20px;
+		border-radius: 5px;
+		transition: background-color 120ms ease;
+	}
+
+	/* away from today it becomes a small card holding the month and the way back */
+	.util.pinned {
+		padding: 0;
 	}
 
 	.month-marker {
@@ -853,13 +918,17 @@
 		color: var(--color-text-secondary);
 	}
 
-	.day-nav:hover .nav-year {
+	.day-nav:hover + .controls .nav-year,
+	.controls:hover .nav-year {
 		opacity: 1;
 	}
 
+	/* runs to the card's edges so the fade ends at them, not at the padding */
 	.days {
 		display: flex;
 		gap: 12px;
+		margin: 0 -8px;
+		padding: 0 8px;
 		overflow-x: auto;
 		scrollbar-width: none;
 		touch-action: none;
@@ -867,15 +936,15 @@
 		-webkit-mask-image: linear-gradient(
 			to right,
 			transparent,
-			#000 6px,
-			#000 calc(100% - 6px),
+			#000 14px,
+			#000 calc(100% - 14px),
 			transparent
 		);
 		mask-image: linear-gradient(
 			to right,
 			transparent,
-			#000 6px,
-			#000 calc(100% - 6px),
+			#000 14px,
+			#000 calc(100% - 14px),
 			transparent
 		);
 	}
@@ -927,7 +996,7 @@
 
 	.day.selected {
 		background: var(--color-accent);
-		border-radius: 6px;
+		border-radius: 8px;
 	}
 
 	.day.selected .dow {

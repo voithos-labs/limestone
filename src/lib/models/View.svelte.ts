@@ -48,14 +48,14 @@ import { invoke } from '@tauri-apps/api/core';
 import type DocHandle from '$lib/models/DocHandle';
 import type Tag from '$lib/models/Tag';
 import Folder, { folderId, folderIdPath, isSourceRoot } from '$lib/models/Folder';
-import { getSource, listSources, sourceName, type Source } from '$lib/models/Source';
+import { listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/services/db';
 import { load, type Store } from '@tauri-apps/plugin-store';
 import { toasts } from '$lib/toasts.svelte';
-import { wallClockToMs } from '$lib/views/dateFormat';
+import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
 
 export type ViewFaceType =
-	'table' | 'list' | 'grid' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
+	'list' | 'masonry' | 'dashboard' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
 
 interface ViewFaceJSON {
 	id: string;
@@ -69,9 +69,9 @@ interface ViewFaceJSON {
 }
 
 const FACE_TYPE_LABEL: Record<ViewFaceType, string> = {
-	table: 'Table',
 	list: 'List',
-	grid: 'Grid',
+	masonry: 'Masonry',
+	dashboard: 'Dashboard',
 	doc: 'Document',
 	kanban: 'Board',
 	calendar: 'Calendar',
@@ -108,8 +108,13 @@ export class ViewFace {
 				: null;
 	}
 
+	// a list face drawn as cards reads as a grid
+	get isCards(): boolean {
+		return this.type === 'list' && this.config.layout === 'grid';
+	}
+
 	get label(): string {
-		return this.name || FACE_TYPE_LABEL[this.type];
+		return this.name || (this.isCards ? 'Grid' : FACE_TYPE_LABEL[this.type]);
 	}
 
 	static create(
@@ -172,15 +177,7 @@ export class ViewFace {
 
 // built-ins: derived (mapped) from existing document attributes
 
-const BUILTIN_FIELD_TYPES = [
-	'title',
-	'id',
-	'tags',
-	'folder',
-	'path',
-	'created_at',
-	'updated_at'
-] as const;
+const BUILTIN_FIELD_TYPES = ['title', 'tags', 'folder', 'created_at', 'updated_at'] as const;
 
 // idk probably some more this seems fine for now
 export type ViewFieldType =
@@ -207,25 +204,90 @@ export function isDerived(type: ViewFieldType): boolean {
 	return (BUILTIN_FIELD_TYPES as readonly string[]).includes(type);
 }
 
+// ── Built-in units ───────────────────────────────────────────────────────────────────
+
+/**
+ * Units whose definition comes from code. Their fields are overlaid onto every view at load
+ * and never persisted, so changing the registry changes every view at once
+ */
+
+export interface BuiltinUnit {
+	unit: string;
+	emoji: string;
+	fields: ViewField[];
+	display: string[];
+}
+
+function builtinField(unit: string, name: string, type: ViewFieldType): ViewField {
+	return { id: `${unit}/${name}`, name, type, config: {}, unit };
+}
+
+const TODO = 'tag:todo';
+
+export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
+	[TODO]: {
+		unit: TODO,
+		emoji: '✓',
+		fields: [
+			builtinField(TODO, 'done', 'boolean'),
+			builtinField(TODO, 'due', 'date'),
+			builtinField(TODO, 'scheduled', 'date')
+		],
+		display: [`${TODO}/done`, `${TODO}/due`, `${TODO}/scheduled`]
+	}
+};
+
+const BUILTIN_FIELD_IDS = new Set(
+	Object.values(BUILTIN_UNITS).flatMap((u) => u.fields.map((f) => f.id))
+);
+
+// fresh copies: views hold their fields in $state and write config in place
+function builtinFields(): ViewField[] {
+	return Object.values(BUILTIN_UNITS).flatMap((u) =>
+		u.fields.map((f) => ({ ...f, config: { ...f.config } }))
+	);
+}
+
+export function isBuiltinUnit(unitId: string): boolean {
+	return unitId in BUILTIN_UNITS;
+}
+
+export function isBuiltinField(field: Pick<ViewField, 'id'>): boolean {
+	return BUILTIN_FIELD_IDS.has(field.id);
+}
+
+// derived and registry fields can't be renamed, retyped or removed
+export function isLockedField(field: ViewField): boolean {
+	return isDerived(field.type) || isBuiltinField(field);
+}
+
 export interface ViewField {
 	id: string; // uuid
 	name: string; // all lowercase, alphanumeric, '-' and '_'
 	type: ViewFieldType;
 	config: Record<string, any>; // field specific config, e.g. mappings & formulas
+	unit?: string; // owning unit; its values live under views.<unitPropKey(unit)>.<name>
 	// todo: think about adding 'locked' bool for UX
 }
 
 function createViewField(
 	name: string,
 	type: ViewFieldType,
-	config: Record<string, any> = {}
+	config: Record<string, any> = {},
+	unit?: string
 ): ViewField {
 	return {
 		id: uuidv4(),
 		name,
 		type,
-		config
+		config,
+		...(unit ? { unit } : {})
 	};
+}
+
+export function fieldKey(field: ViewField): string {
+	if (!field.unit) throw new Error(`Stateful field '${field.name}' has no owning unit`);
+	return unitPropKey(field.unit);
 }
 
 // ── Filters ──────────────────────────────────────────────────────────────────────────
@@ -316,10 +378,8 @@ export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	multiselect: ['contains', 'not_contains', 'has_all', 'is_empty', 'is_not_empty'], // might prune multiselect
 	// BUILT-INS
 	title: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
-	id: ['eq', 'neq'],
 	tags: ['has_any', 'has_all', 'has_none'],
-	folder: ['in', 'not_in'],
-	path: ['contains', 'not_contains', 'starts_with'],
+	folder: ['in', 'not_in', 'is', 'contains', 'not_contains', 'starts_with'],
 	created_at: ['before', 'on_or_before', 'after', 'on_or_after'],
 	updated_at: ['before', 'on_or_before', 'after', 'on_or_after']
 };
@@ -346,8 +406,7 @@ export const VIEW_FIELD_SORTABLE: ReadonlySet<ViewFieldType> = new Set([
 	'boolean',
 	'select',
 	'title',
-	'id',
-	'path',
+	'folder',
 	'created_at',
 	'updated_at'
 ]);
@@ -384,33 +443,36 @@ export function sanitizeName(raw: string): string {
 		.trim();
 }
 
-function resolveColumn(fieldType: ViewFieldType, fieldName: string, viewSlug: string): string {
-	switch (fieldType) {
-		case 'id':
-			return 'd.id';
+function resolveColumn(field: ViewField): string {
+	switch (field.type) {
 		case 'title':
 			return 'd.title';
-		case 'path':
+		case 'folder':
 			return 'd.rel_path';
 		case 'created_at':
 			return 'd.created_at';
 		case 'updated_at':
 			return 'd.updated_at';
 		case 'tags':
-		case 'folder':
-			throw new Error(`${fieldType} field has no scalar column; handle separately`);
+			throw new Error(`tags field has no scalar column; handle separately`);
 		default:
-			return `json_extract(d.properties, '$.views."${pathSeg(viewSlug, 'view slug')}"."${pathSeg(fieldName, 'field name')}"')`;
+			return `json_extract(d.properties, '$.views."${pathSeg(fieldKey(field), 'unit key')}"."${pathSeg(field.name, 'field name')}"')`;
 	}
 }
 
 /**
  * A unit view is 1:1 with an organization unit; a source is its root folder. The unit id both
- * scopes the view and names the frontmatter namespace its stateful props live under, so folders
- * key on a source-relative path with a trailing slash and tags key on their bare slug
+ * scopes the view and names the frontmatter namespace its stateful props live under: tags key on
+ * their bare slug, folders on their source-relative path wrapped in slashes (root is "/"). A tag
+ * never ends with a slash and is never only slashes, so the two can't collide
  */
 export function unitPropKey(unitId: string): string {
-	return unitId.startsWith('tag:') ? unitId.slice('tag:'.length) : `${folderIdPath(unitId)}/`;
+	if (unitId.startsWith('tag:')) return unitId.slice('tag:'.length);
+	return folderPropKey(folderIdPath(unitId));
+}
+
+export function folderPropKey(path: string): string {
+	return path ? `/${path}/` : '/';
 }
 
 function compileUnit(unitId: string): CompiledFilter {
@@ -420,6 +482,18 @@ function compileUnit(unitId: string): CompiledFilter {
 }
 
 function compileFolderLeaf(op: string, value: unknown): CompiledFilter {
+	// text ops match the location as written; membership ops take a folder id, 'is' the folder
+	// itself with no descent
+	switch (op) {
+		case 'is':
+			return { sql: `d.folder_id = ?`, params: [value] };
+		case 'contains':
+			return { sql: `d.rel_path LIKE '%' || ? || '%'`, params: [value] };
+		case 'not_contains':
+			return { sql: `d.rel_path NOT LIKE '%' || ? || '%'`, params: [value] };
+		case 'starts_with':
+			return { sql: `d.rel_path LIKE ? || '%'`, params: [value] };
+	}
 	// a folder id carries its path, so a subtree is an id range. A child extends its parent
 	// with '/' (0x2F), whose successor is '0' (0x30); the source root has no separator before
 	// its children, so its bound comes from the successor of its trailing ':' (0x3A)
@@ -502,19 +576,15 @@ function compileDateOnlyLeaf(
 	}
 }
 
-function compileLeafSql(
-	field: ViewField,
-	op: string,
-	value: unknown,
-	viewSlug: string
-): CompiledFilter {
+function compileLeafSql(field: ViewField, op: string, value: unknown): CompiledFilter {
 	if (field.type === 'folder') return compileFolderLeaf(op, value);
 	if (field.type === 'tags') return compileTagsLeaf(op, value);
 
-	const expr = resolveColumn(field.type, field.name, viewSlug);
+	const expr = resolveColumn(field);
 
 	const dateLike =
 		field.type === 'date' || field.type === 'created_at' || field.type === 'updated_at';
+	if (dateLike) value = resolveRelativeDate(value) ?? value;
 	if (dateLike && typeof value === 'string' && DATE_ONLY_RE.test(value)) {
 		const compiled = compileDateOnlyLeaf(field, op, value, expr);
 		if (compiled) return compiled;
@@ -592,7 +662,7 @@ function compileLeafSql(
 			}
 			return { sql: `${expr} NOT LIKE '%' || ? || '%'`, params: [value] };
 		case 'is_empty':
-			if (field.type === 'text' || field.type === 'title' || field.type === 'path') {
+			if (field.type === 'text' || field.type === 'title') {
 				return { sql: `(${expr} IS NULL OR ${expr} = '')`, params: [] };
 			}
 			if (field.type === 'multiselect') {
@@ -600,7 +670,7 @@ function compileLeafSql(
 			}
 			return { sql: `${expr} IS NULL`, params: [] };
 		case 'is_not_empty':
-			if (field.type === 'text' || field.type === 'title' || field.type === 'path') {
+			if (field.type === 'text' || field.type === 'title') {
 				return { sql: `(${expr} IS NOT NULL AND ${expr} <> '')`, params: [] };
 			}
 			if (field.type === 'multiselect') {
@@ -621,14 +691,10 @@ export function isLeafActive(op: string, value: unknown): boolean {
 	return true;
 }
 
-function compileNode(
-	node: FilterNode,
-	fieldsById: Map<string, ViewField>,
-	viewSlug: string
-): CompiledFilter {
+function compileNode(node: FilterNode, fieldsById: Map<string, ViewField>): CompiledFilter {
 	if ('children' in node) {
 		const compiled = node.children
-			.map((c) => compileNode(c, fieldsById, viewSlug))
+			.map((c) => compileNode(c, fieldsById))
 			.filter((c) => c.sql !== '');
 		if (compiled.length === 0) return { sql: '', params: [] };
 		const joiner = node.op === 'and' ? ' AND ' : ' OR ';
@@ -640,7 +706,7 @@ function compileNode(
 	if (!isLeafActive(node.op, node.value)) return { sql: '', params: [] };
 	const field = fieldsById.get(node.field_id);
 	if (!field) throw new Error(`Unknown field_id: ${node.field_id}`);
-	return compileLeafSql(field, node.op, node.value, viewSlug);
+	return compileLeafSql(field, node.op, node.value);
 }
 
 function pruneFieldFromFilter(node: FilterCompound, fieldId: string): void {
@@ -650,23 +716,19 @@ function pruneFieldFromFilter(node: FilterCompound, fieldId: string): void {
 	}
 }
 
-function compileFilter(
-	filter: FilterNode | null,
-	fields: ViewField[],
-	viewSlug: string
-): CompiledFilter {
+function compileFilter(filter: FilterNode | null, fields: ViewField[]): CompiledFilter {
 	if (!filter) return { sql: '', params: [] };
 	const fieldsById = new Map(fields.map((f) => [f.id, f]));
-	return compileNode(filter, fieldsById, viewSlug);
+	return compileNode(filter, fieldsById);
 }
 
-function compileSort(sort: SortKey[], fields: ViewField[], viewSlug: string): string {
+function compileSort(sort: SortKey[], fields: ViewField[]): string {
 	const fieldsById = new Map(fields.map((f) => [f.id, f]));
 	const terms: string[] = [];
 	for (const key of sort) {
 		const field = fieldsById.get(key.field_id);
 		if (!field || !VIEW_FIELD_SORTABLE.has(field.type)) continue;
-		const expr = resolveColumn(field.type, field.name, viewSlug);
+		const expr = resolveColumn(field);
 		const dir = key.direction === 'desc' ? 'DESC' : 'ASC';
 		const nulls = key.nulls === 'first' ? 'NULLS FIRST' : 'NULLS LAST';
 		terms.push(`${expr} ${dir} ${nulls}`);
@@ -758,36 +820,35 @@ export async function isViewSaved(id: string): Promise<boolean> {
 	return (await listSavedViewJSON()).some((v) => v.id === id);
 }
 
+export function remapIds(v: unknown, oldId: string, newId: string, subpaths = false): unknown {
+	if (typeof v === 'string') {
+		if (v === oldId) return newId;
+		if (subpaths && v.startsWith(oldId + '/')) return newId + v.slice(oldId.length);
+		return v;
+	}
+	if (Array.isArray(v)) return v.map((x) => remapIds(x, oldId, newId, subpaths));
+	if (v && typeof v === 'object') {
+		return Object.fromEntries(
+			Object.entries(v).map(([k, val]) => [k, remapIds(val, oldId, newId, subpaths)])
+		);
+	}
+	return v;
+}
+
 export async function remapIdsInSavedViews(
 	oldId: string,
 	newId: string,
 	subpaths = false
 ): Promise<void> {
-	const remap = (v: unknown): unknown => {
-		if (typeof v === 'string') {
-			if (v === oldId) return newId;
-			if (subpaths && v.startsWith(oldId + '/')) return newId + v.slice(oldId.length);
-			return v;
-		}
-		if (Array.isArray(v)) return v.map(remap);
-		if (v && typeof v === 'object') {
-			return Object.fromEntries(Object.entries(v).map(([k, val]) => [k, remap(val)]));
-		}
-		return v;
-	};
 	const s = await getViewStore();
 	const all = (await s.get<ViewJSON[]>('views')) ?? [];
-	await s.set('views', remap(all));
+	await s.set('views', remapIds(all, oldId, newId, subpaths));
 	await s.save();
-}
-
-export async function isViewSlugTaken(slug: string, excludeId: string): Promise<boolean> {
-	return (await listSavedViewJSON()).some((v) => v.id !== excludeId && v.slug === slug);
 }
 
 class View {
 	id: string; // uuid
-	slug: string = $state(''); // display name; also the prop namespace for non-unit views
+	slug: string = $state(''); // display label; for a unit view it is refreshed from the unit on open
 	unit: string | null = $state(null); // tag or folder id when this is a unit view
 	createdAt: Date;
 	updatedAt: Date = $state(new Date());
@@ -807,7 +868,11 @@ class View {
 		this.unit = json.unit ?? null;
 		this.createdAt = json.created_at;
 		this.updatedAt = json.updated_at;
-		this.fields = json.fields;
+		this.setOwnFields(
+			json.fields.map((f) =>
+				this.unit && !isDerived(f.type) && !f.unit ? { ...f, unit: this.unit } : f
+			)
+		);
 		this.filter = json.filter;
 		this.faces = json.faces.map((j) => new ViewFace(j));
 		this.state = json.state ?? {};
@@ -815,18 +880,16 @@ class View {
 		this.emoji = json.emoji ?? '';
 		this.cover = json.cover ?? '';
 		this.accessedAt = json.accessed_at ?? json.updated_at;
+		// a stateful field with no home has nowhere to read or write; drop it and its uses
+		for (const f of this.fields.filter((f) => !isDerived(f.type) && !f.unit))
+			this.removeField(f.id);
 		this.markPristine();
-	}
-
-	/** Where this view's stateful props live: `views.<propKey>.<field>` */
-	get propKey(): string {
-		return this.unit ? unitPropKey(this.unit) : this.slug;
 	}
 
 	private snapshot(): string {
 		return JSON.stringify({
 			slug: this.slug,
-			fields: this.fields,
+			fields: this.ownFields,
 			filter: this.filter,
 			faces: this.faces
 		});
@@ -844,7 +907,7 @@ class View {
 		if (!this.pristine) return;
 		const snap = JSON.parse(this.pristine);
 		this.slug = snap.slug;
-		this.fields = snap.fields;
+		this.setOwnFields(snap.fields);
 		this.filter = snap.filter;
 		this.faces = snap.faces.map((j: ViewFaceJSON) => new ViewFace(j));
 	}
@@ -873,6 +936,13 @@ class View {
 		const view = View.create(name);
 		view.unit = unitId;
 		view.temporary = true;
+		const builtin = BUILTIN_UNITS[unitId];
+		if (builtin) {
+			view.emoji = builtin.emoji;
+			const title = view.fields.find((f) => f.type === 'title')!.id;
+			const [done, ...rest] = builtin.display;
+			view.faces = [ViewFace.create('list', [done, title, ...rest])];
+		}
 		view.markPristine();
 		return view;
 	}
@@ -888,15 +958,28 @@ class View {
 	/** The saved view for this unit if there is one, else a fresh temporary one */
 	static async forUnit(unitId: string, name: string): Promise<View> {
 		const saved = (await listSavedViewJSON()).find((v) => v.unit === unitId);
-		return saved ? new View(saved) : View.createForUnit(unitId, name);
+		return saved ? new View({ ...saved, slug: name }) : View.createForUnit(unitId, name);
 	}
 
 	private initDefaultFields(): void {
-		this.fields = BUILTIN_FIELD_TYPES.map((t) => createViewField(t, t));
+		this.fields = [...BUILTIN_FIELD_TYPES.map((t) => createViewField(t, t)), ...builtinFields()];
+	}
+
+	// fields this view defines, i.e. everything but the registry overlay
+	get ownFields(): ViewField[] {
+		return this.fields.filter((f) => !isBuiltinField(f));
+	}
+
+	// the id field is gone: a uuid is nothing to display or filter by hand, so saved views lose it
+	setOwnFields(fields: ViewField[]): void {
+		this.fields = [
+			...fields.filter((f) => !isBuiltinField(f) && (f.type as string) !== 'id'),
+			...builtinFields()
+		];
 	}
 
 	private initDefaultFaces(): void {
-		this.faces = [ViewFace.create('grid', this.defaultFaceFieldIds())];
+		this.faces = [ViewFace.create('list', this.defaultFaceFieldIds())];
 	}
 
 	private defaultFaceFieldIds(): string[] {
@@ -907,7 +990,7 @@ class View {
 	}
 
 	// add a fresh face with the default columns, return it
-	addFace(type: ViewFaceType = 'table'): ViewFace {
+	addFace(type: ViewFaceType = 'list'): ViewFace {
 		const face = ViewFace.create(type, this.defaultFaceFieldIds());
 		this.faces = [...this.faces, face];
 		return face;
@@ -948,6 +1031,7 @@ class View {
 	}
 
 	removeField(fieldId: string) {
+		if (isBuiltinField({ id: fieldId })) return;
 		this.fields = this.fields.filter((f) => f.id !== fieldId);
 		pruneFieldFromFilter(this.filter, fieldId);
 		for (const face of this.faces) {
@@ -969,11 +1053,12 @@ class View {
 	 * to the view's fields, and return it. Caller decides display placement.
 	 */
 	addFieldOfType(type: ViewFieldType): ViewField {
+		if (!this.unit) throw new Error('Only unit views can own stateful fields');
 		const taken = new Set(this.fields.map((f) => f.name));
 		let name: string = type;
 		let n = 2;
 		while (taken.has(name)) name = `${type}_${n++}`;
-		const field = createViewField(name, type);
+		const field = createViewField(name, type, {}, this.unit);
 		this.fields.push(field);
 		return field;
 	}
@@ -986,12 +1071,13 @@ class View {
 	}
 
 	/**
-	 * Two views can't share a unit (they'd share a prop namespace), so a copy gives up the unit and
-	 * keeps its members as an ordinary filter instead
+	 * Two views can't share a unit, so a copy gives up the unit and keeps its members as an ordinary
+	 * filter instead. Stateful fields stay with the unit
 	 */
 	detachUnit(): void {
 		const unitId = this.unit;
 		if (!unitId) return;
+		for (const f of this.ownFields.filter((f) => !isDerived(f.type))) this.removeField(f.id);
 		const isTag = unitId.startsWith('tag:');
 		const type: ViewFieldType = isTag ? 'tags' : 'folder';
 		let field = this.fields.find((f) => f.type === type);
@@ -1009,11 +1095,6 @@ class View {
 
 	/** Persist this view to views.json and mark it as a saved (non-temporary) view. */
 	async save() {
-		if (!this.unit && (await isViewSlugTaken(this.slug, this.id))) {
-			let n = 2;
-			while (await isViewSlugTaken(`${this.slug} ${n}`, this.id)) n++;
-			this.slug = `${this.slug} ${n}`;
-		}
 		this.temporary = false;
 		await saveViewJSON(this.toJSON());
 	}
@@ -1041,7 +1122,7 @@ class View {
 			unit: this.unit,
 			created_at: this.createdAt,
 			updated_at: this.updatedAt,
-			fields: this.fields,
+			fields: this.ownFields,
 			filter: this.filter,
 			faces: this.faces,
 			state: this.state,
@@ -1056,11 +1137,7 @@ class View {
 	// (a journal scoping its body to the selected day)
 	// The unit scope is implicit and always applies; view and face filters are additive on top
 	private compileScope(opts?: { face?: ViewFace; scope?: FilterNode | null }): CompiledFilter {
-		const compiled = compileFilter(
-			memberFilter(this.filter, opts?.face, opts?.scope),
-			this.fields,
-			this.propKey
-		);
+		const compiled = compileFilter(memberFilter(this.filter, opts?.face, opts?.scope), this.fields);
 		if (!this.unit) return compiled;
 		const unit = compileUnit(this.unit);
 		if (!compiled.sql) return unit;
@@ -1089,7 +1166,7 @@ class View {
 		}
 
 		const sort = opts?.face?.sort ?? [];
-		const orderBy = sort.length ? compileSort(sort, this.fields, this.propKey) : '';
+		const orderBy = sort.length ? compileSort(sort, this.fields) : '';
 
 		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.properties, d.source_id
 			FROM documents d
@@ -1132,34 +1209,34 @@ class View {
 
 	// ── Brain Damaging Ops (multi-doc) ──────────────────────────────────────────────────
 
-	/**
-	 * Rename the view slug, moving every stored `views.<old>.*` value to the new namespace. A unit
-	 * view keys its props on the unit, not the slug, so there its slug is only a label
-	 */
-	async renameSlug(newSlug: string): Promise<void> {
-		const oldSlug = this.slug;
-		if (!isValidName(newSlug) || newSlug === oldSlug) return;
-		if (this.unit) {
-			this.slug = newSlug;
-			return;
-		}
-		if (await isViewSlugTaken(newSlug, this.id)) return;
-		await bulkPerSource('bulk_rename_view', { oldSlug, newSlug });
+	renameSlug(newSlug: string): void {
+		if (this.unit || !isValidName(newSlug)) return;
 		this.slug = newSlug;
+	}
+
+	// after the unit itself was renamed on disk: point this open view at the new id so its next
+	// autosave doesn't write the old one back over the remapped store
+	retarget(oldId: string, newId: string, subpaths = false): void {
+		const r = (v: unknown) => remapIds(v, oldId, newId, subpaths);
+		this.unit = r(this.unit) as string | null;
+		this.filter = r(this.filter) as FilterCompound;
+		for (const f of this.faces) f.additive_filter = r(f.additive_filter) as FilterCompound;
+		this.state = r(this.state) as Record<string, any>;
 	}
 
 	/** Rename a stateful field, moving its stored values to the new key, then update the model */
 	async renameField(field: ViewField, newName: string): Promise<void> {
 		const oldName = field.name;
-		if (!isValidName(newName) || newName === oldName) return;
+		if (isBuiltinField(field) || !isValidName(newName) || newName === oldName) return;
 		this.fields = this.fields.map((f) => (f.id === field.id ? { ...f, name: newName } : f));
-		await bulkPerSource('bulk_rename_view_field', { viewSlug: this.propKey, oldName, newName });
+		await bulkPerSource('bulk_rename_view_field', { viewSlug: fieldKey(field), oldName, newName });
 	}
 
 	/** Rename a select/multiselect option value across all stored documents */
 	async renameOption(field: ViewField, oldValue: string, newValue: string): Promise<void> {
+		if (isBuiltinField(field)) return;
 		await bulkPerSource('bulk_rename_view_option', {
-			viewSlug: this.propKey,
+			viewSlug: fieldKey(field),
 			fieldName: field.name,
 			oldValue,
 			newValue
@@ -1173,10 +1250,9 @@ class View {
 		value: unknown,
 		docIds: string[]
 	): Promise<BulkResult> {
-		const source = await getSource(sourceId);
 		return await invoke<BulkResult>('bulk_set_view_field', {
 			sourceId,
-			viewSlug: this.propKey,
+			viewSlug: fieldKey(field),
 			fieldName: field.name,
 			value,
 			docIds
