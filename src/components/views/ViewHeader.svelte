@@ -28,7 +28,8 @@
 		ArrowDownUp,
 		ArrowUpAZ,
 		ArrowDownAZ,
-		RotateCcw
+		RotateCcw,
+		Globe
 	} from '@lucide/svelte';
 	import { untrack } from 'svelte';
 
@@ -266,7 +267,7 @@
 			title="Set an emoji"
 			onclick={() => (emojiOpen = !emojiOpen)}
 		>
-			{#if view.emoji}{view.emoji}{:else}<span class="view-emoji-empty">☆</span>{/if}
+			{#if view.emoji}{view.emoji}{:else}<Globe size={16} strokeWidth={1.75} />{/if}
 		</button>
 	{/if}
 	<span class="title-field">
@@ -369,7 +370,7 @@
 			fields={view.fields}
 			shownIds={fieldTarget.display_field_ids}
 			canAddFields={!view.temporary && !!view.unit}
-			canToggle={fieldTarget.type !== 'doc'}
+			canToggle={fieldTarget.type !== 'doc' && fieldTarget.type !== 'dashboard'}
 			onToggleVisible={toggleColumn}
 			onDelete={(id) => view.removeField(id)}
 			onAddField={addField}
@@ -611,9 +612,12 @@
 		background: var(--chip-bg);
 	}
 
-	.view-emoji-empty {
+	.view-emoji :global(svg) {
 		color: var(--color-ui-dulled);
-		opacity: 0.6;
+	}
+
+	.view-emoji:hover :global(svg) {
+		color: var(--color-ui-muted);
 	}
 
 	.title-field {

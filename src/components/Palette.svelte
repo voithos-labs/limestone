@@ -3,14 +3,13 @@
 	import {
 		Search,
 		FileText,
-		List,
-		NotebookText,
 		Folder as FolderIcon,
 		FolderInput,
 		Hash,
 		TextAlignStart,
 		CornerDownLeft,
 		SlashSquare,
+		LayoutPanelTop,
 		ChevronRight,
 		Bookmark
 	} from '@lucide/svelte';
@@ -19,14 +18,16 @@
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import type { SearchResult } from '$lib/types/SearchResult';
 	import { searchDocuments } from '$lib/services/search';
+	import { select } from '$lib/services/db';
 	import { listSources, sourceName, getSource, touchSource, type Source } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import Tag from '$lib/models/Tag';
-	import Folder, { folderId, folderIdSource } from '$lib/models/Folder';
+	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
 	import { actions, type Action } from '$lib/actions';
 	import { highlightTitle } from '$lib/util/highlight';
 	import { palette } from '$lib/palette.svelte';
+	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { getViewIcon } from '$lib/views/filterDisplay';
 
 	let { session }: { session: Session } = $props();
@@ -78,18 +79,15 @@
 		if (doc) openContent(TabState.forDoc(doc), newTab);
 	}
 
-	function newView(face: 'list' | 'journal', slug: string) {
-		return (newTab: boolean) => {
-			const v = View.create(slug);
-			v.temporary = true;
-			const f = v.addFace(face);
-			v.faces = [f];
-			v.state.active_face_id = f.id;
-			openContent(TabState.forView(v), newTab);
-		};
-	}
-
 	const createCommands: Item[] = [
+		{
+			id: 'new:project',
+			label: 'New project',
+			hint: 'A journal, a todo list, a place for notes',
+			icon: LayoutPanelTop,
+			kind: 'command',
+			run: () => openProjectSetup(editor)
+		},
 		{
 			id: 'new:doc',
 			label: 'New document',
@@ -97,22 +95,6 @@
 			icon: FileText,
 			kind: 'command',
 			run: newDoc
-		},
-		{
-			id: 'new:list',
-			label: 'New list',
-			hint: 'A view of notes as rows',
-			icon: List,
-			kind: 'command',
-			run: newView('list', 'New list')
-		},
-		{
-			id: 'new:journal',
-			label: 'New journal',
-			hint: 'A day at a time',
-			icon: NotebookText,
-			kind: 'command',
-			run: newView('journal', 'New journal')
 		}
 	];
 
@@ -147,7 +129,7 @@
 			return {
 				id: r.id,
 				label: r.title,
-				hint: srcOf(r.source_id) || 'view',
+				hint: where || 'view',
 				icon: Bookmark,
 				emoji: r.emoji,
 				kind: 'view',
@@ -163,7 +145,9 @@
 			return {
 				id: r.id,
 				label: r.title,
-				hint: isFolder ? srcOf(r.source_id) || 'folder' : 'tag',
+				hint: isFolder
+					? [srcOf(r.source_id), dirOf(folderIdPath(r.id))].filter(Boolean).join(' / ') || 'folder'
+					: 'tag',
 				icon: isFolder ? FolderIcon : Hash,
 				kind: isFolder ? 'folder' : 'tag',
 				match: r.match_indices,
@@ -234,7 +218,11 @@
 					items: projects.map((v) => ({
 						id: v.id,
 						label: v.slug,
-						hint: v.unit?.startsWith('folder:') ? srcOf(folderIdSource(v.unit)) : 'view',
+						hint: v.unit?.startsWith('folder:')
+							? [srcOf(folderIdSource(v.unit)), dirOf(folderIdPath(v.unit))]
+									.filter(Boolean)
+									.join(' / ')
+							: 'view',
 						icon: getViewIcon(v),
 						emoji: v.emoji,
 						kind: 'view' as const,
@@ -283,7 +271,7 @@
 			.map((v) => ({
 				id: v.id,
 				title: v.slug,
-				rel_path: null,
+				rel_path: v.unit?.startsWith('folder:') ? folderIdPath(v.unit) : null,
 				source_id: v.unit?.startsWith('folder:') ? folderIdSource(v.unit) : null,
 				score: 0,
 				match_indices: [],
@@ -302,29 +290,26 @@
 		active = 0;
 	});
 
+	// each part on its own, so one failing doesn't blank the others
 	async function loadIdle() {
-		try {
-			sources = await listSources();
-			const saved = await View.listSaved();
-			projects = saved
-				.filter((v) => !!v.unit)
-				.sort((a, b) => b.accessedAt.getTime() - a.accessedAt.getTime())
-				.slice(0, 4);
-			const recent = View.create('recent');
-			recent.temporary = true;
-			const face = recent.addFace('list');
-			const updated = recent.fields.find((f) => f.type === 'updated_at');
-			if (updated) face.sort = [{ field_id: updated.id, direction: 'desc' }];
-			const rows = await recent.getMembers({ face, limit: 6 });
-			recentDocs = rows.map((r) => ({
-				id: r.id,
-				title: r.title,
-				rel_path: r.rel_path,
-				source_id: r.source_id
-			}));
-		} catch (e) {
-			console.error('palette idle load failed', e);
-		}
+		listSources()
+			.then((s) => (sources = s))
+			.catch((e) => console.error('palette sources failed', e));
+		View.listSaved()
+			.then((saved) => {
+				projects = saved
+					.filter((v) => !!v.unit)
+					.sort((a, b) => b.accessedAt.getTime() - a.accessedAt.getTime())
+					.slice(0, 4);
+			})
+			.catch((e) => console.error('palette projects failed', e));
+		// recent means recently opened, which the documents table tracks itself
+		select<{ id: string; title: string; rel_path: string; source_id: string }>(
+			`SELECT id, title, rel_path, source_id FROM documents
+			 WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT 6`
+		)
+			.then((rows) => (recentDocs = rows))
+			.catch((e) => console.error('palette recents failed', e));
 	}
 
 	// ── Open / close ──────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { getViewIcon } from '$lib/views/filterDisplay';
+	import { getViewIcon, getUnitIcon } from '$lib/views/filterDisplay';
 	import { palette } from '$lib/palette.svelte';
+	import { openProjectSetup } from '$lib/views/projectSetup';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import { TabState, type FocusTarget } from '$lib/models/EditorState.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -17,6 +18,7 @@
 		Plus,
 		TextSearch,
 		GripVertical,
+		House,
 		TextAlignStart,
 		Pin,
 		PinOff,
@@ -27,10 +29,14 @@
 	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { listSources, sourceName, type Source } from '$lib/models/Source';
 	import { folderId } from '$lib/models/Folder';
-	import View from '$lib/models/View.svelte';
+	import View, { BUILTIN_UNITS } from '$lib/models/View.svelte';
 	import { FolderInput, SquareArrowOutUpRight } from '@lucide/svelte';
 
-	let { editor, settings }: { editor: EditorState; settings: SettingsState } = $props();
+	let {
+		editor,
+		settings,
+		onAddSource
+	}: { editor: EditorState; settings: SettingsState; onAddSource?: () => void } = $props();
 
 	let compactTabs = $derived(settings.get<boolean>('appearance.compact_tabs') ?? false);
 
@@ -60,20 +66,49 @@
 			{
 				label: 'Sources',
 				icon: FolderInput,
-				children: bmSources.length
-					? bmSources.map((s) => ({
-							label: sourceName(s),
-							icon: FolderInput,
-							action: () => openUnitView(folderId(s.id, ''), sourceName(s)),
-							aux: {
-								icon: SquareArrowOutUpRight,
-								label: 'Open in new tab',
-								action: () => openUnitView(folderId(s.id, ''), sourceName(s), true)
-							}
-						}))
-					: [{ label: 'No sources', disabled: true, action: () => {} }]
+				children: [
+					...bmSources.map((s): CtxEntry => ({
+						label: sourceName(s),
+						icon: FolderInput,
+						action: () => openUnitView(folderId(s.id, ''), sourceName(s)),
+						aux: {
+							icon: SquareArrowOutUpRight,
+							label: 'Open in new tab',
+							action: () => openUnitView(folderId(s.id, ''), sourceName(s), true)
+						}
+					})),
+					...(bmSources.length ? [{ divider: true } as CtxEntry] : []),
+					{ label: 'Add source', icon: Plus, action: () => onAddSource?.() }
+				]
 			},
 			{ divider: true },
+			{
+				label: 'Create new project',
+				icon: Plus,
+				action: () => openProjectSetup(editor)
+			},
+			{ divider: true, label: 'Built-in' },
+			{
+				label: 'Home',
+				icon: House,
+				action: () => editor.openHome()
+			},
+			...Object.values(BUILTIN_UNITS)
+				.filter((u) => !bmViews.some((v) => v.unit === u.unit))
+				.map((u): CtxEntry => {
+					const name = u.unit.slice('tag:'.length);
+					return {
+						label: name,
+						icon: getUnitIcon(u.unit),
+						action: () => openUnitView(u.unit, name),
+						aux: {
+							icon: SquareArrowOutUpRight,
+							label: 'Open in new tab',
+							action: () => openUnitView(u.unit, name, true)
+						}
+					};
+				}),
+			...(bmViews.length ? [{ divider: true, label: 'Projects' } as CtxEntry] : []),
 			...bmViews.map((v): CtxEntry => ({
 				label: v.slug,
 				icon: getViewIcon(v),
@@ -318,13 +353,15 @@
 						<TabIcon size={13} />
 					{/if}
 				{:else if d.content.type === 'new'}
-					<TextSearch size={13} />
+					<Bookmark size={13} />
+				{:else if d.content.type === 'home'}
+					<House size={13} />
 				{:else if d.content.type === 'licenses'}
 					<Scale size={13} />
 				{:else if !compactTabs || collapsed}
 					<TextAlignStart class="doc-icon" size={13} />
 				{/if}
-				<span class="tab-label">{d.content.type === 'new' ? 'New' : d.title}</span>
+				<span class="tab-label">{d.content.type === 'new' ? 'New project' : d.title}</span>
 				<span class="tab-fade"></span>
 				<span class="close-zone">
 					<button
@@ -488,6 +525,12 @@
 
 	.tab.collapsed .tab-label {
 		display: none;
+	}
+
+	/* an even icon in an even box: 13px would leave a half pixel on each side and round */
+	.tabs-scroll .tab.collapsed :global(svg) {
+		width: 14px;
+		height: 14px;
 	}
 
 	.tab-emoji {

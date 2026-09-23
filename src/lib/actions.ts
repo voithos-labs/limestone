@@ -170,11 +170,11 @@ export const actions: Action[] = [
 		}
 	},
 	{
-		id: 'nav.library',
-		title: 'Open library',
+		id: 'nav.home',
+		title: 'Open home',
 		category: 'navigation',
 		defaultKeys: ['mod+l'],
-		run: (session) => session.editors[0].focusTab({ kind: 'search' })
+		run: (session) => session.editors[0].openHome()
 	},
 	{
 		id: 'nav.settings',

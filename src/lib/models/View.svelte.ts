@@ -227,7 +227,7 @@ const TODO = 'tag:todo';
 export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
 	[TODO]: {
 		unit: TODO,
-		emoji: '✓',
+		emoji: '',
 		fields: [
 			builtinField(TODO, 'done', 'boolean'),
 			builtinField(TODO, 'due', 'date'),
@@ -866,8 +866,8 @@ class View {
 		this.id = json.id;
 		this.slug = json.slug;
 		this.unit = json.unit ?? null;
-		this.createdAt = json.created_at;
-		this.updatedAt = json.updated_at;
+		this.createdAt = new Date(json.created_at);
+		this.updatedAt = new Date(json.updated_at);
 		this.setOwnFields(
 			json.fields.map((f) =>
 				this.unit && !isDerived(f.type) && !f.unit ? { ...f, unit: this.unit } : f
@@ -879,7 +879,8 @@ class View {
 		this.temporary = json.temporary ?? false;
 		this.emoji = json.emoji ?? '';
 		this.cover = json.cover ?? '';
-		this.accessedAt = json.accessed_at ?? json.updated_at;
+		// the store hands dates back as strings; the model always holds Dates
+		this.accessedAt = new Date(json.accessed_at ?? json.updated_at);
 		// a stateful field with no home has nowhere to read or write; drop it and its uses
 		for (const f of this.fields.filter((f) => !isDerived(f.type) && !f.unit))
 			this.removeField(f.id);
@@ -938,10 +939,12 @@ class View {
 		view.temporary = true;
 		const builtin = BUILTIN_UNITS[unitId];
 		if (builtin) {
-			view.emoji = builtin.emoji;
+			if (builtin.emoji) view.emoji = builtin.emoji;
 			const title = view.fields.find((f) => f.type === 'title')!.id;
 			const [done, ...rest] = builtin.display;
-			view.faces = [ViewFace.create('list', [done, title, ...rest])];
+			view.faces = [
+				ViewFace.create('list', [done, title, ...rest], undefined, [], { group_by: done })
+			];
 		}
 		view.markPristine();
 		return view;

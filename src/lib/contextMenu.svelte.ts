@@ -19,6 +19,7 @@ export interface CtxItem {
 
 export interface CtxDivider {
 	divider: true;
+	label?: string; // a titled rule, heading the group under it
 }
 
 export type CtxEntry = CtxItem | CtxDivider;

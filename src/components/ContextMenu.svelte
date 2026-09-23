@@ -35,16 +35,17 @@
 		if (flyFor === null || !flyEl || !flyPos) return;
 		const m = flyEl.getBoundingClientRect();
 		let { top, left } = flyPos;
+		// a flyout flips to the parent menu's other side, never overlapping it
 		if (left + m.width > window.innerWidth - 8) {
 			const anchor = menuEl?.getBoundingClientRect();
 			left = Math.max(8, (anchor?.left ?? left) - m.width - 2);
 		}
-		if (top + m.height > window.innerHeight - 8)
-			top = Math.max(8, window.innerHeight - 8 - m.height);
+		top = Math.max(8, Math.min(top, window.innerHeight - 8 - m.height));
 		if (top !== flyPos.top || left !== flyPos.left) flyPos = { top, left };
 	});
 
-	// Clamp into the viewport once rendered (so it doesn't spill off-screen)
+	// Menus flip rather than slide: against the right edge the menu opens leftwards from the
+	// pointer, against the bottom it opens upwards, as every desktop menu does
 	$effect(() => {
 		if (!contextMenu.open || !menuEl) {
 			pos = null;
@@ -53,10 +54,12 @@
 		const m = menuEl.getBoundingClientRect();
 		let left = contextMenu.x;
 		let top = contextMenu.y;
-		if (left + m.width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - m.width);
-		if (top + m.height > window.innerHeight - 8)
-			top = Math.max(8, window.innerHeight - 8 - m.height);
-		pos = { top, left };
+		if (left + m.width > window.innerWidth - 8) left = contextMenu.x - m.width;
+		if (top + m.height > window.innerHeight - 8) top = contextMenu.y - m.height;
+		pos = {
+			top: Math.max(8, Math.min(top, window.innerHeight - 8 - m.height)),
+			left: Math.max(8, Math.min(left, window.innerWidth - 8 - m.width))
+		};
 	});
 
 	function select(item: CtxItem) {
@@ -170,6 +173,8 @@
 				</span>
 			{/if}
 		</button>
+	{:else if entry.label}
+		<div class="ctx-group">{entry.label}</div>
 	{:else}
 		<div class="ctx-divider"></div>
 	{/if}
@@ -179,6 +184,9 @@
 	.ctx-menu {
 		position: fixed;
 		z-index: 2000;
+		/* measured at its natural width: nothing wraps because the pointer was near an edge */
+		white-space: nowrap;
+		max-width: calc(100vw - 16px);
 		min-width: 168px;
 		padding: 4px;
 		background: var(--color-bg);
@@ -241,12 +249,9 @@
 		line-height: 1;
 	}
 
-	.ctx-item.danger {
-		color: var(--color-accent);
-	}
-
+	.ctx-item.danger,
 	.ctx-item.danger .ctx-icon {
-		color: var(--color-accent);
+		color: var(--error-fg);
 	}
 
 	/* the row's second action: quiet until the row is hovered */
@@ -272,6 +277,22 @@
 	.ctx-aux:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
+	}
+
+	.ctx-group {
+		margin: 6px 0 2px;
+		padding: 4px 10px 2px;
+		border-top: 1px solid var(--color-border);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--color-ui-muted);
+	}
+
+	.ctx-group:first-child {
+		border-top: none;
+		margin-top: 0;
 	}
 
 	.ctx-divider {

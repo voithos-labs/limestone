@@ -65,7 +65,21 @@
 		Scale
 	} from '@lucide/svelte';
 
-	let { viewTab, session }: { viewTab: ViewTab; session: Session } = $props();
+	let {
+		viewTab,
+		session,
+		addSourceSignal = 0
+	}: { viewTab: ViewTab; session: Session; addSourceSignal?: number } = $props();
+
+	// sent here to add a source (the bookmark menu). A signal rather than a flag read at mount:
+	// the page may already be open, in which case there is no mount to read it
+	let seenAddSignal = 0;
+	$effect(() => {
+		if (addSourceSignal === seenAddSignal) return;
+		seenAddSignal = addSourceSignal;
+		activeSection = SOURCES;
+		addSource();
+	});
 
 	const settings = $derived(session.settings);
 	const GENERAL = 'general';

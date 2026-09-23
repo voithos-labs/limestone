@@ -6,11 +6,11 @@
 	import TopBar from '../components/nav/TopBar.svelte';
 	import { flushAll } from '$lib/util/flush';
 	import Session from '$lib/models/Session.svelte.js';
-	import LibraryPage from '../components/pages/LibraryPage.svelte';
+	import HomePage from '../components/pages/HomePage.svelte';
 	import SettingsPage from '../components/pages/SettingsPage.svelte';
 	import ViewPage from '../components/pages/ViewPage.svelte';
 	import FolderPage from '../components/pages/FolderPage.svelte';
-	import NewTabPage from '../components/pages/NewTabPage.svelte';
+	import ProjectSetup from '../components/pages/ProjectSetup.svelte';
 	import LicensesPage from '../components/pages/LicensesPage.svelte';
 	import DocumentEditor from '../components/editor/DocumentEditor.svelte';
 	import Palette from '../components/Palette.svelte';
@@ -23,6 +23,7 @@
 	import { startWatching } from '$lib/models/Source';
 
 	let session = $state<Session>();
+	let addSourceSignal = $state(0);
 	let tab: TabState | undefined = $state();
 
 	Session.init().then((s) => (session = s));
@@ -170,17 +171,21 @@
 		scroller.scrollBy({ top: e.key === 'ArrowDown' ? SCROLL_STEP : -SCROLL_STEP });
 	}
 
-	// When nothing valid is focused (no tabs, or a stale focus), fall back to the library tab.
+	// An empty strip is never a blank window: Home takes the place, on first launch and when
+	// the last tab closes.
 	$effect(() => {
 		const ed = session?.editors[0];
 		if (!ed) return;
+		if (ed.tabs.length === 0) {
+			ed.openHome();
+			return;
+		}
 		const f = ed.focused;
 		const valid =
-			f?.kind === 'search' ||
 			f?.kind === 'settings' ||
 			(f?.kind === 'preview' && !!ed.preview) ||
 			(f?.kind === 'tab' && ed.tabs.some((t) => t.id === f.id));
-		if (!valid) ed.focusTab({ kind: 'search' });
+		if (!valid) ed.openHome();
 	});
 </script>
 
@@ -189,7 +194,14 @@
 {#if session}
 	{@const editor = session.editors[0]}
 	<div class="app-layout">
-		<TopBar {editor} settings={session.settings}></TopBar>
+		<TopBar
+			{editor}
+			settings={session.settings}
+			onAddSource={() => {
+				addSourceSignal++;
+				editor.focusTab({ kind: 'settings' });
+			}}
+		></TopBar>
 		<main class="content-area">
 			{#if tab}
 				{#key tab.id}
@@ -199,16 +211,22 @@
 						<ViewPage view={tab.content.view} {tab} {editor} settings={session.settings} />
 					{:else if tab.content.type === 'markdown'}
 						<DocumentEditor {tab} {editor} settings={session.settings} />
+					{:else if tab.content.type === 'home'}
+						<HomePage
+							{editor}
+							onAddSource={() => {
+								addSourceSignal++;
+								editor.focusTab({ kind: 'settings' });
+							}}
+						/>
 					{:else if tab.content.type === 'new'}
-						<NewTabPage {tab} {editor} />
+						<ProjectSetup {tab} {editor} />
 					{:else if tab.content.type === 'licenses'}
 						<LicensesPage {tab} />
 					{/if}
 				{/key}
-			{:else if editor.focused?.kind === 'search'}
-				<LibraryPage {editor} missingSources={session.missingSources} />
 			{:else if editor.focused?.kind === 'settings'}
-				<SettingsPage viewTab={session.getViewTab('settings')} {session} />
+				<SettingsPage viewTab={session.getViewTab('settings')} {session} {addSourceSignal} />
 			{:else}
 				<div class="panel-placeholder">No document selected</div>
 			{/if}

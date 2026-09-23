@@ -19,6 +19,7 @@
 	import ListFace from '../views/faces/ListFace.svelte';
 	import Menu from '../views/Menu.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
+	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { isMove, readMove, movingNow, type MovePayload } from '$lib/views/dragMove';
 	import SourceDialog from '../SourceDialog.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
@@ -369,7 +370,7 @@
 				if (source) sourceDialogOpen = true;
 				break;
 			case 'project':
-				await view.save();
+				openProjectSetup(editor, { id: unitId, name: crumbs.at(-1)?.slug ?? view.slug }, view.id);
 				break;
 			case 'unproject':
 				await view.unsave();

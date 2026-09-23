@@ -1041,17 +1041,17 @@
 	}
 
 	/* the draft mark is the checkbox's ghost: same size, same corner, dashed */
+	/* the draft mark is a row's checkbox, just quieter */
 	.dashed {
 		box-sizing: border-box;
 		width: 18px;
 		height: 18px;
-		border: 1.5px dashed var(--color-ui-muted);
+		border: 1.5px solid var(--color-border);
 		border-radius: 5px;
-		opacity: 0.7;
 	}
 
 	.row.new:focus-within .dashed {
-		opacity: 1;
+		border-color: var(--color-ui-muted);
 	}
 
 	.new-input {

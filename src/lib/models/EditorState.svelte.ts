@@ -50,6 +50,7 @@ export type TabContent =
 	| { type: 'markdown'; handle: DocHandle }
 	| { type: 'view'; view: View }
 	| { type: 'new'; id: string }
+	| { type: 'home'; id: string }
 	| { type: 'licenses'; id: string };
 
 export type TabJSON =
@@ -57,6 +58,7 @@ export type TabJSON =
 	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any>; pinned?: boolean }
 	| { type: 'view-ref'; viewId: string; state: Record<string, any>; pinned?: boolean }
 	| { type: 'new'; id: string; state: Record<string, any>; pinned?: boolean }
+	| { type: 'home'; id: string; state: Record<string, any>; pinned?: boolean }
 	| { type: 'licenses'; id: string; state: Record<string, any>; pinned?: boolean };
 // 'view' inlines the full JSON
 
@@ -88,6 +90,7 @@ export class TabState {
 			case 'view':
 				return content.view.id;
 			case 'new':
+			case 'home':
 			case 'licenses':
 				return content.id;
 		}
@@ -104,7 +107,9 @@ export class TabState {
 			case 'view':
 				return content.view.slug;
 			case 'new':
-				return 'new tab';
+				return 'New project';
+			case 'home':
+				return 'Home';
 			case 'licenses':
 				return 'Licenses';
 		}
@@ -128,7 +133,11 @@ export class TabState {
 				pinned: this.pinned
 			};
 		}
-		if (this.content.type === 'new' || this.content.type === 'licenses') {
+		if (
+			this.content.type === 'new' ||
+			this.content.type === 'home' ||
+			this.content.type === 'licenses'
+		) {
 			return {
 				type: this.content.type,
 				id: this.content.id,
@@ -164,6 +173,10 @@ export class TabState {
 		return new TabState({ type: 'new', id: uuidv4() });
 	}
 
+	static forHome(): TabState {
+		return new TabState({ type: 'home', id: 'home' });
+	}
+
 	static forLicenses(): TabState {
 		return new TabState({ type: 'licenses', id: 'licenses' });
 	}
@@ -183,7 +196,7 @@ export class TabState {
 			const view = new View(saved);
 			return new TabState({ type: 'view', view }, json.state ?? {}, json.pinned ?? false);
 		}
-		if (json.type === 'new' || json.type === 'licenses') {
+		if (json.type === 'new' || json.type === 'home' || json.type === 'licenses') {
 			return new TabState({ type: json.type, id: json.id }, json.state ?? {}, json.pinned ?? false);
 		}
 		throw new Error(`Unknown tab type: ${(json as { type: string }).type}`);
@@ -404,6 +417,14 @@ class EditorState {
 	openNewTab() {
 		const tab = TabState.forNew();
 		this.openTab(tab);
+		this.focusTab({ kind: 'tab', id: tab.id });
+	}
+
+	// the landing page; one of it, focused if it's already open
+	openHome() {
+		const existing = this.tabs.find((t) => t.content.type === 'home');
+		const tab = existing ?? TabState.forHome();
+		if (!existing) this.openTab(tab);
 		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 

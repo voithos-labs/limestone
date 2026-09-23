@@ -3,6 +3,7 @@
 		Folder as FolderIcon,
 		Bookmark,
 		EllipsisVertical,
+		FolderPlus,
 		ChevronDown,
 		ChevronUp
 	} from '@lucide/svelte';
@@ -28,6 +29,7 @@
 		context,
 		onMenu,
 		onDrop,
+		onNew,
 		showAll = $bindable(false),
 		onHidden
 	}: {
@@ -41,6 +43,7 @@
 		onDrop?: (target: Folder, payload: MovePayload) => void; // chips take drops, and drag themselves
 		showAll?: boolean; // past the row cap; the page owns the toggle
 		onHidden?: (n: number) => void; // how many chips the cap is hiding
+		onNew?: (e: MouseEvent) => void; // a trailing chip that makes another folder
 	} = $props();
 
 	let overId: string | null = $state(null);
@@ -132,6 +135,12 @@
 			{/if}
 		</div>
 	{/each}
+	{#if onNew}
+		<button class="folder new" type="button" onclick={onNew}>
+			<FolderPlus size={16} strokeWidth={1.75} />
+			<span class="name">New folder</span>
+		</button>
+	{/if}
 </div>
 
 <style>
@@ -154,6 +163,21 @@
 		font-size: 13px;
 		cursor: pointer;
 		transition: background-color 80ms ease;
+	}
+
+	.folder.new {
+		border: none;
+		background: transparent;
+		font: inherit;
+		font-family: var(--font-ui);
+		font-size: 13px;
+		color: var(--color-ui-muted);
+		text-align: left;
+	}
+
+	.folder.new:hover {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
 	}
 
 	.folder:hover,
