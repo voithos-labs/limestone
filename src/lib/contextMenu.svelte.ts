@@ -7,12 +7,14 @@ import type { Component } from 'svelte';
 export interface CtxItem {
 	label: string;
 	icon?: Component;
+	emoji?: string; // drawn in the icon's place when set
 	action?: () => void;
 	danger?: boolean;
 	disabled?: boolean;
 	checked?: boolean; // drawn with a check, for a choice among several
 	keepOpen?: boolean; // the menu stays up after this action (toggles, choices)
 	children?: CtxEntry[]; // a flyout instead of an action
+	aux?: { icon: Component; label: string; action: () => void }; // a second way, on the row's right
 }
 
 export interface CtxDivider {
@@ -33,15 +35,17 @@ class ContextMenuController {
 	y = $state(0);
 	// a function source is re-read while the menu is up, so checks and toggles stay current
 	private source = $state<CtxSource>([]);
+	minWidth = $state(168);
 
 	get items(): CtxEntry[] {
 		return typeof this.source === 'function' ? this.source() : this.source;
 	}
 
-	show(x: number, y: number, items: CtxSource) {
+	show(x: number, y: number, items: CtxSource, opts: { minWidth?: number } = {}) {
 		this.x = x;
 		this.y = y;
 		this.source = items;
+		this.minWidth = opts.minWidth ?? 168;
 		this.open = true;
 	}
 

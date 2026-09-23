@@ -338,7 +338,7 @@
 
 <EmojiPicker bind:open={emojiOpen} anchor={emojiAnchor} onPick={setEmoji} />
 
-<div class="filter-bar">
+<div class="filter-bar" class:covered={hasCover}>
 	{#if !hasCover}
 		<div class="title-inline">
 			{@render titleBlock()}
@@ -670,6 +670,12 @@
 
 	.filter-bar::-webkit-scrollbar {
 		display: none;
+	}
+
+	/* under a cover the title sits in its own block above; the bar's leading room for the
+	   emoji button isn't needed, so the face switcher lines up with the title's edge */
+	.filter-bar.covered {
+		padding-left: 0;
 	}
 
 	/* the two icon buttons stay quiet between the bar's anchors: the face on the left,

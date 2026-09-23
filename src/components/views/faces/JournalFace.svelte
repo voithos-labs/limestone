@@ -186,6 +186,78 @@
 
 	const showActivity = $derived(face.config.show_activity === true);
 
+	// ── Sticky: the card is only a floating surface once it's actually pinned, so the shadow
+	// comes and goes with the scroll ──────────────────────────────────────────────────
+	let navEl: HTMLElement | null = $state(null);
+	let stuck = $state(false);
+	let scrollerEl: HTMLElement | null = $state(null);
+	$effect(() => {
+		const el = navEl;
+		if (!el) return;
+		let scroller: HTMLElement | null = el.parentElement;
+		while (scroller) {
+			const oy = getComputedStyle(scroller).overflowY;
+			if (oy === 'auto' || oy === 'scroll') break;
+			scroller = scroller.parentElement;
+		}
+		scrollerEl = scroller;
+		if (!scroller) return;
+		const update = () => {
+			const top = scroller!.getBoundingClientRect().top + 12;
+			stuck = scroller!.scrollTop > 0 && el.getBoundingClientRect().top <= top + 0.5;
+		};
+		update();
+		scroller.addEventListener('scroll', update, { passive: true });
+		return () => scroller!.removeEventListener('scroll', update);
+	});
+
+	// ── Two modes across a day switch. Bar floating: the new day starts right under it, at
+	// the float point. Bar in the page: nothing moves. One day's depth never carries to another
+	let entryEl: HTMLElement | null = $state(null);
+	let journalEl: HTMLElement | null = $state(null);
+	let wasStuck = false;
+	$effect.pre(() => {
+		void selected;
+		untrack(() => (wasStuck = stuck));
+	});
+	let firstDay = true;
+	$effect(() => {
+		void selected;
+		if (firstDay) {
+			firstDay = false;
+			return;
+		}
+		untrack(() => {
+			const scroller = scrollerEl;
+			const host = journalEl;
+			if (!wasStuck || !scroller || !host) return;
+			// the float point is where the page's chrome has just scrolled away: the gap under
+			// the filter bar is the 12px the bar floats at
+			const chrome = scroller.querySelector('.view-chrome') ?? host;
+			const floatPoint =
+				chrome.getBoundingClientRect().bottom -
+				scroller.getBoundingClientRect().top +
+				scroller.scrollTop;
+			scroller.scrollTop = Math.ceil(floatPoint);
+		});
+	});
+
+	// the entry is never shorter than the scroller's viewport: a short day can't pull the page
+	// up, and at worst lands exactly where the day bar floats
+	$effect(() => {
+		const scroller = scrollerEl;
+		const entry = entryEl;
+		if (!scroller || !entry) return;
+		const fit = () => (entry.style.minHeight = `${scroller.clientHeight}px`);
+		fit();
+		const ro = new ResizeObserver(fit);
+		ro.observe(scroller);
+		return () => {
+			ro.disconnect();
+			entry.style.minHeight = '';
+		};
+	});
+
 	// ── Search: the navigator steps aside for a flat list of hits across every day; picking
 	// one jumps the journal to that day and clears the search ──────────────────────────
 	const searching = $derived(!!(view.state.search as string | undefined)?.trim());
@@ -570,13 +642,18 @@
 	});
 </script>
 
-<div class="journal" class:flow>
+<div
+	class="journal"
+	class:flow
+	class:sticky={face.config.sticky_days !== false}
+	bind:this={journalEl}
+>
 	{#if searching}
 		<div class="hits">
 			<ListFace {view} face={searchFace} onOpenRow={jumpToHit} />
 		</div>
 	{:else}
-		<div class="day-nav">
+		<div class="day-nav" class:stuck bind:this={navEl}>
 			<div
 				class="days"
 				bind:this={stripEl}
@@ -670,7 +747,7 @@
 			{/if}
 		</div>
 
-		<div class="entry">
+		<div class="entry" bind:this={entryEl}>
 			{#if bodyFace}
 				<div class="body-face" class:doc={bodyFace.type === 'doc'}>
 					{#key bodyFace.id}
@@ -724,11 +801,24 @@
 	}
 
 	/* the whole navigator rides on one card: strip, spark line and month controls */
+	/* the navigator stays put while the entry scrolls under it; the chip tint is layered on
+	   the page colour so nothing shows through */
 	.day-nav {
 		margin: -4px -8px 0;
 		padding: 6px 8px;
 		border-radius: 8px;
-		background: var(--chip-bg);
+		background: linear-gradient(var(--chip-bg), var(--chip-bg)), var(--color-surface);
+	}
+
+	.journal.sticky .day-nav {
+		position: sticky;
+		top: 12px;
+		z-index: 3;
+		transition: box-shadow 120ms ease;
+	}
+
+	.journal.sticky .day-nav.stuck {
+		box-shadow: var(--menu-shadow);
 	}
 
 	.spark {

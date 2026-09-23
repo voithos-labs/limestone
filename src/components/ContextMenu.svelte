@@ -102,6 +102,7 @@
 		bind:this={menuEl}
 		style:top="{(pos ?? { top: contextMenu.y, left: contextMenu.x }).top}px"
 		style:left="{(pos ?? { top: contextMenu.y, left: contextMenu.x }).left}px"
+		style:min-width="{contextMenu.minWidth}px"
 		role="menu"
 		tabindex="-1"
 	>
@@ -142,7 +143,9 @@
 				if (!inFly) openFly(i, e.currentTarget as HTMLElement);
 			}}
 		>
-			{#if Icon}
+			{#if entry.emoji}
+				<span class="ctx-icon ctx-emoji">{entry.emoji}</span>
+			{:else if Icon}
 				<span class="ctx-icon"><Icon size={14} strokeWidth={1.75} /></span>
 			{/if}
 			<span class="ctx-label">{entry.label}</span>
@@ -150,6 +153,21 @@
 				<span class="ctx-more"><ChevronRight size={13} strokeWidth={2} /></span>
 			{:else if entry.checked}
 				<span class="ctx-more"><Check size={13} strokeWidth={2.5} /></span>
+			{:else if entry.aux}
+				{@const Aux = entry.aux.icon}
+				<span
+					class="ctx-aux"
+					role="button"
+					tabindex="-1"
+					title={entry.aux.label}
+					onclick={(e) => {
+						e.stopPropagation();
+						contextMenu.close();
+						entry.aux?.action();
+					}}
+				>
+					<Aux size={13} strokeWidth={1.75} />
+				</span>
 			{/if}
 		</button>
 	{:else}
@@ -216,12 +234,44 @@
 		flex-shrink: 0;
 	}
 
+	.ctx-emoji {
+		width: 14px;
+		justify-content: center;
+		font-size: 13px;
+		line-height: 1;
+	}
+
 	.ctx-item.danger {
 		color: var(--color-accent);
 	}
 
 	.ctx-item.danger .ctx-icon {
 		color: var(--color-accent);
+	}
+
+	/* the row's second action: quiet until the row is hovered */
+	.ctx-aux {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		margin: -4px -6px -4px auto;
+		border-radius: 5px;
+		color: var(--color-ui-muted);
+		opacity: 0;
+		transition:
+			opacity 80ms ease,
+			background-color 80ms ease;
+	}
+
+	.ctx-item:hover .ctx-aux {
+		opacity: 1;
+	}
+
+	.ctx-aux:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
 	}
 
 	.ctx-divider {
