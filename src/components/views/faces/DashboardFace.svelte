@@ -697,7 +697,7 @@
 
 	.chip.on {
 		border-color: transparent;
-		background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+		background: var(--accent-a14);
 		color: var(--color-accent);
 	}
 

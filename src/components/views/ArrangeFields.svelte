@@ -568,12 +568,12 @@
 	.lane.over,
 	.shelf.over {
 		border-color: var(--color-accent) !important;
-		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+		background: var(--accent-a9);
 	}
 
 	.slot.rejected {
 		border-color: var(--error-fg) !important;
-		background: color-mix(in srgb, var(--error-fg) 10%, transparent);
+		background: var(--error-bg);
 	}
 
 	.title {
@@ -790,7 +790,7 @@
 		height: 24px;
 		padding: 0 10px 0 8px;
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+		background: var(--accent-a14);
 		color: var(--color-accent);
 		font-size: 12px;
 	}
@@ -809,7 +809,7 @@
 	}
 
 	.note.bad {
-		background: color-mix(in srgb, var(--error-fg) 12%, transparent);
+		background: var(--error-bg);
 		color: var(--error-fg);
 	}
 
