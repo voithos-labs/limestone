@@ -16,11 +16,13 @@
 		ChevronDown,
 		ChevronRight,
 		GripVertical,
-		EyeOff
+		EyeOff,
+		Trash2
 	} from '@lucide/svelte';
 	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { dashboardSections, DASH_SECTION_LABEL, type DashSection } from '$lib/views/dashboard';
 	import Folder from '$lib/models/Folder';
+	import { toasts } from '$lib/toasts.svelte';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import FolderChips from '../FolderChips.svelte';
 	import {
@@ -339,8 +341,32 @@
 						.then(loadFolders)
 						.catch(console.error);
 				}
-			}
+			},
+			{ divider: true },
+			confirmChipDelete === f.id
+				? { label: 'Confirm delete', icon: Trash2, danger: true, action: () => deleteChip(f) }
+				: {
+						label: 'Delete folder',
+						icon: Trash2,
+						keepOpen: true,
+						action: () => (confirmChipDelete = f.id)
+					}
 		];
+	}
+
+	let confirmChipDelete: string | null = $state(null);
+	$effect(() => {
+		if (!contextMenu.open) confirmChipDelete = null;
+	});
+
+	async function deleteChip(f: Folder) {
+		confirmChipDelete = null;
+		try {
+			await Folder.delete(folderIdSource(f.id), folderIdPath(f.id));
+			await loadFolders();
+		} catch (e) {
+			toasts.push(Folder.describeOpError(e, "That folder couldn't be deleted."));
+		}
 	}
 
 	// ── Sections: order, collapsed, hidden, all on the face ─────────────────────

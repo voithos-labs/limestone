@@ -17,7 +17,7 @@
 	import SourceDialog from '../SourceDialog.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
-	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import {
 		ChevronRight,
 		ChevronDown,
@@ -385,6 +385,10 @@
 	let subMenuOpen = $state(false);
 	let subMenuEl: HTMLElement | null = $state(null);
 	let subMenuFolder: Folder | null = $state(null);
+	let confirmChipDelete: string | null = $state(null);
+	$effect(() => {
+		if (!subMenuOpen && !contextMenu.open) confirmChipDelete = null;
+	});
 	const subMenuItems = $derived.by(() => {
 		const f = subMenuFolder;
 		return [
@@ -393,9 +397,23 @@
 			{ kind: 'divider' as const },
 			f && projects.has(f.id)
 				? { value: 'unproject', label: 'Stop being a project', icon: Bookmark }
-				: { value: 'project', label: 'Turn into project', icon: Bookmark }
+				: { value: 'project', label: 'Turn into project', icon: Bookmark },
+			{ kind: 'divider' as const },
+			f && confirmChipDelete === f.id
+				? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
+				: { value: 'delete', label: 'Delete folder', icon: Trash2, keepOpen: true }
 		];
 	});
+
+	async function deleteChip(f: Folder) {
+		confirmChipDelete = null;
+		try {
+			await Folder.delete(sourceId, folderIdPath(f.id));
+			await loadFolders();
+		} catch (e) {
+			toasts.push(Folder.describeOpError(e, "That folder couldn't be deleted."));
+		}
+	}
 
 	function chipContext(f: Folder): CtxEntry[] {
 		const isProject = projects.has(f.id);
@@ -418,7 +436,16 @@
 						.then(loadFolders)
 						.catch(console.error);
 				}
-			}
+			},
+			{ divider: true },
+			confirmChipDelete === f.id
+				? { label: 'Confirm delete', icon: Trash2, danger: true, action: () => deleteChip(f) }
+				: {
+						label: 'Delete folder',
+						icon: Trash2,
+						keepOpen: true,
+						action: () => (confirmChipDelete = f.id)
+					}
 		];
 	}
 
@@ -430,10 +457,15 @@
 	}
 
 	function onSubMenuSelect(value: string) {
-		subMenuOpen = false;
 		const f = subMenuFolder;
 		if (!f) return;
-		if (value === 'open') openFolder(f);
+		if (value === 'delete') {
+			confirmChipDelete = f.id;
+			return;
+		}
+		subMenuOpen = false;
+		if (value === 'confirm-delete') void deleteChip(f);
+		else if (value === 'open') openFolder(f);
 		else if (value === 'reveal' && source)
 			revealItemInDir(`${source.path}/${folderIdPath(f.id)}`).catch(console.error);
 		else if (value === 'project' || value === 'unproject') {
@@ -618,7 +650,7 @@
 				</span>
 			</div>
 			{#if face && !folded.files}
-				<ListFace {view} {face} {onOpenRow} {createSignal} {scope} moveable />
+				<ListFace {view} {face} {onOpenRow} {createSignal} {scope} moveable compact />
 			{/if}
 		</div>
 	</div>
@@ -875,6 +907,7 @@
 	.section-label {
 		display: flex;
 		align-items: center;
+		height: 22px;
 		margin: 16px 24px 8px;
 		font-size: 12px;
 		font-weight: 500;
@@ -929,7 +962,8 @@
 		align-items: center;
 		gap: 5px;
 		margin-left: auto;
-		padding: 2px 6px 2px 4px;
+		height: 22px;
+		padding: 0 6px 0 4px;
 		border: none;
 		border-radius: 5px;
 		background: transparent;

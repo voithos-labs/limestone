@@ -22,7 +22,8 @@
 		onTotal,
 		autoFocus = true,
 		onReorder,
-		moveable = false
+		moveable = false,
+		compact = false
 	}: {
 		view: View;
 		face: ViewFace;
@@ -33,6 +34,7 @@
 		autoFocus?: boolean; // the first row takes focus once loaded, if nothing else has it
 		onReorder?: (ids: string[]) => void; // rows drag into an order; the face keeps it unless told otherwise
 		moveable?: boolean; // rows drag out as documents to drop on a folder (no in-list reorder then)
+		compact?: boolean; // shorter rows and a smaller title, for a file listing
 	} = $props();
 
 	const rows = new FaceRows(
@@ -461,6 +463,7 @@
 {:else}
 	<div
 		class="list-face"
+		class:compact
 		class:reordering={!!drag}
 		bind:this={listEl}
 		role="list"
@@ -678,6 +681,19 @@
 
 	.row.editable {
 		cursor: default;
+	}
+
+	/* compact: a file listing rather than a reading list */
+	.compact .row {
+		height: 36px;
+	}
+
+	.compact .name {
+		font-size: 14px;
+	}
+
+	.compact .more {
+		height: 32px;
 	}
 
 	/* while a row is carried the others slide out of its way; the carried one rides above */
