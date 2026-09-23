@@ -178,6 +178,7 @@
 		const valid =
 			f?.kind === 'search' ||
 			f?.kind === 'settings' ||
+			(f?.kind === 'preview' && !!ed.preview) ||
 			(f?.kind === 'tab' && ed.tabs.some((t) => t.id === f.id));
 		if (!valid) ed.focusTab({ kind: 'search' });
 	});

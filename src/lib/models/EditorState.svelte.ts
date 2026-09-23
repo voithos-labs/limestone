@@ -41,7 +41,8 @@ import View, { listSavedViewJSON } from '$lib/models/View.svelte.js';
 
 // ── Focus (used elsewhere) ───────────────────────────────────────────────────────────
 
-export type FocusTarget = { kind: 'tab'; id: string } | { kind: 'settings' } | { kind: 'search' };
+export type FocusTarget =
+	{ kind: 'tab'; id: string } | { kind: 'settings' } | { kind: 'search' } | { kind: 'preview' };
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────────────
 
@@ -213,6 +214,9 @@ export interface EditorJSON {
 class EditorState {
 	tabs: TabState[] = $state([]);
 	focused: FocusTarget | null = $state(null);
+	// the bookmark's surface: one transient tab outside the strip, shown until focus goes
+	// anywhere else, never persisted
+	preview: TabState | null = $state(null);
 	private tabAccessOrderById: string[] = $state([]); // reverse accessed order, last = most recent
 	private focusOrder: FocusTarget[] = $state([]);
 	private closedTabs: { tab: TabState; index: number }[] = [];
@@ -233,6 +237,10 @@ class EditorState {
 	private mostRecentValidFocus(): FocusTarget | null {
 		for (let i = this.focusOrder.length - 1; i >= 0; i--) {
 			const t = this.focusOrder[i];
+			if (t.kind === 'preview') {
+				if (this.preview) return t;
+				continue;
+			}
 			if (t.kind !== 'tab') return t;
 			if (this.tabs.some((tab) => tab.id === t.id)) return t;
 		}
@@ -242,6 +250,7 @@ class EditorState {
 	// ── Getters ─────────────────────────────────────────────────────────────────────────
 
 	get focusedTab(): TabState | undefined {
+		if (this.focused?.kind === 'preview') return this.preview ?? undefined;
 		if (this.focused?.kind !== 'tab') return undefined;
 		const id = this.focused.id;
 		return this.tabs.find((v) => v.id === id);
@@ -307,6 +316,7 @@ class EditorState {
 
 	focusTab(tab: FocusTarget) {
 		if (this.isTabFocused(tab)) return;
+		if (tab.kind !== 'preview') this.preview = null;
 		this.focused = tab;
 		if (tab.kind === 'tab') {
 			// update accessed order: filter out id, then append to end to update order
@@ -315,6 +325,16 @@ class EditorState {
 			this.tabAccessOrderById = accessedOrder;
 		}
 		this.focusOrder = [...this.focusOrder.filter((t) => !this.sameTarget(t, tab)), tab];
+	}
+
+	// show something in the bookmark's transient surface, replacing whatever was there; if
+	// it's already a real tab, that tab is the place to be
+	showPreview(tab: TabState) {
+		const existing = this.tabs.find((t) => t.id === tab.id);
+		if (existing) return this.focusTab({ kind: 'tab', id: existing.id });
+		this.preview = tab;
+		this.focused = { kind: 'preview' };
+		this.focusOrder = [...this.focusOrder.filter((t) => t.kind !== 'preview'), { kind: 'preview' }];
 	}
 
 	openTab(tab: TabState) {
@@ -374,6 +394,7 @@ class EditorState {
 		const oldId = tab.id;
 		tab.content = content;
 		tab.state = state;
+		if (tab === this.preview) return;
 		this.tabAccessOrderById = this.tabAccessOrderById.filter((v) => v !== oldId);
 		this.focusOrder = this.focusOrder.filter((t) => !(t.kind === 'tab' && t.id === oldId));
 		if (this.focused?.kind === 'tab' && this.focused.id === oldId) this.focused = null;
@@ -433,6 +454,12 @@ class EditorState {
 	}
 
 	closeTab(id: string, remember = true) {
+		if (this.preview?.id === id) {
+			this.preview = null;
+			this.focusOrder = this.focusOrder.filter((t) => t.kind !== 'preview');
+			if (this.focused?.kind === 'preview') this.focused = this.mostRecentValidFocus();
+			return;
+		}
 		const idx = this.tabs.findIndex((v) => v.id === id);
 		if (idx === -1) return;
 
