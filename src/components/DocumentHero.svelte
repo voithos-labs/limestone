@@ -658,7 +658,7 @@
 
 	.title-field {
 		position: relative;
-		display: inline-block;
+		display: inline-flex;
 		max-width: 100%;
 	}
 
