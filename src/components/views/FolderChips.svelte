@@ -27,7 +27,9 @@
 		onOpen,
 		context,
 		onMenu,
-		onDrop
+		onDrop,
+		showAll = $bindable(false),
+		onHidden
 	}: {
 		folders: Folder[];
 		projects?: Map<string, { emoji: string }>;
@@ -37,6 +39,8 @@
 		context?: (f: Folder) => CtxEntry[];
 		onMenu?: (e: MouseEvent, f: Folder) => void;
 		onDrop?: (target: Folder, payload: MovePayload) => void; // chips take drops, and drag themselves
+		showAll?: boolean; // past the row cap; the page owns the toggle
+		onHidden?: (n: number) => void; // how many chips the cap is hiding
 	} = $props();
 
 	let overId: string | null = $state(null);
@@ -65,7 +69,6 @@
 	const CHIP_MIN = 200;
 	const GAP = 10;
 	let width = $state(0);
-	let showAll = $state(false);
 	const perRow = $derived(Math.max(1, Math.floor((width + GAP) / (CHIP_MIN + GAP))));
 	const cap = $derived(rows * perRow);
 	const ordered = $derived(
@@ -75,6 +78,9 @@
 		)
 	);
 	const shown = $derived(showAll ? ordered : ordered.slice(0, cap));
+	$effect(() => {
+		onHidden?.(showAll ? 0 : Math.max(0, ordered.length - cap));
+	});
 </script>
 
 <div class="folders" bind:clientWidth={width}>
@@ -127,15 +133,6 @@
 		</div>
 	{/each}
 </div>
-{#if ordered.length > cap}
-	<button class="show-more" type="button" onclick={() => (showAll = !showAll)}>
-		{#if showAll}<ChevronUp size={13} strokeWidth={1.75} />{:else}<ChevronDown
-				size={13}
-				strokeWidth={1.75}
-			/>{/if}
-		<span>{showAll ? 'fewer' : `${ordered.length - cap} more`}</span>
-	</button>
-{/if}
 
 <style>
 	.folders {
@@ -219,29 +216,5 @@
 	.menu:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
-	}
-
-	.show-more {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		margin-top: 4px;
-		padding: 4px 8px 4px 6px;
-		border: none;
-		border-radius: 6px;
-		background: transparent;
-		font: inherit;
-		font-family: var(--font-ui);
-		font-size: 12px;
-		color: var(--color-ui-dulled);
-		cursor: pointer;
-		transition:
-			background-color 80ms ease,
-			color 80ms ease;
-	}
-
-	.show-more:hover {
-		color: var(--color-text-secondary);
-		background: var(--chip-bg);
 	}
 </style>

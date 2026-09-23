@@ -941,7 +941,8 @@
 	.more {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		justify-content: flex-end;
+		gap: 6px;
 		width: calc(100% + 20px);
 		height: 40px;
 		margin: 0 -10px;
@@ -961,7 +962,6 @@
 
 	.more :global(svg) {
 		flex-shrink: 0;
-		width: 18px;
 	}
 
 	.more:hover:not(:disabled) {

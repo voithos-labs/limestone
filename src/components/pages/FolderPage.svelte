@@ -21,6 +21,7 @@
 	import {
 		ChevronRight,
 		ChevronDown,
+		ChevronUp,
 		Folder as FolderIcon,
 		FolderPlus,
 		FilePlus,
@@ -209,6 +210,16 @@
 			.then((d) => (newTab || !tab ? editor.openDoc(d) : editor.showDocInTab(tab, d)))
 			.catch(console.error);
 	}
+
+	// ── Sections fold; the folded set lives on the tab so it survives navigation ──
+	type SectionId = 'projects' | 'folders' | 'files';
+	const folded = $derived((tab?.state.folded as Record<string, boolean> | undefined) ?? {});
+	function toggleFold(id: SectionId) {
+		if (!tab) return;
+		tab.state.folded = { ...folded, [id]: !folded[id] };
+	}
+	let foldersShowAll = $state(false);
+	let foldersHidden = $state(0);
 
 	// ── Drag: documents and folders dropped on a folder chip or a crumb move there ──
 	let overCrumb: string | null = $state(null);
@@ -414,6 +425,13 @@
 	let bodyEl: HTMLDivElement | null = $state(null);
 </script>
 
+{#snippet fold(id: SectionId, label: string)}
+	<button class="fold" class:folded={folded[id]} type="button" onclick={() => toggleFold(id)}>
+		<span>{label}</span>
+		<span class="fold-caret"><ChevronDown size={12} strokeWidth={2} /></span>
+	</button>
+{/snippet}
+
 <div class="folder-page">
 	<div class="body" bind:this={bodyEl}>
 		<div class="inner">
@@ -487,37 +505,60 @@
 			</header>
 
 			{#if projectChildren.length > 0}
-				<div class="section-label">Projects</div>
-				<div class="strip">
-					<FolderChips
-						folders={projectChildren}
-						{projects}
-						whereOf={(f) => (query ? relDir(f) : '')}
-						onOpen={openFolder}
-						context={chipContext}
-						onMenu={openSubMenu}
-						onDrop={chipDrop}
-					/>
+				<div class="section-label">
+					{@render fold('projects', 'Projects')}
 				</div>
+				{#if !folded.projects}
+					<div class="strip">
+						<FolderChips
+							folders={projectChildren}
+							{projects}
+							whereOf={(f) => (query ? relDir(f) : '')}
+							onOpen={openFolder}
+							context={chipContext}
+							onMenu={openSubMenu}
+							onDrop={chipDrop}
+						/>
+					</div>
+				{/if}
 			{/if}
 
 			{#if plainChildren.length > 0}
-				<div class="section-label">Folders</div>
-				<div class="strip">
-					<FolderChips
-						folders={plainChildren}
-						rows={query ? 99 : 3}
-						whereOf={(f) => (query ? relDir(f) : '')}
-						onOpen={openFolder}
-						context={chipContext}
-						onMenu={openSubMenu}
-						onDrop={chipDrop}
-					/>
+				<div class="section-label">
+					{@render fold('folders', 'Folders')}
+					{#if !folded.folders && (foldersHidden > 0 || foldersShowAll)}
+						<button
+							class="more-btn"
+							type="button"
+							onclick={() => (foldersShowAll = !foldersShowAll)}
+						>
+							{#if foldersShowAll}<ChevronUp size={13} strokeWidth={1.75} />{:else}<ChevronDown
+									size={13}
+									strokeWidth={1.75}
+								/>{/if}
+							<span>{foldersShowAll ? 'fewer' : `${foldersHidden} more`}</span>
+						</button>
+					{/if}
 				</div>
+				{#if !folded.folders}
+					<div class="strip">
+						<FolderChips
+							folders={plainChildren}
+							rows={query ? 99 : 3}
+							whereOf={(f) => (query ? relDir(f) : '')}
+							onOpen={openFolder}
+							context={chipContext}
+							onMenu={openSubMenu}
+							onDrop={chipDrop}
+							bind:showAll={foldersShowAll}
+							onHidden={(n) => (foldersHidden = n)}
+						/>
+					</div>
+				{/if}
 			{/if}
 
 			<div class="section-label files">
-				<span>Files</span>
+				{@render fold('files', 'Files')}
 				<span class="controls">
 					<button
 						class="chip-btn"
@@ -554,7 +595,7 @@
 					</span>
 				</span>
 			</div>
-			{#if face}
+			{#if face && !folded.files}
 				<ListFace {view} {face} {onOpenRow} {createSignal} {scope} moveable />
 			{/if}
 		</div>
@@ -812,10 +853,73 @@
 	.section-label {
 		display: flex;
 		align-items: center;
-		margin: 14px 24px 8px;
+		margin: 16px 24px 8px;
 		font-size: 12px;
 		font-weight: 500;
 		color: var(--color-ui-muted);
+	}
+
+	.section-label:first-of-type {
+		margin-top: 14px;
+	}
+
+	.section-label.files {
+		margin-bottom: 4px;
+	}
+
+	/* the label is the fold toggle; its caret shows on hover, and stays while folded */
+	.fold {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 0;
+		border: none;
+		background: transparent;
+		font: inherit;
+		color: inherit;
+		cursor: pointer;
+	}
+
+	.fold:hover {
+		color: var(--color-text-primary);
+	}
+
+	.fold-caret {
+		display: inline-flex;
+		align-items: center;
+		opacity: 0;
+		transition:
+			opacity 80ms ease,
+			transform 120ms ease;
+	}
+
+	.fold:hover .fold-caret,
+	.fold.folded .fold-caret {
+		opacity: 1;
+	}
+
+	.fold.folded .fold-caret {
+		transform: rotate(-90deg);
+	}
+
+	.more-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		margin-left: auto;
+		padding: 2px 6px 2px 4px;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		font: inherit;
+		font-weight: 400;
+		color: var(--color-ui-dulled);
+		cursor: pointer;
+	}
+
+	.more-btn:hover {
+		color: var(--color-text-secondary);
+		background: var(--chip-bg);
 	}
 
 	/* folders: compact chips in a grid, like a place's shelves */
