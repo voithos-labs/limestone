@@ -227,7 +227,7 @@ const TODO = 'tag:todo';
 export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
 	[TODO]: {
 		unit: TODO,
-		emoji: '✓',
+		emoji: '',
 		fields: [
 			builtinField(TODO, 'done', 'boolean'),
 			builtinField(TODO, 'due', 'date'),
@@ -939,10 +939,12 @@ class View {
 		view.temporary = true;
 		const builtin = BUILTIN_UNITS[unitId];
 		if (builtin) {
-			view.emoji = builtin.emoji;
+			if (builtin.emoji) view.emoji = builtin.emoji;
 			const title = view.fields.find((f) => f.type === 'title')!.id;
 			const [done, ...rest] = builtin.display;
-			view.faces = [ViewFace.create('list', [done, title, ...rest])];
+			view.faces = [
+				ViewFace.create('list', [done, title, ...rest], undefined, [], { group_by: done })
+			];
 		}
 		view.markPristine();
 		return view;

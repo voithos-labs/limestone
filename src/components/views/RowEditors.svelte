@@ -86,6 +86,10 @@
 	let ctxEl: HTMLElement | null = $state(null);
 	let ctxPos: { x: number; y: number } = $state({ x: 0, y: 0 });
 	const menuIsTodo = $derived(!!menuRowId && rows.tagSlugsFor(menuRowId).includes('todo'));
+	let confirmDelete = $state(false);
+	$effect(() => {
+		if (!menuOpen) confirmDelete = false;
+	});
 	const menuItems = $derived([
 		{ value: 'open', label: 'Open', icon: ArrowUpRight },
 		{ value: 'open-tab', label: 'Open in new tab', icon: SquareArrowOutUpRight },
@@ -94,7 +98,9 @@
 			? { value: 'untodo', label: 'Remove from #todo', icon: SquareMinus }
 			: { value: 'todo', label: 'Add to #todo', icon: SquareCheck },
 		{ kind: 'divider' as const },
-		{ value: 'delete', label: 'Delete', icon: Trash2, danger: true }
+		confirmDelete
+			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
+			: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
 	]);
 
 	// from a button it hangs off the button; from a right-click it opens at the pointer
@@ -112,6 +118,10 @@
 	}
 
 	async function onMenuSelect(value: string) {
+		if (value === 'delete') {
+			confirmDelete = true;
+			return;
+		}
 		menuOpen = false;
 		const rowId = menuRowId;
 		menuRowId = null;
@@ -124,7 +134,7 @@
 				rowId,
 				rows.tagSlugsFor(rowId).filter((s) => s !== 'todo')
 			);
-		else if (value === 'delete') await rows.delete(rowId);
+		else if (value === 'confirm-delete') await rows.delete(rowId);
 	}
 
 	// a reload can drop the row a popover was opened on

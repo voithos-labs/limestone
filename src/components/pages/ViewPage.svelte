@@ -1,7 +1,9 @@
 <script lang="ts">
 	import Folder, { folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
 	import Tag from '$lib/models/Tag';
+	import { isBuiltinUnit } from '$lib/models/View.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
+	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { toasts } from '$lib/toasts.svelte';
 	import { onMount, onDestroy } from 'svelte';
@@ -216,7 +218,7 @@
 			lastSig = sig;
 			return;
 		}
-		if (sig === lastSig || view.temporary) return;
+		if (sig === lastSig || (view.temporary && !(view.unit && isBuiltinUnit(view.unit)))) return;
 		lastSig = sig;
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => {
@@ -338,6 +340,12 @@
 		const cover: MenuEntry[] = view.cover
 			? []
 			: [{ value: 'add-cover', label: 'Add cover', icon: ImageUp }];
+		const builtin = !!view.unit && isBuiltinUnit(view.unit);
+		if (builtin) {
+			items.push({ value: 'new-note', label: 'New note', icon: FilePlus });
+			items.push(...cover);
+			return items;
+		}
 		if (unitKind) {
 			items.push({ value: 'new-note', label: 'New note', icon: FilePlus });
 			if (unitKind === 'folder') {
@@ -498,7 +506,8 @@
 		if (value === 'rename') header?.focusTitle();
 		if (value === 'configure') configureSource();
 		if (value === 'reveal') revealUnit();
-		if (value === 'project') view.save().catch((e) => console.error('save view failed', e));
+		if (value === 'project' && view.unit)
+			openProjectSetup(editor, { id: view.unit, name: view.slug }, view.id);
 		if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));
 	}
 

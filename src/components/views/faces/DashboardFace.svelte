@@ -23,6 +23,8 @@
 	import { dashboardSections, DASH_SECTION_LABEL, type DashSection } from '$lib/views/dashboard';
 	import Folder from '$lib/models/Folder';
 	import { toasts } from '$lib/toasts.svelte';
+	import InputPopover from '../InputPopover.svelte';
+	import { FolderPlus } from '@lucide/svelte';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import FolderChips from '../FolderChips.svelte';
 	import {
@@ -301,6 +303,26 @@
 	let projects: Map<string, { emoji: string }> = $state(new Map());
 	let source: Source | null = $state(null);
 
+	// making a folder from the section: named in a popover, then it's just another chip
+	let newFolderOpen = $state(false);
+	let newFolderEl: HTMLElement | null = $state(null);
+	function openNewFolder(e?: MouseEvent) {
+		if (e?.currentTarget) newFolderEl = e.currentTarget as HTMLElement;
+		newFolderOpen = true;
+	}
+	async function createFolder(name: string) {
+		newFolderOpen = false;
+		const unit = view.unit;
+		if (!name || !unit || unit.startsWith('tag:')) return;
+		try {
+			const path = folderIdPath(unit);
+			await Folder.create(name, folderIdSource(unit), path ? { id: unit, path } : undefined);
+			await loadFolders();
+		} catch (e) {
+			toasts.push(Folder.describeOpError(e, "That folder couldn't be created."));
+		}
+	}
+
 	async function loadFolders() {
 		const unit = view.unit;
 		if (!unit || unit.startsWith('tag:')) return;
@@ -384,7 +406,7 @@
 	const visible = $derived(
 		sections.filter((s) => {
 			if (s.hidden) return false;
-			if (s.id === 'folders') return subfolders.length > 0;
+			if (s.id === 'folders') return !!view.unit && !view.unit.startsWith('tag:');
 			if (!searching) return true;
 			const total = s.id === 'todo' ? todoTotal : notesTotal;
 			return total !== 0;
@@ -507,7 +529,7 @@
 </script>
 
 <div class="dash" bind:this={dashEl}>
-	{#if !face.config.hide_chips}
+	{#if !face.config.hide_chips && chips.length > 0}
 		<div class="chips" onwheel={onChipsWheel}>
 			<button
 				class="chip"
@@ -608,13 +630,21 @@
 			{#if !sec.collapsed}
 				{#if sec.id === 'folders'}
 					<div class="strip">
-						<FolderChips
-							folders={subfolders}
-							{projects}
-							rows={1}
-							onOpen={(f) => onOpenUnit?.(f.id, f.slug)}
-							context={folderContext}
-						/>
+						{#if subfolders.length}
+							<FolderChips
+								folders={subfolders}
+								{projects}
+								rows={1}
+								onOpen={(f) => onOpenUnit?.(f.id, f.slug)}
+								context={folderContext}
+								onNew={openNewFolder}
+							/>
+						{:else}
+							<button class="new-folder" type="button" onclick={openNewFolder}>
+								<span class="nf-mark"><FolderPlus size={16} strokeWidth={1.75} /></span>
+								<span>New folder</span>
+							</button>
+						{/if}
 					</div>
 				{:else if sec.id === 'todo'}
 					<ListFace
@@ -644,12 +674,20 @@
 </div>
 
 <ArrangeFields bind:open={arrangeOpen} {view} face={arrangeFace} />
+<InputPopover
+	bind:open={newFolderOpen}
+	anchor={newFolderOpen ? newFolderEl : null}
+	value=""
+	placeholder="New folder"
+	onChange={(v) => createFolder(String(v ?? ''))}
+/>
 
 <style>
 	.dash {
 		display: flex;
 		flex-direction: column;
 		gap: 22px;
+		padding-top: 8px;
 		padding-bottom: 48px;
 		font-family: var(--font-ui);
 	}
@@ -728,6 +766,38 @@
 
 	.strip {
 		margin: 4px 24px 6px;
+	}
+
+	/* sits on the list's grid: a 20px mark column, 12px gap, then the label */
+	.new-folder {
+		display: inline-flex;
+		align-items: center;
+		gap: 12px;
+		height: 36px;
+		margin-left: -10px;
+		padding: 0 12px 0 10px;
+		border: none;
+		border-radius: 8px;
+		background: transparent;
+		font: inherit;
+		font-size: 15px;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+		transition:
+			background-color 80ms ease,
+			color 80ms ease;
+	}
+
+	.nf-mark {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+	}
+
+	.new-folder:hover {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
 	}
 
 	section.dragging {

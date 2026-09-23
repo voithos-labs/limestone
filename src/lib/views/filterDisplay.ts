@@ -23,6 +23,7 @@ import {
 	FolderInput
 } from '@lucide/svelte';
 import { isSourceRoot } from '$lib/models/Folder';
+import { isBuiltinUnit } from '$lib/models/View.svelte';
 import { VIEW_FIELD_OPS, type ViewFaceType, type ViewFieldType } from '$lib/models/View.svelte';
 import type View from '$lib/models/View.svelte';
 import type { ViewFace } from '$lib/models/View.svelte';
@@ -44,8 +45,15 @@ export function getFaceIcon(face: Pick<ViewFace, 'type' | 'isCards'>): Component
 }
 
 // what a view is about, for tabs and anywhere else it stands in for a place
+export function getUnitIcon(unitId: string): Component {
+	if (isBuiltinUnit(unitId)) return SquareCheck;
+	if (unitId.startsWith('tag:')) return Hash;
+	return isSourceRoot(unitId) ? FolderInput : Folder;
+}
+
 export function getViewIcon(view: View): Component {
 	if (view.unit) {
+		if (isBuiltinUnit(view.unit)) return SquareCheck;
 		if (view.unit.startsWith('tag:')) return Hash;
 		return isSourceRoot(view.unit) ? FolderInput : Folder;
 	}

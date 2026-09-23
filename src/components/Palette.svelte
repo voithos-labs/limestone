@@ -3,14 +3,13 @@
 	import {
 		Search,
 		FileText,
-		List,
-		NotebookText,
 		Folder as FolderIcon,
 		FolderInput,
 		Hash,
 		TextAlignStart,
 		CornerDownLeft,
 		SlashSquare,
+		LayoutPanelTop,
 		ChevronRight,
 		Bookmark
 	} from '@lucide/svelte';
@@ -23,11 +22,12 @@
 	import { listSources, sourceName, getSource, touchSource, type Source } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import Tag from '$lib/models/Tag';
-	import Folder, { folderId, folderIdSource } from '$lib/models/Folder';
+	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
 	import { actions, type Action } from '$lib/actions';
 	import { highlightTitle } from '$lib/util/highlight';
 	import { palette } from '$lib/palette.svelte';
+	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { getViewIcon } from '$lib/views/filterDisplay';
 
 	let { session }: { session: Session } = $props();
@@ -79,18 +79,15 @@
 		if (doc) openContent(TabState.forDoc(doc), newTab);
 	}
 
-	function newView(face: 'list' | 'journal', slug: string) {
-		return (newTab: boolean) => {
-			const v = View.create(slug);
-			v.temporary = true;
-			const f = v.addFace(face);
-			v.faces = [f];
-			v.state.active_face_id = f.id;
-			openContent(TabState.forView(v), newTab);
-		};
-	}
-
 	const createCommands: Item[] = [
+		{
+			id: 'new:project',
+			label: 'New project',
+			hint: 'A journal, a todo list, a place for notes',
+			icon: LayoutPanelTop,
+			kind: 'command',
+			run: () => openProjectSetup(editor)
+		},
 		{
 			id: 'new:doc',
 			label: 'New document',
@@ -98,22 +95,6 @@
 			icon: FileText,
 			kind: 'command',
 			run: newDoc
-		},
-		{
-			id: 'new:list',
-			label: 'New list',
-			hint: 'A view of notes as rows',
-			icon: List,
-			kind: 'command',
-			run: newView('list', 'New list')
-		},
-		{
-			id: 'new:journal',
-			label: 'New journal',
-			hint: 'A day at a time',
-			icon: NotebookText,
-			kind: 'command',
-			run: newView('journal', 'New journal')
 		}
 	];
 
@@ -148,7 +129,7 @@
 			return {
 				id: r.id,
 				label: r.title,
-				hint: srcOf(r.source_id) || 'view',
+				hint: where || 'view',
 				icon: Bookmark,
 				emoji: r.emoji,
 				kind: 'view',
@@ -164,7 +145,9 @@
 			return {
 				id: r.id,
 				label: r.title,
-				hint: isFolder ? srcOf(r.source_id) || 'folder' : 'tag',
+				hint: isFolder
+					? [srcOf(r.source_id), dirOf(folderIdPath(r.id))].filter(Boolean).join(' / ') || 'folder'
+					: 'tag',
 				icon: isFolder ? FolderIcon : Hash,
 				kind: isFolder ? 'folder' : 'tag',
 				match: r.match_indices,
@@ -235,7 +218,11 @@
 					items: projects.map((v) => ({
 						id: v.id,
 						label: v.slug,
-						hint: v.unit?.startsWith('folder:') ? srcOf(folderIdSource(v.unit)) : 'view',
+						hint: v.unit?.startsWith('folder:')
+							? [srcOf(folderIdSource(v.unit)), dirOf(folderIdPath(v.unit))]
+									.filter(Boolean)
+									.join(' / ')
+							: 'view',
 						icon: getViewIcon(v),
 						emoji: v.emoji,
 						kind: 'view' as const,
@@ -284,7 +271,7 @@
 			.map((v) => ({
 				id: v.id,
 				title: v.slug,
-				rel_path: null,
+				rel_path: v.unit?.startsWith('folder:') ? folderIdPath(v.unit) : null,
 				source_id: v.unit?.startsWith('folder:') ? folderIdSource(v.unit) : null,
 				score: 0,
 				match_indices: [],
