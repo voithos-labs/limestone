@@ -795,9 +795,11 @@
 		filter: brightness(1.08);
 	}
 
+	/* the top gap reads as the 24px gutter: the bar's controls carry their own leading, so the
+	   padding is that much shorter */
 	.view-chrome {
 		flex-shrink: 0;
-		padding: 34px 0 0 24px;
+		padding: 17px 0 0 24px;
 	}
 
 	.view-chrome.has-cover {
