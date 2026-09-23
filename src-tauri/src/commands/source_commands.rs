@@ -459,6 +459,38 @@ pub async fn move_folder(
     Ok(())
 }
 
+/// The folder goes to the OS trash, never straight to nothing: a folder holds work the reader
+/// can't easily rebuild, and the trash is the undo. The reconcile afterwards drops its rows.
+#[tauri::command]
+pub async fn delete_folder(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    source_id: String,
+    rel_dir: String,
+) -> Result<(), FolderOpError> {
+    if rel_dir.is_empty() {
+        return Err(FolderOpError::new("invalid_name"));
+    }
+    validate_folder_path(&rel_dir)?;
+    let root = source_root(&app, &source_id).map_err(|_| FolderOpError::new("source_missing"))?;
+    let full = resolve_in_source(&root, &rel_dir)
+        .map_err(|_| FolderOpError::named("not_found", folder_leaf(&rel_dir)))?;
+    if !full.is_dir() {
+        return Err(FolderOpError::named("not_found", folder_leaf(&rel_dir)));
+    }
+    trash::delete(&full).map_err(|e| match e {
+        trash::Error::CouldNotAccess { .. } => FolderOpError::new("permission"),
+        trash::Error::Os { code, .. } if code == 32 => FolderOpError::new("locked"),
+        _ => FolderOpError::new("io"),
+    })?;
+
+    let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
+    let source = find_source(&app, uuid).map_err(|_| FolderOpError::new("source_missing"))?;
+    let fm_buf_size = frontmatter_buffer_size(&app_data);
+    run_reconcile(app.clone(), source, app_data.db.clone(), fm_buf_size).await;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn make_dir(path: String, rel: String) -> Result<(), String> {
     let dir = resolve_in_source(Path::new(&path), &rel).map_err(|e| e.to_string())?;

@@ -299,11 +299,33 @@
 			? []
 			: [
 					{ kind: 'divider' as const },
-					{ value: 'delete', label: 'Delete folder', icon: Trash2, danger: true }
+					confirmingDelete
+						? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
+						: { value: 'delete', label: 'Delete folder', icon: Trash2, keepOpen: true }
 				])
 	]);
+	let confirmingDelete = $state(false);
+	$effect(() => {
+		if (!menuOpen) confirmingDelete = false;
+	});
+
+	// the folder goes to the trash and the page steps up to its parent
+	async function deleteFolder() {
+		const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+		try {
+			await Folder.delete(sourceId, path);
+			if (parent) openCrumb(parent);
+			else openRoot();
+		} catch (e) {
+			toasts.push(Folder.describeOpError(e, "That folder couldn't be deleted."));
+		}
+	}
 
 	async function onMenuSelect(value: string) {
+		if (value === 'delete') {
+			confirmingDelete = true;
+			return;
+		}
 		menuOpen = false;
 		switch (value) {
 			case 'new-note':
@@ -329,8 +351,8 @@
 			case 'unproject':
 				await view.unsave();
 				break;
-			case 'delete':
-				toasts.push('Deleting folders is not wired up yet. Delete it in your file manager.');
+			case 'confirm-delete':
+				await deleteFolder();
 				break;
 		}
 	}

@@ -449,7 +449,12 @@
 				console.error('delete tag failed', e);
 			}
 		} else {
-			toasts.push('Deleting folders is not wired up yet. Delete it in your file manager.');
+			try {
+				await Folder.delete(folderIdSource(view.unit), folderIdPath(view.unit));
+				editor.closeTab(view.id, false);
+			} catch (e) {
+				toasts.push(Folder.describeOpError(e, "That folder couldn't be deleted."));
+			}
 		}
 	}
 

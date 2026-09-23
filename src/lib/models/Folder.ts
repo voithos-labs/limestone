@@ -1,6 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import { select, execute } from '$lib/services/db';
-import { folderPropKey, remapIdsInSavedViews, renameUnitViewPrefix } from '$lib/models/View.svelte';
+import {
+	deleteSavedView,
+	folderPropKey,
+	listSavedViewJSON,
+	remapIdsInSavedViews,
+	renameUnitViewPrefix
+} from '$lib/models/View.svelte';
 import { flushAll } from '$lib/util/flush';
 
 export interface FolderRow {
@@ -111,6 +117,16 @@ class Folder {
 				return 'Your disk is out of space.';
 			default:
 				return fallback;
+		}
+	}
+
+	// to the OS trash; project views for it and anything below it go with it
+	static async delete(sourceId: string, path: string): Promise<void> {
+		await flushAll();
+		await invoke('delete_folder', { sourceId, relDir: path });
+		const id = folderId(sourceId, path);
+		for (const v of await listSavedViewJSON()) {
+			if (v.unit === id || v.unit?.startsWith(id + '/')) await deleteSavedView(v.id);
 		}
 	}
 
