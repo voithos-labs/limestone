@@ -92,6 +92,7 @@ class DocHandle {
 	private _relPath: string; // path relative to source root
 	readonly source: Source; // source instance, for data and UI
 	private hasFile = true;
+	private static unopened = new Set<string>();
 
 	title: string;
 	tags: Tag[];
@@ -233,6 +234,7 @@ class DocHandle {
 			opts.groupIds ?? [],
 			opts.properties ?? {}
 		);
+		if (base === 'Untitled') DocHandle.unopened.add(doc.id);
 		if (opts.draft && !opts.body) {
 			doc.hasFile = false;
 		} else {
@@ -526,6 +528,14 @@ class DocHandle {
 
 	get isDraft(): boolean {
 		return !this.hasFile;
+	}
+
+	get isNew(): boolean {
+		return this.isDraft || DocHandle.unopened.has(this.id);
+	}
+
+	markOpened() {
+		DocHandle.unopened.delete(this.id);
 	}
 }
 

@@ -24,6 +24,7 @@
 	import { palette } from '$lib/palette.svelte';
 	import Menu from '../views/Menu.svelte';
 	import EmojiPicker from '../views/EmojiPicker.svelte';
+	import { dashboardSections } from '$lib/views/dashboard';
 
 	let { tab, editor }: { tab: TabState; editor: EditorState } = $props();
 
@@ -115,6 +116,9 @@
 		switch (id) {
 			case 'project': {
 				const dash = ViewFace.create('dashboard');
+				dash.config.sections = dashboardSections(dash).map((s) =>
+					s.id === 'done' ? { ...s, hidden: true } : s
+				);
 				const tasks = ViewFace.create(
 					'list',
 					keep([`${TODO}/done`, title, tags, `${TODO}/due`]),

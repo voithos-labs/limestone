@@ -24,6 +24,8 @@
 	import SourceDialog from '../SourceDialog.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
+	import NewFab from '../views/NewFab.svelte';
+	import { createInView } from '$lib/views/FaceRows.svelte';
 	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import {
 		ChevronRight,
@@ -42,7 +44,8 @@
 		LayoutGrid,
 		Bookmark,
 		FolderInput,
-		CalendarClock
+		CalendarClock,
+		SquareCheck
 	} from '@lucide/svelte';
 
 	// A folder or a source opened as a place, not as a filtered view: what's directly inside it,
@@ -284,12 +287,38 @@
 	const chipDrop = (f: Folder, p: MovePayload) => moveInto(folderIdPath(f.id), p);
 
 	// ── Actions: the page's menu is the folder's menu ──────────────────────────
-	let createSignal = $state(0);
 	let menuOpen = $state(false);
 	let menuEl: HTMLElement | null = $state(null);
 	let nameOpen = $state(false);
 	let sourceDialogOpen = $state(false);
 	let nameMode: 'new-folder' | 'rename' = $state('new-folder');
+
+	let fabEl: HTMLButtonElement | null = $state(null);
+	let nameAnchor: HTMLElement | null = $state(null);
+	const fabItems = [
+		{ value: 'new-note', label: 'New note', icon: FilePlus },
+		{ value: 'new-todo', label: 'New todo', icon: SquareCheck },
+		{ value: 'new-folder', label: 'New folder', icon: FolderPlus }
+	];
+
+	async function newDoc(todo: boolean) {
+		try {
+			const id = await createInView(view, todo);
+			if (id) onOpenRow(id);
+			else toasts.push('Add a source before creating a document.');
+		} catch (e) {
+			console.error('create failed', e);
+			toasts.push("That document couldn't be created.");
+		}
+	}
+
+	function onFabSelect(value: string) {
+		if (value === 'new-folder') {
+			nameMode = 'new-folder';
+			nameAnchor = fabEl;
+			nameOpen = true;
+		} else void newDoc(value === 'new-todo');
+	}
 
 	let confirmingDelete = $state(false);
 	$effect(() => {
@@ -353,14 +382,16 @@
 		menuOpen = false;
 		switch (value) {
 			case 'new-note':
-				createSignal++;
+				void newDoc(false);
 				break;
 			case 'new-folder':
 				nameMode = 'new-folder';
+				nameAnchor = menuEl;
 				nameOpen = true;
 				break;
 			case 'rename':
 				nameMode = 'rename';
+				nameAnchor = menuEl;
 				nameOpen = true;
 				break;
 			case 'reveal':
@@ -675,12 +706,14 @@
 				</span>
 			</div>
 			{#if face && !folded.files}
-				<ListFace {view} {face} {onOpenRow} {createSignal} {scope} moveable compact />
+				<ListFace {view} {face} {onOpenRow} {scope} moveable />
 			{/if}
 		</div>
 	</div>
 
 	<ScrollThumb scroller={bodyEl} top={20} />
+
+	<NewFab items={fabItems} onSelect={onFabSelect} bind:el={fabEl} />
 </div>
 
 <Menu
@@ -716,7 +749,7 @@
 />
 <InputPopover
 	bind:open={nameOpen}
-	anchor={nameOpen ? menuEl : null}
+	anchor={nameOpen ? nameAnchor : null}
 	value={nameMode === 'rename' ? (crumbs.at(-1)?.slug ?? '') : ''}
 	placeholder={nameMode === 'rename' ? 'Folder name' : 'New folder'}
 	onChange={(v) => commitName(String(v ?? ''))}

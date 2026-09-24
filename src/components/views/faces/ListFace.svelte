@@ -23,9 +23,7 @@
 		onTotal,
 		autoFocus = true,
 		onReorder,
-		moveable = false,
-		compact = false,
-		creatable = true
+		moveable = false
 	}: {
 		view: View;
 		face: ViewFace;
@@ -36,8 +34,6 @@
 		autoFocus?: boolean; // the first row takes focus once loaded, if nothing else has it
 		onReorder?: (ids: string[]) => void; // rows drag into an order; the face keeps it unless told otherwise
 		moveable?: boolean; // rows drag out as documents to drop on a folder (no in-list reorder then)
-		compact?: boolean; // shorter rows and a smaller title, for a file listing
-		creatable?: boolean;
 	} = $props();
 
 	const rows = new FaceRows(
@@ -116,6 +112,12 @@
 	const editMode = $derived(face.config.edit_in_place === true);
 	const layout = $derived(face.config.layout === 'grid' ? 'grid' : 'list');
 	const checkField = $derived(rows.checkField);
+	const openTodos = $derived.by(() => {
+		const ctx = rows.createCtx;
+		if (!ctx.tagGroupIds.includes('tag:todo')) return false;
+		const done = view.fields.find((f) => f.id === TODO_DONE);
+		return !done || ctx.fieldValues[done.name] !== true;
+	});
 	const lanes = $derived(rows.lanes);
 
 	// cards carry a preview; rows don't
@@ -626,7 +628,7 @@
 </script>
 
 {#snippet newRow()}
-	{#if !rows.loading && creatable}
+	{#if !rows.loading && openTodos}
 		<label class="row new">
 			<span class="new-mark">
 				{#if checkField}<span class="dashed"></span>{:else}<Plus
@@ -689,7 +691,7 @@
 				{/each}
 			{/if}
 		{/each}
-		{#if !rows.loading && creatable}
+		{#if !rows.loading && openTodos}
 			<button class="new-card" type="button" onclick={() => createNote('', true)}>
 				<Plus size={16} strokeWidth={2} />
 				<span>{checkField ? 'New todo' : 'New note'}</span>
@@ -707,7 +709,6 @@
 {:else}
 	<div
 		class="list-face"
-		class:compact
 		class:reordering={!!dragId}
 		bind:this={listEl}
 		role="list"
@@ -921,7 +922,7 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		height: 46px;
+		height: 36px;
 		margin: 0 -10px;
 		padding: 0 10px;
 		border-radius: 8px;
@@ -944,19 +945,6 @@
 	.grid .group-head {
 		grid-column: 1 / -1;
 		margin-top: 8px;
-	}
-
-	/* compact: a file listing rather than a reading list */
-	.compact .row {
-		height: 36px;
-	}
-
-	.compact .name {
-		font-size: 14px;
-	}
-
-	.compact .more {
-		height: 32px;
 	}
 
 	/* while a row is carried the others slide out of its way; the carried one rides above */
@@ -1059,7 +1047,7 @@
 		overflow: hidden;
 		white-space: nowrap;
 		text-overflow: ellipsis;
-		font-size: 15px;
+		font-size: 14px;
 		letter-spacing: -0.005em;
 		color: var(--color-text-primary);
 	}
@@ -1229,7 +1217,7 @@
 		justify-content: flex-end;
 		gap: 6px;
 		width: calc(100% + 20px);
-		height: 40px;
+		height: 32px;
 		margin: 0 -10px;
 		padding: 0 10px;
 		border: 0;

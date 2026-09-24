@@ -36,15 +36,17 @@
 		EllipsisVertical,
 		Trash2,
 		ImageUp,
-		Plus,
 		Copy,
 		FilePlus,
 		FolderPlus,
 		Pencil,
 		ExternalLink,
 		Bookmark,
-		Settings
+		Settings,
+		SquareCheck
 	} from '@lucide/svelte';
+	import NewFab from '../views/NewFab.svelte';
+	import { createInView } from '$lib/views/FaceRows.svelte';
 
 	let {
 		view,
@@ -71,12 +73,8 @@
 		if (tab && id) tab.state.picked_doc = id;
 	});
 
-	// a doc face makes its own entry, and a journal's card bodies get the fab back
-	const showNewFab = $derived(
-		activeFace?.type === 'journal'
-			? activeFace.body?.type === 'masonry' || activeFace.body?.type === 'list'
-			: activeFace?.type !== 'doc'
-	);
+	// a doc face makes its own entry
+	const showNewFab = $derived(activeFace?.type !== 'doc');
 
 	let faceInit = false;
 	$effect(() => {
@@ -134,8 +132,7 @@
 		restoreTimer = setTimeout(endScrollRestore, 1500);
 	});
 
-	// Bumped by the header's "+ New" button; the active face watches it and begins
-	// a create in whatever way fits its layout (table = floating draft row at top).
+	// a journal's card body makes the note itself, so it lands on the day being read
 	let createSignal = $state(0);
 
 	function parseCover(cover: string) {
@@ -334,6 +331,43 @@
 	const unitIsRoot = $derived(unitKind === 'folder' && isSourceRoot(view.unit!));
 	let header: ViewHeader | null = $state(null);
 	let newFolderOpen = $state(false);
+	let newFolderAnchor: HTMLElement | null = $state(null);
+	let fabEl: HTMLButtonElement | null = $state(null);
+
+	const fabItems = $derived.by(() => {
+		const todo = { value: 'new-todo', label: 'New todo', icon: SquareCheck };
+		if (view.unit && isBuiltinUnit(view.unit)) return [todo];
+		const items = [{ value: 'new-note', label: 'New note', icon: FilePlus }, todo];
+		if (unitKind === 'folder')
+			items.push({ value: 'new-folder', label: 'New folder', icon: FolderPlus });
+		return items;
+	});
+
+	async function newDoc(todo: boolean) {
+		try {
+			const id = await createInView(view, todo);
+			if (id) onOpenRow(id);
+			else toasts.push('Add a source before creating a document.');
+		} catch (e) {
+			console.error('create failed', e);
+			toasts.push("That document couldn't be created.");
+		}
+	}
+
+	function newNote() {
+		const body = activeFace?.type === 'journal' ? activeFace.body?.type : null;
+		if (body === 'list' || body === 'masonry') createSignal++;
+		else void newDoc(false);
+	}
+
+	function onFabSelect(value: string) {
+		if (value === 'new-note') newNote();
+		else if (value === 'new-todo') void newDoc(true);
+		else if (value === 'new-folder') {
+			newFolderAnchor = fabEl;
+			newFolderOpen = true;
+		}
+	}
 
 	const moreItems = $derived.by(() => {
 		const items: MenuEntry[] = [];
@@ -501,8 +535,11 @@
 		if (value === 'add-cover') pickCover();
 		if (value === 'duplicate') duplicateView();
 		if (value === 'confirm-delete') unitKind ? deleteUnit() : deleteView();
-		if (value === 'new-note') createSignal++;
-		if (value === 'new-folder') newFolderOpen = true;
+		if (value === 'new-note') newNote();
+		if (value === 'new-folder') {
+			newFolderAnchor = moreAnchor;
+			newFolderOpen = true;
+		}
 		if (value === 'rename') header?.focusTitle();
 		if (value === 'configure') configureSource();
 		if (value === 'reveal') revealUnit();
@@ -637,13 +674,13 @@
 						{dockTarget}
 					/>
 				{:else if activeFace?.type === 'list'}
-					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
+					<ListFace {view} face={activeFace} {onOpenRow} />
 				{:else if activeFace?.type === 'masonry'}
-					<MasonryFace {view} face={activeFace} {onOpenRow} {createSignal} />
+					<MasonryFace {view} face={activeFace} {onOpenRow} />
 				{:else if activeFace?.type === 'dashboard'}
-					<DashboardFace {view} face={activeFace} {onOpenRow} {onOpenUnit} {createSignal} />
+					<DashboardFace {view} face={activeFace} {onOpenRow} {onOpenUnit} />
 				{:else if activeFace}
-					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
+					<ListFace {view} face={activeFace} {onOpenRow} />
 				{/if}
 			</div>
 		</div>
@@ -657,9 +694,7 @@
 		<ScrollThumb scroller={bodyEl} top={20} />
 
 		{#if showNewFab}
-			<button class="new-fab" type="button" title="New note" onclick={() => createSignal++}>
-				<Plus size={18} strokeWidth={2} />
-			</button>
+			<NewFab items={fabItems} onSelect={onFabSelect} bind:el={fabEl} />
 		{/if}
 	{/if}
 </div>
@@ -673,7 +708,7 @@
 />
 <InputPopover
 	bind:open={newFolderOpen}
-	anchor={newFolderOpen ? moreAnchor : null}
+	anchor={newFolderOpen ? newFolderAnchor : null}
 	value=""
 	placeholder="New folder"
 	onChange={(v) => createFolder(String(v ?? ''))}
@@ -778,28 +813,6 @@
 		z-index: 5;
 		width: 0;
 		height: 0;
-	}
-
-	.new-fab {
-		position: absolute;
-		bottom: 24px;
-		right: calc(24px + max(0px, (100% - var(--page-max-width, 100%)) / 2));
-		z-index: 5;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 34px;
-		height: 34px;
-		border: none;
-		border-radius: 10px;
-		background: var(--color-accent);
-		color: var(--color-accent-contrast);
-		cursor: pointer;
-		box-shadow: var(--menu-shadow);
-	}
-
-	.new-fab:hover {
-		filter: brightness(1.08);
 	}
 
 	.view-chrome {

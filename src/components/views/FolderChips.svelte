@@ -3,7 +3,6 @@
 		Folder as FolderIcon,
 		Bookmark,
 		EllipsisVertical,
-		FolderPlus,
 		ChevronDown,
 		ChevronUp
 	} from '@lucide/svelte';
@@ -29,7 +28,6 @@
 		context,
 		onMenu,
 		onDrop,
-		onCreate,
 		showAll = $bindable(false),
 		onHidden
 	}: {
@@ -43,33 +41,7 @@
 		onDrop?: (target: Folder, payload: MovePayload) => void; // chips take drops, and drag themselves
 		showAll?: boolean; // past the row cap; the page owns the toggle
 		onHidden?: (n: number) => void; // how many chips the cap is hiding
-		onCreate?: (name: string) => void; // a trailing chip that names and makes another folder
 	} = $props();
-
-	let naming = $state(false);
-	let draft = $state('');
-
-	function commitNew() {
-		const name = draft.trim();
-		naming = false;
-		draft = '';
-		if (name) onCreate?.(name);
-	}
-
-	function onNewKey(e: KeyboardEvent) {
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			(e.currentTarget as HTMLInputElement).blur();
-		} else if (e.key === 'Escape') {
-			e.stopPropagation();
-			draft = '';
-			(e.currentTarget as HTMLInputElement).blur();
-		}
-	}
-
-	function focusNew(node: HTMLInputElement) {
-		node.focus();
-	}
 
 	let overId: string | null = $state(null);
 
@@ -160,25 +132,6 @@
 			{/if}
 		</div>
 	{/each}
-	{#if onCreate && naming}
-		<label class="folder new naming">
-			<FolderPlus size={16} strokeWidth={1.75} />
-			<input
-				class="name-input"
-				placeholder="New folder"
-				spellcheck="false"
-				bind:value={draft}
-				use:focusNew
-				onblur={commitNew}
-				onkeydown={onNewKey}
-			/>
-		</label>
-	{:else if onCreate}
-		<button class="folder new" type="button" onclick={() => (naming = true)}>
-			<FolderPlus size={16} strokeWidth={1.75} />
-			<span class="name">New folder</span>
-		</button>
-	{/if}
 </div>
 
 <style>
@@ -201,37 +154,6 @@
 		font-size: 13px;
 		cursor: pointer;
 		transition: background-color 80ms ease;
-	}
-
-	.folder.new {
-		border: none;
-		background: transparent;
-		font: inherit;
-		font-family: var(--font-ui);
-		font-size: 13px;
-		color: var(--color-ui-muted);
-		text-align: left;
-	}
-
-	.folder.new:hover,
-	.folder.new.naming {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-	}
-
-	.name-input {
-		flex: 1 1 auto;
-		min-width: 0;
-		padding: 0;
-		border: 0;
-		background: transparent;
-		font: inherit;
-		color: var(--color-text-primary);
-		outline: none;
-	}
-
-	.name-input::placeholder {
-		color: var(--color-ui-muted);
 	}
 
 	.folder:hover,

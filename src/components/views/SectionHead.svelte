@@ -30,7 +30,7 @@
 		<span class="title">{title}</span>
 		<span class="count">{count}</span>
 		<span class="caret" class:collapsed>
-			<ChevronDown size={13} strokeWidth={2} />
+			<ChevronDown size={12} strokeWidth={2} />
 		</span>
 	</button>
 	{@render tools?.()}
@@ -58,13 +58,13 @@
 	}
 
 	.title {
-		font-size: 15px;
+		font-size: 13px;
 		font-weight: 600;
 		color: var(--color-text-primary);
 	}
 
 	.count {
-		font-size: 13px;
+		font-size: 12px;
 		color: var(--color-ui-muted);
 	}
 

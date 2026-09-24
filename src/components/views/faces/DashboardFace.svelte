@@ -46,14 +46,12 @@
 		view,
 		face,
 		onOpenRow,
-		onOpenUnit,
-		createSignal = 0
+		onOpenUnit
 	}: {
 		view: View;
 		face: ViewFace;
 		onOpenRow?: (rowId: string, newTab?: boolean) => void;
 		onOpenUnit?: (id: string, name: string) => void;
-		createSignal?: number;
 	} = $props();
 
 	const TODO = 'tag:todo';
@@ -306,26 +304,10 @@
 			.catch(() => {});
 	});
 
-	// the bar's "+" adds a todo; that's what a project most often needs quickly
-	const todoSignal = $derived(createSignal);
-
 	// ── Folders: the project's subfolders, projects among them first ────────────
 	let subfolders: Folder[] = $state([]);
 	let projects: Map<string, { emoji: string }> = $state(new Map());
 	let source: Source | null = $state(null);
-
-	// making a folder from the section: named in its own chip, then it's just another chip
-	async function createFolder(name: string) {
-		const unit = view.unit;
-		if (!name || !unit || unit.startsWith('tag:')) return;
-		try {
-			const path = folderIdPath(unit);
-			await Folder.create(name, folderIdSource(unit), path ? { id: unit, path } : undefined);
-			await loadFolders();
-		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That folder couldn't be created."));
-		}
-	}
 
 	async function loadFolders() {
 		const unit = view.unit;
@@ -412,7 +394,7 @@
 	const visible = $derived(
 		sections.filter((s) => {
 			if (s.hidden) return false;
-			if (s.id === 'folders') return !!view.unit && !view.unit.startsWith('tag:');
+			if (s.id === 'folders') return subfolders.length > 0;
 			if (s.id === 'done' && !searching && doneCount === 0) return false;
 			if (!searching) return true;
 			const total = s.id === 'todo' ? todoTotal : s.id === 'done' ? doneTotal : notesTotal;
@@ -639,7 +621,6 @@
 							rows={1}
 							onOpen={(f) => onOpenUnit?.(f.id, f.slug)}
 							context={folderContext}
-							onCreate={createFolder}
 						/>
 					</div>
 				{:else if sec.id === 'todo'}
@@ -647,7 +628,6 @@
 						{view}
 						face={todoFace}
 						{onOpenRow}
-						createSignal={todoSignal}
 						scope={tagScope}
 						autoFocus={false}
 						onTotal={(n) => (todoTotal = n)}
@@ -657,7 +637,6 @@
 					<ListFace
 						{view}
 						face={doneFace}
-						creatable={false}
 						{onOpenRow}
 						scope={tagScope}
 						autoFocus={false}
