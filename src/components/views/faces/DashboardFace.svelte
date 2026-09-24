@@ -8,6 +8,7 @@
 	import { folderId as makeFolderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import { select } from '$lib/services/db';
 	import ListFace from './ListFace.svelte';
+	import SectionHead from '../SectionHead.svelte';
 	import {
 		ArrowDown,
 		ArrowUp,
@@ -19,12 +20,10 @@
 		EyeOff,
 		Trash2
 	} from '@lucide/svelte';
-	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { dashboardSections, DASH_SECTION_LABEL, type DashSection } from '$lib/views/dashboard';
 	import Folder from '$lib/models/Folder';
 	import { toasts } from '$lib/toasts.svelte';
-	import InputPopover from '../InputPopover.svelte';
-	import { FolderPlus } from '@lucide/svelte';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import FolderChips from '../FolderChips.svelte';
 	import {
@@ -47,14 +46,12 @@
 		view,
 		face,
 		onOpenRow,
-		onOpenUnit,
-		createSignal = 0
+		onOpenUnit
 	}: {
 		view: View;
 		face: ViewFace;
 		onOpenRow?: (rowId: string, newTab?: boolean) => void;
 		onOpenUnit?: (id: string, name: string) => void;
-		createSignal?: number;
 	} = $props();
 
 	const TODO = 'tag:todo';
@@ -69,7 +66,9 @@
 	// ── Chips: what this project's notes are tagged, and which subfolders hold them ──
 	type Chip = { id: string; slug: string; n: number; kind: 'tag' | 'folder' };
 	let chips: Chip[] = $state([]);
-	const selectedTag = $derived((view.state.dash_tag as string | undefined) ?? null);
+	const selectedTag = $derived(
+		face.config.hide_chips ? null : ((view.state.dash_tag as string | undefined) ?? null)
+	);
 
 	async function loadChips() {
 		try {
@@ -143,10 +142,9 @@
 		e.preventDefault();
 	}
 
-	// ── The two sections, as list faces that live only here ────────────────────
-	const showDone = $derived(face.config.show_done === true);
-
+	// ── The sections, as list faces that live only here ────────────────────
 	const todoFace = ViewFace.create('list');
+	const doneFace = ViewFace.create('list');
 	const notesFace = ViewFace.create('list');
 
 	// each section's arrangement lives on the dashboard face; the section faces are rebuilt
@@ -175,7 +173,7 @@
 			op: 'and',
 			children: [
 				{ field_id: tagsId, op: 'has_any', value: [TODO] },
-				...(showDone ? [] : [{ field_id: doneId, op: 'eq', value: false }])
+				{ field_id: doneId, op: 'eq', value: false }
 			]
 		};
 		const sort = sortFor('todo_sort', { field_id: dueId, direction: 'asc' });
@@ -184,6 +182,19 @@
 			{ ...(manual ? { field_id: dueId, direction: 'asc' as const } : sort), nulls: 'last' }
 		];
 		todoFace.config.order = manual ? [...((face.config.todo_order as string[]) ?? [])] : undefined;
+
+		doneFace.display_field_ids = [...l.display];
+		doneFace.config.right = [...l.right];
+		doneFace.config.hide_tag = TODO;
+		doneFace.config.edit_in_place = true;
+		doneFace.additive_filter = {
+			op: 'and',
+			children: [
+				{ field_id: tagsId, op: 'has_any', value: [TODO] },
+				{ field_id: doneId, op: 'eq', value: true }
+			]
+		};
+		doneFace.sort = [{ field_id: updatedId, direction: 'desc' }];
 	});
 
 	$effect(() => {
@@ -222,10 +233,7 @@
 		}
 	}
 	function sortEntries(key: 'todo_sort' | 'docs_sort'): CtxEntry[] {
-		const cur =
-			key === 'todo_sort'
-				? sortFor('todo_sort', { field_id: dueId, direction: 'asc' })
-				: sortFor('docs_sort', { field_id: updatedId, direction: 'desc' });
+		const cur = sorts[key];
 		const set = (next: Sort) => (face.config[key] = next);
 		return [
 			{
@@ -238,6 +246,7 @@
 			{ divider: true },
 			...view.fields
 				.filter((f) => VIEW_FIELD_SORTABLE.has(f.type))
+				.filter((f) => (key === 'docs_sort' ? f.unit !== TODO : f.id !== doneId))
 				.map((f): CtxEntry => ({
 					label: fieldLabel(f),
 					icon: getFieldIcon(f.type),
@@ -262,8 +271,14 @@
 			}
 		];
 	}
-	const docsSort = $derived(sortFor('docs_sort', { field_id: updatedId, direction: 'desc' }));
-	const docsSortField = $derived(view.fields.find((f) => f.id === docsSort.field_id));
+	const sorts = $derived({
+		todo_sort: sortFor('todo_sort', { field_id: dueId, direction: 'asc' }),
+		docs_sort: sortFor('docs_sort', { field_id: updatedId, direction: 'desc' })
+	});
+	function sortLabel(sort: Sort): string {
+		const f = view.fields.find((x) => x.id === sort.field_id);
+		return f ? fieldLabel(f).toLowerCase() : 'manual';
+	}
 
 	$effect(() => persistLayout('todo_layout', todoFace));
 	$effect(() => persistLayout('docs_layout', notesFace));
@@ -273,21 +288,21 @@
 
 	// counts for the section headers
 	let openCount = $state(0);
+	let doneCount = $state(0);
 	let notesCount = $state(0);
+	let recount = $state(0);
+	$effect(() => onSourceReconciled(() => recount++));
 	$effect(() => {
-		void showDone;
 		void tagScope;
 		void view.filter;
-		const openFace = ViewFace.create('list', [], {
-			op: 'and',
-			children: [
-				{ field_id: tagsId, op: 'has_any', value: [TODO] },
-				{ field_id: doneId, op: 'eq', value: false }
-			]
-		});
+		void recount;
 		view
-			.countMembers({ face: openFace, scope: tagScope })
+			.countMembers({ face: todoFace, scope: tagScope })
 			.then((n) => (openCount = n))
+			.catch(() => {});
+		view
+			.countMembers({ face: doneFace, scope: tagScope })
+			.then((n) => (doneCount = n))
 			.catch(() => {});
 		view
 			.countMembers({ face: notesFace, scope: tagScope })
@@ -295,40 +310,17 @@
 			.catch(() => {});
 	});
 
-	// the bar's "+" adds a todo; that's what a project most often needs quickly
-	const todoSignal = $derived(createSignal);
-
 	// ── Folders: the project's subfolders, projects among them first ────────────
-	let subfolders: Folder[] = $state([]);
+	let allFolders: Folder[] = $state([]);
 	let projects: Map<string, { emoji: string }> = $state(new Map());
 	let source: Source | null = $state(null);
-
-	// making a folder from the section: named in a popover, then it's just another chip
-	let newFolderOpen = $state(false);
-	let newFolderEl: HTMLElement | null = $state(null);
-	function openNewFolder(e?: MouseEvent) {
-		if (e?.currentTarget) newFolderEl = e.currentTarget as HTMLElement;
-		newFolderOpen = true;
-	}
-	async function createFolder(name: string) {
-		newFolderOpen = false;
-		const unit = view.unit;
-		if (!name || !unit || unit.startsWith('tag:')) return;
-		try {
-			const path = folderIdPath(unit);
-			await Folder.create(name, folderIdSource(unit), path ? { id: unit, path } : undefined);
-			await loadFolders();
-		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That folder couldn't be created."));
-		}
-	}
 
 	async function loadFolders() {
 		const unit = view.unit;
 		if (!unit || unit.startsWith('tag:')) return;
 		try {
 			const [all, saved] = await Promise.all([Folder.list(), listSavedViewJSON()]);
-			subfolders = all.filter((f) => f.parentId === unit);
+			allFolders = all;
 			projects = new Map(
 				saved
 					.filter((v) => v.unit?.startsWith('folder:'))
@@ -391,24 +383,54 @@
 		}
 	}
 
+	const query = $derived(((view.state.search as string | undefined) ?? '').trim().toLowerCase());
+	const folderBase = $derived(selectedTag?.startsWith('folder:') ? selectedTag : view.unit);
+	const underBase = (f: Folder) => {
+		if (!folderBase?.startsWith('folder:')) return false;
+		const base = folderIdPath(folderBase);
+		return (
+			folderIdSource(f.id) === folderIdSource(folderBase) &&
+			folderIdPath(f.id).startsWith(base ? `${base}/` : '')
+		);
+	};
+	const subfolders = $derived.by(() => {
+		if (query)
+			return allFolders
+				.filter((f) => underBase(f) && f.slug.toLowerCase().includes(query))
+				.sort((a, b) => a.slug.localeCompare(b.slug));
+		if (selectedTag && selectedTag !== folderBase) return [];
+		return allFolders.filter((f) => f.parentId === folderBase);
+	});
+	const relDir = (f: Folder) => {
+		const base = folderBase ? folderIdPath(folderBase) : '';
+		const p = folderIdPath(f.id);
+		const rel = base ? p.slice(base.length + 1) : p;
+		return rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
+	};
+
 	// ── Sections: order, collapsed, hidden, all on the face ─────────────────────
-	// under a search, a section with nothing to show steps aside; the lists report what
-	// the search left them
-	const searching = $derived(!!(view.state.search as string | undefined)?.trim());
+	// under a search or a chip, a section with nothing to show steps aside; the lists report
+	// what's left
+	const searching = $derived(!!query);
+	const narrowed = $derived(searching || !!selectedTag);
 	let todoTotal = $state(-1);
+	let doneTotal = $state(-1);
 	let notesTotal = $state(-1);
 	$effect(() => {
 		void view.state.search;
+		void selectedTag;
 		todoTotal = -1;
+		doneTotal = -1;
 		notesTotal = -1;
 	});
 	const sections = $derived(dashboardSections(face));
 	const visible = $derived(
 		sections.filter((s) => {
 			if (s.hidden) return false;
-			if (s.id === 'folders') return !!view.unit && !view.unit.startsWith('tag:');
-			if (!searching) return true;
-			const total = s.id === 'todo' ? todoTotal : notesTotal;
+			if (s.id === 'folders') return subfolders.length > 0;
+			if (s.id === 'done' && !searching && doneCount === 0) return false;
+			if (!narrowed) return true;
+			const total = s.id === 'todo' ? todoTotal : s.id === 'done' ? doneTotal : notesTotal;
 			return total !== 0;
 		})
 	);
@@ -453,13 +475,13 @@
 						{
 							label: 'Sort by',
 							icon: ArrowDownUp,
-							children: sortEntries(s.id === 'todo' ? 'todo_sort' : 'docs_sort')
+							children: sortEntries(s.id === 'docs' ? 'docs_sort' : 'todo_sort')
 						},
 						{
 							label: 'Arrange fields',
 							icon: LayoutArrowDown,
 							action: () => {
-								arrangeFace = s.id === 'todo' ? todoFace : notesFace;
+								arrangeFace = s.id === 'docs' ? notesFace : todoFace;
 								arrangeOpen = true;
 							}
 						},
@@ -553,109 +575,115 @@
 					<span class="n">{c.n}</span>
 				</button>
 			{/each}
+			<button
+				class="chips-hide"
+				type="button"
+				title="Hide quick filters"
+				aria-label="Hide quick filters"
+				onclick={() => (face.config.hide_chips = true)}
+			>
+				<EyeOff size={13} strokeWidth={1.75} />
+			</button>
 		</div>
 	{/if}
 
 	{#each visible as sec (sec.id)}
 		<section data-id={sec.id} class:dragging={dragId === sec.id}>
-			<header class="sec" use:ctxMenu={() => sectionMenu(sec)}>
-				<span
-					class="grip"
-					role="presentation"
-					title="Drag to reorder"
-					onpointerdown={(e) => armDrag(e, sec.id)}
-				>
-					<GripVertical size={14} strokeWidth={1.75} />
-				</span>
-				<button
-					class="sec-head"
-					type="button"
-					onclick={() => patch(sec.id, { collapsed: !sec.collapsed })}
-				>
-					<span class="sec-title">{DASH_SECTION_LABEL[sec.id]}</span>
-					<span class="sec-count">
-						{sec.id === 'todo'
-							? searching && todoTotal >= 0
-								? todoTotal
-								: `${openCount} open`
+			<div class="sec">
+				<SectionHead
+					title={DASH_SECTION_LABEL[sec.id]}
+					count={sec.id === 'todo'
+						? searching && todoTotal >= 0
+							? todoTotal
+							: `${openCount} open`
+						: sec.id === 'done'
+							? searching && doneTotal >= 0
+								? doneTotal
+								: doneCount
 							: sec.id === 'docs'
 								? searching && notesTotal >= 0
 									? notesTotal
 									: notesCount
 								: subfolders.length}
-					</span>
-					<span class="sec-caret" class:collapsed={sec.collapsed}>
-						<ChevronDown size={13} strokeWidth={2} />
-					</span>
-				</button>
-				<button
-					class="sec-cog"
-					type="button"
-					tabindex="-1"
-					aria-label="Section options"
-					onclick={(e) => {
-						e.stopPropagation();
-						const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-						contextMenu.show(r.left, r.bottom + 4, () => sectionMenu(sec));
-					}}
+					collapsed={sec.collapsed}
+					onToggle={() => patch(sec.id, { collapsed: !sec.collapsed })}
+					menu={() => sectionMenu(sec)}
 				>
-					<Settings2 size={13} strokeWidth={1.75} />
-				</button>
-				<span class="sec-rule"></span>
-				{#if sec.id === 'todo'}
-					<button
-						class="sec-action"
-						type="button"
-						onclick={() => (face.config.show_done = !showDone)}
-					>
-						{showDone ? 'hide done' : 'show done'}
-					</button>
-				{:else if sec.id === 'docs'}
-					<button
-						class="sec-action"
-						type="button"
-						onclick={(e) => {
-							const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-							contextMenu.show(r.left, r.bottom + 4, () => sortEntries('docs_sort'));
-						}}
-					>
-						{docsSortField ? fieldLabel(docsSortField).toLowerCase() : 'recent'}
-						{#if docsSort.direction === 'asc'}<ArrowUp size={12} strokeWidth={2} />{:else}<ArrowDown
-								size={12}
-								strokeWidth={2}
-							/>{/if}
-					</button>
-				{/if}
-			</header>
+					{#snippet lead()}
+						<span
+							class="grip"
+							role="presentation"
+							title="Drag to reorder"
+							onpointerdown={(e) => armDrag(e, sec.id)}
+						>
+							<GripVertical size={14} strokeWidth={1.75} />
+						</span>
+					{/snippet}
+					{#snippet tools()}
+						<button
+							class="sec-cog"
+							type="button"
+							tabindex="-1"
+							aria-label="Section options"
+							onclick={(e) => {
+								e.stopPropagation();
+								const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+								contextMenu.show(r.left, r.bottom + 4, () => sectionMenu(sec));
+							}}
+						>
+							<Settings2 size={13} strokeWidth={1.75} />
+						</button>
+					{/snippet}
+					{#snippet trail()}
+						{#if sec.id === 'docs' || sec.id === 'todo'}
+							{@const key = sec.id === 'docs' ? 'docs_sort' : 'todo_sort'}
+							{@const sort = sorts[key]}
+							<button
+								class="sec-action"
+								type="button"
+								onclick={(e) =>
+									contextMenu.showAt(e.currentTarget as HTMLElement, () => sortEntries(key))}
+							>
+								{sortLabel(sort)}
+								{#if sort.field_id !== MANUAL}{#if sort.direction === 'asc'}<ArrowUp
+											size={12}
+											strokeWidth={2}
+										/>{:else}<ArrowDown size={12} strokeWidth={2} />{/if}{/if}
+							</button>
+						{/if}
+					{/snippet}
+				</SectionHead>
+			</div>
 			{#if !sec.collapsed}
 				{#if sec.id === 'folders'}
 					<div class="strip">
-						{#if subfolders.length}
-							<FolderChips
-								folders={subfolders}
-								{projects}
-								rows={1}
-								onOpen={(f) => onOpenUnit?.(f.id, f.slug)}
-								context={folderContext}
-								onNew={openNewFolder}
-							/>
-						{:else}
-							<button class="new-folder" type="button" onclick={openNewFolder}>
-								<span class="nf-mark"><FolderPlus size={16} strokeWidth={1.75} /></span>
-								<span>New folder</span>
-							</button>
-						{/if}
+						<FolderChips
+							folders={subfolders}
+							{projects}
+							rows={query ? 99 : 1}
+							whereOf={(f) => (query ? relDir(f) : '')}
+							onOpen={(f) => onOpenUnit?.(f.id, f.slug)}
+							context={folderContext}
+						/>
 					</div>
 				{:else if sec.id === 'todo'}
 					<ListFace
 						{view}
 						face={todoFace}
 						{onOpenRow}
-						createSignal={todoSignal}
 						scope={tagScope}
 						autoFocus={false}
 						onTotal={(n) => (todoTotal = n)}
 						onReorder={(ids) => onReorder('todo', ids)}
+					/>
+				{:else if sec.id === 'done'}
+					<ListFace
+						{view}
+						face={doneFace}
+						{onOpenRow}
+						scope={tagScope}
+						autoFocus={false}
+						onTotal={(n) => (doneTotal = n)}
 					/>
 				{:else}
 					<ListFace
@@ -674,13 +702,6 @@
 </div>
 
 <ArrangeFields bind:open={arrangeOpen} {view} face={arrangeFace} />
-<InputPopover
-	bind:open={newFolderOpen}
-	anchor={newFolderOpen ? newFolderEl : null}
-	value=""
-	placeholder="New folder"
-	onChange={(v) => createFolder(String(v ?? ''))}
-/>
 
 <style>
 	.dash {
@@ -699,6 +720,26 @@
 		margin: 0 24px;
 		overflow-x: auto;
 		scrollbar-width: none;
+	}
+
+	.chips-hide {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		border: none;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+	}
+
+	.chips-hide:hover {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
 	}
 
 	.chips::-webkit-scrollbar {
@@ -756,48 +797,8 @@
 		transition: opacity 100ms ease;
 	}
 
-	/* a quiet rule runs the header row out from the title to its action */
-	.sec-rule {
-		flex: 1;
-		height: 1px;
-		margin: 0 14px 0 10px;
-		background: var(--chip-divider);
-	}
-
 	.strip {
 		margin: 4px 24px 6px;
-	}
-
-	/* sits on the list's grid: a 20px mark column, 12px gap, then the label */
-	.new-folder {
-		display: inline-flex;
-		align-items: center;
-		gap: 12px;
-		height: 36px;
-		margin-left: -10px;
-		padding: 0 12px 0 10px;
-		border: none;
-		border-radius: 8px;
-		background: transparent;
-		font: inherit;
-		font-size: 15px;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-		transition:
-			background-color 80ms ease,
-			color 80ms ease;
-	}
-
-	.nf-mark {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 20px;
-	}
-
-	.new-folder:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
 	}
 
 	section.dragging {
@@ -805,10 +806,7 @@
 	}
 
 	.sec {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		margin: 0 24px 4px;
+		margin: 0 24px;
 	}
 
 	/* the grip lives in the gutter so headers still line up with rows */
@@ -829,43 +827,6 @@
 
 	.grip:hover {
 		opacity: 1 !important;
-	}
-
-	.sec-head {
-		display: inline-flex;
-		align-items: baseline;
-		gap: 8px;
-		padding: 0;
-		border: none;
-		background: transparent;
-		font: inherit;
-		cursor: pointer;
-	}
-
-	.sec-title {
-		font-size: 15px;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.sec-count {
-		font-size: 13px;
-		color: var(--color-ui-muted);
-	}
-
-	.sec-caret {
-		display: inline-flex;
-		align-self: center;
-		color: var(--color-ui-muted);
-		opacity: 0;
-		transition:
-			opacity 80ms ease,
-			transform 120ms ease;
-	}
-
-	.sec:hover .sec-caret,
-	.sec-caret.collapsed {
-		opacity: 1;
 	}
 
 	/* the section's menu, on a cog past the caret; only there when the header is hovered */
@@ -895,10 +856,6 @@
 	.sec-cog:hover {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
-	}
-
-	.sec-caret.collapsed {
-		transform: rotate(-90deg);
 	}
 
 	.sec-action {

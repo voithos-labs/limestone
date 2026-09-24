@@ -1,7 +1,17 @@
 import type View from '$lib/models/View.svelte';
-import type { FilterNode, MemberRow, SortKey, ViewFace, ViewField } from '$lib/models/View.svelte';
-import { describeBulkFailure, isBuiltinUnit, isLeafActive } from '$lib/models/View.svelte';
-import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
+import type { FilterNode, MemberRow, SortKey, ViewField } from '$lib/models/View.svelte';
+import {
+	describeBulkFailure,
+	isBuiltinUnit,
+	isLeafActive,
+	ViewFace
+} from '$lib/models/View.svelte';
+import {
+	createMetaDate,
+	deriveCreateContext,
+	folderPath,
+	type CreateContext
+} from '$lib/views/createDefaults';
 import { rawStatefulValue, seedProperties, withStatefulValue } from '$lib/views/fieldValue';
 import { listInlineByDefault } from '$lib/views/listLayout';
 import { select } from '$lib/services/db';
@@ -352,14 +362,7 @@ export class FaceRows {
 	}
 
 	creationSource(): Source | undefined {
-		const ctx = this.createCtx;
-		let source: Source | undefined;
-		if (ctx.sourceId) source = this.sources.find((s) => s.id === ctx.sourceId);
-		if (!source && ctx.folderGroupId) {
-			const g = this.folders.find((f) => f.id === ctx.folderGroupId);
-			if (g?.sourceId) source = this.sources.find((s) => s.id === g.sourceId);
-		}
-		return source ?? pickCreationSource(this.sources, this.defaultSourceId) ?? undefined;
+		return sourceFor(this.createCtx, this.sources, this.folders, this.defaultSourceId);
 	}
 
 	// the path a new note with this title would take, for the collision warning
@@ -378,22 +381,8 @@ export class FaceRows {
 			this.error = 'No source available to create in';
 			return null;
 		}
-		const ctx = this.createCtx;
 		try {
-			const doc = await DocHandle.createFromTitle(source, {
-				title: title.trim() || 'Untitled',
-				dir: ctx.folderGroupId ? folderPath(ctx.folderGroupId) : '',
-				groupIds: [...ctx.tagGroupIds],
-				properties: seedProperties(this.view().fields, ctx.fieldValues)
-			});
-			const createdAt = createMetaDate(ctx, 'created_at');
-			const updatedAt = createMetaDate(ctx, 'updated_at');
-			if (createdAt || updatedAt) {
-				await doc.saveMeta({
-					createdAt: createdAt ?? undefined,
-					updatedAt: updatedAt ?? undefined
-				});
-			}
+			const doc = await createFromContext(this.view(), this.createCtx, source, title);
 			await this.load(true);
 			return doc.id;
 		} catch (e) {
@@ -401,4 +390,57 @@ export class FaceRows {
 			return null;
 		}
 	}
+}
+
+function sourceFor(
+	ctx: CreateContext,
+	sources: Source[],
+	folders: Folder[],
+	defaultSourceId: string | null
+): Source | undefined {
+	let source: Source | undefined;
+	if (ctx.sourceId) source = sources.find((s) => s.id === ctx.sourceId);
+	if (!source && ctx.folderGroupId) {
+		const g = folders.find((f) => f.id === ctx.folderGroupId);
+		if (g?.sourceId) source = sources.find((s) => s.id === g.sourceId);
+	}
+	return source ?? pickCreationSource(sources, defaultSourceId) ?? undefined;
+}
+
+async function createFromContext(
+	view: View,
+	ctx: CreateContext,
+	source: Source,
+	title: string
+): Promise<DocHandle> {
+	const doc = await DocHandle.createFromTitle(source, {
+		title: title.trim() || 'Untitled',
+		dir: ctx.folderGroupId ? folderPath(ctx.folderGroupId) : '',
+		groupIds: [...ctx.tagGroupIds],
+		properties: seedProperties(view.fields, ctx.fieldValues)
+	});
+	const createdAt = createMetaDate(ctx, 'created_at');
+	const updatedAt = createMetaDate(ctx, 'updated_at');
+	if (createdAt || updatedAt) {
+		await doc.saveMeta({
+			createdAt: createdAt ?? undefined,
+			updatedAt: updatedAt ?? undefined
+		});
+	}
+	return doc;
+}
+
+export async function createInView(view: View, todo = false): Promise<string | null> {
+	const tags = view.fields.find((f) => f.type === 'tags');
+	const face = ViewFace.create('list');
+	if (todo && tags) face.addBasicFilter({ field_id: tags.id, op: 'has_any', value: ['tag:todo'] });
+	const [sources, folders, defaultSourceId] = await Promise.all([
+		listSources(),
+		Folder.list(),
+		getDefaultSourceId()
+	]);
+	const ctx = deriveCreateContext(view, face, folders);
+	const source = sourceFor(ctx, sources, folders, defaultSourceId);
+	if (!source) return null;
+	return (await createFromContext(view, ctx, source, '')).id;
 }

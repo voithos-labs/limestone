@@ -584,8 +584,8 @@
 		position: relative;
 		z-index: 1;
 		margin-top: -32px;
-		margin-left: -24px;
-		padding: 8px 20px 6px 24px;
+		margin-left: -6px;
+		padding: 8px 20px 6px 6px;
 		background: var(--color-surface);
 		border-radius: 0 10px 0 0;
 	}
@@ -664,8 +664,8 @@
 		gap: 8px;
 		margin-bottom: 16px;
 		margin-left: -6px;
+		margin-right: 24px;
 		padding-left: 6px;
-		padding-right: 24px;
 		flex-shrink: 0;
 		/* Scroll horizontally in place when the row is too wide, no visible bar */
 		overflow-x: auto;

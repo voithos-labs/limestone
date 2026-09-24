@@ -37,17 +37,29 @@ class ContextMenuController {
 	// a function source is re-read while the menu is up, so checks and toggles stay current
 	private source = $state<CtxSource>([]);
 	minWidth = $state(168);
+	anchor: HTMLElement | null = $state(null);
 
 	get items(): CtxEntry[] {
 		return typeof this.source === 'function' ? this.source() : this.source;
 	}
 
-	show(x: number, y: number, items: CtxSource, opts: { minWidth?: number } = {}) {
+	show(
+		x: number,
+		y: number,
+		items: CtxSource,
+		opts: { minWidth?: number; anchor?: HTMLElement } = {}
+	) {
 		this.x = x;
 		this.y = y;
 		this.source = items;
 		this.minWidth = opts.minWidth ?? 168;
+		this.anchor = opts.anchor ?? null;
 		this.open = true;
+	}
+
+	showAt(anchor: HTMLElement, items: CtxSource, opts: { minWidth?: number } = {}) {
+		const r = anchor.getBoundingClientRect();
+		this.show(r.left, r.bottom + 4, items, { ...opts, anchor });
 	}
 
 	close() {

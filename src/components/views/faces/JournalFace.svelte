@@ -803,8 +803,10 @@
 	/* the whole navigator rides on one card: strip, spark line and month controls */
 	/* the navigator stays put while the entry scrolls under it; the chip tint is layered on
 	   the page colour so nothing shows through */
+	/* the card lines up with the bar above it: its left bleeds like the bar's emoji lead-in,
+	   its right edge stops where the search field's does */
 	.day-nav {
-		margin: -4px -8px 0;
+		margin: -4px 0 0 -6px;
 		padding: 6px 8px;
 		border-radius: 8px;
 		background: linear-gradient(var(--chip-bg), var(--chip-bg)), var(--color-surface);

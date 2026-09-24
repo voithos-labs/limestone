@@ -85,6 +85,7 @@
 			class:chip={listPrefixed(f.type)}
 			class:date={isDate(f)}
 			class:empty={!has}
+			class:tag-slot={f.type === 'tags' && !has}
 			class:editable={editable(f)}
 			role="presentation"
 			title={titleFor(f, row)}
@@ -100,7 +101,7 @@
 			{#if f.type === 'boolean'}
 				<span class="box" class:on={has}><Check size={10} strokeWidth={3} /></span>
 			{:else if !has}
-				<span class="none">—</span>
+				{#if f.type !== 'tags'}<span class="none">—</span>{/if}
 			{:else if compact && isDate(f)}
 				{formatDateCompact(
 					f.type === 'created_at'
@@ -143,6 +144,18 @@
 		border-radius: 6px;
 		background: var(--chip-bg);
 		font-size: 13px;
+	}
+
+	.value.tag-slot {
+		justify-content: center;
+		width: 28px;
+		height: 22px;
+		border-radius: 999px;
+		background: var(--chip-bg);
+	}
+
+	.value.tag-slot:hover {
+		background: var(--chip-bg-hover);
 	}
 
 	.value.editable {

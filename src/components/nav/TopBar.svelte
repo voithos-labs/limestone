@@ -23,7 +23,8 @@
 		Pin,
 		PinOff,
 		CircleX,
-		Scale
+		Scale,
+		Blocks
 	} from '@lucide/svelte';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
@@ -81,34 +82,29 @@
 					{ label: 'Add source', icon: Plus, action: () => onAddSource?.() }
 				]
 			},
+			{
+				label: 'Built-in',
+				icon: Blocks,
+				children: [
+					{ label: 'Home', icon: House, action: () => editor.openHome() },
+					...Object.values(BUILTIN_UNITS)
+						.filter((u) => !bmViews.some((v) => v.unit === u.unit))
+						.map((u): CtxEntry => {
+							const name = u.unit.slice('tag:'.length);
+							return {
+								label: name,
+								icon: getUnitIcon(u.unit),
+								action: () => openUnitView(u.unit, name),
+								aux: {
+									icon: SquareArrowOutUpRight,
+									label: 'Open in new tab',
+									action: () => openUnitView(u.unit, name, true)
+								}
+							};
+						})
+				]
+			},
 			{ divider: true },
-			{
-				label: 'Create new project',
-				icon: Plus,
-				action: () => openProjectSetup(editor)
-			},
-			{ divider: true, label: 'Built-in' },
-			{
-				label: 'Home',
-				icon: House,
-				action: () => editor.openHome()
-			},
-			...Object.values(BUILTIN_UNITS)
-				.filter((u) => !bmViews.some((v) => v.unit === u.unit))
-				.map((u): CtxEntry => {
-					const name = u.unit.slice('tag:'.length);
-					return {
-						label: name,
-						icon: getUnitIcon(u.unit),
-						action: () => openUnitView(u.unit, name),
-						aux: {
-							icon: SquareArrowOutUpRight,
-							label: 'Open in new tab',
-							action: () => openUnitView(u.unit, name, true)
-						}
-					};
-				}),
-			...(bmViews.length ? [{ divider: true, label: 'Projects' } as CtxEntry] : []),
 			...bmViews.map((v): CtxEntry => ({
 				label: v.slug,
 				icon: getViewIcon(v),
@@ -119,7 +115,9 @@
 					action: () => editor.openView(v)
 				},
 				action: () => editor.showPreview(TabState.forView(v))
-			}))
+			})),
+			...(bmViews.length ? [{ divider: true } as CtxEntry] : []),
+			{ label: 'New project', icon: Plus, action: () => openProjectSetup(editor) }
 		];
 	}
 
@@ -378,7 +376,7 @@
 				</span>
 			</div>
 		{/each}
-		<button class="new-tab-btn" title="New" tabindex="-1" onclick={() => palette.show('/new ')}>
+		<button class="new-tab-btn" title="New" tabindex="-1" onclick={() => palette.show()}>
 			<Plus size={15} />
 		</button>
 	</div>
