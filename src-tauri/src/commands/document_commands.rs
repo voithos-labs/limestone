@@ -1,4 +1,4 @@
-use crate::commands::source_commands::{source_root, source_uses_frontmatter};
+use crate::commands::source_commands::{doc_writes_meta, source_root};
 use crate::services::body::merge_body_tags;
 use crate::services::fs::{atomic_write, move_file, resolve_in_source, validate_file_name};
 use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
@@ -128,9 +128,9 @@ pub async fn set_document_tags(
     rel_path: String,
     tags: Vec<String>,
 ) -> Result<(), String> {
-    if !source_uses_frontmatter(&app, &source_id) {
+    if !doc_writes_meta(&app_data.db, &source_id, &rel_path).await? {
         return Err(
-            "This source stores documents without frontmatter, so tags can't be saved here.".into(),
+            "This folder doesn't store metadata in its files, so tags can't be saved here.".into(),
         );
     }
 
@@ -232,9 +232,9 @@ pub async fn save_document_meta(
     created_at: Option<String>,
     updated_at: Option<String>,
 ) -> Result<(), String> {
-    if !source_uses_frontmatter(&app, &source_id) {
+    if !doc_writes_meta(&app_data.db, &source_id, &rel_path).await? {
         return Err(
-            "This source stores documents without frontmatter, so per-document metadata can't be saved here."
+            "This folder doesn't store metadata in its files, so per-document metadata can't be saved here."
                 .into(),
         );
     }

@@ -17,6 +17,9 @@
 	"indexing": {
 		"frontmatter_read_buffer_size": 1024
 	},
+	"sources": {
+		"git_frontmatter_off": true
+	},
 	"updates": {
 		"auto_install": false
 	},

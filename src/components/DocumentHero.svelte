@@ -27,7 +27,9 @@
 		RefreshCw,
 		History,
 		ArrowLeft,
-		X
+		X,
+		GitBranch,
+		FileLock
 	} from '@lucide/svelte';
 	import { onMount, untrack, type Component } from 'svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -80,6 +82,8 @@
 	const draftTitle = untrack(() => handle.title);
 	let relPath = $state(untrack(() => handle.relPath));
 	let source = $state<Source>(untrack(() => handle.source));
+	let meta = $state(untrack(() => ({ writes: handle.writesMeta, repo: handle.inRepo })));
+	const syncMeta = () => (meta = { writes: handle.writesMeta, repo: handle.inRepo });
 	let folderList: Folder[] = $state([]);
 	let sources: Source[] = $state([]);
 	let tagList: Tag[] = $state(untrack(() => (loaded ? handle.tags : [])));
@@ -154,6 +158,8 @@
 		onSourceReconciled(async (sourceId) => {
 			if (sourceId !== source.id) return;
 			if (await handle.refreshPath()) relPath = handle.relPath;
+			await handle.refreshMeta();
+			syncMeta();
 		})
 	);
 
@@ -257,6 +263,7 @@
 				source = target;
 			}
 			relPath = newRel;
+			syncMeta();
 			folderList = await Folder.list();
 		} catch (e) {
 			console.error('move failed', e);
@@ -474,7 +481,22 @@
 						<span class="loc-part">{part}</span>
 					{/each}
 				</button>
-				{#if source.use_frontmatter}
+				{#if !meta.writes}
+					<span
+						class="props-chip meta-off"
+						title={meta.repo
+							? "Inside a Git repo: metadata isn't written to this file"
+							: "This folder doesn't store metadata in its files"}
+					>
+						{#if meta.repo}<GitBranch size={12} strokeWidth={1.75} />{:else}<FileLock
+								size={12}
+								strokeWidth={1.75}
+							/>{/if}
+					</span>
+					{#each tagList as t (t.id)}
+						<span class="tag"><Hash size={11} />{t.slug}</span>
+					{/each}
+				{:else}
 					<span
 						class="tags-chip"
 						class:has-tags={chipTags.length > 0}
@@ -519,7 +541,7 @@
 						{/if}
 					</span>
 				{/if}
-				{#if source.use_frontmatter && frontmatterError}
+				{#if meta.writes && frontmatterError}
 					<button
 						class="props-chip fm-error"
 						class:open={fmMenuOpen}
@@ -552,7 +574,7 @@
 			</div>
 		</div>
 
-		{#if source.use_frontmatter}
+		{#if meta.writes}
 			{#if isTodo}
 				<div class="todo-row"><TodoCard {handle} onRemove={removeTodo} /></div>
 			{/if}
@@ -926,6 +948,15 @@
 	.props-chip.open {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
+	}
+
+	.props-chip.meta-off {
+		cursor: default;
+	}
+
+	.props-chip.meta-off:hover {
+		background: transparent;
+		color: var(--color-ui-muted);
 	}
 
 	.props-chip.fm-error {

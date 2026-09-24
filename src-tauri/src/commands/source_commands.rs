@@ -26,12 +26,21 @@ fn load_sources(app: &AppHandle) -> Vec<Source> {
     load_sources_file(app).sources
 }
 
-pub(crate) fn source_uses_frontmatter(app: &AppHandle, source_id: &str) -> bool {
-    load_sources(app)
-        .iter()
-        .find(|s| s.id.to_string() == source_id)
-        .map(|s| s.use_frontmatter)
-        .unwrap_or(true)
+pub(crate) async fn doc_writes_meta(
+    db: &sqlx::SqlitePool,
+    source_id: &str,
+    rel_path: &str,
+) -> Result<bool, String> {
+    let writes: Option<bool> = sqlx::query_scalar(
+        "SELECT f.writes_meta FROM documents d JOIN folders f ON f.id = d.folder_id
+         WHERE d.source_id = ?1 AND d.rel_path = ?2",
+    )
+    .bind(source_id)
+    .bind(rel_path)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(writes.unwrap_or(true))
 }
 
 // todo: could probably cache sources to avoid reading the sources.json file on every save
@@ -57,19 +66,56 @@ fn frontmatter_buffer_size(app_data: &AppData) -> usize {
         .unwrap_or(512) as usize
 }
 
+pub(crate) const GIT_FRONTMATTER_OFF: &str = "sources.git_frontmatter_off";
+
+pub(crate) fn git_frontmatter_off(app_data: &AppData) -> bool {
+    let settings = app_data.settings.read().unwrap();
+    dot_get(&settings, GIT_FRONTMATTER_OFF)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true)
+}
+
+fn emit_meta_changed(app: &AppHandle, source: &Source) {
+    let _ = app.emit(
+        "source-reconciled",
+        crate::Reconciled {
+            source_id: &source.id.to_string(),
+            skipped: 0,
+            unreachable: !source.path.is_dir(),
+        },
+    );
+}
+
+pub(crate) fn refresh_folder_meta(app: &AppHandle, app_data: &AppData) {
+    let sources = load_sources(app);
+    let db = app_data.db.clone();
+    let git_off = git_frontmatter_off(app_data);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        for source in &sources {
+            match services::sync_folder_meta(&db, source, git_off).await {
+                Ok(()) => emit_meta_changed(&app, source),
+                Err(e) => eprintln!("folder meta refresh failed: {e}"),
+            }
+        }
+    });
+}
+
 async fn run_reconcile(
     app_handle: AppHandle,
     source: Source,
     pool: sqlx::SqlitePool,
     fm_buf_size: usize,
+    git_off: bool,
 ) {
     let source_id = source.id.to_string();
-    let (changed, skipped) = services::reconcile_source(&source, &pool, &["md"], fm_buf_size)
-        .await
-        .unwrap_or_else(|e| {
-            eprintln!("reconcile failed: {e}");
-            Default::default()
-        });
+    let (changed, skipped) =
+        services::reconcile_source(&source, &pool, &["md"], fm_buf_size, git_off)
+            .await
+            .unwrap_or_else(|e| {
+                eprintln!("reconcile failed: {e}");
+                Default::default()
+            });
     let _ = app_handle.emit(
         "source-reconciled",
         crate::Reconciled {
@@ -85,12 +131,12 @@ async fn run_reconcile(
 }
 
 fn spawn_reconcile(app: &AppHandle, source: &Source, app_data: &AppData) {
-    let fm_buf_size = frontmatter_buffer_size(app_data);
     tauri::async_runtime::spawn(run_reconcile(
         app.clone(),
         source.clone(),
         app_data.db.clone(),
-        fm_buf_size,
+        frontmatter_buffer_size(app_data),
+        git_frontmatter_off(app_data),
     ));
 }
 
@@ -147,7 +193,7 @@ pub fn create_source(
     title: String,
     note_location: Option<String>,
     asset_location: Option<String>,
-    use_frontmatter: bool,
+    use_frontmatter: Option<bool>,
 ) -> Result<Source, String> {
     let candidate = PathBuf::from(&path);
     let mut data = load_sources_file(&app);
@@ -190,15 +236,10 @@ pub fn check_sources(app: AppHandle) -> Vec<(String, bool)> {
 }
 
 #[tauri::command]
-pub fn is_git_repo(path: String) -> bool {
-    let mut dir: Option<&Path> = Some(Path::new(&path));
-    while let Some(d) = dir {
-        if d.join(".git").exists() {
-            return true;
-        }
-        dir = d.parent();
-    }
-    false
+pub async fn contains_git_repo(path: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || services::contains_git_repo(Path::new(&path)))
+        .await
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -225,6 +266,36 @@ pub fn update_source(
     source.note_location = note_location;
     source.asset_location = asset_location;
     save_sources_file(&app, &data)
+}
+
+#[tauri::command]
+pub async fn set_folder_frontmatter(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    id: Uuid,
+    dir: String,
+    value: Option<bool>,
+) -> Result<(), String> {
+    let mut data = load_sources_file(&app);
+    let source = data
+        .sources
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "source not found".to_string())?;
+    if dir.is_empty() {
+        source.use_frontmatter = value;
+    } else if let Some(v) = value {
+        source.frontmatter_dirs.insert(dir, v);
+    } else {
+        source.frontmatter_dirs.remove(&dir);
+    }
+    let source = source.clone();
+    save_sources_file(&app, &data)?;
+    services::sync_folder_meta(&app_data.db, &source, git_frontmatter_off(&app_data))
+        .await
+        .map_err(|e| e.to_string())?;
+    emit_meta_changed(&app, &source);
+    Ok(())
 }
 
 #[tauri::command]
@@ -453,10 +524,41 @@ pub async fn move_folder(
     std::fs::rename(&old_full, &new_full).map_err(|e| FolderOpError::io(&e))?;
 
     let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
+    rekey_frontmatter_dirs(&app, uuid, &old_rel_dir, &new_rel_dir);
     let source = find_source(&app, uuid).map_err(|_| FolderOpError::new("source_missing"))?;
-    let fm_buf_size = frontmatter_buffer_size(&app_data);
-    run_reconcile(app.clone(), source, app_data.db.clone(), fm_buf_size).await;
+    run_reconcile(
+        app.clone(),
+        source,
+        app_data.db.clone(),
+        frontmatter_buffer_size(&app_data),
+        git_frontmatter_off(&app_data),
+    )
+    .await;
     Ok(())
+}
+
+fn rekey_frontmatter_dirs(app: &AppHandle, id: Uuid, old_dir: &str, new_dir: &str) {
+    let mut data = load_sources_file(app);
+    let Some(source) = data.sources.iter_mut().find(|s| s.id == id) else {
+        return;
+    };
+    let old_prefix = format!("{old_dir}/");
+    let moved: Vec<(String, bool)> = source
+        .frontmatter_dirs
+        .iter()
+        .filter(|(k, _)| k.as_str() == old_dir || k.starts_with(&old_prefix))
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
+    if moved.is_empty() {
+        return;
+    }
+    for (k, v) in moved {
+        source.frontmatter_dirs.remove(&k);
+        source
+            .frontmatter_dirs
+            .insert(format!("{new_dir}{}", &k[old_dir.len()..]), v);
+    }
+    let _ = save_sources_file(app, &data);
 }
 
 /// The folder goes to the OS trash, never straight to nothing: a folder holds work the reader
@@ -486,8 +588,14 @@ pub async fn delete_folder(
 
     let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
     let source = find_source(&app, uuid).map_err(|_| FolderOpError::new("source_missing"))?;
-    let fm_buf_size = frontmatter_buffer_size(&app_data);
-    run_reconcile(app.clone(), source, app_data.db.clone(), fm_buf_size).await;
+    run_reconcile(
+        app.clone(),
+        source,
+        app_data.db.clone(),
+        frontmatter_buffer_size(&app_data),
+        git_frontmatter_off(&app_data),
+    )
+    .await;
     Ok(())
 }
 
