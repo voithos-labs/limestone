@@ -14,6 +14,8 @@ export interface FolderRow {
 	source_id: string;
 	slug: string;
 	parent_id: string | null;
+	repo: number;
+	writes_meta: number;
 	created_at: number;
 	updated_at: number;
 	accessed_at: number;
@@ -41,6 +43,8 @@ class Folder {
 	readonly slug: string;
 	readonly sourceId: string;
 	readonly parentId?: string;
+	readonly repo: boolean;
+	readonly writesMeta: boolean;
 	readonly createdAt: Date;
 	updatedAt: Date;
 	accessedAt: Date;
@@ -50,6 +54,8 @@ class Folder {
 		this.slug = row.slug;
 		this.sourceId = row.source_id;
 		this.parentId = row.parent_id ?? undefined;
+		this.repo = row.repo === 1;
+		this.writesMeta = row.writes_meta !== 0;
 		this.createdAt = new Date(row.created_at);
 		this.updatedAt = new Date(row.updated_at);
 		this.accessedAt = new Date(row.accessed_at);
@@ -67,6 +73,37 @@ class Folder {
 		const [row] = await select<FolderRow>(`SELECT * FROM folders WHERE id = ?1`, [id]);
 		if (!row) throw new Error(`Folder not found: ${id}`);
 		return new Folder(row);
+	}
+
+	static async metaAt(sourceId: string, dir: string): Promise<{ writes: boolean; repo: boolean }> {
+		const segs = dir.split('/').filter(Boolean);
+		const ids = [
+			folderId(sourceId, ''),
+			...segs.map((_, i) => folderId(sourceId, segs.slice(0, i + 1).join('/')))
+		];
+		const rows = await select<{ id: string; repo: number; writes_meta: number }>(
+			`SELECT id, repo, writes_meta FROM folders WHERE id IN (${ids.map(() => '?').join(', ')})`,
+			ids
+		);
+		const byId = new Map(rows.map((r) => [r.id, r]));
+		const nearest = ids.reverse().find((id) => byId.has(id));
+		return {
+			writes: nearest ? byId.get(nearest)!.writes_meta !== 0 : true,
+			repo: rows.some((r) => r.repo === 1)
+		};
+	}
+
+	async setWritesMeta(value: boolean, gitOff: boolean): Promise<void> {
+		const [row] = await select<{ parent: number | null }>(
+			`SELECT writes_meta AS parent FROM folders WHERE id = ?1`,
+			[this.parentId ?? '']
+		);
+		const inherited = (row?.parent ?? 1) !== 0 && !(gitOff && this.repo);
+		await invoke('set_folder_frontmatter', {
+			id: this.sourceId,
+			dir: folderIdPath(this.id),
+			value: value === inherited ? null : value
+		});
 	}
 
 	async touch(): Promise<void> {

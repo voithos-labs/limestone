@@ -86,7 +86,9 @@
 	const SOURCES = 'sources';
 	const SHORTCUTS = 'shortcuts';
 	const CUSTOM = 'custom';
-	const sectionIds = [GENERAL, ...SETTINGS_REGISTRY.map((c) => c.id), SHORTCUTS, SOURCES];
+	const registryTabs = SETTINGS_REGISTRY.filter((c) => c.id !== SOURCES);
+	const sourcesCategory = SETTINGS_REGISTRY.find((c) => c.id === SOURCES);
+	const sectionIds = [GENERAL, ...registryTabs.map((c) => c.id), SHORTCUTS, SOURCES];
 
 	let activeSection = $state('');
 	let contentEl: HTMLElement | null = $state(null);
@@ -133,7 +135,7 @@
 
 	const sectionItems: MenuItem[] = [
 		{ value: GENERAL, label: 'General', icon: SlidersHorizontal },
-		...SETTINGS_REGISTRY.map((c) => ({
+		...registryTabs.map((c) => ({
 			value: c.id,
 			label: c.label,
 			icon: c.id === 'appearance' ? Palette : c.id === 'editor' ? PenLine : undefined
@@ -602,6 +604,7 @@
 		<div class="item-info">
 			<div class="item-head">
 				<span class="item-label">
+					{#if def.icon}<def.icon size={13} strokeWidth={1.75} />{/if}
 					{#if category}<span class="item-cat">{category.label}:</span>
 					{/if}{def.label}
 				</span>
@@ -864,6 +867,13 @@
 						{/each}
 					</div>
 				{:else if activeSection === SOURCES}
+					{#if sourcesCategory}
+						<div class="settings-list sources-settings">
+							{#each sourcesCategory.settings as def (def.key)}
+								{@render settingItem(def, null)}
+							{/each}
+						</div>
+					{/if}
 					{#if sourceError}
 						<p class="source-error">{sourceError}</p>
 					{/if}
@@ -1439,6 +1449,9 @@
 	}
 
 	.item-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		font-size: 13px;
 		font-weight: 600;
 		color: var(--color-text-primary);
@@ -1789,6 +1802,16 @@
 		color: var(--color-accent);
 		background: var(--error-bg);
 		border-radius: var(--radius-ui);
+	}
+
+	.sources-settings {
+		margin-bottom: 16px;
+	}
+
+	.sources-settings .setting-item {
+		margin: 0;
+		padding: 12px 14px;
+		background: var(--chip-bg);
 	}
 
 	.sources-list {

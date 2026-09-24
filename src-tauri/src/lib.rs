@@ -9,7 +9,7 @@ mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 pub async fn create_pool(
     path: &std::path::Path,
@@ -164,6 +164,12 @@ pub fn run() {
                 services::dot_get(&initial_settings, "indexing.frontmatter_read_buffer_size")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(512) as usize;
+            let git_off = services::dot_get(
+                &initial_settings,
+                commands::source_commands::GIT_FRONTMATTER_OFF,
+            )
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
 
             // wait for db ready (probably done)
             let pool = tauri::async_runtime::block_on(db_handle)
@@ -210,13 +216,18 @@ pub fn run() {
                         tasks.push(tauri::async_runtime::spawn(async move {
                             let source_id = source.id.to_string();
                             // reconcile returns changes for deep indexing (FTS, in-body tags, etc.)
-                            let (changed, skipped) =
-                                services::reconcile_source(&source, &pool, &["md"], fm_buf_size)
-                                    .await
-                                    .unwrap_or_else(|e| {
-                                        eprintln!("Reconciliation failed: {e}");
-                                        Default::default()
-                                    });
+                            let (changed, skipped) = services::reconcile_source(
+                                &source,
+                                &pool,
+                                &["md"],
+                                fm_buf_size,
+                                git_off,
+                            )
+                            .await
+                            .unwrap_or_else(|e| {
+                                eprintln!("Reconciliation failed: {e}");
+                                Default::default()
+                            });
                             let _ = app_handle.emit(
                                 "source-reconciled",
                                 Reconciled {
@@ -244,7 +255,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::source_commands::get_sources,
-            commands::source_commands::is_git_repo,
+            commands::source_commands::set_folder_frontmatter,
+            commands::source_commands::contains_git_repo,
             commands::source_commands::get_source_by_id,
             commands::source_commands::update_source,
             commands::source_commands::create_source,

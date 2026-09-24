@@ -49,6 +49,8 @@ create table if not exists folders (
     source_id text not null references sources(id) on delete cascade,
     slug text not null, -- leaf name
     parent_id text references folders(id) on delete cascade,
+    repo integer not null default 0,
+    writes_meta integer not null default 1,
     created_at integer not null default (unixepoch() * 1000),
     updated_at integer not null default (unixepoch() * 1000),
     accessed_at integer not null default (unixepoch() * 1000)

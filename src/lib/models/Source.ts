@@ -8,7 +8,6 @@ export interface Source {
 	path: string;
 	created_at: string;
 	accessed_at: string;
-	use_frontmatter: boolean;
 	note_location: string;
 	asset_location: string;
 	ignore: string[];
@@ -71,7 +70,7 @@ export async function createSource(
 	path: string,
 	title: string,
 	config: SourceConfig,
-	useFrontmatter: boolean
+	useFrontmatter: boolean | null
 ): Promise<Source> {
 	const source = await invoke<Source>('create_source', {
 		path,
@@ -84,8 +83,10 @@ export async function createSource(
 	return source;
 }
 
-export async function isGitRepo(path: string): Promise<boolean> {
-	return await invoke<boolean>('is_git_repo', { path });
+export const GIT_FRONTMATTER_OFF = 'sources.git_frontmatter_off';
+
+export async function containsGitRepo(path: string): Promise<boolean> {
+	return await invoke<boolean>('contains_git_repo', { path });
 }
 
 export async function listDirs(path: string): Promise<string[]> {

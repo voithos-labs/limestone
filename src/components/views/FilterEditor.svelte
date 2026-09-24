@@ -3,7 +3,7 @@
 	import type { Component } from 'svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { FilterCompound, ViewField, FilterLeaf, FilterNode } from '$lib/models/View.svelte';
-	import { VIEW_FIELD_OPS } from '$lib/models/View.svelte';
+	import { METADATA_FIELD, VIEW_FIELD_OPS } from '$lib/models/View.svelte';
 	import Tag from '$lib/models/Tag';
 	import Folder, { folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { getSource, sourceName } from '$lib/models/Source';
@@ -42,7 +42,8 @@
 			: null
 	);
 
-	const fieldsById = $derived(new Map(view.fields.map((f: ViewField) => [f.id, f])));
+	const filterFields = $derived([...view.fields, METADATA_FIELD]);
+	const fieldsById = $derived(new Map(filterFields.map((f: ViewField) => [f.id, f])));
 	const leaves = $derived(
 		filter.children.filter((n: FilterNode): n is FilterLeaf => 'field_id' in n)
 	);
@@ -149,7 +150,7 @@
 
 	// what kind of value an op takes; the value survives an op change within one kind
 	function valueKind(field: ViewField | undefined, op: string): string {
-		if (op === 'is_empty' || op === 'is_not_empty') return 'none';
+		if (!opHasValue(op)) return 'none';
 		if (op === 'any_of' || op === 'has_all' || op === 'has_any' || op === 'has_none') return 'list';
 		if (field?.type === 'folder')
 			return op === 'in' || op === 'not_in' || op === 'is' ? 'folder' : 'text';
@@ -180,7 +181,7 @@
 	let pendingFocusLeaf: FilterLeaf | null = $state(null);
 
 	function addByField(fieldId: string) {
-		const field = view.fields.find((f: ViewField) => f.id === fieldId);
+		const field = fieldsById.get(fieldId);
 		if (!field) return;
 		const ops = VIEW_FIELD_OPS[field.type] ?? [];
 		const op = ops[0] ?? 'eq';
@@ -189,7 +190,7 @@
 	}
 
 	const fieldPickerItems = $derived(
-		view.fields.map((f: ViewField) => ({
+		filterFields.map((f: ViewField) => ({
 			value: f.id,
 			label: fieldLabel(f),
 			icon: getFieldIcon(f.type)

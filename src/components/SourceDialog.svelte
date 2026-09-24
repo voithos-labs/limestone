@@ -1,7 +1,8 @@
 <script lang="ts">
 	import {
+		containsGitRepo,
 		createSource,
-		isGitRepo,
+		GIT_FRONTMATTER_OFF,
 		listDirs,
 		listSources,
 		makeDir,
@@ -11,8 +12,10 @@
 		updateSourcePath,
 		type Source
 	} from '$lib/models/Source';
+	import { getSetting } from '$lib/models/Settings.svelte';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
 	import { ChevronDown, Folder, GitBranch, TriangleAlert } from '@lucide/svelte';
+	import { slide } from 'svelte/transition';
 	import Toggle from './Toggle.svelte';
 	import FolderValueEditor from './views/FolderValueEditor.svelte';
 
@@ -35,7 +38,8 @@
 	let assetLocation = $state('assets');
 	let useFrontmatter = $state(true);
 	let setAsDefault = $state(false);
-	let isGit = $state(false);
+	let gitOff = $state(false);
+	let hasRepo = $state(false);
 	let error = $state('');
 	let busy = $state(false);
 
@@ -55,7 +59,10 @@
 				assetLocation = 'assets';
 				useFrontmatter = true;
 				setAsDefault = false;
-				isGit = false;
+				hasRepo = false;
+				getSetting<boolean>(GIT_FRONTMATTER_OFF)
+					.then((v) => (gitOff = v ?? true))
+					.catch(() => {});
 				listSources()
 					.then((ss) => (setAsDefault = ss.length === 0))
 					.catch(() => {});
@@ -70,8 +77,12 @@
 			folderPath = sel;
 			noteLocation = '';
 			assetLocation = 'assets';
-			isGit = await isGitRepo(sel);
-			useFrontmatter = !isGit;
+			hasRepo = false;
+			containsGitRepo(sel)
+				.then((found) => {
+					if (folderPath === sel) hasRepo = found;
+				})
+				.catch(() => {});
 		}
 	}
 
@@ -131,7 +142,12 @@
 					return;
 				}
 				const title = folderPath.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
-				const created = await createSource(folderPath, title, config, useFrontmatter);
+				const created = await createSource(
+					folderPath,
+					title,
+					config,
+					useFrontmatter ? null : false
+				);
 				if (setAsDefault) await setDefaultSource(created.id);
 			} else if (source) {
 				await updateSource(source.id, config);
@@ -165,7 +181,7 @@
 			</h3>
 
 			{#if mode === 'edit' && missing}
-				<div class="missing-card">
+				<div class="info-card">
 					<TriangleAlert size={15} strokeWidth={1.75} />
 					<div class="mc-body">
 						<span class="mc-title">Source folder unavailable</span>
@@ -183,7 +199,12 @@
 			<label class="field">
 				<span class="label">Folder</span>
 				{#if mode === 'create'}
-					<button class="folder-pick" type="button" onclick={chooseFolder}>
+					<button
+						class="folder-pick"
+						class:empty={!folderPath}
+						type="button"
+						onclick={chooseFolder}
+					>
 						<Folder size={14} />
 						<span class="folder-text" class:placeholder={!folderPath}
 							>{folderPath || 'Choose folder…'}</span
@@ -224,27 +245,39 @@
 				</button>
 			</label>
 
-			{#if mode === 'create'}
-				<div class="fm-field">
-					{#if isGit}
-						<span class="git-note"><GitBranch size={12} /> Off by default for Git repos</span>
+			{#if mode === 'create' && folderPath}
+				<div class="options" transition:slide={{ duration: 160 }}>
+					{#if useFrontmatter && gitOff && hasRepo}
+						<div class="info-card">
+							<GitBranch size={15} strokeWidth={1.75} />
+							<div class="mc-body">
+								<span class="mc-title">Git repo detected</span>
+								<span class="mc-text">
+									Based on your settings, files inside Git repos won't have metadata written to
+									them.
+								</span>
+							</div>
+						</div>
 					{/if}
-					<div class="toggle-row">
-						<Toggle bind:checked={useFrontmatter} />
-						<span class="toggle-text">Store metadata in YAML frontmatter</span>
-					</div>
-					{#if !useFrontmatter}
-						<p class="hint">
-							Documents can't have custom properties including a static id, which means: no edit
-							history and lower functionality within views.
-						</p>
-					{/if}
-				</div>
 
-				<div class="fm-field">
-					<div class="toggle-row">
+					<div class="option-card">
+						<div class="oc-text">
+							<span class="oc-title">Store metadata in YAML frontmatter</span>
+							<span class="oc-desc">
+								{useFrontmatter
+									? "Tags and properties live in each note's file."
+									: 'No properties, stable ids or edit history.'}
+							</span>
+						</div>
+						<Toggle bind:checked={useFrontmatter} />
+					</div>
+
+					<div class="option-card">
+						<div class="oc-text">
+							<span class="oc-title">Set as default source</span>
+							<span class="oc-desc">New notes are created here by default.</span>
+						</div>
 						<Toggle bind:checked={setAsDefault} />
-						<span class="toggle-text">Set as default source for new documents</span>
 					</div>
 				</div>
 			{/if}
@@ -314,7 +347,7 @@
 		color: var(--color-text-primary);
 	}
 
-	.missing-card {
+	.info-card {
 		display: flex;
 		align-items: flex-start;
 		gap: 10px;
@@ -325,7 +358,7 @@
 		color: var(--color-ui-muted);
 	}
 
-	.missing-card > :global(svg) {
+	.info-card > :global(svg) {
 		flex-shrink: 0;
 		margin-top: 2px;
 	}
@@ -395,7 +428,15 @@
 	}
 
 	.folder-text.placeholder {
-		color: var(--color-ui-muted);
+		color: var(--color-text-primary);
+	}
+
+	.folder-pick.empty {
+		color: var(--color-text-primary);
+	}
+
+	.folder-pick.empty:hover {
+		background: var(--chip-bg);
 	}
 
 	.folder-text.grow {
@@ -415,34 +456,41 @@
 		cursor: default;
 	}
 
-	.fm-field {
-		margin-bottom: 14px;
+	.options {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin: 6px 0 18px;
 	}
 
-	.git-note {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		margin-bottom: 6px;
-		font-size: 12px;
-		color: var(--color-ui-muted);
+	.options .info-card {
+		margin-bottom: 0;
 	}
 
-	.toggle-row {
+	.option-card {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		justify-content: space-between;
+		gap: 16px;
+		padding: 10px 12px;
+		border-radius: 8px;
+		background: var(--chip-bg);
 	}
 
-	.toggle-text {
+	.oc-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	.oc-title {
 		font-size: 13px;
 		color: var(--color-text-primary);
 	}
 
-	.hint {
-		margin: 6px 0 0;
+	.oc-desc {
 		font-size: 12px;
-		line-height: 1.4;
 		color: var(--color-ui-muted);
 	}
 

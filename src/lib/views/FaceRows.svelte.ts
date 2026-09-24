@@ -204,6 +204,10 @@ export class FaceRows {
 	// a unit's fields count only on the unit's members: a todo checkbox on a note without
 	// the tag is inert, so it's drawn but not live. Folder units are always satisfied here,
 	// their views only ever hold their own subtree
+	writable(row: MemberRow): boolean {
+		return row.writes_meta !== 0;
+	}
+
 	memberOf(row: MemberRow, field: ViewField): boolean {
 		const unit = field.unit;
 		if (!unit || !unit.startsWith('tag:')) return true;
@@ -300,6 +304,7 @@ export class FaceRows {
 	}
 
 	toggle(row: MemberRow, field: ViewField): void {
+		if (!this.writable(row)) return;
 		this.writeCell(row, field, rawStatefulValue(row, field) !== true);
 	}
 

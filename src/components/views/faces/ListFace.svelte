@@ -570,7 +570,7 @@
 						onfocus={() => (focusIdx = i)}
 						oncontextmenu={(e) => editors.menu(e, row.id)}
 					>
-						{#if checkField && member}
+						{#if checkField && member && rows.writable(row)}
 							<button
 								class="check"
 								class:done
@@ -587,7 +587,11 @@
 								<span class="box"><Check size={12} strokeWidth={3} /></span>
 							</button>
 						{:else if checkField}
-							<span class="check inert" title="Not a todo"><span class="box"></span></span>
+							<span
+								class="check inert"
+								title={member ? "This folder doesn't store metadata in its files" : 'Not a todo'}
+								><span class="box"></span></span
+							>
 						{/if}
 						{#if renamingId === row.id}
 							<span
