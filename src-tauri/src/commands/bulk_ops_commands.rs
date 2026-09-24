@@ -1,4 +1,4 @@
-use crate::commands::source_commands::{source_root, source_uses_frontmatter};
+use crate::commands::source_commands::source_root;
 use crate::services::bulk_ops::{BulkAction, BulkOp, BulkResult};
 use crate::AppData;
 use serde_json::Value;
@@ -11,15 +11,9 @@ async fn run(
     action: BulkAction,
 ) -> Result<BulkResult, String> {
     let root = source_root(app, source_id)?;
-    let use_frontmatter = source_uses_frontmatter(app, source_id);
     app_data
         .bulk
-        .run(
-            &app_data.db,
-            app,
-            &root,
-            BulkOp::new(source_id, action, use_frontmatter),
-        )
+        .run(&app_data.db, app, &root, BulkOp::new(source_id, action))
         .await
 }
 
@@ -49,9 +43,6 @@ pub async fn bulk_set_view_field(
     value: Value,
     doc_ids: Vec<String>,
 ) -> Result<BulkResult, String> {
-    if !source_uses_frontmatter(&app, &source_id) {
-        return Err("This source stores documents without frontmatter, so per-document metadata can't be saved here.".into());
-    }
     run(
         &app_data,
         &app,

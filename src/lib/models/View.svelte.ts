@@ -187,6 +187,7 @@ export type ViewFieldType =
 	| 'boolean'
 	| 'select'
 	| 'multiselect' // might prune
+	| 'metadata'
 	| (typeof BUILTIN_FIELD_TYPES)[number];
 
 // user-creatable stateful field types (e.g. due-date, etc.)
@@ -201,8 +202,15 @@ export const CREATABLE_FIELD_TYPES = [
 
 // does this add a prop to documents? If not it is derived (mapped)
 export function isDerived(type: ViewFieldType): boolean {
-	return (BUILTIN_FIELD_TYPES as readonly string[]).includes(type);
+	return (BUILTIN_FIELD_TYPES as readonly string[]).includes(type) || type === 'metadata';
 }
+
+export const METADATA_FIELD: ViewField = {
+	id: 'synthetic:metadata',
+	name: 'metadata',
+	type: 'metadata',
+	config: {}
+};
 
 // ── Built-in units ───────────────────────────────────────────────────────────────────
 
@@ -376,6 +384,7 @@ export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	boolean: ['eq'],
 	select: ['eq', 'neq', 'any_of', 'is_empty', 'is_not_empty'],
 	multiselect: ['contains', 'not_contains', 'has_all', 'is_empty', 'is_not_empty'], // might prune multiselect
+	metadata: ['writable', 'read_only'],
 	// BUILT-INS
 	title: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
 	tags: ['has_any', 'has_all', 'has_none'],
@@ -576,7 +585,12 @@ function compileDateOnlyLeaf(
 	}
 }
 
+const WRITES_META_SQL = `COALESCE((SELECT f.writes_meta FROM folders f WHERE f.id = d.folder_id), 1)`;
+
 function compileLeafSql(field: ViewField, op: string, value: unknown): CompiledFilter {
+	if (field.type === 'metadata') {
+		return { sql: `${WRITES_META_SQL} = ${op === 'read_only' ? 0 : 1}`, params: [] };
+	}
 	if (field.type === 'folder') return compileFolderLeaf(op, value);
 	if (field.type === 'tags') return compileTagsLeaf(op, value);
 
@@ -682,9 +696,13 @@ function compileLeafSql(field: ViewField, op: string, value: unknown): CompiledF
 	}
 }
 
+export function opTakesValue(op: string): boolean {
+	return !['is_empty', 'is_not_empty', 'writable', 'read_only'].includes(op);
+}
+
 // a pred leaf only constrains results once it has not null val
 export function isLeafActive(op: string, value: unknown): boolean {
-	if (op === 'is_empty' || op === 'is_not_empty') return true;
+	if (!opTakesValue(op)) return true;
 	if (value === null || value === undefined) return false;
 	if (typeof value === 'string') return value !== '';
 	if (Array.isArray(value)) return value.length > 0;
@@ -718,7 +736,7 @@ function pruneFieldFromFilter(node: FilterCompound, fieldId: string): void {
 
 function compileFilter(filter: FilterNode | null, fields: ViewField[]): CompiledFilter {
 	if (!filter) return { sql: '', params: [] };
-	const fieldsById = new Map(fields.map((f) => [f.id, f]));
+	const fieldsById = new Map([...fields, METADATA_FIELD].map((f) => [f.id, f]));
 	return compileNode(filter, fieldsById);
 }
 
@@ -757,6 +775,7 @@ export interface MemberRow {
 	updated_at: number;
 	properties: string;
 	source_id: string;
+	writes_meta: number;
 }
 
 interface ViewJSON {
@@ -1175,7 +1194,8 @@ class View {
 		const sort = opts?.face?.sort ?? [];
 		const orderBy = sort.length ? compileSort(sort, this.fields) : '';
 
-		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.properties, d.source_id
+		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.properties, d.source_id,
+				${WRITES_META_SQL} AS writes_meta
 			FROM documents d
 			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
 
@@ -1310,9 +1330,9 @@ export async function renameUnitViewPrefix(oldPrefix: string, newPrefix: string)
 export async function bulkPerSource(
 	cmd: string,
 	args: Record<string, unknown>,
-	opts: { frontmatterOnly?: boolean; silent?: boolean } = {}
+	opts: { silent?: boolean } = {}
 ): Promise<{ source: Source; result: BulkResult }[]> {
-	const sources = (await listSources()).filter((s) => !opts.frontmatterOnly || s.use_frontmatter);
+	const sources = await listSources();
 	const results: { source: Source; result: BulkResult }[] = [];
 	for (const s of sources) {
 		results.push({ source: s, result: await invoke<BulkResult>(cmd, { sourceId: s.id, ...args }) });

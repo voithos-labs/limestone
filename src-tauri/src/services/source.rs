@@ -40,19 +40,15 @@ use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::UNIX_EPOCH;
 use uuid::Uuid;
 
 // ── Model ────────────────────────────────────────────────────────────────────────────
-
-// annoying derive helper
-fn default_true() -> bool {
-    true
-}
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Source {
@@ -61,8 +57,10 @@ pub struct Source {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
     pub accessed_at: DateTime<Utc>,
-    #[serde(default = "default_true")]
-    pub use_frontmatter: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use_frontmatter: Option<bool>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub frontmatter_dirs: BTreeMap<String, bool>,
     #[serde(default)]
     pub note_location: String,
     #[serde(default = "default_asset_location")]
@@ -80,7 +78,8 @@ impl Source {
             id: Uuid::new_v4(),
             created_at: now,
             accessed_at: now,
-            use_frontmatter: true,
+            use_frontmatter: None,
+            frontmatter_dirs: BTreeMap::new(),
             note_location: String::new(),
             asset_location: default_asset_location(),
             ignore: default_ignore(),
@@ -128,7 +127,7 @@ pub fn create_source(
     path: PathBuf,
     note_location: Option<String>,
     asset_location: Option<String>,
-    use_frontmatter: bool,
+    use_frontmatter: Option<bool>,
 ) -> Result<Source, std::io::Error> {
     fs::create_dir_all(&path)?;
     let title = title.unwrap_or_else(|| {
@@ -224,6 +223,7 @@ fn keep_dir(rel_path: &str, ignore: Option<&globset::GlobSet>) -> bool {
 pub struct WalkResult {
     pub files: Vec<(String, i64)>,
     pub dirs: Vec<String>,
+    pub repos: HashSet<String>,
     pub skipped: usize,
 }
 
@@ -237,13 +237,25 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
 
     let prune_ignore = ignore.clone();
     let prune_root = source_path.clone();
+    let found_repos = Arc::new(Mutex::new(HashSet::new()));
+    let repo_sink = found_repos.clone();
     let walker = jwalk::WalkDir::new(source_path)
         .sort(true)
-        .process_read_dir(move |_depth, _path, _state, children| {
+        .skip_hidden(false)
+        .process_read_dir(move |_depth, path, _state, children| {
+            let is_repo = children
+                .iter()
+                .any(|e| e.as_ref().is_ok_and(|e| e.file_name == ".git"));
+            if is_repo {
+                if let Ok(rel) = path.strip_prefix(&prune_root) {
+                    let rel_path = rel.to_string_lossy().replace('\\', "/");
+                    repo_sink.lock().unwrap().insert(rel_path);
+                }
+            }
             children.retain(|entry| {
                 let Ok(entry) = entry else { return true };
                 if !entry.file_type().is_dir() {
-                    return true;
+                    return !entry.file_name.to_string_lossy().starts_with('.');
                 }
                 let path = entry.path();
                 let Ok(rel) = path.strip_prefix(&prune_root) else {
@@ -317,11 +329,29 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
         files.push((rel_path, mtime));
     }
 
+    let repos = std::mem::take(&mut *found_repos.lock().unwrap());
     WalkResult {
         files,
         dirs,
+        repos,
         skipped,
     }
+}
+
+pub fn contains_git_repo(path: &Path) -> bool {
+    jwalk::WalkDir::new(path)
+        .skip_hidden(false)
+        .process_read_dir(|_depth, _path, _state, children| {
+            children.retain(|entry| {
+                entry.as_ref().is_ok_and(|e| {
+                    e.file_name == ".git"
+                        || (e.file_type().is_dir() && !e.file_name.to_string_lossy().starts_with('.'))
+                })
+            });
+        })
+        .into_iter()
+        .flatten()
+        .any(|e| e.file_name == ".git")
 }
 
 /// Diff fs and sqlite documents
@@ -778,8 +808,8 @@ pub(crate) async fn upsert_folder(
     let (parent, slug) = folder_parent_and_slug(path);
     let parent_id = parent.map(|p| folder_id(source_id, p));
     sqlx::query(
-        "INSERT INTO folders (id, source_id, slug, parent_id)
-         VALUES (?1, ?2, ?3, ?4)
+        "INSERT INTO folders (id, source_id, slug, parent_id, writes_meta)
+         VALUES (?1, ?2, ?3, ?4, COALESCE((SELECT writes_meta FROM folders WHERE id = ?4), 1))
          ON CONFLICT DO NOTHING",
     )
     .bind(&id)
@@ -797,11 +827,17 @@ pub(crate) async fn sync_folder_dirs(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     source_id: &str,
     dirs: &[String],
+    repos: &HashSet<String>,
 ) -> sqlx::Result<()> {
     let mut expected: HashSet<String> = HashSet::with_capacity(dirs.len() + 1);
-    expected.insert(upsert_folder(tx, source_id, "").await?);
-    for path in dirs {
-        expected.insert(upsert_folder(tx, source_id, path).await?);
+    for path in std::iter::once("").chain(dirs.iter().map(String::as_str)) {
+        let id = upsert_folder(tx, source_id, path).await?;
+        sqlx::query("UPDATE folders SET repo = ?2 WHERE id = ?1 AND repo <> ?2")
+            .bind(&id)
+            .bind(repos.contains(path))
+            .execute(&mut **tx)
+            .await?;
+        expected.insert(id);
     }
 
     let existing: Vec<String> = sqlx::query_scalar("SELECT id FROM folders WHERE source_id = ?1")
@@ -818,6 +854,48 @@ pub(crate) async fn sync_folder_dirs(
     }
 
     Ok(())
+}
+
+pub(crate) async fn sync_folder_meta(
+    db: &SqlitePool,
+    source: &Source,
+    git_off: bool,
+) -> sqlx::Result<()> {
+    let source_id = source.id.to_string();
+    let prefix = folder_id(&source_id, "");
+    let mut rows: Vec<(String, bool, bool)> =
+        sqlx::query_as("SELECT id, repo, writes_meta FROM folders WHERE source_id = ?1")
+            .bind(&source_id)
+            .fetch_all(db)
+            .await?;
+    rows.sort_by_key(|(id, ..)| id.len());
+
+    let mut resolved: HashMap<String, bool> = HashMap::with_capacity(rows.len());
+    let mut tx = db.begin().await?;
+    for (id, repo, current) in rows {
+        let Some(path) = id.strip_prefix(&prefix) else {
+            continue;
+        };
+        let (parent, _) = folder_parent_and_slug(path);
+        let explicit = if path.is_empty() {
+            source.use_frontmatter
+        } else {
+            source.frontmatter_dirs.get(path).copied()
+        };
+        let inherited = parent
+            .and_then(|p| resolved.get(p).copied())
+            .unwrap_or(true);
+        let writes = explicit.unwrap_or(inherited && !(git_off && repo));
+        if writes != current {
+            sqlx::query("UPDATE folders SET writes_meta = ?2 WHERE id = ?1")
+                .bind(&id)
+                .bind(writes)
+                .execute(&mut *tx)
+                .await?;
+        }
+        resolved.insert(path.to_string(), writes);
+    }
+    tx.commit().await
 }
 
 /// Sync tags from frontmatter into the tags table (tags are global)
@@ -928,6 +1006,7 @@ pub async fn reconcile_source(
     db: &SqlitePool,
     extensions: &[&str],
     frontmatter_buffer_size: usize,
+    git_off: bool,
 ) -> sqlx::Result<(Vec<(String, String)>, usize)> {
     use std::time::Instant;
     let t_total = Instant::now();
@@ -958,12 +1037,14 @@ pub async fn reconcile_source(
     let WalkResult {
         files: fs_entries,
         dirs: fs_dirs,
+        repos,
         skipped,
     } = walk_source(source, extensions);
 
     let mut tx = db.begin().await?;
-    sync_folder_dirs(&mut tx, source_id, &fs_dirs).await?;
+    sync_folder_dirs(&mut tx, source_id, &fs_dirs, &repos).await?;
     tx.commit().await?;
+    sync_folder_meta(db, source, git_off).await?;
 
     let db_rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT id, rel_path, coalesce(mtime, 0) FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",

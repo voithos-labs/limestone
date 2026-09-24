@@ -150,7 +150,8 @@ const PRETTY_FIELD: Record<string, string> = {
 	tags: 'Tags',
 	folder: 'Location',
 	created_at: 'Created',
-	updated_at: 'Updated'
+	updated_at: 'Updated',
+	metadata: 'Properties'
 };
 
 // built-ins show a pretty label until renamed then the user's name wins

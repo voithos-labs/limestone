@@ -34,6 +34,7 @@ import { toasts } from '$lib/toasts.svelte';
 import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
 import Tag, { tagSlug, type TagRow } from './Tag';
+import Folder from './Folder';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,10 @@ function yamlErrorText(e: unknown): string {
 	const reason = err?.reason ?? err?.message ?? 'invalid YAML';
 	const line = err?.mark?.line;
 	return typeof line === 'number' ? `${reason} (line ${line + 2})` : reason;
+}
+
+function dirOf(relPath: string): string {
+	return relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : '';
 }
 
 function validDate(v: unknown): Date | undefined {
@@ -102,6 +107,9 @@ class DocHandle {
 	accessedAt: Date;
 	deletedAt?: Date; // todo: handle deleted cases, e.g. load from id, where you return a stub
 	frontmatterError: string | null = null;
+	writesMeta = true;
+	inRepo = false;
+	private fence = '';
 
 	private constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;
@@ -125,7 +133,8 @@ class DocHandle {
 		properties: Record<string, unknown> = {}
 	): Promise<DocHandle> {
 		const id = uuidv4();
-		if (!source.use_frontmatter) properties = {};
+		const meta = await Folder.metaAt(source.id, dirOf(relPath));
+		if (!meta.writes) properties = {};
 
 		// insert new doc stub
 		await execute(
@@ -143,7 +152,8 @@ class DocHandle {
 
 		const doc = new DocHandle(row, source);
 		doc.hasFile = false;
-		if (groupIds.length > 0 && source.use_frontmatter) {
+		doc.applyMeta(meta);
+		if (groupIds.length > 0 && meta.writes) {
 			doc.tags = await Tag.fromIDs(groupIds);
 		}
 		return doc;
@@ -172,9 +182,8 @@ class DocHandle {
 		const source = await getSource(row.source_id);
 		const doc = new DocHandle(row, source);
 		const tags: TagRow[] = row.tags_json ? JSON.parse(row.tags_json) : [];
-		doc.tags = source.use_frontmatter
-			? tags.filter((r) => r.id !== null).map((r) => new Tag(r))
-			: [];
+		doc.tags = tags.filter((r) => r.id !== null).map((r) => new Tag(r));
+		doc.applyMeta(await Folder.metaAt(source.id, dirOf(row.rel_path)));
 		return doc;
 	}
 
@@ -286,8 +295,8 @@ class DocHandle {
 	 * Serialize frontmatter + body into a full file string.
 	 */
 	async serialize(body: string, rebuildFrontmatter = false): Promise<string> {
-		const source = await getSource(this.source.id);
-		if (source.use_frontmatter === false) return body;
+		await this.refreshMeta();
+		if (!this.writesMeta) return this.fence + body;
 		if (this.frontmatterError && !rebuildFrontmatter) return body;
 
 		const fm = this.toFrontmatter();
@@ -348,7 +357,8 @@ class DocHandle {
 			return '';
 		}
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
-		this.frontmatterError = this.source.use_frontmatter === false ? null : error;
+		this.frontmatterError = this.writesMeta ? error : null;
+		this.fence = raw.slice(0, raw.length - body.length);
 
 		if (frontmatter) {
 			const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
@@ -392,8 +402,9 @@ class DocHandle {
 		} catch {
 			return;
 		}
-		const { frontmatter, error } = DocHandle.deserialize(raw);
-		this.frontmatterError = this.source.use_frontmatter === false ? null : error;
+		const { frontmatter, body, error } = DocHandle.deserialize(raw);
+		this.frontmatterError = this.writesMeta ? error : null;
+		this.fence = raw.slice(0, raw.length - body.length);
 		if (!frontmatter) return;
 		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
 		this.properties = remaining;
@@ -414,6 +425,15 @@ class DocHandle {
 		});
 		this.hasFile = true;
 		this.recordHistory(body);
+	}
+
+	private applyMeta(meta: { writes: boolean; repo: boolean }): void {
+		this.writesMeta = meta.writes;
+		this.inRepo = meta.repo;
+	}
+
+	async refreshMeta(): Promise<void> {
+		this.applyMeta(await Folder.metaAt(this.source.id, dirOf(this._relPath)));
 	}
 
 	private async ensureFile(): Promise<void> {
@@ -457,6 +477,7 @@ class DocHandle {
 			newRelPath
 		});
 		this._relPath = newRelPath;
+		await this.refreshMeta();
 		await this.updateLinks(oldRelPath);
 	}
 
@@ -484,6 +505,7 @@ class DocHandle {
 		});
 		this._relPath = newRelPath;
 		(this as { source: Source }).source = newSource;
+		await this.refreshMeta();
 	}
 
 	/**

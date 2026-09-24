@@ -20,7 +20,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{AssertSqlSafe, SqlitePool};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -68,25 +68,17 @@ pub(crate) struct BulkOp {
     source_id: String,
     #[serde(default)]
     rel_paths: Option<Vec<String>>,
-    #[serde(default = "default_true")]
-    use_frontmatter: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    fm_blocked: Vec<String>,
     action: BulkAction,
 }
 
-fn default_true() -> bool {
-    true
-}
-
 impl BulkOp {
-    pub(crate) fn new(
-        source_id: impl Into<String>,
-        action: BulkAction,
-        use_frontmatter: bool,
-    ) -> Self {
+    pub(crate) fn new(source_id: impl Into<String>, action: BulkAction) -> Self {
         Self {
             source_id: source_id.into(),
             rel_paths: None,
-            use_frontmatter,
+            fm_blocked: Vec::new(),
             action,
         }
     }
@@ -228,6 +220,18 @@ impl BulkRunner {
         op.action.validate()?;
         let _guard = self.inner.lock.lock().await;
         let rel_paths = fetch_rel_paths(db, &op).await?;
+        let blocked = fetch_blocked_paths(db, &op.source_id).await?;
+        op.fm_blocked = rel_paths
+            .iter()
+            .filter(|p| blocked.contains(p.as_str()))
+            .cloned()
+            .collect();
+        if matches!(op.action, BulkAction::SetViewField { .. }) && !op.fm_blocked.is_empty() {
+            return Err(
+                "Some of these notes are in a folder that doesn't store metadata in its files."
+                    .into(),
+            );
+        }
         if !rel_paths.is_empty() && std::fs::metadata(source_path).is_err() {
             return Ok(BulkResult {
                 touched: 0,
@@ -354,6 +358,12 @@ async fn execute(
 ) -> Result<BulkResult, String> {
     let source_id = &op.source_id;
     let rel_paths = op.rel_paths.clone().unwrap_or_default();
+    let blocked: Arc<HashSet<String>> = Arc::new(op.fm_blocked.iter().cloned().collect());
+    let fm_paths: Vec<String> = rel_paths
+        .iter()
+        .filter(|p| !blocked.contains(*p))
+        .cloned()
+        .collect();
     match &op.action {
         BulkAction::SetViewField {
             view_slug,
@@ -379,7 +389,7 @@ async fn execute(
             }
 
             let (slug, field, value) = (view_slug.clone(), field_name.clone(), value.clone());
-            write_files(app, source_path, rel_paths, move |path| {
+            write_files(app, source_path, fm_paths, move |_, path| {
                 frontmatter::rewrite_frontmatter(path, |fm| {
                     frontmatter::set_view_field(fm, &slug, &field, value.clone());
                 })
@@ -406,7 +416,7 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (slug, from, to) = (view_slug.clone(), old_name.clone(), new_name.clone());
-            write_files(app, source_path, rel_paths, move |path| {
+            write_files(app, source_path, fm_paths, move |_, path| {
                 frontmatter::rewrite_frontmatter(path, |fm| {
                     frontmatter::rename_view_field(fm, &slug, &from, &to);
                 })
@@ -430,7 +440,7 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (slug, field) = (view_slug.clone(), field_name.clone());
-            write_files(app, source_path, rel_paths, move |path| {
+            write_files(app, source_path, fm_paths, move |_, path| {
                 frontmatter::rewrite_frontmatter(path, |fm| {
                     frontmatter::remove_view_field(fm, &slug, &field);
                 })
@@ -463,7 +473,7 @@ async fn execute(
                 old_value.clone(),
                 new_value.clone(),
             );
-            write_files(app, source_path, rel_paths, move |path| {
+            write_files(app, source_path, fm_paths, move |_, path| {
                 frontmatter::rewrite_frontmatter(path, |fm| {
                     frontmatter::rename_view_option(fm, &slug, &field, &from, &to);
                 })
@@ -496,7 +506,7 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (from, to) = (old_prefix.clone(), new_prefix.clone());
-            write_files(app, source_path, rel_paths, move |path| {
+            write_files(app, source_path, fm_paths, move |_, path| {
                 frontmatter::rewrite_frontmatter(path, |fm| {
                     frontmatter::rename_view_prefix(fm, &from, &to);
                 })
@@ -564,11 +574,11 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (from, to) = (old_slug.clone(), new_slug.clone());
-            let use_frontmatter = op.use_frontmatter;
-            write_files(app, source_path, rel_paths, move |path| {
+            let blocked = blocked.clone();
+            write_files(app, source_path, rel_paths, move |rel, path| {
                 frontmatter::rewrite_document(
                     path,
-                    use_frontmatter.then_some(&|fm: &mut Value| {
+                    (!blocked.contains(rel)).then_some(&|fm: &mut Value| {
                         frontmatter::rename_tag(fm, &from, &to);
                         frontmatter::rename_unit_key(fm, &from, &to);
                     }),
@@ -599,11 +609,12 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let slug = slug.clone();
-            let use_frontmatter = op.use_frontmatter;
-            write_files(app, source_path, rel_paths, move |path| {
+            let blocked = blocked.clone();
+            write_files(app, source_path, rel_paths, move |rel, path| {
                 frontmatter::rewrite_document(
                     path,
-                    use_frontmatter.then_some(&|fm: &mut Value| frontmatter::remove_tag(fm, &slug)),
+                    (!blocked.contains(rel))
+                        .then_some(&|fm: &mut Value| frontmatter::remove_tag(fm, &slug)),
                     &|text| body::rewrite_tags(text, &slug, None),
                 )
             })
@@ -611,7 +622,7 @@ async fn execute(
         }
         BulkAction::RewriteLinks { replacements } => {
             let replacements = replacements.clone();
-            write_files(app, source_path, rel_paths, move |path| {
+            write_files(app, source_path, rel_paths, move |_, path| {
                 frontmatter::rewrite_document(path, None, &|text| {
                     body::rewrite_links(text, &replacements)
                 })
@@ -625,7 +636,7 @@ async fn write_files(
     app: &AppHandle,
     source_path: &Path,
     rel_paths: Vec<String>,
-    write: impl Fn(&Path) -> std::io::Result<()> + Send + Sync + 'static,
+    write: impl Fn(&str, &Path) -> std::io::Result<()> + Send + Sync + 'static,
 ) -> Result<BulkResult, String> {
     let total = rel_paths.len();
     if total == 0 {
@@ -645,7 +656,7 @@ async fn write_files(
         let step = (total / 50).max(50);
 
         rel_paths.par_iter().for_each(|rel| {
-            let written = resolve_in_source(&source_path, rel).and_then(|path| write(&path));
+            let written = resolve_in_source(&source_path, rel).and_then(|path| write(rel, &path));
             match written {
                 Ok(()) => {
                     let n = done.fetch_add(1, Ordering::Relaxed) + 1;
@@ -673,6 +684,18 @@ async fn write_files(
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+async fn fetch_blocked_paths(db: &SqlitePool, source_id: &str) -> Result<HashSet<String>, String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT d.rel_path FROM documents d JOIN folders f ON f.id = d.folder_id
+         WHERE d.source_id = ?1 AND f.writes_meta = 0",
+    )
+    .bind(source_id)
+    .fetch_all(db)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
 }
 
 async fn fetch_paths_with_field(

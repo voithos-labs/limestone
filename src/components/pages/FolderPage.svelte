@@ -9,6 +9,7 @@
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import {
 		getSource,
+		GIT_FRONTMATTER_OFF,
 		onSourceReconciled,
 		removeSource,
 		sourceName,
@@ -45,7 +46,10 @@
 		Bookmark,
 		FolderInput,
 		CalendarClock,
-		SquareCheck
+		SquareCheck,
+		GitBranch,
+		FileLock,
+		FilePen
 	} from '@lucide/svelte';
 
 	// A folder or a source opened as a place, not as a filtered view: what's directly inside it,
@@ -65,6 +69,9 @@
 
 	let source: Source | null = $state(null);
 	let folders: Folder[] = $state([]);
+	let root: Folder | null = $state(null);
+	const here = $derived(isRoot ? root : (folders.find((f) => f.id === unitId) ?? null));
+	const gitOff = $derived(settings.get<boolean>(GIT_FRONTMATTER_OFF) ?? true);
 	// folders that are projects: they have a saved view of their own, and its emoji
 	let projects: Map<string, { emoji: string }> = $state(new Map());
 	const query = $derived(((view.state.search as string | undefined) ?? '').trim());
@@ -94,8 +101,13 @@
 
 	async function loadFolders() {
 		try {
-			const [list, saved] = await Promise.all([Folder.list(), listSavedViewJSON()]);
+			const [list, saved, r] = await Promise.all([
+				Folder.list(),
+				listSavedViewJSON(),
+				Folder.fromID(`folder:${sourceId}:`).catch(() => null)
+			]);
 			folders = list;
+			root = r;
 			projects = new Map(
 				saved
 					.filter((v) => v.unit?.startsWith('folder:'))
@@ -325,6 +337,21 @@
 		if (!menuOpen) confirmingDelete = false;
 	});
 
+	function metaItem(f: Folder) {
+		return f.writesMeta
+			? { value: 'meta', label: 'Keep metadata out of files', icon: FileLock }
+			: { value: 'meta', label: 'Write metadata to files', icon: FilePen };
+	}
+
+	async function toggleMeta(f: Folder) {
+		try {
+			await f.setWritesMeta(!f.writesMeta, gitOff);
+			await loadFolders();
+		} catch (e) {
+			toasts.push(`That setting couldn't be changed: ${String(e)}`);
+		}
+	}
+
 	const menuItems = $derived([
 		{ value: 'new-note', label: 'New note', icon: FilePlus },
 		{ value: 'new-folder', label: 'New folder', icon: FolderPlus },
@@ -333,6 +360,7 @@
 			? { value: 'configure', label: 'Configure source', icon: Settings }
 			: { value: 'rename', label: 'Rename', icon: Pencil },
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
+		...(here ? [metaItem(here)] : []),
 		...(view.temporary
 			? [{ value: 'project', label: 'Turn into project', icon: Bookmark }]
 			: [{ value: 'unproject', label: 'Stop being a project', icon: Bookmark }]),
@@ -400,6 +428,9 @@
 			case 'configure':
 				if (source) sourceDialogOpen = true;
 				break;
+			case 'meta':
+				if (here) await toggleMeta(here);
+				break;
 			case 'project':
 				openProjectSetup(editor, { id: unitId, name: crumbs.at(-1)?.slug ?? view.slug }, view.id);
 				break;
@@ -450,6 +481,7 @@
 		return [
 			{ value: 'open', label: 'Open', icon: ChevronRight },
 			{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
+			...(f ? [metaItem(f)] : []),
 			{ kind: 'divider' as const },
 			f && projects.has(f.id)
 				? { value: 'unproject', label: 'Stop being a project', icon: Bookmark }
@@ -482,6 +514,7 @@
 					if (source) revealItemInDir(`${source.path}/${folderIdPath(f.id)}`).catch(console.error);
 				}
 			},
+			{ label: metaItem(f).label, icon: metaItem(f).icon, action: () => void toggleMeta(f) },
 			{ divider: true },
 			{
 				label: isProject ? 'Stop being a project' : 'Turn into project',
@@ -524,6 +557,7 @@
 		else if (value === 'open') openFolder(f);
 		else if (value === 'reveal' && source)
 			revealItemInDir(`${source.path}/${folderIdPath(f.id)}`).catch(console.error);
+		else if (value === 'meta') void toggleMeta(f);
 		else if (value === 'project' || value === 'unproject') {
 			View.forUnit(f.id, f.slug)
 				.then((v) => (value === 'project' ? v.save() : v.unsave()))
@@ -563,6 +597,7 @@
 						ondragleave={() => overCrumb === '' && (overCrumb = null)}
 						ondrop={(e) => onCrumbDrop(e, '')}
 					>
+						{#if root?.repo}<GitBranch size={13} strokeWidth={1.75} />{/if}
 						{source ? sourceName(source) : ''}
 					</button>
 					{#each crumbs as c, i (c.path)}
@@ -577,6 +612,10 @@
 							ondragleave={() => overCrumb === c.path && (overCrumb = null)}
 							ondrop={(e) => onCrumbDrop(e, c.path)}
 						>
+							{#if folders.find((f) => f.id === `folder:${sourceId}:${c.path}`)?.repo}<GitBranch
+									size={13}
+									strokeWidth={1.75}
+								/>{/if}
 							{c.slug}
 						</button>
 					{/each}
@@ -799,6 +838,9 @@
 
 	/* one size and weight all the way along; colour says where you are */
 	.crumb {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
 		padding: 4px 6px;
 		border: none;
 		border-radius: 6px;

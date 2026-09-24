@@ -1,4 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { Component } from 'svelte';
+import { GitBranch } from '@lucide/svelte';
 
 export type SettingValue =
 	string | number | boolean | null | SettingValue[] | { [key: string]: SettingValue };
@@ -20,6 +22,7 @@ export interface SettingDef {
 	type: SettingType;
 	control: SettingControl;
 	label: string;
+	icon?: Component;
 	description?: string;
 	min?: number;
 	max?: number;
@@ -149,6 +152,21 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				max: 32,
 				step: 1,
 				unit: 'px'
+			}
+		]
+	},
+	{
+		id: 'sources',
+		label: 'Sources',
+		settings: [
+			{
+				key: 'sources.git_frontmatter_off',
+				type: 'boolean',
+				control: 'toggle',
+				label: 'No Frontmatter in Git Repos',
+				icon: GitBranch,
+				description:
+					"Git repos, and everything inside them, don't get metadata written to their files unless you turn it on for that folder."
 			}
 		]
 	}

@@ -4,7 +4,8 @@
 		Bookmark,
 		EllipsisVertical,
 		ChevronDown,
-		ChevronUp
+		ChevronUp,
+		GitBranch
 	} from '@lucide/svelte';
 	import type Folder from '$lib/models/Folder';
 	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
@@ -110,6 +111,8 @@
 				<span class="emoji">{emoji}</span>
 			{:else if projects.has(f.id)}
 				<Bookmark size={16} strokeWidth={1.75} />
+			{:else if f.repo}
+				<GitBranch size={16} strokeWidth={1.75} />
 			{:else}
 				<FolderIcon size={16} strokeWidth={1.75} />
 			{/if}

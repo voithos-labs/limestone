@@ -20,11 +20,17 @@ import {
 	Pin,
 	NotebookText,
 	Box,
-	FolderInput
+	FolderInput,
+	FileLock
 } from '@lucide/svelte';
 import { isSourceRoot } from '$lib/models/Folder';
 import { isBuiltinUnit } from '$lib/models/View.svelte';
-import { VIEW_FIELD_OPS, type ViewFaceType, type ViewFieldType } from '$lib/models/View.svelte';
+import {
+	VIEW_FIELD_OPS,
+	opTakesValue,
+	type ViewFaceType,
+	type ViewFieldType
+} from '$lib/models/View.svelte';
 import type View from '$lib/models/View.svelte';
 import type { ViewFace } from '$lib/models/View.svelte';
 
@@ -92,7 +98,8 @@ export const FIELD_TYPE_ICONS: Record<ViewFieldType, Component> = {
 	tags: Tag,
 	folder: Folder,
 	created_at: CalendarPlus2,
-	updated_at: CalendarClock
+	updated_at: CalendarClock,
+	metadata: FileLock
 };
 
 export const FALLBACK_FIELD_ICON: Component = Filter;
@@ -124,7 +131,9 @@ export const OP_LABELS: Record<string, string> = {
 	has_none: 'none',
 	any_of: 'is any of',
 	in: 'in',
-	not_in: 'not in'
+	not_in: 'not in',
+	writable: 'can be stored',
+	read_only: "can't be stored"
 };
 
 export function getOpLabel(op: string): string {
@@ -132,7 +141,7 @@ export function getOpLabel(op: string): string {
 }
 
 export function opHasValue(op: string): boolean {
-	return op !== 'is_empty' && op !== 'is_not_empty';
+	return opTakesValue(op);
 }
 
 export function opsFor(type: ViewFieldType | undefined): OpOption[] {
