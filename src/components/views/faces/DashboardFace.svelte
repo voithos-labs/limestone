@@ -552,31 +552,29 @@
 
 <div class="dash" bind:this={dashEl}>
 	{#if !face.config.hide_chips && chips.length > 0}
-		<div class="chip-row">
-			<div class="chips" onwheel={onChipsWheel}>
+		<div class="chips" onwheel={onChipsWheel}>
+			<button
+				class="chip"
+				class:on={!selectedTag}
+				type="button"
+				onclick={() => (view.state.dash_tag = null)}
+			>
+				all
+			</button>
+			{#each chips as c (c.id)}
 				<button
 					class="chip"
-					class:on={!selectedTag}
+					class:on={selectedTag === c.id}
 					type="button"
-					onclick={() => (view.state.dash_tag = null)}
+					onclick={() => (view.state.dash_tag = selectedTag === c.id ? null : c.id)}
 				>
-					all
+					{#if c.kind === 'folder'}<FolderIcon size={11} strokeWidth={1.75} />{:else}<Hash
+							size={11}
+							strokeWidth={2}
+						/>{/if}{c.slug}
+					<span class="n">{c.n}</span>
 				</button>
-				{#each chips as c (c.id)}
-					<button
-						class="chip"
-						class:on={selectedTag === c.id}
-						type="button"
-						onclick={() => (view.state.dash_tag = selectedTag === c.id ? null : c.id)}
-					>
-						{#if c.kind === 'folder'}<FolderIcon size={11} strokeWidth={1.75} />{:else}<Hash
-								size={11}
-								strokeWidth={2}
-							/>{/if}{c.slug}
-						<span class="n">{c.n}</span>
-					</button>
-				{/each}
-			</div>
+			{/each}
 			<button
 				class="chips-hide"
 				type="button"
@@ -715,19 +713,11 @@
 		font-family: var(--font-ui);
 	}
 
-	.chip-row {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin: 0 24px;
-	}
-
 	.chips {
 		display: flex;
-		flex: 1 1 auto;
 		flex-wrap: nowrap;
 		gap: 6px;
-		min-width: 0;
+		margin: 0 24px;
 		overflow-x: auto;
 		scrollbar-width: none;
 	}
