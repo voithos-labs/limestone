@@ -11,7 +11,8 @@
 		SlashSquare,
 		LayoutPanelTop,
 		ChevronRight,
-		Bookmark
+		Bookmark,
+		FolderPlus
 	} from '@lucide/svelte';
 	import type { Component } from 'svelte';
 	import type Session from '$lib/models/Session.svelte.js';
@@ -30,7 +31,7 @@
 	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { getViewIcon } from '$lib/views/filterDisplay';
 
-	let { session }: { session: Session } = $props();
+	let { session, onAddSource }: { session: Session; onAddSource: () => void } = $props();
 	const editor = $derived(session.editors[0]);
 
 	// ── Items: one shape for everything the list can hold ─────────────────────
@@ -109,7 +110,18 @@
 			run: () => a.run(session)
 		};
 	}
-	const appCommands = $derived(actions.filter((a) => !SKIP_ACTIONS.has(a.id)).map(actionItem));
+	const sourceCommand: Item = {
+		id: 'new:source',
+		label: 'New source',
+		hint: 'Add a folder of notes',
+		icon: FolderPlus,
+		kind: 'command',
+		run: () => onAddSource()
+	};
+	const appCommands = $derived([
+		sourceCommand,
+		...actions.filter((a) => !SKIP_ACTIONS.has(a.id)).map(actionItem)
+	]);
 
 	// ── Search results into items ─────────────────────────────────────────────
 	function srcOf(id: string | null): string {
@@ -197,7 +209,7 @@
 			return [{ title: inNew ? 'Create' : 'Commands', items: found }];
 		}
 		if (!trimmed) {
-			const out: Section[] = [];
+			const out: Section[] = [{ title: 'Create', items: createCommands }];
 			if (recentDocs.length) {
 				out.push({
 					title: 'Recent',
@@ -230,7 +242,6 @@
 					}))
 				});
 			}
-			out.push({ title: 'Create', items: createCommands });
 			return out;
 		}
 		const q = trimmed.toLowerCase();
@@ -306,7 +317,7 @@
 		// recent means recently opened, which the documents table tracks itself
 		select<{ id: string; title: string; rel_path: string; source_id: string }>(
 			`SELECT id, title, rel_path, source_id FROM documents
-			 WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT 6`
+			 WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT 5`
 		)
 			.then((rows) => (recentDocs = rows))
 			.catch((e) => console.error('palette recents failed', e));

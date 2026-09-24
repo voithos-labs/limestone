@@ -113,7 +113,7 @@ export const actions: Action[] = [
 		title: 'New',
 		category: 'tabs',
 		defaultKeys: ['mod+t'],
-		run: () => palette.show('/new ')
+		run: () => palette.show()
 	},
 	{
 		id: 'tab.next',

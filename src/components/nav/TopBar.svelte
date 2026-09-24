@@ -378,7 +378,7 @@
 				</span>
 			</div>
 		{/each}
-		<button class="new-tab-btn" title="New" tabindex="-1" onclick={() => palette.show('/new ')}>
+		<button class="new-tab-btn" title="New" tabindex="-1" onclick={() => palette.show()}>
 			<Plus size={15} />
 		</button>
 	</div>

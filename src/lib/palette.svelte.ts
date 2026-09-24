@@ -1,5 +1,5 @@
 // The command palette: one popup for finding things and for doing things. Anything can raise
-// it, optionally with a starting query (`/new` is the create menu the tab strip's + opens)
+// it, optionally with a starting query
 class PaletteController {
 	open = $state(false);
 	initial = $state('');
