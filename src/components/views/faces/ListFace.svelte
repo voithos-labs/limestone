@@ -919,6 +919,7 @@
 	}
 
 	.row {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 12px;
@@ -1075,7 +1076,6 @@
 	.rename {
 		grid-area: 1 / 1;
 		font: inherit;
-		font-size: 15px;
 		letter-spacing: -0.005em;
 		white-space: pre;
 	}
@@ -1123,19 +1123,20 @@
 		white-space: nowrap;
 	}
 
-	/* the row's end cap: full height, flush to the row's edge, dipped on hover */
+	/* out past the row's end, so its last column lines up with the headers above */
 	.row-btn {
-		flex: 0 0 auto;
+		position: absolute;
+		top: 50%;
+		left: calc(100% - 6px);
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		align-self: stretch;
-		/* its icon sits as far inside the row as the title does on the left */
-		width: 34px;
-		margin: 0 -10px 0 -4px;
+		width: 20px;
+		height: 24px;
 		padding: 0;
 		border: 0;
-		border-radius: 0 8px 8px 0;
+		border-radius: 6px;
+		transform: translateY(-50%);
 		background: transparent;
 		color: var(--color-ui-muted);
 		cursor: pointer;
@@ -1186,7 +1187,7 @@
 		border: 0;
 		background: transparent;
 		font: inherit;
-		font-size: 15px;
+		font-size: 14px;
 		color: var(--color-text-primary);
 		outline: none;
 	}

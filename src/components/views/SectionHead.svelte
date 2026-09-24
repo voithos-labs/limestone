@@ -93,4 +93,8 @@
 		margin: 0 14px 0 10px;
 		background: var(--chip-divider);
 	}
+
+	.rule:last-child {
+		margin-right: 0;
+	}
 </style>

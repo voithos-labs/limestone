@@ -773,7 +773,7 @@
 		margin: 0 24px 0 18px;
 		padding: 29px 0 10px 6px;
 		background: linear-gradient(var(--menu-search-divider), var(--menu-search-divider)) bottom
-			center / calc(100% - 16px) 1px no-repeat;
+			right / calc(100% - 6px) 1px no-repeat;
 	}
 
 	.place-icon {

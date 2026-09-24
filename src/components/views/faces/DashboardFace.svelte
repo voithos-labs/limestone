@@ -233,10 +233,7 @@
 		}
 	}
 	function sortEntries(key: 'todo_sort' | 'docs_sort'): CtxEntry[] {
-		const cur =
-			key === 'todo_sort'
-				? sortFor('todo_sort', { field_id: dueId, direction: 'asc' })
-				: sortFor('docs_sort', { field_id: updatedId, direction: 'desc' });
+		const cur = sorts[key];
 		const set = (next: Sort) => (face.config[key] = next);
 		return [
 			{
@@ -249,6 +246,7 @@
 			{ divider: true },
 			...view.fields
 				.filter((f) => VIEW_FIELD_SORTABLE.has(f.type))
+				.filter((f) => (key === 'docs_sort' ? f.unit !== TODO : f.id !== doneId))
 				.map((f): CtxEntry => ({
 					label: fieldLabel(f),
 					icon: getFieldIcon(f.type),
@@ -273,8 +271,14 @@
 			}
 		];
 	}
-	const docsSort = $derived(sortFor('docs_sort', { field_id: updatedId, direction: 'desc' }));
-	const docsSortField = $derived(view.fields.find((f) => f.id === docsSort.field_id));
+	const sorts = $derived({
+		todo_sort: sortFor('todo_sort', { field_id: dueId, direction: 'asc' }),
+		docs_sort: sortFor('docs_sort', { field_id: updatedId, direction: 'desc' })
+	});
+	function sortLabel(sort: Sort): string {
+		const f = view.fields.find((x) => x.id === sort.field_id);
+		return f ? fieldLabel(f).toLowerCase() : 'manual';
+	}
 
 	$effect(() => persistLayout('todo_layout', todoFace));
 	$effect(() => persistLayout('docs_layout', notesFace));
@@ -633,20 +637,20 @@
 						</button>
 					{/snippet}
 					{#snippet trail()}
-						{#if sec.id === 'docs'}
+						{#if sec.id === 'docs' || sec.id === 'todo'}
+							{@const key = sec.id === 'docs' ? 'docs_sort' : 'todo_sort'}
+							{@const sort = sorts[key]}
 							<button
 								class="sec-action"
 								type="button"
-								onclick={(e) => {
-									const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-									contextMenu.show(r.left, r.bottom + 4, () => sortEntries('docs_sort'));
-								}}
+								onclick={(e) =>
+									contextMenu.showAt(e.currentTarget as HTMLElement, () => sortEntries(key))}
 							>
-								{docsSortField ? fieldLabel(docsSortField).toLowerCase() : 'recent'}
-								{#if docsSort.direction === 'asc'}<ArrowUp
-										size={12}
-										strokeWidth={2}
-									/>{:else}<ArrowDown size={12} strokeWidth={2} />{/if}
+								{sortLabel(sort)}
+								{#if sort.field_id !== MANUAL}{#if sort.direction === 'asc'}<ArrowUp
+											size={12}
+											strokeWidth={2}
+										/>{:else}<ArrowDown size={12} strokeWidth={2} />{/if}{/if}
 							</button>
 						{/if}
 					{/snippet}
