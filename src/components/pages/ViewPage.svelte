@@ -766,7 +766,7 @@
 	.view-inner {
 		max-width: var(--page-max-width, none);
 		margin: 0 auto;
-		padding: 16px 16px 0 24px;
+		padding: 16px 24px 0;
 	}
 
 	/* No size of its own: the bar hangs off this corner, and an empty box would otherwise sit

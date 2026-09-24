@@ -1142,7 +1142,8 @@
 		align-items: center;
 		justify-content: center;
 		align-self: stretch;
-		width: 40px;
+		/* its icon sits as far inside the row as the title does on the left */
+		width: 34px;
 		margin: 0 -10px 0 -4px;
 		padding: 0;
 		border: 0;
