@@ -833,7 +833,7 @@
 		flex-shrink: 0;
 		box-sizing: border-box;
 		height: 180px;
-		margin: 0 0 0 -8px;
+		margin: 6px 24px 0 18px;
 		border-radius: 10px 10px 0 0;
 		overflow: hidden;
 		background: var(--chip-bg);

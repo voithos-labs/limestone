@@ -584,8 +584,8 @@
 		position: relative;
 		z-index: 1;
 		margin-top: -32px;
-		margin-left: -32px;
-		padding: 8px 20px 6px 32px;
+		margin-left: -6px;
+		padding: 8px 20px 6px 6px;
 		background: var(--color-surface);
 		border-radius: 0 10px 0 0;
 	}
