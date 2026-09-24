@@ -51,17 +51,14 @@ pub fn rewrite_document(
             "existing frontmatter could not be parsed",
         ));
     }
-    let fm = match (existing, mutate_fm) {
+    let fence = &content[..content.len() - body.len()];
+    let body = mutate_body(body).unwrap_or_else(|| body.to_string());
+    let next = match (existing, mutate_fm) {
         (Some(mut fm), Some(mutate)) => {
             mutate(&mut fm);
-            Some(fm)
+            format_content(&fm, &body)?
         }
-        (fm, _) => fm,
-    };
-    let body = mutate_body(body).unwrap_or_else(|| body.to_string());
-    let next = match fm {
-        Some(fm) => format_content(&fm, &body)?,
-        None => body,
+        _ => format!("{fence}{body}"),
     };
     if next == content {
         return Ok(());
@@ -386,6 +383,28 @@ mod tests {
         assert_eq!(
             v,
             json!({ "views": { "reading": { "n": 2 }, "papers": { "n": 1 } } })
+        );
+    }
+
+    #[test]
+    fn body_only_rewrite_keeps_frontmatter_bytes() {
+        let dir = std::env::temp_dir().join(format!("limestone-fm-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("note.md");
+        fs::write(
+            &path,
+            "---\n# kept\ntitle:   Spaced\ntags: [old]\n---\nsee #old here\n",
+        )
+        .unwrap();
+        rewrite_document(&path, None, &|t| {
+            crate::services::body::rewrite_tags(t, "old", Some("new"))
+        })
+        .unwrap();
+        let after = fs::read_to_string(&path).unwrap();
+        fs::remove_dir_all(&dir).ok();
+        assert_eq!(
+            after,
+            "---\n# kept\ntitle:   Spaced\ntags: [old]\n---\nsee #new here\n"
         );
     }
 

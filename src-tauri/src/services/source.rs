@@ -339,13 +339,23 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
 }
 
 pub fn contains_git_repo(path: &Path) -> bool {
+    let root = path.to_path_buf();
+    let ignore = build_ignore(&Source::new(String::new(), root.clone()));
     jwalk::WalkDir::new(path)
         .skip_hidden(false)
-        .process_read_dir(|_depth, _path, _state, children| {
+        .max_depth(6)
+        .process_read_dir(move |_depth, _path, _state, children| {
             children.retain(|entry| {
                 entry.as_ref().is_ok_and(|e| {
-                    e.file_name == ".git"
-                        || (e.file_type().is_dir() && !e.file_name.to_string_lossy().starts_with('.'))
+                    if e.file_name == ".git" {
+                        return true;
+                    }
+                    if !e.file_type().is_dir() {
+                        return false;
+                    }
+                    let path = e.path();
+                    let rel = path.strip_prefix(&root).unwrap_or(&path);
+                    keep_dir(&rel.to_string_lossy().replace('\\', "/"), ignore.as_ref())
                 })
             });
         })
@@ -830,15 +840,20 @@ pub(crate) async fn sync_folder_dirs(
     repos: &HashSet<String>,
 ) -> sqlx::Result<()> {
     let mut expected: HashSet<String> = HashSet::with_capacity(dirs.len() + 1);
-    for path in std::iter::once("").chain(dirs.iter().map(String::as_str)) {
-        let id = upsert_folder(tx, source_id, path).await?;
-        sqlx::query("UPDATE folders SET repo = ?2 WHERE id = ?1 AND repo <> ?2")
-            .bind(&id)
-            .bind(repos.contains(path))
-            .execute(&mut **tx)
-            .await?;
-        expected.insert(id);
+    expected.insert(upsert_folder(tx, source_id, "").await?);
+    for path in dirs {
+        expected.insert(upsert_folder(tx, source_id, path).await?);
     }
+
+    let repo_ids: Vec<String> = repos.iter().map(|p| folder_id(source_id, p)).collect();
+    sqlx::query(
+        "UPDATE folders SET repo = (id IN (SELECT value FROM json_each(?2)))
+         WHERE source_id = ?1 AND repo <> (id IN (SELECT value FROM json_each(?2)))",
+    )
+    .bind(source_id)
+    .bind(serde_json::to_string(&repo_ids).unwrap_or_default())
+    .execute(&mut **tx)
+    .await?;
 
     let existing: Vec<String> = sqlx::query_scalar("SELECT id FROM folders WHERE source_id = ?1")
         .bind(source_id)
