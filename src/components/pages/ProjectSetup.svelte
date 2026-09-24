@@ -141,7 +141,12 @@
 						keep([`${TODO}/done`, title, tags, `${TODO}/due`]),
 						{ op: 'and', children: [{ field_id: tags, op: 'has_any', value: [TODO] }] },
 						[{ field_id: `${TODO}/due`, direction: 'asc', nulls: 'last' }],
-						{ right: [`${TODO}/due`], hide_tag: TODO, edit_in_place: true }
+						{
+							right: [`${TODO}/due`],
+							hide_tag: TODO,
+							edit_in_place: true,
+							group_by: `${TODO}/done`
+						}
 					)
 				];
 				break;

@@ -760,6 +760,7 @@
 	.view-inner {
 		max-width: var(--page-max-width, none);
 		margin: 0 auto;
+		padding: 16px 16px 0 24px;
 	}
 
 	/* No size of its own: the bar hangs off this corner, and an empty box would otherwise sit
@@ -795,11 +796,9 @@
 		filter: brightness(1.08);
 	}
 
-	/* the top gap reads as the 24px gutter: the bar's controls carry their own leading, so the
-	   padding is that much shorter */
 	.view-chrome {
 		flex-shrink: 0;
-		padding: 17px 0 0 24px;
+		padding: 29px 0 0 24px;
 	}
 
 	.view-chrome.has-cover {
@@ -815,7 +814,7 @@
 		flex-shrink: 0;
 		box-sizing: border-box;
 		height: 180px;
-		margin: 16px 16px 0;
+		margin: 0 0 0 -8px;
 		border-radius: 10px 10px 0 0;
 		overflow: hidden;
 		background: var(--chip-bg);

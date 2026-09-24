@@ -737,7 +737,10 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		padding: 32px 24px 8px;
+		margin: 0 24px 0 18px;
+		padding: 29px 0 10px 6px;
+		background: linear-gradient(var(--menu-search-divider), var(--menu-search-divider)) bottom
+			center / calc(100% - 16px) 1px no-repeat;
 	}
 
 	.place-icon {
@@ -923,6 +926,7 @@
 	.inner {
 		max-width: var(--page-max-width, none);
 		margin: 0 auto;
+		padding: 16px 16px 0 24px;
 	}
 
 	.strip {
