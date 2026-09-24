@@ -1,12 +1,13 @@
 <script lang="ts">
 	import type View from '$lib/models/View.svelte';
-	import type { FilterNode, MemberRow, ViewFace } from '$lib/models/View.svelte';
+	import type { FilterNode, MemberRow, ViewFace, ViewField } from '$lib/models/View.svelte';
 	import { onSourceReconciled } from '$lib/models/Source';
 	import { FaceRows } from '$lib/views/FaceRows.svelte';
 	import { PreviewCache, type Preview } from '$lib/views/previews';
 	import { rawStatefulValue, valueFor, fieldLabel } from '$lib/views/fieldValue';
 	import { highlightTitle } from '$lib/util/highlight';
 	import RowChips from '../RowChips.svelte';
+	import SectionHead from '../SectionHead.svelte';
 	import RowEditors from '../RowEditors.svelte';
 	import NoteCard from '../NoteCard.svelte';
 	import { Check, SquareArrowOutUpRight, Plus, ChevronDown } from '@lucide/svelte';
@@ -23,7 +24,8 @@
 		autoFocus = true,
 		onReorder,
 		moveable = false,
-		compact = false
+		compact = false,
+		creatable = true
 	}: {
 		view: View;
 		face: ViewFace;
@@ -35,6 +37,7 @@
 		onReorder?: (ids: string[]) => void; // rows drag into an order; the face keeps it unless told otherwise
 		moveable?: boolean; // rows drag out as documents to drop on a folder (no in-list reorder then)
 		compact?: boolean; // shorter rows and a smaller title, for a file listing
+		creatable?: boolean;
 	} = $props();
 
 	const rows = new FaceRows(
@@ -54,16 +57,19 @@
 		const id = (face.config.group_by ?? null) as string | null;
 		return id ? (view.fields.find((f) => f.id === id) ?? null) : null;
 	});
-	let collapsedGroups = $state(new Set<string>());
+	const TODO_DONE = 'tag:todo/done';
+	const collapsedGroups = $derived(new Set((face.config.collapsed_groups ?? []) as string[]));
+
+	function boolGroup(f: ViewField, on: boolean): { key: string; label: string } {
+		if (f.id === TODO_DONE) return on ? { key: '1', label: 'Done' } : { key: '0', label: 'Todo' };
+		return on
+			? { key: '1', label: fieldLabel(f) }
+			: { key: '0', label: `Not ${fieldLabel(f).toLowerCase()}` };
+	}
 
 	function groupOf(row: MemberRow): { key: string; label: string } {
 		const f = groupField!;
-		if (f.type === 'boolean') {
-			const on = rawStatefulValue(row, f) === true;
-			return on
-				? { key: '1', label: fieldLabel(f) }
-				: { key: '0', label: `Not ${fieldLabel(f).toLowerCase()}` };
-		}
+		if (f.type === 'boolean') return boolGroup(f, rawStatefulValue(row, f) === true);
 		const v = valueFor(f, row);
 		return v ? { key: v, label: v } : { key: '', label: `No ${fieldLabel(f).toLowerCase()}` };
 	}
@@ -72,21 +78,25 @@
 		const all = rows.rows.map((row, i) => ({ row, i }));
 		if (!groupField) return [{ key: '', label: '', items: all }];
 		const map = new Map<string, { key: string; label: string; items: typeof all }>();
+		if (groupField.type === 'boolean') map.set('0', { ...boolGroup(groupField, false), items: [] });
 		for (const it of all) {
 			const g = groupOf(it.row);
 			(map.get(g.key) ?? map.set(g.key, { ...g, items: [] }).get(g.key)!).items.push(it);
 		}
 		const out = [...map.values()];
+		if (groupField.type === 'boolean') out.sort((a, b) => a.key.localeCompare(b.key));
 		const empty = out.findIndex((g) => g.key === '');
 		if (empty >= 0) out.push(...out.splice(empty, 1));
 		return out;
 	});
 
+	const newGroup = $derived(groupField?.type === 'boolean' ? '0' : null);
+
 	function toggleGroup(key: string) {
 		const next = new Set(collapsedGroups);
 		if (next.has(key)) next.delete(key);
 		else next.add(key);
-		collapsedGroups = next;
+		face.config.collapsed_groups = [...next];
 	}
 
 	// browse: click a row to open, empties hidden. edit: click a value to change it, an explicit
@@ -458,6 +468,28 @@
 	});
 </script>
 
+{#snippet newRow()}
+	{#if !rows.loading && creatable}
+		<label class="row new">
+			<span class="new-mark">
+				{#if checkField}<span class="dashed"></span>{:else}<Plus
+						size={16}
+						strokeWidth={1.75}
+					/>{/if}
+			</span>
+			<input
+				class="new-input"
+				class:taken={titleTaken}
+				type="text"
+				placeholder={checkField ? 'New todo' : 'New note'}
+				bind:value={newTitle}
+				bind:this={newEl}
+				onkeydown={onNewKey}
+			/>
+		</label>
+	{/if}
+{/snippet}
+
 {#if rows.error}
 	<p class="error">{rows.error}</p>
 {/if}
@@ -473,17 +505,14 @@
 	>
 		{#each groups as g (g.key)}
 			{#if groupField}
-				<button
-					class="group-head"
-					class:collapsed={collapsedGroups.has(g.key)}
-					type="button"
-					tabindex="-1"
-					onclick={() => toggleGroup(g.key)}
-				>
-					<span class="group-label">{g.label}</span>
-					<span class="group-count">{g.items.length}</span>
-					<span class="group-caret"><ChevronDown size={13} strokeWidth={2} /></span>
-				</button>
+				<div class="group-head">
+					<SectionHead
+						title={g.label}
+						count={g.items.length}
+						collapsed={collapsedGroups.has(g.key)}
+						onToggle={() => toggleGroup(g.key)}
+					/>
+				</div>
 			{/if}
 			{#if !collapsedGroups.has(g.key)}
 				{#each g.items as { row, i } (row.id)}
@@ -503,7 +532,7 @@
 				{/each}
 			{/if}
 		{/each}
-		{#if !rows.loading}
+		{#if !rows.loading && creatable}
 			<button class="new-card" type="button" onclick={() => createNote('', true)}>
 				<Plus size={16} strokeWidth={2} />
 				<span>{checkField ? 'New todo' : 'New note'}</span>
@@ -532,17 +561,14 @@
 	>
 		{#each groups as g (g.key)}
 			{#if groupField}
-				<button
-					class="group-head"
-					class:collapsed={collapsedGroups.has(g.key)}
-					type="button"
-					tabindex="-1"
-					onclick={() => toggleGroup(g.key)}
-				>
-					<span class="group-label">{g.label}</span>
-					<span class="group-count">{g.items.length}</span>
-					<span class="group-caret"><ChevronDown size={13} strokeWidth={2} /></span>
-				</button>
+				<div class="group-head">
+					<SectionHead
+						title={g.label}
+						count={g.items.length}
+						collapsed={collapsedGroups.has(g.key)}
+						onToggle={() => toggleGroup(g.key)}
+					/>
+				</div>
 			{/if}
 			{#if !collapsedGroups.has(g.key)}
 				{#each g.items as { row, i } (row.id)}
@@ -654,27 +680,14 @@
 						</button>
 					</div>
 				{/each}
+				{#if g.key === newGroup}
+					{@render newRow()}
+				{/if}
 			{/if}
 		{/each}
 
-		{#if !rows.loading}
-			<label class="row new">
-				<span class="new-mark">
-					{#if checkField}<span class="dashed"></span>{:else}<Plus
-							size={16}
-							strokeWidth={1.75}
-						/>{/if}
-				</span>
-				<input
-					class="new-input"
-					class:taken={titleTaken}
-					type="text"
-					placeholder={checkField ? 'New todo' : 'New note'}
-					bind:value={newTitle}
-					bind:this={newEl}
-					onkeydown={onNewKey}
-				/>
-			</label>
+		{#if newGroup === null}
+			{@render newRow()}
 		{/if}
 
 		{#if !rows.loading && rows.rows.length === 0 && rows.query}
@@ -762,19 +775,8 @@
 		cursor: default;
 	}
 
-	/* group headers read like the dashboard's section heads, one size down */
 	.group-head {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
-		margin: 18px 0 4px;
-		padding: 0;
-		border: none;
-		background: transparent;
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
+		margin-top: 22px;
 	}
 
 	.group-head:first-child {
@@ -784,35 +786,6 @@
 	.grid .group-head {
 		grid-column: 1 / -1;
 		margin-top: 8px;
-	}
-
-	.group-label {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.group-count {
-		font-size: 12px;
-		color: var(--color-ui-muted);
-	}
-
-	.group-caret {
-		display: inline-flex;
-		color: var(--color-ui-muted);
-		opacity: 0;
-		transition:
-			opacity 80ms ease,
-			transform 120ms ease;
-	}
-
-	.group-head:hover .group-caret,
-	.group-head.collapsed .group-caret {
-		opacity: 1;
-	}
-
-	.group-head.collapsed .group-caret {
-		transform: rotate(-90deg);
 	}
 
 	/* compact: a file listing rather than a reading list */

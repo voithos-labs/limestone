@@ -511,6 +511,12 @@
 		if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));
 	}
 
+	async function onOpenUnit(id: string, name: string) {
+		const next = await View.forUnit(id, name);
+		if (tab) editor.showViewInTab(tab, next);
+		else editor.openView(next);
+	}
+
 	function onOpenRow(rowId: string, newTab = false) {
 		DocHandle.fromID(rowId)
 			.then((d) => (newTab || !tab ? editor.openDoc(d) : editor.showDocInTab(tab, d)))
@@ -635,7 +641,7 @@
 				{:else if activeFace?.type === 'masonry'}
 					<MasonryFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{:else if activeFace?.type === 'dashboard'}
-					<DashboardFace {view} face={activeFace} {onOpenRow} {createSignal} />
+					<DashboardFace {view} face={activeFace} {onOpenRow} {onOpenUnit} {createSignal} />
 				{:else if activeFace}
 					<ListFace {view} face={activeFace} {onOpenRow} {createSignal} />
 				{/if}

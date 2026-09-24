@@ -339,7 +339,7 @@
 
 <EmojiPicker bind:open={emojiOpen} anchor={emojiAnchor} onPick={setEmoji} />
 
-<div class="filter-bar" class:covered={hasCover} class:bare={activeFace?.type === 'journal'}>
+<div class="filter-bar" class:covered={hasCover}>
 	{#if !hasCover}
 		<div class="title-inline">
 			{@render titleBlock()}
@@ -662,23 +662,14 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin-bottom: 12px;
+		margin-bottom: 16px;
 		margin-left: -6px;
 		margin-right: 24px;
 		padding-left: 6px;
-		padding-bottom: 10px;
-		background: linear-gradient(var(--menu-search-divider), var(--menu-search-divider)) bottom
-			center / calc(100% - 16px) 1px no-repeat;
 		flex-shrink: 0;
 		/* Scroll horizontally in place when the row is too wide, no visible bar */
 		overflow-x: auto;
 		scrollbar-width: none;
-	}
-
-	.filter-bar.bare {
-		margin-bottom: 16px;
-		padding-bottom: 0;
-		background: none;
 	}
 
 	.filter-bar::-webkit-scrollbar {

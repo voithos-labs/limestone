@@ -945,6 +945,10 @@ class View {
 			view.faces = [
 				ViewFace.create('list', [done, title, ...rest], undefined, [], { group_by: done })
 			];
+		} else if (unitId.startsWith('folder:')) {
+			const title = view.fields.find((f) => f.type === 'title')!.id;
+			const face = view.faces[0];
+			face.config.right = face.display_field_ids.filter((id) => id !== title);
 		}
 		view.markPristine();
 		return view;

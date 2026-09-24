@@ -8,6 +8,7 @@
 	import { folderId as makeFolderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import { select } from '$lib/services/db';
 	import ListFace from './ListFace.svelte';
+	import SectionHead from '../SectionHead.svelte';
 	import {
 		ArrowDown,
 		ArrowUp,
@@ -19,7 +20,7 @@
 		EyeOff,
 		Trash2
 	} from '@lucide/svelte';
-	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { dashboardSections, DASH_SECTION_LABEL, type DashSection } from '$lib/views/dashboard';
 	import Folder from '$lib/models/Folder';
 	import { toasts } from '$lib/toasts.svelte';
@@ -143,10 +144,9 @@
 		e.preventDefault();
 	}
 
-	// ── The two sections, as list faces that live only here ────────────────────
-	const showDone = $derived(face.config.show_done === true);
-
+	// ── The sections, as list faces that live only here ────────────────────
 	const todoFace = ViewFace.create('list');
+	const doneFace = ViewFace.create('list');
 	const notesFace = ViewFace.create('list');
 
 	// each section's arrangement lives on the dashboard face; the section faces are rebuilt
@@ -175,7 +175,7 @@
 			op: 'and',
 			children: [
 				{ field_id: tagsId, op: 'has_any', value: [TODO] },
-				...(showDone ? [] : [{ field_id: doneId, op: 'eq', value: false }])
+				{ field_id: doneId, op: 'eq', value: false }
 			]
 		};
 		const sort = sortFor('todo_sort', { field_id: dueId, direction: 'asc' });
@@ -184,6 +184,19 @@
 			{ ...(manual ? { field_id: dueId, direction: 'asc' as const } : sort), nulls: 'last' }
 		];
 		todoFace.config.order = manual ? [...((face.config.todo_order as string[]) ?? [])] : undefined;
+
+		doneFace.display_field_ids = [...l.display];
+		doneFace.config.right = [...l.right];
+		doneFace.config.hide_tag = TODO;
+		doneFace.config.edit_in_place = true;
+		doneFace.additive_filter = {
+			op: 'and',
+			children: [
+				{ field_id: tagsId, op: 'has_any', value: [TODO] },
+				{ field_id: doneId, op: 'eq', value: true }
+			]
+		};
+		doneFace.sort = [{ field_id: updatedId, direction: 'desc' }];
 	});
 
 	$effect(() => {
@@ -273,21 +286,21 @@
 
 	// counts for the section headers
 	let openCount = $state(0);
+	let doneCount = $state(0);
 	let notesCount = $state(0);
+	let recount = $state(0);
+	$effect(() => onSourceReconciled(() => recount++));
 	$effect(() => {
-		void showDone;
 		void tagScope;
 		void view.filter;
-		const openFace = ViewFace.create('list', [], {
-			op: 'and',
-			children: [
-				{ field_id: tagsId, op: 'has_any', value: [TODO] },
-				{ field_id: doneId, op: 'eq', value: false }
-			]
-		});
+		void recount;
 		view
-			.countMembers({ face: openFace, scope: tagScope })
+			.countMembers({ face: todoFace, scope: tagScope })
 			.then((n) => (openCount = n))
+			.catch(() => {});
+		view
+			.countMembers({ face: doneFace, scope: tagScope })
+			.then((n) => (doneCount = n))
 			.catch(() => {});
 		view
 			.countMembers({ face: notesFace, scope: tagScope })
@@ -396,10 +409,12 @@
 	// the search left them
 	const searching = $derived(!!(view.state.search as string | undefined)?.trim());
 	let todoTotal = $state(-1);
+	let doneTotal = $state(-1);
 	let notesTotal = $state(-1);
 	$effect(() => {
 		void view.state.search;
 		todoTotal = -1;
+		doneTotal = -1;
 		notesTotal = -1;
 	});
 	const sections = $derived(dashboardSections(face));
@@ -407,8 +422,9 @@
 		sections.filter((s) => {
 			if (s.hidden) return false;
 			if (s.id === 'folders') return !!view.unit && !view.unit.startsWith('tag:');
+			if (s.id === 'done' && !searching && doneCount === 0) return false;
 			if (!searching) return true;
-			const total = s.id === 'todo' ? todoTotal : notesTotal;
+			const total = s.id === 'todo' ? todoTotal : s.id === 'done' ? doneTotal : notesTotal;
 			return total !== 0;
 		})
 	);
@@ -453,13 +469,13 @@
 						{
 							label: 'Sort by',
 							icon: ArrowDownUp,
-							children: sortEntries(s.id === 'todo' ? 'todo_sort' : 'docs_sort')
+							children: sortEntries(s.id === 'docs' ? 'docs_sort' : 'todo_sort')
 						},
 						{
 							label: 'Arrange fields',
 							icon: LayoutArrowDown,
 							action: () => {
-								arrangeFace = s.id === 'todo' ? todoFace : notesFace;
+								arrangeFace = s.id === 'docs' ? notesFace : todoFace;
 								arrangeOpen = true;
 							}
 						},
@@ -558,75 +574,71 @@
 
 	{#each visible as sec (sec.id)}
 		<section data-id={sec.id} class:dragging={dragId === sec.id}>
-			<header class="sec" use:ctxMenu={() => sectionMenu(sec)}>
-				<span
-					class="grip"
-					role="presentation"
-					title="Drag to reorder"
-					onpointerdown={(e) => armDrag(e, sec.id)}
-				>
-					<GripVertical size={14} strokeWidth={1.75} />
-				</span>
-				<button
-					class="sec-head"
-					type="button"
-					onclick={() => patch(sec.id, { collapsed: !sec.collapsed })}
-				>
-					<span class="sec-title">{DASH_SECTION_LABEL[sec.id]}</span>
-					<span class="sec-count">
-						{sec.id === 'todo'
-							? searching && todoTotal >= 0
-								? todoTotal
-								: `${openCount} open`
+			<div class="sec">
+				<SectionHead
+					title={DASH_SECTION_LABEL[sec.id]}
+					count={sec.id === 'todo'
+						? searching && todoTotal >= 0
+							? todoTotal
+							: `${openCount} open`
+						: sec.id === 'done'
+							? searching && doneTotal >= 0
+								? doneTotal
+								: doneCount
 							: sec.id === 'docs'
 								? searching && notesTotal >= 0
 									? notesTotal
 									: notesCount
 								: subfolders.length}
-					</span>
-					<span class="sec-caret" class:collapsed={sec.collapsed}>
-						<ChevronDown size={13} strokeWidth={2} />
-					</span>
-				</button>
-				<button
-					class="sec-cog"
-					type="button"
-					tabindex="-1"
-					aria-label="Section options"
-					onclick={(e) => {
-						e.stopPropagation();
-						const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-						contextMenu.show(r.left, r.bottom + 4, () => sectionMenu(sec));
-					}}
+					collapsed={sec.collapsed}
+					onToggle={() => patch(sec.id, { collapsed: !sec.collapsed })}
+					menu={() => sectionMenu(sec)}
 				>
-					<Settings2 size={13} strokeWidth={1.75} />
-				</button>
-				<span class="sec-rule"></span>
-				{#if sec.id === 'todo'}
-					<button
-						class="sec-action"
-						type="button"
-						onclick={() => (face.config.show_done = !showDone)}
-					>
-						{showDone ? 'hide done' : 'show done'}
-					</button>
-				{:else if sec.id === 'docs'}
-					<button
-						class="sec-action"
-						type="button"
-						onclick={(e) => {
-							const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-							contextMenu.show(r.left, r.bottom + 4, () => sortEntries('docs_sort'));
-						}}
-					>
-						{docsSortField ? fieldLabel(docsSortField).toLowerCase() : 'recent'}
-						{#if docsSort.direction === 'asc'}<ArrowUp size={12} strokeWidth={2} />{:else}<ArrowDown
-								size={12}
-								strokeWidth={2}
-							/>{/if}
-					</button>
-				{/if}
-			</header>
+					{#snippet lead()}
+						<span
+							class="grip"
+							role="presentation"
+							title="Drag to reorder"
+							onpointerdown={(e) => armDrag(e, sec.id)}
+						>
+							<GripVertical size={14} strokeWidth={1.75} />
+						</span>
+					{/snippet}
+					{#snippet tools()}
+						<button
+							class="sec-cog"
+							type="button"
+							tabindex="-1"
+							aria-label="Section options"
+							onclick={(e) => {
+								e.stopPropagation();
+								const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+								contextMenu.show(r.left, r.bottom + 4, () => sectionMenu(sec));
+							}}
+						>
+							<Settings2 size={13} strokeWidth={1.75} />
+						</button>
+					{/snippet}
+					{#snippet trail()}
+						{#if sec.id === 'docs'}
+							<button
+								class="sec-action"
+								type="button"
+								onclick={(e) => {
+									const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+									contextMenu.show(r.left, r.bottom + 4, () => sortEntries('docs_sort'));
+								}}
+							>
+								{docsSortField ? fieldLabel(docsSortField).toLowerCase() : 'recent'}
+								{#if docsSort.direction === 'asc'}<ArrowUp
+										size={12}
+										strokeWidth={2}
+									/>{:else}<ArrowDown size={12} strokeWidth={2} />{/if}
+							</button>
+						{/if}
+					{/snippet}
+				</SectionHead>
+			</div>
 			{#if !sec.collapsed}
 				{#if sec.id === 'folders'}
 					<div class="strip">
@@ -656,6 +668,16 @@
 						autoFocus={false}
 						onTotal={(n) => (todoTotal = n)}
 						onReorder={(ids) => onReorder('todo', ids)}
+					/>
+				{:else if sec.id === 'done'}
+					<ListFace
+						{view}
+						face={doneFace}
+						creatable={false}
+						{onOpenRow}
+						scope={tagScope}
+						autoFocus={false}
+						onTotal={(n) => (doneTotal = n)}
 					/>
 				{:else}
 					<ListFace
@@ -756,14 +778,6 @@
 		transition: opacity 100ms ease;
 	}
 
-	/* a quiet rule runs the header row out from the title to its action */
-	.sec-rule {
-		flex: 1;
-		height: 1px;
-		margin: 0 14px 0 10px;
-		background: var(--chip-divider);
-	}
-
 	.strip {
 		margin: 4px 24px 6px;
 	}
@@ -805,10 +819,7 @@
 	}
 
 	.sec {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		margin: 0 24px 4px;
+		margin: 0 24px;
 	}
 
 	/* the grip lives in the gutter so headers still line up with rows */
@@ -829,43 +840,6 @@
 
 	.grip:hover {
 		opacity: 1 !important;
-	}
-
-	.sec-head {
-		display: inline-flex;
-		align-items: baseline;
-		gap: 8px;
-		padding: 0;
-		border: none;
-		background: transparent;
-		font: inherit;
-		cursor: pointer;
-	}
-
-	.sec-title {
-		font-size: 15px;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.sec-count {
-		font-size: 13px;
-		color: var(--color-ui-muted);
-	}
-
-	.sec-caret {
-		display: inline-flex;
-		align-self: center;
-		color: var(--color-ui-muted);
-		opacity: 0;
-		transition:
-			opacity 80ms ease,
-			transform 120ms ease;
-	}
-
-	.sec:hover .sec-caret,
-	.sec-caret.collapsed {
-		opacity: 1;
 	}
 
 	/* the section's menu, on a cog past the caret; only there when the header is hovered */
@@ -895,10 +869,6 @@
 	.sec-cog:hover {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
-	}
-
-	.sec-caret.collapsed {
-		transform: rotate(-90deg);
 	}
 
 	.sec-action {
