@@ -28,6 +28,11 @@
 
 	Session.init().then((s) => (session = s));
 
+	function addSource() {
+		addSourceSignal++;
+		session?.editors[0].focusTab({ kind: 'settings' });
+	}
+
 	// watching for external changes
 	let unlistenWatch: Promise<UnlistenFn> | undefined;
 	$effect(() => {
@@ -194,14 +199,7 @@
 {#if session}
 	{@const editor = session.editors[0]}
 	<div class="app-layout">
-		<TopBar
-			{editor}
-			settings={session.settings}
-			onAddSource={() => {
-				addSourceSignal++;
-				editor.focusTab({ kind: 'settings' });
-			}}
-		></TopBar>
+		<TopBar {editor} settings={session.settings} onAddSource={addSource}></TopBar>
 		<main class="content-area">
 			{#if tab}
 				{#key tab.id}
@@ -212,13 +210,7 @@
 					{:else if tab.content.type === 'markdown'}
 						<DocumentEditor {tab} {editor} settings={session.settings} />
 					{:else if tab.content.type === 'home'}
-						<HomePage
-							{editor}
-							onAddSource={() => {
-								addSourceSignal++;
-								editor.focusTab({ kind: 'settings' });
-							}}
-						/>
+						<HomePage {editor} onAddSource={addSource} />
 					{:else if tab.content.type === 'new'}
 						<ProjectSetup {tab} {editor} />
 					{:else if tab.content.type === 'licenses'}
@@ -233,7 +225,7 @@
 		</main>
 	</div>
 	<ContextMenu />
-	<Palette {session} />
+	<Palette {session} onAddSource={addSource} />
 {/if}
 
 <style>

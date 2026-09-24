@@ -1,16 +1,17 @@
 # <img width="3840" height="1020" alt="image" src="https://github.com/user-attachments/assets/e64a6afd-2b98-4d51-8e6c-654694027855" />
 
-> Links: [limestone.app](https://limestone.app/), [voithoslabs.com](https://voithoslabs.com/)
+> [limestone.app](https://limestone.app/), [voithoslabs.com](https://voithoslabs.com/)
 
 > [!WARNING]
 > Limestone is still in pre-release state, expect bugs.
 
 Note taking, tasks, projects, etc.
 
-<img width="1019" height="691" alt="image" src="https://github.com/user-attachments/assets/254cff31-24d8-49ac-b3a2-16051cc4634e" />
+## Monthly major updates, see the new project overhaul:
 
-<img width="819" height="615" alt="image" src="https://github.com/user-attachments/assets/1b7ea001-cf84-466b-899b-4cb35cb835b9" />
-> yes, this is on a 2017 MacBook Air
+<img width="1031" height="803" alt="image" src="https://github.com/user-attachments/assets/38bf298d-936c-444c-8fac-6f92b26475e3" />
+
+<img width="1140" height="858" alt="image" src="https://github.com/user-attachments/assets/cf92bbef-0ce2-46c9-a3ac-d3cf2a1841dc" />
 
 ## Editor
 

@@ -78,7 +78,7 @@
 	}
 
 	let title = $state(untrack(() => handle.title));
-	const wasDraft = untrack(() => handle.isDraft);
+	const wasNew = untrack(() => handle.isNew);
 	const draftTitle = untrack(() => handle.title);
 	let relPath = $state(untrack(() => handle.relPath));
 	let source = $state<Source>(untrack(() => handle.source));
@@ -330,7 +330,7 @@
 
 	$effect(() => {
 		if (folderOpen || tagMenuOpen) return;
-		if (!wasDraft || handle.title !== draftTitle) return;
+		if (!wasNew || handle.title !== draftTitle) return;
 		const active = document.activeElement;
 		if (active && active !== document.body && active !== pickAnchor && active !== tagAnchor) return;
 		titleInput?.focus();
@@ -388,7 +388,7 @@
 	}
 
 	onMount(() => {
-		if (handle.isDraft) {
+		if (wasNew) {
 			titleInput?.focus();
 			titleInput?.select();
 		}
@@ -398,6 +398,7 @@
 		listSources()
 			.then((ss) => (sources = ss))
 			.catch(() => {});
+		return () => handle.markOpened();
 	});
 </script>
 

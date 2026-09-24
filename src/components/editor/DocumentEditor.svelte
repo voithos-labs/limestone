@@ -465,7 +465,7 @@
 		// Placing a caret focuses the document, so a reader typing elsewhere (quick search, a title
 		// field) keeps their field; the remembered caret stays on the tab for the next open.
 		// A fresh note wants its name first: the title takes focus, not the body
-		if (handle?.isDraft && !flow) {
+		if (handle?.isNew && !flow) {
 			const title = wrapperEl?.querySelector<HTMLInputElement>('.title-input');
 			if (title) {
 				title.focus();

@@ -46,16 +46,32 @@
 
 	// Menus flip rather than slide: against the right edge the menu opens leftwards from the
 	// pointer, against the bottom it opens upwards, as every desktop menu does
+	let reflow = $state(0);
+	$effect(() => {
+		if (!contextMenu.open || !contextMenu.anchor) return;
+		const bump = () => reflow++;
+		window.addEventListener('scroll', bump, true);
+		window.addEventListener('resize', bump);
+		return () => {
+			window.removeEventListener('scroll', bump, true);
+			window.removeEventListener('resize', bump);
+		};
+	});
+
 	$effect(() => {
 		if (!contextMenu.open || !menuEl) {
 			pos = null;
 			return;
 		}
+		void reflow;
 		const m = menuEl.getBoundingClientRect();
-		let left = contextMenu.x;
-		let top = contextMenu.y;
-		if (left + m.width > window.innerWidth - 8) left = contextMenu.x - m.width;
-		if (top + m.height > window.innerHeight - 8) top = contextMenu.y - m.height;
+		const a = contextMenu.anchor?.getBoundingClientRect();
+		let left = a ? a.left : contextMenu.x;
+		let top = a ? a.bottom + 4 : contextMenu.y;
+		if (left + m.width > window.innerWidth - 8)
+			left = a ? a.right - m.width : contextMenu.x - m.width;
+		if (top + m.height > window.innerHeight - 8)
+			top = a ? a.top - 4 - m.height : contextMenu.y - m.height;
 		pos = {
 			top: Math.max(8, Math.min(top, window.innerHeight - 8 - m.height)),
 			left: Math.max(8, Math.min(left, window.innerWidth - 8 - m.width))
