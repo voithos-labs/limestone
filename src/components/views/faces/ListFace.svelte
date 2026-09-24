@@ -51,8 +51,7 @@
 		if (!rows.loading) onTotal?.(rows.total);
 	});
 
-	// ── Group by: a presentation split over the loaded rows, headed like dashboard sections;
-	// rows keep their index into rows.rows so keyboard and reorder code is unchanged ─────
+	// ── Group by: a presentation split over the loaded rows, headed like dashboard sections ──
 	const groupField = $derived.by(() => {
 		const id = (face.config.group_by ?? null) as string | null;
 		return id ? (view.fields.find((f) => f.id === id) ?? null) : null;
@@ -75,20 +74,33 @@
 	}
 
 	const groups = $derived.by(() => {
-		const all = rows.rows.map((row, i) => ({ row, i }));
-		if (!groupField) return [{ key: '', label: '', items: all }];
-		const map = new Map<string, { key: string; label: string; items: typeof all }>();
-		if (groupField.type === 'boolean') map.set('0', { ...boolGroup(groupField, false), items: [] });
-		for (const it of all) {
-			const g = groupOf(it.row);
-			(map.get(g.key) ?? map.set(g.key, { ...g, items: [] }).get(g.key)!).items.push(it);
+		const f = groupField;
+		if (!f) return [{ key: '', label: '', items: rows.rows }];
+		const map = new Map<string, { key: string; label: string; items: MemberRow[] }>();
+		if (f.type === 'boolean') map.set('0', { ...boolGroup(f, false), items: [] });
+		for (const row of rows.rows) {
+			const g = groupOf(row);
+			(map.get(g.key) ?? map.set(g.key, { ...g, items: [] }).get(g.key)!).items.push(row);
 		}
-		const out = [...map.values()];
-		if (groupField.type === 'boolean') out.sort((a, b) => a.key.localeCompare(b.key));
-		const empty = out.findIndex((g) => g.key === '');
-		if (empty >= 0) out.push(...out.splice(empty, 1));
-		return out;
+		const options = ((f.config?.options ?? []) as { value: string }[]).map((o) => o.value);
+		const rank = (key: string) => {
+			const i = options.indexOf(key);
+			return i < 0 ? options.length : i;
+		};
+		return [...map.values()].sort(
+			(a, b) =>
+				Number(a.key === '') - Number(b.key === '') ||
+				rank(a.key) - rank(b.key) ||
+				a.key.localeCompare(b.key)
+		);
 	});
+
+	const crossGroup = $derived(groupField?.type === 'boolean' || groupField?.type === 'select');
+
+	function writeGroup(row: MemberRow, key: string) {
+		const f = groupField!;
+		rows.writeCell(row, f, f.type === 'boolean' ? key === '1' : key || null);
+	}
 
 	const newGroup = $derived(groupField?.type === 'boolean' ? '0' : null);
 
@@ -155,6 +167,9 @@
 		rows.init();
 		return () => {
 			if (reloadTimer) clearTimeout(reloadTimer);
+			if (drag) cancelAnimationFrame(drag.frame);
+			drag = null;
+			stopListening();
 		};
 	});
 
@@ -218,82 +233,223 @@
 	// ── Reorder: drag a row (no handle) and the others make room; the row's own click is
 	// swallowed once a drag happened so a drop never opens the note ────────────────────
 	const DRAG_PX = 4;
-	let reorderArm: { id: string; from: number; x: number; y: number } | null = null;
-	let drag: { id: string; from: number; to: number; dy: number; h: number } | null = $state(null);
-	let rowTops: number[] = [];
+	const EDGE_PX = 48;
+	const SETTLE_MS = 180;
+
+	type Slot = {
+		el: HTMLElement;
+		kind: 'row' | 'head' | 'new';
+		group: string;
+		mid: number;
+		shift: number;
+	};
+	type Drag = {
+		row: MemberRow;
+		el: HTMLElement;
+		group: string;
+		cross: boolean;
+		slots: Slot[];
+		home: number;
+		gap: number;
+		h: number;
+		mid: number;
+		y0: number;
+		y: number;
+		scroller: HTMLElement;
+		scroll0: number;
+		frame: number;
+	};
+
+	let press: { row: MemberRow; el: HTMLElement; x: number; y: number } | null = null;
+	let drag: Drag | null = null;
+	let dragId: string | null = $state(null);
 	let swallowClick = false;
 
-	function armReorder(e: PointerEvent, id: string, i: number) {
-		if (moveable || groupField || e.button !== 0 || layout === 'grid') return;
-		const t = e.target as HTMLElement;
-		if (t.closest('button, input, a, .value, .rename-wrap')) return;
-		reorderArm = { id, from: i, x: e.clientX, y: e.clientY };
+	function armReorder(e: PointerEvent, row: MemberRow) {
+		if (moveable || dragId || e.button !== 0 || layout === 'grid') return;
+		if ((e.target as HTMLElement).closest('button, input, a, .value, .rename-wrap')) return;
+		press = { row, el: e.currentTarget as HTMLElement, x: e.clientX, y: e.clientY };
 		window.addEventListener('pointermove', onReorderMove);
 		window.addEventListener('pointerup', onReorderUp);
+		window.addEventListener('pointercancel', onReorderCancel);
 		window.addEventListener('keydown', onReorderKey, true);
 	}
 
-	function onReorderMove(e: PointerEvent) {
-		const arm = reorderArm;
-		if (!arm) return;
-		if (!drag) {
-			if (Math.hypot(e.clientX - arm.x, e.clientY - arm.y) < DRAG_PX) return;
-			const els = items();
-			rowTops = els.map((el) => el.getBoundingClientRect().top);
-			const h = els[arm.from]?.getBoundingClientRect().height ?? 46;
-			drag = { id: arm.id, from: arm.from, to: arm.from, dy: 0, h };
-			(document.activeElement as HTMLElement | null)?.blur();
-		}
-		const d = drag;
-		const dy = e.clientY - arm.y;
-		// the dragged row's centre against the others' midpoints, the same rule as the tabs
-		const centre = rowTops[d.from] + d.h / 2 + dy;
-		let to = 0;
-		for (let i = 0; i < rowTops.length; i++) {
-			if (i === d.from) continue;
-			if (centre > rowTops[i] + d.h / 2) to = i < d.from ? i + 1 : i;
-		}
-		if (d.from > 0 && centre <= rowTops[0] + d.h / 2) to = 0;
-		drag = { ...d, dy, to: Math.max(0, Math.min(rowTops.length - 1, to)) };
-	}
-
-	function onReorderUp() {
-		const d = drag;
-		if (d) {
-			swallowClick = true;
-			if (d.to !== d.from) {
-				const ids = rows.rows.map((r) => r.id);
-				ids.splice(d.to, 0, ids.splice(d.from, 1)[0]);
-				rows.reorder(ids);
-				if (onReorder) onReorder(ids);
-				else face.config.order = ids;
-			}
-		}
-		endReorder();
-	}
-
-	function onReorderKey(e: KeyboardEvent) {
-		if (e.key === 'Escape' && drag) {
-			e.stopPropagation();
-			endReorder();
-		}
-	}
-
-	function endReorder() {
-		reorderArm = null;
-		drag = null;
+	function stopListening() {
+		press = null;
 		window.removeEventListener('pointermove', onReorderMove);
 		window.removeEventListener('pointerup', onReorderUp);
+		window.removeEventListener('pointercancel', onReorderCancel);
 		window.removeEventListener('keydown', onReorderKey, true);
 	}
 
-	function rowShift(i: number): string | null {
+	function scrollerOf(el: HTMLElement): HTMLElement {
+		for (let p = el.parentElement; p; p = p.parentElement) {
+			const o = getComputedStyle(p).overflowY;
+			if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+		}
+		return document.scrollingElement as HTMLElement;
+	}
+
+	function startDrag(p: NonNullable<typeof press>, y: number) {
+		if (!listEl) return;
+		const all = Array.from(listEl.querySelectorAll<HTMLElement>('.group-head, .row'));
+		const home = all.indexOf(p.el);
+		if (home < 0) return;
+		const slots: Slot[] = all
+			.filter((el) => el !== p.el)
+			.map((el) => {
+				const r = el.getBoundingClientRect();
+				const kind = el.classList.contains('group-head')
+					? 'head'
+					: el.classList.contains('new')
+						? 'new'
+						: 'row';
+				return { el, kind, group: el.dataset.group ?? '', mid: r.top + r.height / 2, shift: 0 };
+			});
+		const r = p.el.getBoundingClientRect();
+		const scroller = scrollerOf(listEl);
+		drag = {
+			row: p.row,
+			el: p.el,
+			group: p.el.dataset.group ?? '',
+			cross: crossGroup && rows.memberOf(p.row, groupField!),
+			slots,
+			home,
+			gap: home,
+			h: r.height,
+			mid: r.top + r.height / 2,
+			y0: p.y,
+			y,
+			scroller,
+			scroll0: scroller.scrollTop,
+			frame: requestAnimationFrame(dragFrame)
+		};
+		dragId = p.row.id;
+		(document.activeElement as HTMLElement | null)?.blur();
+		window.getSelection()?.removeAllRanges();
+	}
+
+	function onReorderMove(e: PointerEvent) {
+		if (drag) {
+			drag.y = e.clientY;
+			return;
+		}
+		const p = press;
+		if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) >= DRAG_PX) startDrag(p, e.clientY);
+	}
+
+	function dragFrame() {
 		const d = drag;
-		if (!d) return null;
-		if (i === d.from) return `translateY(${d.dy}px)`;
-		if (d.from < i && i <= d.to) return `translateY(${-d.h}px)`;
-		if (d.to <= i && i < d.from) return `translateY(${d.h}px)`;
-		return null;
+		if (!d) return;
+		if (!d.el.isConnected) {
+			finishDrag(false);
+			return;
+		}
+		const view =
+			d.scroller === document.scrollingElement
+				? { top: 0, bottom: window.innerHeight }
+				: d.scroller.getBoundingClientRect();
+		const over =
+			d.y < view.top + EDGE_PX
+				? d.y - view.top - EDGE_PX
+				: d.y > view.bottom - EDGE_PX
+					? d.y - view.bottom + EDGE_PX
+					: 0;
+		if (over)
+			d.scroller.scrollTop +=
+				Math.sign(over) * Math.ceil(Math.min(1, Math.abs(over) / EDGE_PX) * 16);
+		const dy = d.y - d.y0 + d.scroller.scrollTop - d.scroll0;
+		d.el.style.transform = `translate3d(0, ${dy}px, 0)`;
+		const gap = gapFor(d, d.mid + dy);
+		if (gap !== d.gap) {
+			d.gap = gap;
+			shiftSlots(d);
+		}
+		d.frame = requestAnimationFrame(dragFrame);
+	}
+
+	function fits(d: Drag, gap: number): boolean {
+		if (gap < 0 || gap > d.slots.length) return false;
+		const prev = d.slots[gap - 1];
+		if (!prev) return d.slots[0]?.kind !== 'head';
+		if (prev.kind === 'new') return false;
+		return d.cross || prev.group === d.group;
+	}
+
+	function gapFor(d: Drag, centre: number): number {
+		let raw = 0;
+		while (raw < d.slots.length && d.slots[raw].mid < centre) raw++;
+		for (let k = 0; k <= d.slots.length; k++) {
+			if (fits(d, raw - k)) return raw - k;
+			if (fits(d, raw + k)) return raw + k;
+		}
+		return d.home;
+	}
+
+	function shiftSlots(d: Drag) {
+		d.slots.forEach((s, k) => {
+			const shift = k >= d.gap && k < d.home ? d.h : k >= d.home && k < d.gap ? -d.h : 0;
+			if (shift === s.shift) return;
+			s.shift = shift;
+			s.el.style.transform = shift ? `translate3d(0, ${shift}px, 0)` : '';
+		});
+	}
+
+	function drop(d: Drag) {
+		const target = d.slots[d.gap - 1]?.group ?? d.group;
+		const peers = d.slots.filter((s) => s.kind === 'row' && s.group === target);
+		const above = d.slots.slice(0, d.gap).filter((s) => peers.includes(s)).length;
+		const ids = rows.rows.map((r) => r.id).filter((id) => id !== d.row.id);
+		const below = peers[above]?.el.dataset.id;
+		const prev = peers[above - 1]?.el.dataset.id;
+		const at = below ? ids.indexOf(below) : prev ? ids.indexOf(prev) + 1 : ids.length;
+		ids.splice(at, 0, d.row.id);
+		rows.reorder(ids);
+		if (onReorder) onReorder(ids);
+		else face.config.order = ids;
+		if (target !== d.group) writeGroup(rows.rows.find((r) => r.id === d.row.id) ?? d.row, target);
+	}
+
+	async function finishDrag(commit: boolean) {
+		stopListening();
+		const d = drag;
+		if (!d) return;
+		drag = null;
+		cancelAnimationFrame(d.frame);
+		swallowClick = true;
+		const from = d.el.getBoundingClientRect().top;
+		for (const el of [d.el, ...d.slots.map((s) => s.el)]) {
+			el.style.transition = 'none';
+			el.style.transform = '';
+		}
+		if (commit && d.gap !== d.home) drop(d);
+		await tick();
+		const el = listEl?.querySelector<HTMLElement>(`.row[data-id="${CSS.escape(d.row.id)}"]`);
+		if (el) {
+			el.style.transition = 'none';
+			el.style.transform = `translate3d(0, ${from - el.getBoundingClientRect().top}px, 0)`;
+		}
+		void listEl?.offsetHeight;
+		for (const s of d.slots) s.el.style.transition = '';
+		if (el) {
+			el.style.transition = `transform ${SETTLE_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
+			el.style.transform = '';
+		}
+		setTimeout(() => {
+			if (el) el.style.transition = '';
+			if (dragId === d.row.id) dragId = null;
+		}, SETTLE_MS);
+	}
+
+	const onReorderUp = () => finishDrag(true);
+	const onReorderCancel = () => finishDrag(false);
+
+	function onReorderKey(e: KeyboardEvent) {
+		if (e.key !== 'Escape' || !drag) return;
+		e.stopPropagation();
+		e.preventDefault();
+		finishDrag(false);
 	}
 
 	function onListClickCapture(e: MouseEvent) {
@@ -306,7 +462,7 @@
 	// the cursor arriving takes over from the keyboard cursor: the focused row lets go so
 	// the hover highlight is the only one
 	function onListPointerMove() {
-		if (drag) return;
+		if (dragId) return;
 		const a = document.activeElement as HTMLElement | null;
 		if (a && listEl?.contains(a) && a.matches('.row, .card')) a.blur();
 	}
@@ -337,7 +493,8 @@
 
 	function onListKey(e: KeyboardEvent) {
 		if (keyboardBusy() || renamingId) return;
-		const row = rows.rows[focusIdx];
+		const id = items()[focusIdx]?.dataset.id;
+		const row = rows.rows.find((r) => r.id === id);
 		const grid = layout === 'grid';
 		const stride = grid ? perRow() : 1;
 		switch (e.key) {
@@ -505,7 +662,7 @@
 	>
 		{#each groups as g (g.key)}
 			{#if groupField}
-				<div class="group-head">
+				<div class="group-head" data-group={g.key}>
 					<SectionHead
 						title={g.label}
 						count={g.items.length}
@@ -515,9 +672,9 @@
 				</div>
 			{/if}
 			{#if !collapsedGroups.has(g.key)}
-				{#each g.items as { row, i } (row.id)}
+				{#each g.items as row (row.id)}
 					<NoteCard
-						onFocus={() => (focusIdx = i)}
+						onFocus={() => (focusIdx = items().findIndex((el) => el.dataset.id === row.id))}
 						{row}
 						{rows}
 						{editors}
@@ -551,17 +708,18 @@
 	<div
 		class="list-face"
 		class:compact
-		class:reordering={!!drag}
+		class:reordering={!!dragId}
 		bind:this={listEl}
 		role="list"
 		tabindex="-1"
 		onkeydown={onListKey}
 		onpointermove={onListPointerMove}
 		onclickcapture={onListClickCapture}
+		onpointerdowncapture={() => (swallowClick = false)}
 	>
 		{#each groups as g (g.key)}
 			{#if groupField}
-				<div class="group-head">
+				<div class="group-head" data-group={g.key}>
 					<SectionHead
 						title={g.label}
 						count={g.items.length}
@@ -571,29 +729,29 @@
 				</div>
 			{/if}
 			{#if !collapsedGroups.has(g.key)}
-				{#each g.items as { row, i } (row.id)}
+				{#each g.items as row (row.id)}
 					{@const member = checkField ? rows.memberOf(row, checkField) : false}
 					{@const done = member && checkField ? rawStatefulValue(row, checkField) === true : false}
 					<div
 						class="row"
 						class:done
 						class:editable={editMode}
-						class:lifted={drag?.id === row.id}
-						style:transform={rowShift(i)}
+						class:lifted={dragId === row.id}
 						role="listitem"
 						data-id={row.id}
+						data-group={g.key}
 						tabindex="-1"
 						draggable={moveable}
 						ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 						ondragend={endMove}
-						onpointerdown={(e) => armReorder(e, row.id, i)}
+						onpointerdown={(e) => armReorder(e, row)}
 						onclick={(e) => {
 							if (!editMode) onOpenRow?.(row.id, e.ctrlKey || e.metaKey);
 						}}
 						onauxclick={(e) => {
 							if (e.button === 1) onOpenRow?.(row.id, true);
 						}}
-						onfocus={() => (focusIdx = i)}
+						onfocus={(e) => (focusIdx = items().indexOf(e.currentTarget))}
 						oncontextmenu={(e) => editors.menu(e, row.id)}
 					>
 						{#if checkField && member}
@@ -802,8 +960,9 @@
 	}
 
 	/* while a row is carried the others slide out of its way; the carried one rides above */
-	.list-face.reordering .row {
-		transition: transform 70ms ease-out;
+	.list-face.reordering .row,
+	.list-face.reordering .group-head {
+		transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 
 	.list-face.reordering,
@@ -812,7 +971,11 @@
 		user-select: none;
 	}
 
-	.row.lifted {
+	.list-face.reordering .row:not(.lifted) {
+		background: transparent;
+	}
+
+	.list-face.reordering .row.lifted {
 		position: relative;
 		z-index: 2;
 		transition: none;

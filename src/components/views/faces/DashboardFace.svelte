@@ -24,8 +24,6 @@
 	import { dashboardSections, DASH_SECTION_LABEL, type DashSection } from '$lib/views/dashboard';
 	import Folder from '$lib/models/Folder';
 	import { toasts } from '$lib/toasts.svelte';
-	import InputPopover from '../InputPopover.svelte';
-	import { FolderPlus } from '@lucide/svelte';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import FolderChips from '../FolderChips.svelte';
 	import {
@@ -316,15 +314,8 @@
 	let projects: Map<string, { emoji: string }> = $state(new Map());
 	let source: Source | null = $state(null);
 
-	// making a folder from the section: named in a popover, then it's just another chip
-	let newFolderOpen = $state(false);
-	let newFolderEl: HTMLElement | null = $state(null);
-	function openNewFolder(e?: MouseEvent) {
-		if (e?.currentTarget) newFolderEl = e.currentTarget as HTMLElement;
-		newFolderOpen = true;
-	}
+	// making a folder from the section: named in its own chip, then it's just another chip
 	async function createFolder(name: string) {
-		newFolderOpen = false;
 		const unit = view.unit;
 		if (!name || !unit || unit.startsWith('tag:')) return;
 		try {
@@ -642,21 +633,14 @@
 			{#if !sec.collapsed}
 				{#if sec.id === 'folders'}
 					<div class="strip">
-						{#if subfolders.length}
-							<FolderChips
-								folders={subfolders}
-								{projects}
-								rows={1}
-								onOpen={(f) => onOpenUnit?.(f.id, f.slug)}
-								context={folderContext}
-								onNew={openNewFolder}
-							/>
-						{:else}
-							<button class="new-folder" type="button" onclick={openNewFolder}>
-								<span class="nf-mark"><FolderPlus size={16} strokeWidth={1.75} /></span>
-								<span>New folder</span>
-							</button>
-						{/if}
+						<FolderChips
+							folders={subfolders}
+							{projects}
+							rows={1}
+							onOpen={(f) => onOpenUnit?.(f.id, f.slug)}
+							context={folderContext}
+							onCreate={createFolder}
+						/>
 					</div>
 				{:else if sec.id === 'todo'}
 					<ListFace
@@ -696,13 +680,6 @@
 </div>
 
 <ArrangeFields bind:open={arrangeOpen} {view} face={arrangeFace} />
-<InputPopover
-	bind:open={newFolderOpen}
-	anchor={newFolderOpen ? newFolderEl : null}
-	value=""
-	placeholder="New folder"
-	onChange={(v) => createFolder(String(v ?? ''))}
-/>
 
 <style>
 	.dash {
@@ -780,38 +757,6 @@
 
 	.strip {
 		margin: 4px 24px 6px;
-	}
-
-	/* sits on the list's grid: a 20px mark column, 12px gap, then the label */
-	.new-folder {
-		display: inline-flex;
-		align-items: center;
-		gap: 12px;
-		height: 36px;
-		margin-left: -10px;
-		padding: 0 12px 0 10px;
-		border: none;
-		border-radius: 8px;
-		background: transparent;
-		font: inherit;
-		font-size: 15px;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-		transition:
-			background-color 80ms ease,
-			color 80ms ease;
-	}
-
-	.nf-mark {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 20px;
-	}
-
-	.new-folder:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
 	}
 
 	section.dragging {
