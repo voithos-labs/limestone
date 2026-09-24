@@ -66,7 +66,9 @@
 	// ── Chips: what this project's notes are tagged, and which subfolders hold them ──
 	type Chip = { id: string; slug: string; n: number; kind: 'tag' | 'folder' };
 	let chips: Chip[] = $state([]);
-	const selectedTag = $derived((view.state.dash_tag as string | undefined) ?? null);
+	const selectedTag = $derived(
+		face.config.hide_chips ? null : ((view.state.dash_tag as string | undefined) ?? null)
+	);
 
 	async function loadChips() {
 		try {
@@ -305,7 +307,7 @@
 	});
 
 	// ── Folders: the project's subfolders, projects among them first ────────────
-	let subfolders: Folder[] = $state([]);
+	let allFolders: Folder[] = $state([]);
 	let projects: Map<string, { emoji: string }> = $state(new Map());
 	let source: Source | null = $state(null);
 
@@ -314,7 +316,7 @@
 		if (!unit || unit.startsWith('tag:')) return;
 		try {
 			const [all, saved] = await Promise.all([Folder.list(), listSavedViewJSON()]);
-			subfolders = all.filter((f) => f.parentId === unit);
+			allFolders = all;
 			projects = new Map(
 				saved
 					.filter((v) => v.unit?.startsWith('folder:'))
@@ -377,15 +379,42 @@
 		}
 	}
 
+	const query = $derived(((view.state.search as string | undefined) ?? '').trim().toLowerCase());
+	const folderBase = $derived(selectedTag?.startsWith('folder:') ? selectedTag : view.unit);
+	const underBase = (f: Folder) => {
+		if (!folderBase?.startsWith('folder:')) return false;
+		const base = folderIdPath(folderBase);
+		return (
+			folderIdSource(f.id) === folderIdSource(folderBase) &&
+			folderIdPath(f.id).startsWith(base ? `${base}/` : '')
+		);
+	};
+	const subfolders = $derived.by(() => {
+		if (query)
+			return allFolders
+				.filter((f) => underBase(f) && f.slug.toLowerCase().includes(query))
+				.sort((a, b) => a.slug.localeCompare(b.slug));
+		if (selectedTag && selectedTag !== folderBase) return [];
+		return allFolders.filter((f) => f.parentId === folderBase);
+	});
+	const relDir = (f: Folder) => {
+		const base = folderBase ? folderIdPath(folderBase) : '';
+		const p = folderIdPath(f.id);
+		const rel = base ? p.slice(base.length + 1) : p;
+		return rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
+	};
+
 	// ── Sections: order, collapsed, hidden, all on the face ─────────────────────
-	// under a search, a section with nothing to show steps aside; the lists report what
-	// the search left them
-	const searching = $derived(!!(view.state.search as string | undefined)?.trim());
+	// under a search or a chip, a section with nothing to show steps aside; the lists report
+	// what's left
+	const searching = $derived(!!query);
+	const narrowed = $derived(searching || !!selectedTag);
 	let todoTotal = $state(-1);
 	let doneTotal = $state(-1);
 	let notesTotal = $state(-1);
 	$effect(() => {
 		void view.state.search;
+		void selectedTag;
 		todoTotal = -1;
 		doneTotal = -1;
 		notesTotal = -1;
@@ -396,7 +425,7 @@
 			if (s.hidden) return false;
 			if (s.id === 'folders') return subfolders.length > 0;
 			if (s.id === 'done' && !searching && doneCount === 0) return false;
-			if (!searching) return true;
+			if (!narrowed) return true;
 			const total = s.id === 'todo' ? todoTotal : s.id === 'done' ? doneTotal : notesTotal;
 			return total !== 0;
 		})
@@ -519,29 +548,40 @@
 
 <div class="dash" bind:this={dashEl}>
 	{#if !face.config.hide_chips && chips.length > 0}
-		<div class="chips" onwheel={onChipsWheel}>
-			<button
-				class="chip"
-				class:on={!selectedTag}
-				type="button"
-				onclick={() => (view.state.dash_tag = null)}
-			>
-				all
-			</button>
-			{#each chips as c (c.id)}
+		<div class="chip-row">
+			<div class="chips" onwheel={onChipsWheel}>
 				<button
 					class="chip"
-					class:on={selectedTag === c.id}
+					class:on={!selectedTag}
 					type="button"
-					onclick={() => (view.state.dash_tag = selectedTag === c.id ? null : c.id)}
+					onclick={() => (view.state.dash_tag = null)}
 				>
-					{#if c.kind === 'folder'}<FolderIcon size={11} strokeWidth={1.75} />{:else}<Hash
-							size={11}
-							strokeWidth={2}
-						/>{/if}{c.slug}
-					<span class="n">{c.n}</span>
+					all
 				</button>
-			{/each}
+				{#each chips as c (c.id)}
+					<button
+						class="chip"
+						class:on={selectedTag === c.id}
+						type="button"
+						onclick={() => (view.state.dash_tag = selectedTag === c.id ? null : c.id)}
+					>
+						{#if c.kind === 'folder'}<FolderIcon size={11} strokeWidth={1.75} />{:else}<Hash
+								size={11}
+								strokeWidth={2}
+							/>{/if}{c.slug}
+						<span class="n">{c.n}</span>
+					</button>
+				{/each}
+			</div>
+			<button
+				class="chips-hide"
+				type="button"
+				title="Hide quick filters"
+				aria-label="Hide quick filters"
+				onclick={() => (face.config.hide_chips = true)}
+			>
+				<EyeOff size={13} strokeWidth={1.75} />
+			</button>
 		</div>
 	{/if}
 
@@ -618,7 +658,8 @@
 						<FolderChips
 							folders={subfolders}
 							{projects}
-							rows={1}
+							rows={query ? 99 : 1}
+							whereOf={(f) => (query ? relDir(f) : '')}
 							onOpen={(f) => onOpenUnit?.(f.id, f.slug)}
 							context={folderContext}
 						/>
@@ -670,13 +711,41 @@
 		font-family: var(--font-ui);
 	}
 
-	.chips {
+	.chip-row {
 		display: flex;
-		flex-wrap: nowrap;
+		align-items: center;
 		gap: 6px;
 		margin: 0 24px;
+	}
+
+	.chips {
+		display: flex;
+		flex: 1 1 auto;
+		flex-wrap: nowrap;
+		gap: 6px;
+		min-width: 0;
 		overflow-x: auto;
 		scrollbar-width: none;
+	}
+
+	.chips-hide {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		border: none;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+	}
+
+	.chips-hide:hover {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
 	}
 
 	.chips::-webkit-scrollbar {
