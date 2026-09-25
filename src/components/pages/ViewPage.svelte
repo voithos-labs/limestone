@@ -74,7 +74,9 @@
 	});
 
 	// a doc face makes its own entry
-	const showNewFab = $derived(activeFace?.type !== 'doc');
+	// a journal adds through the day itself (its entry, or the body's inline add row), so the
+	// fab would only ask a question it can't answer: new note in which day?
+	const showNewFab = $derived(activeFace?.type !== 'doc' && activeFace?.type !== 'journal');
 
 	// a mode bar docked here (the history scrubber) owns the bottom of the page; the fab steps
 	// aside for it rather than sitting on top
