@@ -53,7 +53,10 @@ export type TabContent =
 	| { type: 'home'; id: string }
 	| { type: 'licenses'; id: string };
 
-export type TabJSON =
+// a tab's back stack travels with it, as the same shapes the tab itself serializes
+export type TabJSON = TabJSONBase & { history?: TabJSONBase[] };
+
+type TabJSONBase =
 	| { type: 'markdown'; handleId: string; state: Record<string, any>; pinned?: boolean }
 	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any>; pinned?: boolean }
 	| { type: 'view-ref'; viewId: string; state: Record<string, any>; pinned?: boolean }
@@ -66,7 +69,7 @@ export class TabState {
 	content: TabContent = $state() as TabContent;
 	state: Record<string, any> = $state({});
 	pinned: boolean = $state(false);
-	// places this tab showed before the current one, most recent last; not persisted
+	// places this tab showed before the current one, most recent last; travels in state.json
 	history: { content: TabContent; state: Record<string, any> }[] = $state([]);
 
 	constructor(content: TabContent, state: Record<string, any> = {}, pinned = false) {
@@ -125,40 +128,27 @@ export class TabState {
 	}
 
 	toJSON(): TabJSON {
-		if (this.content.type === 'markdown') {
-			return {
-				type: 'markdown',
-				handleId: this.content.handle.id,
-				state: this.state,
-				pinned: this.pinned
-			};
-		}
-		if (
-			this.content.type === 'new' ||
-			this.content.type === 'home' ||
-			this.content.type === 'licenses'
-		) {
-			return {
-				type: this.content.type,
-				id: this.content.id,
-				state: this.state,
-				pinned: this.pinned
-			};
-		}
-		if (!this.content.view.temporary) {
-			return {
-				type: 'view-ref',
-				viewId: this.content.view.id,
-				state: this.state,
-				pinned: this.pinned
-			};
-		}
 		return {
-			type: 'view',
-			view: this.content.view.toJSON(),
-			state: this.state,
-			pinned: this.pinned
+			...TabState.contentToJSON(this.content, this.state, this.pinned),
+			history: this.history.map((h) => TabState.contentToJSON(h.content, h.state, false))
 		};
+	}
+
+	private static contentToJSON(
+		content: TabContent,
+		state: Record<string, any>,
+		pinned: boolean
+	): TabJSONBase {
+		if (content.type === 'markdown') {
+			return { type: 'markdown', handleId: content.handle.id, state, pinned };
+		}
+		if (content.type === 'new' || content.type === 'home' || content.type === 'licenses') {
+			return { type: content.type, id: content.id, state, pinned };
+		}
+		if (!content.view.temporary) {
+			return { type: 'view-ref', viewId: content.view.id, state, pinned };
+		}
+		return { type: 'view', view: content.view.toJSON(), state, pinned };
 	}
 
 	static forDoc(doc: DocHandle): TabState {
@@ -181,7 +171,23 @@ export class TabState {
 		return new TabState({ type: 'licenses', id: 'licenses' });
 	}
 
+	private static readonly MAX_HISTORY = 10;
+
 	static async loadFromJSON(json: TabJSON): Promise<TabState> {
+		const tab = await TabState.contentFromJSON(json);
+		// a document deleted since the last run simply drops out of the stack
+		for (const entry of (json.history ?? []).slice(-TabState.MAX_HISTORY)) {
+			try {
+				const past = await TabState.contentFromJSON(entry);
+				tab.history.push({ content: past.content, state: past.state });
+			} catch {
+				/* gone */
+			}
+		}
+		return tab;
+	}
+
+	private static async contentFromJSON(json: TabJSONBase): Promise<TabState> {
 		if (json.type === 'markdown') {
 			const handle = await DocHandle.fromID(json.handleId);
 			return new TabState({ type: 'markdown', handle }, json.state ?? {}, json.pinned ?? false);
