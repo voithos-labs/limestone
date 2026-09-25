@@ -398,7 +398,10 @@
 		listSources()
 			.then((ss) => (sources = ss))
 			.catch(() => {});
-		return () => handle.markOpened();
+		// the handle this hero mounted with: by teardown the prop may have moved on, and it is
+		// this document's opening that wants recording
+		const opened = handle;
+		return () => opened?.markOpened();
 	});
 </script>
 

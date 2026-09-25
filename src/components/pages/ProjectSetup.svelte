@@ -101,8 +101,10 @@
 		{ id: 'journal', label: 'Journal', hint: 'A day at a time', icon: NotebookText },
 		{ id: 'notes', label: 'Notes', hint: 'Everything as a list', icon: List },
 		{ id: 'grid', label: 'Grid', hint: 'Everything as cards', icon: LayoutGrid },
-		{ id: 'blank', label: 'Blank', hint: 'Start from nothing', icon: FileText }
+		{ id: 'empty', label: 'Empty folder', hint: 'Just the folder, no project', icon: FolderIcon }
 	];
+	// setting up a place that already exists has no use for "just make the folder"
+	const templates = $derived(unitId ? TEMPLATES.filter((t) => t.id !== 'empty') : TEMPLATES);
 	let picked = $state(0);
 
 	const TODO = 'tag:todo';
@@ -162,9 +164,6 @@
 					ViewFace.create('list', keep([title, tags, updated]), undefined, [], { layout: 'grid' })
 				];
 				break;
-			case 'blank':
-				view.faces = [ViewFace.create('list', keep([title]))];
-				break;
 			default:
 				view.faces = [ViewFace.create('list', keep([title, tags, updated]))];
 		}
@@ -190,6 +189,12 @@
 				label = folder.slug;
 			}
 			const view = await View.forUnit(id, label);
+			// a folder on its own: made, opened, and left as a folder
+			if (template === 'empty') {
+				if (emoji) view.emoji = emoji;
+				editor.replaceTab(tab.id, TabState.forView(view));
+				return;
+			}
 			if (emoji) view.emoji = emoji;
 			applyTemplate(view, template);
 			await view.save();
@@ -204,7 +209,7 @@
 	function onKey(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
-			create(TEMPLATES[picked].id);
+			create(templates[picked].id);
 		}
 	}
 
@@ -222,17 +227,20 @@
 							: 0;
 		if (step) {
 			e.preventDefault();
-			picked = (picked + step + TEMPLATES.length) % TEMPLATES.length;
+			picked = (picked + step + templates.length) % templates.length;
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
-			create(TEMPLATES[picked].id);
+			create(templates[picked].id);
 		}
 	}
 </script>
 
 <div class="setup">
 	<div class="inner">
-		<p class="eyebrow">{unitId ? 'Set up project' : 'New project'}</p>
+		<p class="eyebrow">
+			<FolderIcon size={12} strokeWidth={2} />
+			{unitId ? 'Set up project' : 'New project'}
+		</p>
 
 		{#if unitId}
 			<div class="unit">
@@ -280,7 +288,7 @@
 		{/if}
 
 		<div class="grid" role="listbox" tabindex="-1" onkeydown={onGridKey}>
-			{#each TEMPLATES as t, i (t.id)}
+			{#each templates as t, i (t.id)}
 				{@const Icon = t.icon}
 				<button
 					class="card"
@@ -289,7 +297,7 @@
 					role="option"
 					aria-selected={i === picked}
 					onclick={() => (picked = i)}
-					ondblclick={() => create(TEMPLATES[picked].id)}
+					ondblclick={() => create(templates[picked].id)}
 				>
 					<span class="card-icon"><Icon size={20} strokeWidth={1.5} /></span>
 					<span class="card-label">{t.label}</span>
@@ -312,9 +320,13 @@
 				class="create"
 				type="button"
 				disabled={busy || !ready}
-				onclick={() => create(TEMPLATES[picked].id)}
+				onclick={() => create(templates[picked].id)}
 			>
-				{unitId ? 'Set up project' : 'Create project'}
+				{templates[picked]?.id === 'empty'
+					? 'Create folder'
+					: unitId
+						? 'Set up project'
+						: 'Create project'}
 			</button>
 		</div>
 	</div>
@@ -345,6 +357,9 @@
 	}
 
 	.eyebrow {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		margin: 0 0 18px;
 		font-size: 11px;
 		font-weight: 600;
