@@ -76,6 +76,19 @@
 	// a doc face makes its own entry
 	const showNewFab = $derived(activeFace?.type !== 'doc');
 
+	// a mode bar docked here (the history scrubber) owns the bottom of the page; the fab steps
+	// aside for it rather than sitting on top
+	let docked = $state(false);
+	$effect(() => {
+		const el = dockTarget;
+		if (!el) return;
+		const update = () => (docked = el.childElementCount > 0);
+		update();
+		const ro = new MutationObserver(update);
+		ro.observe(el, { childList: true });
+		return () => ro.disconnect();
+	});
+
 	let faceInit = false;
 	$effect(() => {
 		const id = activeFace?.id;
@@ -693,7 +706,7 @@
 
 		<ScrollThumb scroller={bodyEl} top={20} />
 
-		{#if showNewFab}
+		{#if showNewFab && !docked}
 			<NewFab items={fabItems} onSelect={onFabSelect} bind:el={fabEl} />
 		{/if}
 	{/if}
