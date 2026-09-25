@@ -18,6 +18,7 @@
 		EllipsisVertical,
 		Trash2,
 		FolderInput,
+		FolderOpen,
 		Plus,
 		Copy,
 		SlidersHorizontal,
@@ -46,7 +47,8 @@
 		onFrontmatterFix,
 		propsOpen = $bindable(false),
 		historyOpen = $bindable(false),
-		back
+		back,
+		onOpenFolder
 	}: {
 		handle: DocHandle;
 		onDelete?: () => void;
@@ -59,6 +61,7 @@
 		historyOpen?: boolean;
 		// where this tab was before, if it navigated here
 		back?: { label: string; icon: Component; emoji?: string; go: () => void };
+		onOpenFolder?: (unitId: string, name: string) => void;
 	} = $props();
 
 	let fmMenuOpen = $state(false);
@@ -338,6 +341,9 @@
 	});
 
 	const menuItems: MenuEntry[] = $derived([
+		...(onOpenFolder
+			? [{ value: 'parent', label: 'Go to folder', icon: FolderOpen } as MenuEntry]
+			: []),
 		{ value: 'duplicate', label: 'Duplicate document', icon: Copy },
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
 		confirmingDelete
@@ -382,6 +388,7 @@
 			return;
 		}
 		menuOpen = false;
+		if (value === 'parent') onOpenFolder?.(currentFolderId, dirParts.at(-1) ?? srcName);
 		if (value === 'duplicate') duplicateDoc();
 		if (value === 'reveal') revealDoc();
 		if (value === 'confirm-delete') onDelete?.();

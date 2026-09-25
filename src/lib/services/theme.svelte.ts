@@ -20,7 +20,7 @@ export const DEFAULT_DARK: Theme = {
 		'color-text-secondary': '#E6E5E5',
 		'color-ui-dulled': '#AFB1B3',
 		'color-ui-muted': '#A4A4A4',
-		'color-accent': '#567B67',
+		'color-accent': '#C56836',
 		'color-accent-primary': '#567B67',
 		'color-error': '#ff5f57',
 		// A var(), not the accent's literal: applyAccent rewrites --color-accent at runtime, and
@@ -42,7 +42,7 @@ export const DEFAULT_LIGHT: Theme = {
 		'color-text-secondary': '#232325',
 		'color-ui-dulled': '#5C5F62',
 		'color-ui-muted': '#787a7c',
-		'color-accent': '#567B67',
+		'color-accent': '#C56836',
 		'color-accent-primary': '#567B67',
 		'color-error': '#d03025',
 		'color-selection': 'var(--color-accent)',
@@ -62,7 +62,7 @@ export const SOFT_DARK: Theme = {
 		'color-text-secondary': '#cfcfca',
 		'color-ui-dulled': '#a3a39d',
 		'color-ui-muted': '#8f8f89',
-		'color-accent': '#567B67',
+		'color-accent': '#C56836',
 		'color-accent-primary': '#567B67',
 		'color-error': '#ff5f57',
 		'color-selection': 'var(--color-accent)',
@@ -82,7 +82,7 @@ export const SOFT_LIGHT: Theme = {
 		'color-text-secondary': '#4a4a45',
 		'color-ui-dulled': '#71716a',
 		'color-ui-muted': '#83837b',
-		'color-accent': '#567B67',
+		'color-accent': '#C56836',
 		'color-accent-primary': '#567B67',
 		'color-error': '#d03025',
 		'color-selection': 'var(--color-accent)',
@@ -153,12 +153,14 @@ export interface AccentPreset {
 }
 
 export const ACCENT_PRESETS: Record<string, AccentPreset> = {
-	slate: { name: 'Slate', light: '#5b7286', dark: '#6d8ba3' },
+	// ordered as they read against the shipped themes: the warm neutrals first, then the cool
+	// ones, then grey. Copper is the themes' own accent and sits first as "theme default"
+	sage: { name: 'Sage', light: '#567B67', dark: '#6b9180' },
 	violet: { name: 'Violet', light: '#75689a', dark: '#8d7fb5' },
-	copper: { name: 'Copper', light: '#C56836', dark: '#C56836' },
-	amber: { name: 'Amber', light: '#a3812f', dark: '#c2a04a' },
 	rose: { name: 'Rose', light: '#a05e72', dark: '#b87990' },
+	amber: { name: 'Amber', light: '#a3812f', dark: '#c2a04a' },
 	teal: { name: 'Teal', light: '#3f7f7a', dark: '#569a94' },
+	slate: { name: 'Slate', light: '#5b7286', dark: '#6d8ba3' },
 	mono: { name: 'Mono', light: '#5c5c5c', dark: '#9a9a9a' }
 };
 
@@ -278,7 +280,7 @@ export function applyTheme(theme: Theme) {
 	}
 	// Preserved so the "default" accent swatch can show it while a preset override has
 	// replaced --color-accent.
-	const accent = theme.variables['color-accent'] ?? '#567b67';
+	const accent = theme.variables['color-accent'] ?? '#C56836';
 	root.style.setProperty('--color-accent-default', accent);
 	root.style.setProperty('--color-accent-contrast', accentContrast(accent));
 	setAccentTints(root, accent, accentContrast(accent));

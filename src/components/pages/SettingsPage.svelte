@@ -572,7 +572,7 @@
 				>
 					<input
 						type="color"
-						value={accentIsCustom ? accentSetting : '#567b67'}
+						value={accentIsCustom ? accentSetting : '#C56836'}
 						oninput={onCustomAccent}
 					/>
 					{#if !accentIsCustom}<span class="custom-mark">+</span>{/if}

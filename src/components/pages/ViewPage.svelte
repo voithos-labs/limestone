@@ -74,7 +74,22 @@
 	});
 
 	// a doc face makes its own entry
-	const showNewFab = $derived(activeFace?.type !== 'doc');
+	// a journal adds through the day itself (its entry, or the body's inline add row), so the
+	// fab would only ask a question it can't answer: new note in which day?
+	const showNewFab = $derived(activeFace?.type !== 'doc' && activeFace?.type !== 'journal');
+
+	// a mode bar docked here (the history scrubber) owns the bottom of the page; the fab steps
+	// aside for it rather than sitting on top
+	let docked = $state(false);
+	$effect(() => {
+		const el = dockTarget;
+		if (!el) return;
+		const update = () => (docked = el.childElementCount > 0);
+		update();
+		const ro = new MutationObserver(update);
+		ro.observe(el, { childList: true });
+		return () => ro.disconnect();
+	});
 
 	let faceInit = false;
 	$effect(() => {
@@ -693,7 +708,7 @@
 
 		<ScrollThumb scroller={bodyEl} top={20} />
 
-		{#if showNewFab}
+		{#if showNewFab && !docked}
 			<NewFab items={fabItems} onSelect={onFabSelect} bind:el={fabEl} />
 		{/if}
 	{/if}
