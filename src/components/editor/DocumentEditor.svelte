@@ -61,6 +61,14 @@
 	} = $props();
 
 	let handle = $derived(tab.handle);
+	// the folder the document sits in, opened in this tab so Back comes straight here
+	function onOpenFolder(unitId: string, name: string) {
+		if (!editor) return;
+		View.forUnit(unitId, name)
+			.then((v) => editor.showViewInTab(tab, v))
+			.catch((e) => console.error('open folder failed', e));
+	}
+
 	const back = $derived.by(() => {
 		const prev = tab.back?.content;
 		if (!prev || !editor) return undefined;
@@ -685,6 +693,7 @@
 			bind:propsOpen
 			bind:historyOpen
 			{back}
+			{onOpenFolder}
 		/>
 	{/if}
 {/snippet}
@@ -714,6 +723,7 @@
 			bind:propsOpen
 			bind:historyOpen
 			{back}
+			{onOpenFolder}
 		/>
 	{/if}
 	{#if loaded}
