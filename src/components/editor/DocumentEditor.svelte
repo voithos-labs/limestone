@@ -29,6 +29,7 @@
 	import { joinRel, targetStem } from '$lib/wikilinks';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks-plugin';
 	import { historyDecorations } from './history-decorations';
+	import { findHeading } from './note-headings';
 	import { noteLinkMenu } from './note-link-menu';
 	import { tagMenu } from './tag-menu';
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
@@ -487,6 +488,9 @@
 			: null;
 	}
 
+	// The tab key a heading link leaves for the note it opens, read once when that note mounts
+	const OPEN_AT_HEADING = 'open_at_heading';
+
 	const DOCUMENT_START: EditorSelection = {
 		anchor: { path: [0], offset: 0 },
 		focus: { path: [0], offset: 0 }
@@ -511,6 +515,16 @@
 			if (title) {
 				title.focus();
 				title.select();
+				restored = true;
+				return;
+			}
+		}
+		// Opened from a heading link: land on the heading, not where the note was left. A heading
+		// that's gone falls through, so the note just opens as usual.
+		const heading = tab.state[OPEN_AT_HEADING];
+		if (typeof heading === 'string') {
+			delete tab.state[OPEN_AT_HEADING];
+			if (await jumpToHeading(heading)) {
 				restored = true;
 				return;
 			}
@@ -593,12 +607,18 @@
 		void openWikiLink(target);
 	}
 
-	async function openWikiLink(target: string): Promise<void> {
+	async function openWikiLink(target: string, heading?: string): Promise<void> {
 		const h = handle;
 		if (!h || !editor) return;
 		const hit = await resolveWikiLink(h.source.id, target);
+		// this note is already open here and won't reopen, so its heading is jumped to in place
+		if (hit?.id === h.id) {
+			if (heading) void jumpToHeading(heading);
+			return;
+		}
 		if (hit) {
-			editor.openDoc(await DocHandle.fromID(hit.id));
+			const doc = await DocHandle.fromID(hit.id);
+			editor.openDoc(doc, heading ? { [OPEN_AT_HEADING]: heading } : {});
 			return;
 		}
 		const slash = target.lastIndexOf('/');
@@ -623,9 +643,19 @@
 		editor.openView(await View.forUnit(unitId, slug));
 	}
 
+	// Puts the caret on the heading the link names; false if the note has no such heading
+	async function jumpToHeading(heading: string): Promise<boolean> {
+		const inst = instance;
+		const found = inst ? findHeading(inst.getSource(), heading) : null;
+		if (!found) return false;
+		await inst!.getRects().navigateTo(found.path);
+		return true;
+	}
+
 	function onActivate(e: Event): void {
-		const { kind, target } = (e as CustomEvent<ActivateDetail>).detail;
-		if (kind === 'wikilink' && target) void openWikiLink(target);
+		const { kind, target, fragment } = (e as CustomEvent<ActivateDetail>).detail;
+		if (kind === 'wikilink' && target) void openWikiLink(target, fragment);
+		else if (kind === 'wikilink' && fragment) void jumpToHeading(fragment);
 		else if (kind === 'tag') void openTagView(target);
 	}
 

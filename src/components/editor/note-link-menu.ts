@@ -4,14 +4,12 @@
  * reads back as the same wikilink.
  */
 
-import { getContentRange, parse } from '@voithos-labs/aragonite';
 import type { InlineMenuItem, InlineMenuSource } from '@voithos-labs/aragonite';
-import { headingLevel, walkBlocks } from '@voithos-labs/aragonite/plugin';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import DocHandle from '$lib/models/DocHandle';
 import { linkTargets, resolveWikiLink } from '$lib/services/links.svelte';
 import { searchTitles } from '$lib/services/search';
-import { headingFragment } from '$lib/wikilinks';
+import { noteHeadings } from './note-headings';
 import { LINK_OPEN, writeWikiLink } from './wikilinks-scan';
 
 export const NOTE_LINK_MENU = 'limestone-note-links';
@@ -86,7 +84,7 @@ async function headingRows(
 	const wanted = headingQuery.trim().toLowerCase();
 	const seen = new Set<string>();
 	const rows: InlineMenuItem[] = [];
-	for (const heading of headingsOf(found.text)) {
+	for (const heading of noteHeadings(found.text)) {
 		if (seen.has(heading.text) || !heading.text.toLowerCase().includes(wanted)) continue;
 		const insert = writeWikiLink(found.target, heading.text);
 		if (!insert) continue;
@@ -117,17 +115,4 @@ async function otherNote(
 	} catch {
 		return null;
 	}
-}
-
-function headingsOf(markdown: string): { text: string; level: number }[] {
-	const headings: { text: string; level: number }[] = [];
-	walkBlocks(parse(markdown), (node) => {
-		const level = headingLevel(node);
-		if (level === null) return;
-		const range = getContentRange(node);
-		const text = headingFragment(node.raw.slice(range.start, range.end));
-		if (text) headings.push({ text, level });
-		return 'skip';
-	});
-	return headings;
 }
