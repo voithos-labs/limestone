@@ -23,6 +23,14 @@ export function parseWikiTarget(inner: string): WikiTarget {
 	};
 }
 
+// A heading's text as a link fragment: [ ] and | would end or split the link, so they become spaces
+export function headingFragment(text: string): string {
+	return text
+		.replace(/[[\]|]/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
 export function stripExt(path: string): string {
 	return path.replace(/\.md$/i, '');
 }

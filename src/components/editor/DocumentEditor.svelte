@@ -29,6 +29,7 @@
 	import { joinRel, targetStem } from '$lib/wikilinks';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks-plugin';
 	import { historyDecorations } from './history-decorations';
+	import { noteLinkMenu } from './note-link-menu';
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import { getViewIcon } from '$lib/views/filterDisplay';
@@ -384,6 +385,24 @@
 	// The app's window handler asks the editor which keys it takes, so it has to be able to reach it.
 	$effect(() => {
 		if (instance) return registerDocumentEditor(instance);
+	});
+
+	// The menus that open as you type. The vault is read per keystroke, so a tab that swaps its
+	// note keeps the same menus.
+	$effect(() => {
+		const inst = instance;
+		if (!inst) return;
+		const menus = inst.getInlineMenus();
+		const notes = untrack(() =>
+			menus.addSource(
+				noteLinkMenu({
+					vault: () => (handle ? { id: handle.source.id, path: handle.source.path } : null),
+					currentId: () => handle?.id ?? null,
+					currentText: () => inst.getSource()
+				})
+			)
+		);
+		return () => notes.dispose();
 	});
 
 	/**

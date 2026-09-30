@@ -47,6 +47,14 @@ export async function searchDocuments(query: string, scope?: SearchScope): Promi
 	return [...containers, ...docs];
 }
 
+// Documents only, matched on title alone, ranked the same way (the editor's [[ menu)
+export async function searchTitles(query: string, scope: SearchScope): Promise<SearchResult[]> {
+	const q = query.trim();
+	if (q.length === 0) return recents(scope);
+	const candidates = titleCandidates(await titleMatches(q, scope), q);
+	return rankByRecency([...candidates.values()]).map((c) => c.result);
+}
+
 function scoped(scope?: SearchScope): { and: string; params: unknown[] } {
 	return scope?.sql
 		? { and: ` AND (${scope.sql})`, params: scope.params }
@@ -204,14 +212,7 @@ async function hybrid(
 		runFts ? ftsPass(ftsPhraseQuery(query), scope) : []
 	]);
 
-	const candidates = new Map<string, Candidate>();
-	for (const row of titleRows) {
-		const m = titleQuality(row.title, trimmed);
-		if (!m) continue;
-		const result = docResult(row);
-		result.match_indices = m.indices;
-		candidates.set(row.id, { result, quality: m.quality, accessedAt: row.accessed_at });
-	}
+	const candidates = titleCandidates(titleRows, trimmed);
 
 	const passes: [FtsRow[], number, number][] = [
 		[matchRows, 0, BODY_QUALITY_CAP],
@@ -240,22 +241,36 @@ async function hybrid(
 		}
 	}
 
+	return rankByRecency([...candidates.values()]).map((c) => {
+		if (c.result.snippet) c.result.match_indices = [];
+		return c.result;
+	});
+}
+
+function titleCandidates(rows: DocRow[], trimmed: string): Map<string, Candidate> {
+	const candidates = new Map<string, Candidate>();
+	for (const row of rows) {
+		const m = titleQuality(row.title, trimmed);
+		if (!m) continue;
+		const result = docResult(row);
+		result.match_indices = m.indices;
+		candidates.set(row.id, { result, quality: m.quality, accessedAt: row.accessed_at });
+	}
+	return candidates;
+}
+
+function rankByRecency(candidates: Candidate[]): Candidate[] {
 	const now = Date.now();
-	const ranked = [...candidates.values()];
-	for (const c of ranked) {
+	for (const c of candidates) {
 		const days =
 			c.accessedAt != null ? Math.max(now - c.accessedAt, 0) / 86_400_000 : RECENCY_DEFAULT_DAYS;
 		const boost = 1 + RECENCY_WEIGHT / (1 + days / RECENCY_SCALE_DAYS);
 		c.result.score = c.quality * boost;
 	}
-	ranked.sort(
+	candidates.sort(
 		(a, b) => b.result.score - a.result.score || a.result.title.localeCompare(b.result.title)
 	);
-
-	return ranked.slice(0, MAX_RESULTS).map((c) => {
-		if (c.result.snippet) c.result.match_indices = [];
-		return c.result;
-	});
+	return candidates.slice(0, MAX_RESULTS);
 }
 
 function container(

@@ -47,6 +47,34 @@ export async function resolveWikiLink(
 	return resolveAmong(target, await candidatesFor(sourceId, stem));
 }
 
+/**
+ * The shortest link text that resolves back to each document: the bare name, or the path
+ * when another note with the same name would win it. Keyed by document id.
+ */
+export async function linkTargets(
+	sourceId: string,
+	docs: LinkCandidate[]
+): Promise<Map<string, string>> {
+	const stems = [...new Set(docs.map((d) => targetStem(d.rel_path)))];
+	if (stems.length === 0) return new Map();
+	// candidatesFor's own match, one query for every name at once
+	const wanted = stems.map((_, i) => `(?${i + 2})`).join(', ');
+	const namesakes = await select<LinkCandidate & { wanted: string }>(
+		`WITH wanted(stem) AS (VALUES ${wanted})
+		 SELECT w.stem AS wanted, d.id, d.rel_path FROM wanted w
+		 JOIN documents d ON lower(d.title) = lower(w.stem)
+		 WHERE d.source_id = ?1 AND d.deleted_at IS NULL`,
+		[sourceId, ...stems]
+	);
+	const targets = new Map<string, string>();
+	for (const doc of docs) {
+		const stem = targetStem(doc.rel_path);
+		const same = namesakes.filter((n) => n.wanted === stem);
+		targets.set(doc.id, resolveAmong(stem, same)?.id === doc.id ? stem : stripExt(doc.rel_path));
+	}
+	return targets;
+}
+
 async function rewrite(sourceId: string, replacements: [string, string][]): Promise<void> {
 	const live = replacements.filter(([a, b]) => normalizeTarget(a) !== normalizeTarget(b));
 	if (live.length === 0) return;
