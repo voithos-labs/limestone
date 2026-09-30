@@ -29,6 +29,7 @@
 	import { joinRel, targetStem } from '$lib/wikilinks';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks-plugin';
 	import { historyDecorations } from './history-decorations';
+	import { bodyTags, createTagStepper, type BodyTag } from './body-tags';
 	import { findHeading } from './note-headings';
 	import { noteLinkMenu } from './note-link-menu';
 	import { tagMenu } from './tag-menu';
@@ -360,6 +361,32 @@
 		const write = flushSave({ body: version.text });
 		historyOpen = false;
 		await write;
+	}
+
+	// ── Tags written in the text, shown read-only in the hero's tag row ────────────────
+
+	let textTags = $state<BodyTag[]>([]);
+
+	$effect(() => {
+		const inst = instance;
+		if (!inst || !loaded) return;
+		const read = () => untrack(() => (textTags = bodyTags(inst.getSource())));
+		read();
+		const events = inst.getEvents();
+		const offEdit = events.on('edit', read);
+		const offSwap = events.on('sourceSwap', read);
+		return () => {
+			offEdit();
+			offSwap();
+		};
+	});
+
+	// clicking the same text tag again goes on to the next place it's written
+	const nextTagPlace = createTagStepper();
+
+	function findTextTag(slug: string): void {
+		const place = nextTagPlace(textTags, slug);
+		if (place) void instance?.getRects().navigateTo(place.path, place.end);
 	}
 
 	let zoom = $state(
@@ -757,6 +784,8 @@
 			bind:historyOpen
 			{back}
 			{onOpenFolder}
+			{textTags}
+			onTextTag={findTextTag}
 		/>
 	{/if}
 {/snippet}
@@ -787,6 +816,8 @@
 			bind:historyOpen
 			{back}
 			{onOpenFolder}
+			{textTags}
+			onTextTag={findTextTag}
 		/>
 	{/if}
 	{#if loaded}

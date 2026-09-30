@@ -3,6 +3,7 @@
 	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import type Tag from '$lib/models/Tag';
+	import { tagId } from '$lib/models/Tag';
 	import { formatDateFriendly } from '$lib/views/dateFormat';
 	import { folderDir, fileName } from '$lib/views/fieldValue';
 	import { folderPath } from '$lib/views/createDefaults';
@@ -48,7 +49,9 @@
 		propsOpen = $bindable(false),
 		historyOpen = $bindable(false),
 		back,
-		onOpenFolder
+		onOpenFolder,
+		textTags = [],
+		onTextTag
 	}: {
 		handle: DocHandle;
 		onDelete?: () => void;
@@ -62,6 +65,9 @@
 		// where this tab was before, if it navigated here
 		back?: { label: string; icon: Component; emoji?: string; go: () => void };
 		onOpenFolder?: (unitId: string, name: string) => void;
+		// tags written in the note's text; shown read-only, and a click finds them in the text
+		textTags?: { slug: string }[];
+		onTextTag?: (slug: string) => void;
 	} = $props();
 
 	let fmMenuOpen = $state(false);
@@ -143,6 +149,10 @@
 	const TODO_ID = 'tag:todo';
 	const isTodo = $derived(tagList.some((t) => t.id === TODO_ID));
 	const chipTags = $derived(tagList.filter((t) => t.id !== TODO_ID));
+	// a tag in both the frontmatter and the text is the frontmatter's chip, so it shows once
+	const textOnlyTags = $derived(
+		textTags.filter((t) => !tagList.some((x) => x.id === tagId(t.slug)))
+	);
 	function removeTodo() {
 		const t = tagList.find((x) => x.id === TODO_ID);
 		if (t) void toggleTag(t);
@@ -552,6 +562,16 @@
 						{/if}
 					</span>
 				{/if}
+				{#each textOnlyTags as t (t.slug)}
+					<button
+						class="tag from-text"
+						type="button"
+						title="Tagged in the text. Click to find it"
+						onclick={() => onTextTag?.(t.slug)}
+					>
+						<Hash size={11} />{t.slug}
+					</button>
+				{/each}
 				{#if meta.writes && frontmatterError}
 					<button
 						class="props-chip fm-error"
@@ -1061,6 +1081,18 @@
 
 	.tags-chip:hover .tag {
 		background: var(--chip-bg-hover);
+	}
+
+	/* a tag from the note's text: outlined, since the bar can't edit it */
+	.tag.from-text {
+		border: 1px solid var(--color-border);
+		background: transparent;
+		cursor: pointer;
+	}
+
+	.tag.from-text:hover {
+		color: var(--color-text-secondary);
+		border-color: var(--color-ui-muted);
 	}
 
 	/* editing: the chip row is the field; chips get an × and a query input joins the end */
