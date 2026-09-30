@@ -30,8 +30,7 @@
 	});
 
 	function onClick(e: MouseEvent): void {
-		const mode = getPresentationMode?.() ?? 'source';
-		if (!isWidgetActivationClick(e.ctrlKey || e.metaKey, mode)) return;
+		if (!isWidgetActivationClick(e.ctrlKey || e.metaKey, getPresentationMode())) return;
 		e.preventDefault();
 		const detail: ActivateDetail = { kind: 'wikilink', target, fragment };
 		el?.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { bubbles: true, detail }));

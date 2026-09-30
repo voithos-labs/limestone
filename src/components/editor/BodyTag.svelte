@@ -10,8 +10,7 @@
 	let el: HTMLElement | null = $state(null);
 
 	function onClick(e: MouseEvent): void {
-		const mode = getPresentationMode?.() ?? 'source';
-		if (!isWidgetActivationClick(e.ctrlKey || e.metaKey, mode)) return;
+		if (!isWidgetActivationClick(e.ctrlKey || e.metaKey, getPresentationMode())) return;
 		e.preventDefault();
 		const detail: ActivateDetail = { kind: 'tag', target: source.slice(1) };
 		el?.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { bubbles: true, detail }));

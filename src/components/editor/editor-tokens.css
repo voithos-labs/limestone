@@ -26,10 +26,8 @@
 	padding: 0 24px;
 }
 
-/* The trailing insert row is the list's sibling, not its child, so it needs the same column.
-   Sized to the text column itself (the padding taken off) rather than padded, so its `+`,
-   which hangs 1rem off its left edge, sits in the gutter beside the text like a block's drag
-   handle does. */
+/* The invisible row under the last block (click it to add a line) is the list's sibling, not its
+   child, so it's sized to the text column here too: its click area and focus ring match the text. */
 .editor > .editor-tail {
 	max-width: calc(var(--page-max-width, 1200px) - 48px);
 	margin-left: auto;

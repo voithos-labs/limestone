@@ -515,8 +515,8 @@
 
 	const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
-	// The same set aragonite escapes when it writes a destination itself, so a path limestone
-	// wrote and one the editor rewrote (a width drag, say) read back the same way.
+	// The editor keeps these %XX escapes as written when it rewrites a link (a width drag, say),
+	// so a path limestone wrote still reads back as the same URL.
 	function encodeDestination(url: string): string {
 		return url.replace(
 			/[ \t\r\n()"'\\]/g,
