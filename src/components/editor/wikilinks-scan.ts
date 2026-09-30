@@ -45,10 +45,19 @@ export function writeWikiLink(target: string, fragment?: string): string | null 
 
 const TAG_CHAR = /[\p{L}\p{N}_\-/]/u;
 
-export function recognizeTag(raw: string, pos: number, end: number): TagSpan | null {
-	if (raw[pos] !== '#') return null;
+// A # opens a tag at the start of a block, after whitespace or after (, never mid-word (C#)
+export function isTagOpening(raw: string, pos: number): boolean {
 	const prev = pos > 0 ? raw[pos - 1] : '';
-	if (prev !== '' && !/\s/.test(prev) && prev !== '(') return null;
+	return prev === '' || /\s/.test(prev) || prev === '(';
+}
+
+// Whether what follows a # could still be a tag name, the empty name included
+export function isTagQuery(query: string): boolean {
+	return [...query].every((ch) => TAG_CHAR.test(ch));
+}
+
+export function recognizeTag(raw: string, pos: number, end: number): TagSpan | null {
+	if (raw[pos] !== '#' || !isTagOpening(raw, pos)) return null;
 	let i = pos + 1;
 	while (i < end && TAG_CHAR.test(raw[i])) i++;
 	let name = raw.slice(pos + 1, i);

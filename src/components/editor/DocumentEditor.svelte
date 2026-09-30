@@ -30,6 +30,7 @@
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks-plugin';
 	import { historyDecorations } from './history-decorations';
 	import { noteLinkMenu } from './note-link-menu';
+	import { tagMenu } from './tag-menu';
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import { getViewIcon } from '$lib/views/filterDisplay';
@@ -393,16 +394,17 @@
 		const inst = instance;
 		if (!inst) return;
 		const menus = inst.getInlineMenus();
-		const notes = untrack(() =>
+		const sources = untrack(() => [
 			menus.addSource(
 				noteLinkMenu({
 					vault: () => (handle ? { id: handle.source.id, path: handle.source.path } : null),
 					currentId: () => handle?.id ?? null,
 					currentText: () => inst.getSource()
 				})
-			)
-		);
-		return () => notes.dispose();
+			),
+			menus.addSource(tagMenu())
+		]);
+		return () => sources.forEach((s) => s.dispose());
 	});
 
 	/**
