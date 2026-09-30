@@ -274,20 +274,27 @@
 	function swapContent(next: string, shown: HistoryVersion | null) {
 		const el = scroller();
 		const top = el?.scrollTop ?? 0;
+		const swaps = next !== content;
+		swappingTo = shown;
 		content = next;
 		void tick().then(() => {
 			if (el) {
 				el.scrollTop = top;
 				requestAnimationFrame(() => (el.scrollTop = top));
 			}
-			shownVersion = shown;
-			decorations?.invalidate();
+			// same text as before, so the editor has nothing to swap and no sourceSwap comes
+			if (!swaps) {
+				shownVersion = shown;
+				decorations?.invalidate();
+			}
 		});
 	}
 
 	// The version whose text the editor has actually rendered, so the decoration source never
 	// maps a delta onto the wrong document during the swap.
 	let shownVersion: HistoryVersion | null = null;
+	// the version on its way in, shown once the editor's sourceSwap says its text is in place
+	let swappingTo: HistoryVersion | null = null;
 
 	$effect(() => {
 		const version = history?.version ?? null;
@@ -331,7 +338,12 @@
 			})
 		);
 		decorations = source;
+		const offSwap = inst.getEvents().on('sourceSwap', () => {
+			shownVersion = swappingTo;
+			source.invalidate();
+		});
 		return () => {
+			offSwap();
 			if (decorations === source) decorations = null;
 			untrack(() => source.dispose());
 		};
