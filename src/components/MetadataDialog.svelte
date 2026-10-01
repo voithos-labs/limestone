@@ -143,23 +143,26 @@
 		<div
 			class="dialog"
 			role="dialog"
-			aria-label="Metadata for {name}"
+			aria-label="{name} metadata settings"
 			tabindex="-1"
 			onclick={(e) => e.stopPropagation()}
 		>
 			<h3 class="title-h">
-				<span class="title-icon">
-					{#if emoji}
-						<span class="title-emoji">{emoji}</span>
-					{:else if kind === 'project'}
-						<Bookmark size={16} strokeWidth={1.75} />
-					{:else if kind === 'source'}
-						<FolderInput size={16} strokeWidth={1.75} />
-					{:else}
-						<FolderIcon size={16} strokeWidth={1.75} />
-					{/if}
+				<span class="title-chip">
+					<span class="title-icon">
+						{#if emoji}
+							<span class="title-emoji">{emoji}</span>
+						{:else if kind === 'project'}
+							<Bookmark size={14} strokeWidth={1.75} />
+						{:else if kind === 'source'}
+							<FolderInput size={14} strokeWidth={1.75} />
+						{:else}
+							<FolderIcon size={14} strokeWidth={1.75} />
+						{/if}
+					</span>
+					<span class="title-name">{name}</span>
 				</span>
-				Metadata for {name}
+				metadata settings
 			</h3>
 
 			<!-- the same note, as the file holds it and as Limestone shows it -->
@@ -180,7 +183,9 @@
 							</div>
 						</div>
 						<div class="ln h"># Week 5 notes</div>
-						<div class="ln body">Hooks, reducers, and…</div>
+						<div class="body-fold">
+							<div class="fold-inner"><div class="ln body">...</div></div>
+						</div>
 					</div>
 				</div>
 
@@ -190,6 +195,9 @@
 					<span class="pane-label">In Limestone</span>
 					<div class="app">
 						<div class="app-title">Week 5 notes</div>
+						<div class="body-fold">
+							<div class="fold-inner"><div class="ln body">...</div></div>
+						</div>
 						<div class="app-row">
 							<span class="chip t-tags"><Hash size={11} strokeWidth={2} />lecture</span>
 							<span class="chip t-due"><Calendar size={11} strokeWidth={2} />Oct 2</span>
@@ -219,7 +227,8 @@
 						<span class="radio"></span>
 						<span class="opt-text">
 							<span class="opt-label">
-								{o.label}{#if o.value === 'follow'}<span class="default">(default)</span>{/if}
+								{o.label}
+								{#if o.value === 'follow'}<span class="default">(default)</span>{/if}
 							</span>
 							{#if o.hint}<span class="opt-hint">{o.hint}</span>{/if}
 						</span>
@@ -294,17 +303,38 @@
 		font-weight: 600;
 	}
 
+	.title-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		height: 26px;
+		padding: 0 10px 0 8px;
+		border-radius: 7px;
+		background: var(--chip-bg);
+		white-space: nowrap;
+	}
+
 	.title-icon {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 18px;
+		width: 16px;
+		flex-shrink: 0;
 		color: var(--color-ui-muted);
 	}
 
 	.title-emoji {
-		font-size: 16px;
+		font-size: 14px;
 		line-height: 1;
+	}
+
+	.title-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--color-text-secondary);
 	}
 
 	/* ── the diagram ── */
@@ -360,7 +390,8 @@
 			opacity 180ms ease;
 	}
 
-	.fm-inner {
+	.fm-inner,
+	.fold-inner {
 		min-height: 0;
 		overflow: hidden;
 	}
@@ -368,6 +399,20 @@
 	.diagram.off .fm {
 		grid-template-rows: 0fr;
 		opacity: 0;
+	}
+
+	.body-fold {
+		display: grid;
+		grid-template-rows: 0fr;
+		opacity: 0;
+		transition:
+			grid-template-rows 180ms ease,
+			opacity 180ms ease;
+	}
+
+	.diagram.off .body-fold {
+		grid-template-rows: 1fr;
+		opacity: 1;
 	}
 
 	.ln {
