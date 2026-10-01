@@ -361,11 +361,13 @@ class EditorState {
 		this.tabs.push(tab);
 	}
 
-	openDoc(doc: DocHandle) {
+	// `state` is merged into the tab's own, e.g. a heading for the editor to jump to once it opens
+	openDoc(doc: DocHandle, state: Record<string, any> = {}) {
 		const existing = this.tabs.find(
 			(t) => t.content.type === 'markdown' && t.content.handle.id === doc.id
 		);
 		const tab = existing ?? TabState.forDoc(doc);
+		Object.assign(tab.state, state);
 		if (!existing) this.openTab(tab);
 		this.focusTab({ kind: 'tab', id: tab.id });
 	}

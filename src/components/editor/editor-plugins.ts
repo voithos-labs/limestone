@@ -6,6 +6,7 @@ import { latexPlugin } from '@voithos-labs/aragonite/plugins/latex';
 import { katexRenderer } from '@voithos-labs/aragonite/plugins/latex/renderer';
 import { mermaidPlugin } from '@voithos-labs/aragonite/plugins/mermaid';
 import { mermaidRenderer } from '@voithos-labs/aragonite/plugins/mermaid/renderer';
+import { slashCommandsPlugin } from '@voithos-labs/aragonite/plugins/slash-commands';
 import { tocPlugin } from '@voithos-labs/aragonite/plugins/toc';
 import { wikiImageEmbedsPlugin } from './wiki-image-embeds-plugin';
 import { wikiLinksPlugin } from './wikilinks-plugin';
@@ -23,6 +24,7 @@ export const EDITOR_PLUGINS: readonly EditorPluginEntry[] = [
 	footnotesPlugin(),
 	latexPlugin({ renderer: katexRenderer }),
 	mermaidPlugin({ renderer: mermaidRenderer }),
+	slashCommandsPlugin(),
 	tocPlugin(),
 	wikiImageEmbedsPlugin(),
 	wikiLinksPlugin()
