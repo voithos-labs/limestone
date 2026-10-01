@@ -55,6 +55,7 @@
 
 	let rows = $state<SearchResult[]>([]);
 	let rowsLoaded = $state(false);
+	let headId = $state<string | null>(null);
 	let searchRows = $state<SearchResult[]>([]);
 	let loadGen = 0;
 
@@ -74,6 +75,14 @@
 	// Idle lists the scope in the face's own sort order.
 	async function load() {
 		const gen = ++loadGen;
+		if (!rowsLoaded) {
+			view
+				.getMembers({ face, scope, limit: 1 })
+				.then((first) => {
+					if (gen === loadGen && !rowsLoaded) headId = first[0]?.id ?? null;
+				})
+				.catch(() => {});
+		}
 		try {
 			const next = (await view.getMembers({ face, scope, limit: 100 })).map(asResult);
 			if (gen !== loadGen) return;
@@ -86,18 +95,12 @@
 
 	$effect(() => onSourceReconciled(() => load()));
 
-	let loadTimer: ReturnType<typeof setTimeout> | null = null;
-
 	// Compiling the scope up front is also how this subscribes: it reads the view filter,
 	// the face filter and the scope, and face.sort orders the list.
 	$effect(() => {
 		void view.searchScope({ face, scope });
 		void face.sort;
-		if (loadTimer) clearTimeout(loadTimer);
-		loadTimer = setTimeout(load, 0);
-		return () => {
-			if (loadTimer) clearTimeout(loadTimer);
-		};
+		untrack(() => load());
 	});
 
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -129,7 +132,7 @@
 	});
 
 	const pickedId = $derived(picker?.activeId ?? null);
-	const activeDocId = $derived(pickedId ?? (rowsLoaded ? (rows[0]?.id ?? null) : null));
+	const activeDocId = $derived(pickedId ?? (rowsLoaded ? (rows[0]?.id ?? null) : headId));
 	let pickPinned = $state(false);
 
 	$effect(() => {
@@ -197,6 +200,14 @@
 		return bag;
 	}
 
+	let guess: { id: string; handle: Promise<DocHandle> } | null = null;
+	const lastId = untrack(() => tab?.state.doc_active);
+	if (typeof lastId === 'string') {
+		const handle = DocHandle.fromID(lastId);
+		handle.catch(() => {});
+		guess = { id: lastId, handle };
+	}
+
 	$effect(() => {
 		const id = activeDocId;
 		if (!id) {
@@ -204,11 +215,14 @@
 			return;
 		}
 		if (untrack(() => docTab)?.handle?.id === id) return;
+		const opening = guess?.id === id ? guess.handle : DocHandle.fromID(id);
+		guess = null;
 		let cancelled = false;
-		DocHandle.fromID(id)
+		opening
 			.then((h) => {
 				if (cancelled) return;
 				docTab = new TabState({ type: 'markdown', handle: h }, docStateFor(h.id));
+				if (tab) tab.state.doc_active = h.id;
 			})
 			.catch((e) => console.error('open doc failed', e));
 		return () => {
@@ -304,9 +318,10 @@
 				{flow}
 				{findBarAnchor}
 				{dockTarget}
+				showOpenFolder={false}
 			/>
 		{/key}
-	{:else}
+	{:else if rowsLoaded && !activeDocId}
 		<div class="doc-empty">
 			<p>{labels.empty ?? 'No document here'}</p>
 			<button class="create-doc" type="button" disabled={creating} onclick={() => createDoc()}

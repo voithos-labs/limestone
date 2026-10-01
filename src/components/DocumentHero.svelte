@@ -11,7 +11,7 @@
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import Menu from './views/Menu.svelte';
 	import TagMenu from './views/TagMenu.svelte';
-	import FolderValueEditor from './views/FolderValueEditor.svelte';
+	import MoveDialog from './MoveDialog.svelte';
 	import DocProperties from './views/DocProperties.svelte';
 	import TodoCard from './TodoCard.svelte';
 	import {
@@ -31,7 +31,8 @@
 		ArrowLeft,
 		X,
 		GitBranch,
-		FileLock
+		FileLock,
+		ArrowUpRight
 	} from '@lucide/svelte';
 	import { onMount, untrack, type Component } from 'svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -50,6 +51,7 @@
 		historyOpen = $bindable(false),
 		back,
 		onOpenFolder,
+		showOpenFolder = true,
 		onFolderMeta,
 		textTags = [],
 		onTextTag
@@ -65,7 +67,8 @@
 		historyOpen?: boolean;
 		// where this tab was before, if it navigated here
 		back?: { label: string; icon: Component; emoji?: string; go: () => void };
-		onOpenFolder?: (unitId: string, name: string) => void;
+		onOpenFolder?: (unitId: string, name: string, newTab?: boolean) => void;
+		showOpenFolder?: boolean;
 		onFolderMeta?: (unitId: string, name: string) => void; // the folder, and its metadata setting
 		// tags written in the note's text; shown read-only, and a click finds them in the text
 		textTags?: { slug: string }[];
@@ -261,7 +264,6 @@
 	let folderOpen = $state(false);
 	let pickAnchor: HTMLElement | null = $state(null);
 
-	const folderPickerValue = $derived(currentFolderId);
 
 	async function onPickFolder(groupId: string, path?: string) {
 		const targetSourceId = folderIdSource(groupId);
@@ -491,19 +493,31 @@
 					{@render backCard()}
 					<span class="meta-sep"></span>
 				{/if}
-				<button
-					class="loc-chip"
-					bind:this={pickAnchor}
-					title="Move document"
-					onclick={() => (folderOpen = !folderOpen)}
-				>
-					<FolderInput size={12} />
-					<span class="loc-part src">{srcName}</span>
-					{#each dirParts as part}
-						<span class="crumb-sep">/</span>
-						<span class="loc-part">{part}</span>
-					{/each}
-				</button>
+				<span class="loc-stack" class:stacked={!!onOpenFolder && showOpenFolder}>
+					<button
+						class="loc-chip"
+						bind:this={pickAnchor}
+						title="Move document"
+						onclick={() => (folderOpen = !folderOpen)}
+					>
+						<FolderInput size={12} />
+						<span class="loc-part src">{srcName}</span>
+						{#each dirParts as part}
+							<span class="crumb-sep">/</span>
+							<span class="loc-part">{part}</span>
+						{/each}
+					</button>
+					{#if onOpenFolder && showOpenFolder}
+						<button
+							class="loc-open"
+							type="button"
+							title="Open folder in a new tab"
+							onclick={() => onOpenFolder(currentFolderId, dirParts.at(-1) ?? srcName, true)}
+						>
+							<ArrowUpRight size={12} />
+						</button>
+					{/if}
+				</span>
 				{#if !meta.writes}
 					<button
 						class="props-chip meta-off"
@@ -640,12 +654,11 @@
 		</div>
 	{/snippet}
 </Menu>
-<FolderValueEditor
+<MoveDialog
 	bind:open={folderOpen}
-	anchor={pickAnchor}
-	value={folderPickerValue}
-	manage
-	onChange={onPickFolder}
+	value={currentFolderId}
+	name={title}
+	onMove={(id) => onPickFolder(id)}
 />
 <TagMenu
 	bind:open={tagMenuOpen}
@@ -768,6 +781,8 @@
 	/* The 22px button matches the title's line box, so it centres on the title line
        by simply starting where the row does. */
 	.todo-row {
+		display: flex;
+		justify-content: center;
 		margin-top: 10px;
 	}
 
@@ -922,6 +937,11 @@
 		color: var(--color-ui-muted);
 	}
 
+	.loc-stack {
+		display: inline-flex;
+		min-width: 0;
+	}
+
 	.loc-chip {
 		display: inline-flex;
 		align-items: center;
@@ -941,6 +961,32 @@
 	}
 
 	.loc-chip:hover {
+		color: var(--color-text-primary);
+	}
+
+	.loc-stack.stacked .loc-chip {
+		border-radius: 6px 0 0 6px;
+	}
+
+	.loc-open {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		height: 20px;
+		margin-left: 1px;
+		padding: 0 6px;
+		border: none;
+		border-radius: 0 6px 6px 0;
+		background: var(--chip-bg);
+		color: var(--color-ui-muted);
+		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
+	}
+
+	.loc-open:hover {
+		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
 
