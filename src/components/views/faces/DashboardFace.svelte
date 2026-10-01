@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import View, { ViewFace, VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
@@ -15,29 +15,18 @@
 		Hash,
 		Folder as FolderIcon,
 		ChevronDown,
+		ChevronUp,
 		ChevronRight,
 		GripVertical,
-		EyeOff,
-		Trash2
+		EyeOff
 	} from '@lucide/svelte';
 	import { contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { dashboardSections, DASH_SECTION_LABEL, type DashSection } from '$lib/views/dashboard';
 	import Folder from '$lib/models/Folder';
-	import { toasts } from '$lib/toasts.svelte';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import FolderChips from '../FolderChips.svelte';
-	import {
-		ExternalLink,
-		Bookmark,
-		LayoutArrowDown,
-		Settings2,
-		ArrowDownUp,
-		ArrowUpAZ,
-		ArrowDownAZ
-	} from '@lucide/svelte';
+	import { LayoutArrowDown, Settings2, ArrowDownUp, ArrowUpAZ, ArrowDownAZ } from '@lucide/svelte';
 	import ArrangeFields from '../ArrangeFields.svelte';
-	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { getSource, type Source } from '$lib/models/Source';
 
 	// A project at a glance: its tags as a chip row that scopes everything below, its todos as a
 	// checklist, and its other notes most recent first. Each section is an ordinary list face
@@ -313,7 +302,6 @@
 	// ── Folders: the project's subfolders, projects among them first ────────────
 	let allFolders: Folder[] = $state([]);
 	let projects: Map<string, { emoji: string }> = $state(new Map());
-	let source: Source | null = $state(null);
 
 	async function loadFolders() {
 		const unit = view.unit;
@@ -326,62 +314,12 @@
 					.filter((v) => v.unit?.startsWith('folder:'))
 					.map((v) => [v.unit as string, { emoji: v.emoji ?? '' }])
 			);
-			if (!source) source = await getSource(folderIdSource(unit));
 		} catch (e) {
 			console.error('load project folders failed', e);
 		}
 	}
 	onMount(loadFolders);
 	$effect(() => onSourceReconciled(loadFolders));
-
-	function folderContext(f: Folder): CtxEntry[] {
-		const isProject = projects.has(f.id);
-		return [
-			{ label: 'Open', icon: ChevronRight, action: () => onOpenUnit?.(f.id, f.slug) },
-			{
-				label: 'Reveal in file manager',
-				icon: ExternalLink,
-				action: () => {
-					if (source) revealItemInDir(`${source.path}/${folderIdPath(f.id)}`).catch(console.error);
-				}
-			},
-			{ divider: true },
-			{
-				label: isProject ? 'Stop being a project' : 'Turn into project',
-				icon: Bookmark,
-				action: () => {
-					View.forUnit(f.id, f.slug)
-						.then((v) => (isProject ? v.unsave() : v.save()))
-						.then(loadFolders)
-						.catch(console.error);
-				}
-			},
-			{ divider: true },
-			confirmChipDelete === f.id
-				? { label: 'Confirm delete', icon: Trash2, danger: true, action: () => deleteChip(f) }
-				: {
-						label: 'Delete folder',
-						icon: Trash2,
-						keepOpen: true,
-						action: () => (confirmChipDelete = f.id)
-					}
-		];
-	}
-
-	let confirmChipDelete: string | null = $state(null);
-	$effect(() => {
-		if (!contextMenu.open) confirmChipDelete = null;
-	});
-
-	async function deleteChip(f: Folder) {
-		confirmChipDelete = null;
-		try {
-			await Folder.delete(folderIdSource(f.id), folderIdPath(f.id));
-			await loadFolders();
-		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That folder couldn't be deleted."));
-		}
-	}
 
 	const query = $derived(((view.state.search as string | undefined) ?? '').trim().toLowerCase());
 	const folderBase = $derived(selectedTag?.startsWith('folder:') ? selectedTag : view.unit);
@@ -393,6 +331,17 @@
 			folderIdPath(f.id).startsWith(base ? `${base}/` : '')
 		);
 	};
+	// one row of folders by default; the header offers the rest, and the view remembers it
+	// beside the dashboard's other choices
+	let foldersShowAll = $state(untrack(() => view.state.folders_all === true));
+	$effect(() => {
+		const all = foldersShowAll;
+		untrack(() => {
+			if ((view.state.folders_all === true) !== all) view.state.folders_all = all;
+		});
+	});
+	let foldersHidden = $state(0);
+
 	const subfolders = $derived.by(() => {
 		if (query)
 			return allFolders
@@ -635,7 +584,19 @@
 						</button>
 					{/snippet}
 					{#snippet trail()}
-						{#if sec.id === 'docs' || sec.id === 'todo'}
+						{#if sec.id === 'folders' && !sec.collapsed && (foldersHidden > 0 || foldersShowAll)}
+							<button
+								class="sec-action"
+								type="button"
+								onclick={() => (foldersShowAll = !foldersShowAll)}
+							>
+								{foldersShowAll ? 'fewer' : `${foldersHidden} more`}
+								{#if foldersShowAll}<ChevronUp size={12} strokeWidth={2} />{:else}<ChevronDown
+										size={12}
+										strokeWidth={2}
+									/>{/if}
+							</button>
+						{:else if sec.id === 'docs' || sec.id === 'todo'}
 							{@const key = sec.id === 'docs' ? 'docs_sort' : 'todo_sort'}
 							{@const sort = sorts[key]}
 							<button
@@ -663,7 +624,9 @@
 							rows={query ? 99 : 1}
 							whereOf={(f) => (query ? relDir(f) : '')}
 							onOpen={(f) => onOpenUnit?.(f.id, f.slug)}
-							context={folderContext}
+							onChanged={loadFolders}
+							bind:showAll={foldersShowAll}
+							onHidden={(n) => (foldersHidden = n)}
 						/>
 					</div>
 				{:else if sec.id === 'todo'}

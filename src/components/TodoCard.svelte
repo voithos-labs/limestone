@@ -80,8 +80,8 @@
 			onclick={() => doneField && write(doneField, !done)}
 		>
 			<span class="box"><Check size={12} strokeWidth={3} /></span>
+			<span class="label">Todo</span>
 		</button>
-		<span class="label">{done ? 'Done' : 'Todo'}</span>
 		<span class="sep"></span>
 		<button
 			class="date"
@@ -132,7 +132,7 @@
 		align-items: center;
 		gap: 4px;
 		height: 32px;
-		padding: 0 4px 0 0;
+		padding: 0 4px;
 		border-radius: 8px;
 		background: var(--chip-bg);
 		font-family: var(--font-ui);
@@ -140,18 +140,17 @@
 		color: var(--color-text-primary);
 	}
 
-	/* the checkbox is the card's end cap, dipped on hover like a row's open button */
+	/* the checkbox and its word are one toggle, inset like the card's other buttons */
 	.check {
 		display: inline-flex;
 		align-items: center;
-		justify-content: center;
-		align-self: stretch;
-		width: 36px;
-		margin-right: 4px;
-		padding: 0;
+		gap: 7px;
+		height: 24px;
+		padding: 0 8px 0 6px;
 		border: none;
-		border-radius: 8px 0 0 8px;
+		border-radius: 6px;
 		background: transparent;
+		font: inherit;
 		color: inherit;
 		cursor: pointer;
 		transition: background-color 80ms ease;
@@ -161,8 +160,12 @@
 		background: var(--chip-bg-hover);
 	}
 
+	/* a tag-like name for the card, not a status: the checkbox says done or not */
 	.label {
+		font-size: 11.5px;
 		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
 	}
 
 	.box {
@@ -193,7 +196,7 @@
 	.sep {
 		width: 1px;
 		height: 16px;
-		margin: 0 4px;
+		margin: 0 4px 0 0;
 		background: var(--chip-divider);
 	}
 

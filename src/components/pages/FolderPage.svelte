@@ -6,7 +6,7 @@
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
+	import Folder, { folderId, folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import {
 		getSource,
 		onSourceReconciled,
@@ -21,13 +21,12 @@
 	import InputPopover from '../views/InputPopover.svelte';
 	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { metaDialog } from '$lib/metaDialog.svelte';
-	import { isMove, readMove, movingNow, type MovePayload } from '$lib/views/dragMove';
+	import { isMove, readMove, movingNow, moveInto, type MovePayload } from '$lib/views/dragMove';
 	import SourceDialog from '../SourceDialog.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
 	import NewFab from '../views/NewFab.svelte';
 	import { createInView } from '$lib/views/FaceRows.svelte';
-	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import {
 		ChevronRight,
 		ChevronDown,
@@ -239,6 +238,7 @@
 		if (!tab) return;
 		tab.state.folded = { ...folded, [id]: !folded[id] };
 	}
+	let selectedFolder: string | null = $state(null);
 	let foldersShowAll = $state(false);
 	let foldersHidden = $state(0);
 
@@ -265,37 +265,11 @@
 		if (!isMove(e)) return;
 		e.preventDefault();
 		const p = readMove(e);
-		if (p && crumbCanTake(targetPath, p)) void moveInto(targetPath, p);
+		if (p && crumbCanTake(targetPath, p))
+			moveInto(folderId(sourceId, targetPath), p).then((moved) => {
+				if (moved) loadFolders();
+			});
 	}
-
-	async function moveInto(targetPath: string, p: MovePayload) {
-		try {
-			if (p.kind === 'doc') {
-				const d = await DocHandle.fromID(p.id);
-				if (d.source.id !== sourceId) {
-					toasts.push('Drag between sources is not supported yet. Use Move from the document.');
-					return;
-				}
-				const file = d.relPath.split('/').pop() ?? d.relPath;
-				const newRel = targetPath ? `${targetPath}/${file}` : file;
-				if (newRel === d.relPath) return;
-				await d.moveToPath(newRel);
-			} else {
-				const fp = folderIdPath(p.id);
-				if (folderIdSource(p.id) !== sourceId || !fp) return;
-				if (targetPath === fp || targetPath.startsWith(fp + '/')) return;
-				const name = fp.split('/').pop() ?? fp;
-				const newPath = targetPath ? `${targetPath}/${name}` : name;
-				if (newPath === fp) return;
-				await Folder.move(sourceId, fp, newPath);
-			}
-			await loadFolders();
-		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That couldn't be moved."));
-		}
-	}
-
-	const chipDrop = (f: Folder, p: MovePayload) => moveInto(folderIdPath(f.id), p);
 
 	// ── Actions: the page's menu is the folder's menu ──────────────────────────
 	let menuOpen = $state(false);
@@ -452,104 +426,6 @@
 		}
 	}
 
-	// per-subfolder menu
-	let subMenuOpen = $state(false);
-	let subMenuEl: HTMLElement | null = $state(null);
-	let subMenuFolder: Folder | null = $state(null);
-	let confirmChipDelete: string | null = $state(null);
-	$effect(() => {
-		if (!subMenuOpen && !contextMenu.open) confirmChipDelete = null;
-	});
-	const subMenuItems = $derived.by(() => {
-		const f = subMenuFolder;
-		return [
-			{ value: 'open', label: 'Open', icon: ChevronRight },
-			{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
-			...(f ? [metaItem(f)] : []),
-			{ kind: 'divider' as const },
-			f && projects.has(f.id)
-				? { value: 'unproject', label: 'Stop being a project', icon: Bookmark }
-				: { value: 'project', label: 'Turn into project', icon: Bookmark },
-			{ kind: 'divider' as const },
-			f && confirmChipDelete === f.id
-				? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
-				: { value: 'delete', label: 'Delete folder', icon: Trash2, keepOpen: true }
-		];
-	});
-
-	async function deleteChip(f: Folder) {
-		confirmChipDelete = null;
-		try {
-			await Folder.delete(sourceId, folderIdPath(f.id));
-			await loadFolders();
-		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That folder couldn't be deleted."));
-		}
-	}
-
-	function chipContext(f: Folder): CtxEntry[] {
-		const isProject = projects.has(f.id);
-		return [
-			{ label: 'Open', icon: ChevronRight, action: () => openFolder(f) },
-			{
-				label: 'Reveal in file manager',
-				icon: ExternalLink,
-				action: () => {
-					if (source) revealItemInDir(`${source.path}/${folderIdPath(f.id)}`).catch(console.error);
-				}
-			},
-			{ label: 'Metadata…', icon: metaItem(f).icon, action: () => metaDialog.show(f.id) },
-			{ divider: true },
-			{
-				label: isProject ? 'Stop being a project' : 'Turn into project',
-				icon: Bookmark,
-				action: () => {
-					View.forUnit(f.id, f.slug)
-						.then((v) => (isProject ? v.unsave() : v.save()))
-						.then(loadFolders)
-						.catch(console.error);
-				}
-			},
-			{ divider: true },
-			confirmChipDelete === f.id
-				? { label: 'Confirm delete', icon: Trash2, danger: true, action: () => deleteChip(f) }
-				: {
-						label: 'Delete folder',
-						icon: Trash2,
-						keepOpen: true,
-						action: () => (confirmChipDelete = f.id)
-					}
-		];
-	}
-
-	function openSubMenu(e: MouseEvent, f: Folder) {
-		e.stopPropagation();
-		subMenuEl = e.currentTarget as HTMLElement;
-		subMenuFolder = f;
-		subMenuOpen = true;
-	}
-
-	function onSubMenuSelect(value: string) {
-		const f = subMenuFolder;
-		if (!f) return;
-		if (value === 'delete') {
-			confirmChipDelete = f.id;
-			return;
-		}
-		subMenuOpen = false;
-		if (value === 'confirm-delete') void deleteChip(f);
-		else if (value === 'open') openFolder(f);
-		else if (value === 'reveal' && source)
-			revealItemInDir(`${source.path}/${folderIdPath(f.id)}`).catch(console.error);
-		else if (value === 'meta') metaDialog.show(f.id);
-		else if (value === 'project' || value === 'unproject') {
-			View.forUnit(f.id, f.slug)
-				.then((v) => (value === 'project' ? v.save() : v.unsave()))
-				.then(loadFolders)
-				.catch(console.error);
-		}
-	}
-
 	let bodyEl: HTMLDivElement | null = $state(null);
 </script>
 
@@ -648,9 +524,8 @@
 							{projects}
 							whereOf={(f) => (query ? relDir(f) : '')}
 							onOpen={openFolder}
-							context={chipContext}
-							onMenu={openSubMenu}
-							onDrop={chipDrop}
+							onChanged={loadFolders}
+							bind:selected={selectedFolder}
 						/>
 					</div>
 				{/if}
@@ -680,9 +555,8 @@
 							rows={query ? 99 : 3}
 							whereOf={(f) => (query ? relDir(f) : '')}
 							onOpen={openFolder}
-							context={chipContext}
-							onMenu={openSubMenu}
-							onDrop={chipDrop}
+							onChanged={loadFolders}
+							bind:selected={selectedFolder}
 							bind:showAll={foldersShowAll}
 							onHidden={(n) => (foldersHidden = n)}
 						/>
@@ -756,13 +630,6 @@
 		modifiedOpen = false;
 	}}
 	minWidth={170}
-/>
-<Menu
-	bind:open={subMenuOpen}
-	anchor={subMenuEl}
-	items={subMenuItems}
-	onSelect={onSubMenuSelect}
-	minWidth={180}
 />
 <SourceDialog
 	bind:open={sourceDialogOpen}

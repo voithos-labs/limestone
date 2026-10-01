@@ -51,7 +51,8 @@
 		flow = false,
 		readOnly = false,
 		findBarAnchor,
-		dockTarget
+		dockTarget,
+		showOpenFolder = true
 	}: {
 		tab: TabState;
 		settings: SettingsState;
@@ -63,14 +64,15 @@
 		findBarAnchor?: HTMLElement | null;
 		/** Where a flow host wants mode bars docked: an element in its pane's positioning context. */
 		dockTarget?: HTMLElement | null;
+		showOpenFolder?: boolean;
 	} = $props();
 
 	let handle = $derived(tab.handle);
 	// the folder the document sits in, opened in this tab so Back comes straight here
-	function onOpenFolder(unitId: string, name: string) {
+	function onOpenFolder(unitId: string, name: string, newTab = false) {
 		if (!editor) return;
 		View.forUnit(unitId, name)
-			.then((v) => editor.showViewInTab(tab, v))
+			.then((v) => (newTab ? editor.openView(v) : editor.showViewInTab(tab, v)))
 			.catch((e) => console.error('open folder failed', e));
 	}
 
@@ -796,6 +798,7 @@
 			bind:historyOpen
 			{back}
 			{onOpenFolder}
+			{showOpenFolder}
 			{onFolderMeta}
 			{textTags}
 			onTextTag={findTextTag}
@@ -829,6 +832,7 @@
 			bind:historyOpen
 			{back}
 			{onOpenFolder}
+			{showOpenFolder}
 			{onFolderMeta}
 			{textTags}
 			onTextTag={findTextTag}

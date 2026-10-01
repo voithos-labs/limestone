@@ -40,6 +40,7 @@
 		value={typeof value === 'string' ? value : null}
 		{sourceId}
 		manage
+		moves
 		onChange={(id, dir) => {
 			onChange(id, dir);
 			open = false;

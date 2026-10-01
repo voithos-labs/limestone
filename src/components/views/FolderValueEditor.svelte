@@ -12,10 +12,13 @@
 		ExternalLink,
 		History,
 		Pencil,
+		Bookmark,
+		ArrowRight,
 		X
 	} from '@lucide/svelte';
 	import Folder, { folderId, folderIdSource, isSourceRoot } from '$lib/models/Folder';
-	import { getDefaultSourceId, listSources, sourceName } from '$lib/models/Source';
+	import { listSources, sourceName } from '$lib/models/Source';
+	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { toasts } from '$lib/toasts.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
@@ -40,6 +43,7 @@
 		rootLabel,
 		placement = 'auto',
 		manage = false,
+		moves = false,
 		loadFolders,
 		onCreateFolder,
 		onChange
@@ -52,6 +56,7 @@
 		rootLabel?: string;
 		placement?: 'auto' | 'below';
 		manage?: boolean;
+		moves?: boolean;
 		loadFolders?: () => Promise<FolderNode[]>;
 		onCreateFolder?: (
 			name: string,
@@ -60,7 +65,7 @@
 		onChange: (id: string, path?: string) => void;
 	} = $props();
 
-	const POP_MAX_H = 420;
+	const POP_MAX_H = 340;
 
 	let popEl: HTMLDivElement | null = $state(null);
 	let searchEl: HTMLInputElement | null = $state(null);
@@ -80,7 +85,7 @@
 	let renameDraft = $state('');
 	let renameEl: HTMLInputElement | null = $state(null);
 	let sourceNames: Map<string, string> = $state(new Map());
-	let defaultSourceId: string | null = $state(null);
+	let projects: Map<string, { emoji: string }> = $state(new Map());
 	let loadError = $state('');
 	let query = $state('');
 	let focusId: string | null = $state(null);
@@ -189,8 +194,12 @@
 	let navAnimate = $state(false);
 
 	const levelRows = $derived(
-		(childrenByParent.get(focusId) ?? []).filter((f) => !movingExcluded.has(f.id))
+		(childrenByParent.get(focusId) ?? [])
+			.filter((f) => !movingExcluded.has(f.id))
+			.sort((a, b) => Number(projects.has(b.id)) - Number(projects.has(a.id)))
 	);
+
+	const levelProjectCount = $derived(levelRows.filter((f) => projects.has(f.id)).length);
 
 	const SEARCH_MAX = 50;
 	const searchMatches = $derived.by(() => {
@@ -268,13 +277,7 @@
 
 	const rootCrumbLabel = $derived((sourceId && sourceNames.get(sourceId)) || 'All folders');
 
-	const createSourceId = $derived.by(() => {
-		if (sourceId) return sourceId;
-		if (focusId) return isSrcNode(focusId) ? srcNodeSource(focusId) : byId.get(focusId)?.sourceId;
-		if (new Set(folders.map((f) => f.sourceId)).size === 1) return folders[0]?.sourceId;
-		return sourcesMode ? (defaultSourceId ?? undefined) : undefined;
-	});
-	const canCreate = $derived(!!onCreateFolder || !!createSourceId);
+	const canCreate = $derived(!!onCreateFolder);
 
 	function siblingExists(slug: string): boolean {
 		const s = slug.trim().toLowerCase();
@@ -320,14 +323,12 @@
 
 	async function createFolderNamed(slug: string) {
 		const name = slug.trim();
-		if (!validFolderName(name) || !canCreate || creating || siblingExists(name)) return;
+		if (!onCreateFolder || !validFolderName(name) || creating || siblingExists(name)) return;
 		creating = true;
 		try {
 			const parent =
 				focusId && !isSrcNode(focusId) ? { id: focusId, path: folderPath(focusId) } : null;
-			const g = onCreateFolder
-				? await onCreateFolder(name, parent)
-				: await Folder.create(name, createSourceId!, parent ?? undefined);
+			const g = await onCreateFolder(name, parent);
 			folders = [...folders, g];
 			loadError = '';
 			newName = '';
@@ -478,14 +479,6 @@
 		return [
 			{ label: 'Rename', icon: Pencil, action: () => startRename(f) },
 			{ label: 'Move to…', icon: FolderInput, action: () => startMove(f) },
-			{
-				label: 'New folder inside',
-				icon: FolderPlus,
-				action: () => {
-					focusFolderId(f.id);
-					openNewFolder();
-				}
-			},
 			{ divider: true },
 			{ label: 'Reveal in file manager', icon: ExternalLink, action: () => revealFolder(f) }
 		];
@@ -707,13 +700,17 @@
 		return Promise.all([
 			load,
 			listSources().catch(() => []),
-			getDefaultSourceId().catch(() => null)
+			loadFolders ? [] : listSavedViewJSON().catch(() => [])
 		])
-			.then(([fs, ss, defId]) => {
+			.then(([fs, ss, saved]) => {
 				folders = fs;
+				projects = new Map(
+					saved
+						.filter((v) => v.unit?.startsWith('folder:'))
+						.map((v) => [v.unit as string, { emoji: v.emoji ?? '' }])
+				);
 				sourceNames = new Map(ss.map((s) => [s.id, sourceName(s)]));
 				sourcePaths = new Map(ss.map((s) => [s.id, s.path]));
-				defaultSourceId = defId;
 				loadError = '';
 				ready = true;
 			})
@@ -847,6 +844,20 @@
 	});
 </script>
 
+{#snippet nodeIcon(folder: FolderNode, size: number)}
+	{@const project = projects.get(folder.id)}
+	{#if isSrcNode(folder.id)}
+		<FolderInput {size} strokeWidth={1.75} />
+	{:else if project?.emoji}
+		<span class="emoji">{project.emoji}</span>
+	{:else if project}
+		<Bookmark {size} strokeWidth={1.75} />
+	{:else}
+		<span class="row-icon"><FolderIcon {size} strokeWidth={1.75} /></span>
+		<span class="row-icon open"><FolderOpen {size} strokeWidth={1.75} /></span>
+	{/if}
+{/snippet}
+
 {#if open && ready}
 	<div
 		class="pop"
@@ -866,7 +877,7 @@
 				type="text"
 				bind:value={query}
 				bind:this={searchEl}
-				placeholder="Search folders…"
+				placeholder="Search…"
 			/>
 			{#if query}
 				<button
@@ -891,7 +902,7 @@
 					<button
 						class="clear-btn"
 						type="button"
-						title="Recent folders"
+						title="Recent"
 						onclick={() => (recentsOpen ? closeRecents() : openRecents())}
 					>
 						<History size={13} strokeWidth={1.75} />
@@ -904,7 +915,7 @@
 							role="menu"
 							tabindex="-1"
 						>
-							<div class="fly-label">Recent folders</div>
+							<div class="fly-label">Recent</div>
 							{#each recentFolders as folder, i (folder.id)}
 								{@const blockReason = movingId ? moveBlockReason(folder.id) : undefined}
 								<div
@@ -921,7 +932,7 @@
 										onclick={() => pick(folder.id)}
 										onmouseenter={() => (recentsIndex = i)}
 									>
-										<FolderIcon size={13} strokeWidth={1.75} />
+										{@render nodeIcon(folder, 13)}
 										<span class="name-label">{folder.slug}</span>
 										{#if folder.id === value}
 											<Check size={13} strokeWidth={2} />
@@ -932,7 +943,7 @@
 									</button>
 								</div>
 							{:else}
-								<div class="empty">No recent folders</div>
+								<div class="empty">Nothing recent</div>
 							{/each}
 						</div>
 					{/if}
@@ -985,7 +996,9 @@
 					title={movingId ? (rootBlock ?? '') : ''}
 					onclick={() => pick('')}
 				>
-					{movingId ? 'Place here' : 'Select this source'}
+					{#if movingId}Place here{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span
+							>Move here</span
+						>{:else}Select this source{/if}
 				</button>
 			</div>
 			<div class="root-divider"></div>
@@ -994,7 +1007,6 @@
 			{#if searching}
 				{#each searchMatches as folder, i (folder.id)}
 					{@const blockReason = movingId ? moveBlockReason(folder.id) : undefined}
-					{@const src = isSrcNode(folder.id)}
 					<div
 						class="folder-row"
 						class:selected={nodeValue(folder.id) === value}
@@ -1011,12 +1023,7 @@
 							onclick={() => focusFolderId(folder.id)}
 							onmouseenter={() => (activeIndex = i)}
 						>
-							{#if src}
-								<FolderInput size={13} strokeWidth={1.75} />
-							{:else}
-								<span class="row-icon"><FolderIcon size={13} strokeWidth={1.75} /></span>
-								<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
-							{/if}
+							{@render nodeIcon(folder, 13)}
 							<span class="name-label">{folder.slug}</span>
 							{#if nodeValue(folder.id) === value}
 								<Check size={13} strokeWidth={2} />
@@ -1033,12 +1040,14 @@
 							title={movingId ? (blockReason ?? '') : ''}
 							onclick={() => pick(folder.id)}
 						>
-							{movingId ? 'Place' : 'Select'}
+							{#if movingId}Place{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span
+									>Move</span
+								>{:else}Select{/if}
 						</button>
 					</div>
 				{/each}
 				{#if showCreate}
-					{@const createSourceName = createSourceId && sourceNames.get(createSourceId)}
+					{@const createSourceName = sourceId && sourceNames.get(sourceId)}
 					<div class="folder-row create" class:active={activeIndex === searchMatches.length}>
 						<button
 							class="folder-name"
@@ -1168,8 +1177,10 @@
 						{/if}
 						{#each levelRows as folder, i (folder.id)}
 							{@const navIndex = levelBase + i}
-							{@const src = isSrcNode(folder.id)}
 							{@const blockReason = movingId ? moveBlockReason(folder.id) : undefined}
+							{#if i === levelProjectCount && i > 0}
+								<div class="project-divider"></div>
+							{/if}
 							<div
 								class="folder-row"
 								class:selected={nodeValue(folder.id) === value}
@@ -1181,7 +1192,7 @@
 							>
 								{#if renamingId === folder.id}
 									<div class="folder-name new-edit">
-										<FolderIcon size={13} strokeWidth={1.75} />
+										{@render nodeIcon(folder, 13)}
 										<input
 											class="new-input"
 											class:invalid={renameInvalid(folder)}
@@ -1200,12 +1211,7 @@
 										onclick={() => focusFolderId(folder.id)}
 										onmouseenter={() => (activeIndex = navIndex)}
 									>
-										{#if src}
-											<FolderInput size={13} strokeWidth={1.75} />
-										{:else}
-											<span class="row-icon"><FolderIcon size={13} strokeWidth={1.75} /></span>
-											<span class="row-icon open"><FolderOpen size={13} strokeWidth={1.75} /></span>
-										{/if}
+										{@render nodeIcon(folder, 13)}
 										<span class="name-label">{folder.slug}</span>
 										{#if nodeValue(folder.id) === value || blockReason === 'Already here'}
 											<Check size={13} strokeWidth={2} />
@@ -1219,7 +1225,9 @@
 										title={movingId ? (blockReason ?? '') : ''}
 										onclick={() => pick(folder.id)}
 									>
-										{movingId ? 'Place' : 'Select'}
+										{#if movingId}Place{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span
+												>Move</span
+											>{:else}Select{/if}
 									</button>
 								{/if}
 							</div>
@@ -1255,7 +1263,7 @@
 			style:top="{dragPos.y + 14}px"
 			style:left="{dragPos.x + 12}px"
 		>
-			<FolderIcon size={12} strokeWidth={1.75} />
+			{@render nodeIcon(dragging, 12)}
 			<span>{dragging.slug}</span>
 		</div>
 	{/if}
@@ -1265,7 +1273,7 @@
 	.pop {
 		position: fixed;
 		z-index: 1000;
-		width: 320px;
+		width: 272px;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
@@ -1384,18 +1392,10 @@
 		overflow-y: auto;
 		overflow-x: hidden;
 		flex: 1;
-	}
-
-	.list::-webkit-scrollbar {
-		width: 1px;
-	}
-
-	.list::-webkit-scrollbar-track {
-		background: transparent;
-	}
-
-	.list::-webkit-scrollbar-thumb {
-		background: var(--color-border);
+		margin-right: -4px;
+		padding-right: 4px;
+		scrollbar-width: thin;
+		scrollbar-color: var(--menu-scrollbar-thumb) transparent;
 	}
 
 	.section-label {
@@ -1447,6 +1447,10 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
+	}
+
+	.crumb-icon:not(:disabled) :global(svg) {
+		translate: 0 -1px;
 	}
 
 	.crumb-new {
@@ -1508,14 +1512,8 @@
 		border-radius: 8px;
 		box-shadow: var(--menu-shadow);
 		padding: 4px;
-	}
-
-	.recents-fly::-webkit-scrollbar {
-		width: 1px;
-	}
-
-	.recents-fly::-webkit-scrollbar-thumb {
-		background: var(--color-border);
+		scrollbar-width: thin;
+		scrollbar-color: var(--menu-scrollbar-thumb) transparent;
 	}
 
 	.crumb-root:not(:disabled):hover {
@@ -1640,6 +1638,14 @@
 		cursor: pointer;
 	}
 
+	.row-select :global(svg) {
+		margin-right: 4px;
+	}
+
+	.row-select span {
+		translate: 0 1px;
+	}
+
 	.folder-row:hover .row-select,
 	.folder-row.active .row-select {
 		display: inline-flex;
@@ -1714,6 +1720,20 @@
 		flex-shrink: 0;
 	}
 
+	.project-divider {
+		height: 1px;
+		margin: 4px 10px;
+		background: var(--menu-search-divider);
+	}
+
+	.emoji {
+		width: 13px;
+		flex-shrink: 0;
+		text-align: center;
+		font-size: 12px;
+		line-height: 1;
+	}
+
 	.crumb-divider {
 		height: 1px;
 		margin: 2px -4px 4px;
@@ -1766,6 +1786,7 @@
 		text-overflow: ellipsis;
 		font-size: 11px;
 		color: var(--color-ui-dulled);
+		translate: 0 1px;
 	}
 
 	.folder-row.create .name-label {
