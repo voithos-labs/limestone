@@ -41,7 +41,7 @@
 	.new-fab {
 		position: absolute;
 		bottom: 24px;
-		right: calc(24px + max(0px, (100% - var(--page-max-width, 100%)) / 2));
+		right: 24px;
 		z-index: 5;
 		display: flex;
 		align-items: center;

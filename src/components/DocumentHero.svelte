@@ -50,6 +50,7 @@
 		historyOpen = $bindable(false),
 		back,
 		onOpenFolder,
+		onFolderMeta,
 		textTags = [],
 		onTextTag
 	}: {
@@ -65,6 +66,7 @@
 		// where this tab was before, if it navigated here
 		back?: { label: string; icon: Component; emoji?: string; go: () => void };
 		onOpenFolder?: (unitId: string, name: string) => void;
+		onFolderMeta?: (unitId: string, name: string) => void; // the folder, and its metadata setting
 		// tags written in the note's text; shown read-only, and a click finds them in the text
 		textTags?: { slug: string }[];
 		onTextTag?: (slug: string) => void;
@@ -234,7 +236,7 @@
 				title = handle.title;
 				return;
 			}
-			await handle.rename(next + ext);
+			await handle.rename(next);
 			relPath = handle.relPath;
 		} catch (e) {
 			console.error('rename failed', e);
@@ -503,17 +505,21 @@
 					{/each}
 				</button>
 				{#if !meta.writes}
-					<span
+					<button
 						class="props-chip meta-off"
+						class:linked={!!onFolderMeta}
+						type="button"
+						disabled={!onFolderMeta}
 						title={meta.repo
-							? "Inside a Git repo: metadata isn't written to this file"
-							: "This folder doesn't store metadata in its files"}
+							? "Inside a Git repo: metadata isn't written to this file. Click to change it for the folder"
+							: "This folder doesn't store metadata in its files. Click to change it for the folder"}
+						onclick={() => onFolderMeta?.(currentFolderId, dirParts.at(-1) ?? srcName)}
 					>
 						{#if meta.repo}<GitBranch size={12} strokeWidth={1.75} />{:else}<FileLock
 								size={12}
 								strokeWidth={1.75}
 							/>{/if}
-					</span>
+					</button>
 					{#each tagList as t (t.id)}
 						<span class="tag"><Hash size={11} />{t.slug}</span>
 					{/each}
@@ -985,9 +991,13 @@
 		cursor: default;
 	}
 
-	.props-chip.meta-off:hover {
+	.props-chip.meta-off:hover:not(.linked) {
 		background: transparent;
 		color: var(--color-ui-muted);
+	}
+
+	.props-chip.meta-off.linked {
+		cursor: pointer;
 	}
 
 	.props-chip.fm-error {

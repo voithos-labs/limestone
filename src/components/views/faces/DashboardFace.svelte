@@ -147,6 +147,16 @@
 	const doneFace = ViewFace.create('list');
 	const notesFace = ViewFace.create('list');
 
+	// each section sorts on its own key, chosen from the section menu or the header
+	type Sort = { field_id: string; direction: 'asc' | 'desc' };
+	const MANUAL = 'manual';
+	function sortFor(key: string, def: Sort): Sort {
+		const saved = face.config[key] as Sort | undefined;
+		if (!saved?.field_id) return def;
+		if (saved.field_id === MANUAL) return saved;
+		return view.fields.some((f) => f.id === saved.field_id) ? saved : def;
+	}
+
 	// each section's arrangement lives on the dashboard face; the section faces are rebuilt
 	// from it, and an arrangement made in the dialog is written back
 	type Layout = { display: string[]; right: string[] };
@@ -160,7 +170,7 @@
 		if (JSON.stringify(cur) !== JSON.stringify(next)) face.config[key] = next;
 	}
 
-	$effect(() => {
+	$effect.pre(() => {
 		const l = layoutFor('todo_layout', {
 			display: [doneId, titleId, tagsId, folderId, dueId].filter(Boolean),
 			right: [folderId, dueId]
@@ -197,7 +207,7 @@
 		doneFace.sort = [{ field_id: updatedId, direction: 'desc' }];
 	});
 
-	$effect(() => {
+	$effect.pre(() => {
 		const l = layoutFor('docs_layout', {
 			display: [titleId, tagsId, updatedId].filter(Boolean),
 			right: [tagsId, updatedId]
@@ -213,16 +223,6 @@
 		notesFace.sort = [manual ? { field_id: updatedId, direction: 'desc' } : sort];
 		notesFace.config.order = manual ? [...((face.config.docs_order as string[]) ?? [])] : undefined;
 	});
-
-	// each section sorts on its own key, chosen from the section menu or the header
-	type Sort = { field_id: string; direction: 'asc' | 'desc' };
-	const MANUAL = 'manual';
-	function sortFor(key: string, def: Sort): Sort {
-		const saved = face.config[key] as Sort | undefined;
-		if (!saved?.field_id) return def;
-		if (saved.field_id === MANUAL) return saved;
-		return view.fields.some((f) => f.id === saved.field_id) ? saved : def;
-	}
 
 	// a drag writes the section's order and makes it the sort; newcomers land at the end
 	function onReorder(section: 'todo' | 'docs', ids: string[]) {

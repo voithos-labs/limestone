@@ -7,6 +7,7 @@ export interface MenuItem {
 	children?: MenuItem[];
 	keepOpen?: boolean;
 	danger?: boolean;
+	hint?: string; // its current state, trailing in muted text
 }
 
 export interface MenuDivider {

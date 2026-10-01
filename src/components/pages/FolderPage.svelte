@@ -9,7 +9,6 @@
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import {
 		getSource,
-		GIT_FRONTMATTER_OFF,
 		onSourceReconciled,
 		removeSource,
 		sourceName,
@@ -21,6 +20,7 @@
 	import Menu from '../views/Menu.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
 	import { openProjectSetup } from '$lib/views/projectSetup';
+	import { metaDialog } from '$lib/metaDialog.svelte';
 	import { isMove, readMove, movingNow, type MovePayload } from '$lib/views/dragMove';
 	import SourceDialog from '../SourceDialog.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
@@ -71,7 +71,6 @@
 	let folders: Folder[] = $state([]);
 	let root: Folder | null = $state(null);
 	const here = $derived(isRoot ? root : (folders.find((f) => f.id === unitId) ?? null));
-	const gitOff = $derived(settings.get<boolean>(GIT_FRONTMATTER_OFF) ?? true);
 	// folders that are projects: they have a saved view of their own, and its emoji
 	let projects: Map<string, { emoji: string }> = $state(new Map());
 	const query = $derived(((view.state.search as string | undefined) ?? '').trim());
@@ -338,32 +337,25 @@
 	});
 
 	function metaItem(f: Folder) {
-		return f.writesMeta
-			? { value: 'meta', label: 'Keep metadata out of files', icon: FileLock }
-			: { value: 'meta', label: 'Write metadata to files', icon: FilePen };
+		return {
+			value: 'meta',
+			label: 'Metadata…',
+			icon: f.writesMeta ? FilePen : FileLock,
+			hint: f.writesMeta ? 'On' : 'Off'
+		};
 	}
 
-	async function toggleMeta(f: Folder) {
-		try {
-			await f.setWritesMeta(!f.writesMeta, gitOff);
-			await loadFolders();
-		} catch (e) {
-			toasts.push(`That setting couldn't be changed: ${String(e)}`);
-		}
-	}
-
+	// making things here is the fab's job; this menu is about the folder itself
 	const menuItems = $derived([
-		{ value: 'new-note', label: 'New note', icon: FilePlus },
-		{ value: 'new-folder', label: 'New folder', icon: FolderPlus },
-		{ kind: 'divider' as const },
 		isRoot
 			? { value: 'configure', label: 'Configure source', icon: Settings }
 			: { value: 'rename', label: 'Rename', icon: Pencil },
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
 		...(here ? [metaItem(here)] : []),
-		...(view.temporary
-			? [{ value: 'project', label: 'Turn into project', icon: Bookmark }]
-			: [{ value: 'unproject', label: 'Stop being a project', icon: Bookmark }]),
+		{ kind: 'divider' as const },
+		view.temporary
+			? { value: 'project', label: 'Turn into project', icon: Bookmark }
+			: { value: 'unproject', label: 'Stop being a project', icon: Bookmark },
 		{ kind: 'divider' as const },
 		confirmingDelete
 			? {
@@ -409,14 +401,6 @@
 		}
 		menuOpen = false;
 		switch (value) {
-			case 'new-note':
-				void newDoc(false);
-				break;
-			case 'new-folder':
-				nameMode = 'new-folder';
-				nameAnchor = menuEl;
-				nameOpen = true;
-				break;
 			case 'rename':
 				nameMode = 'rename';
 				nameAnchor = menuEl;
@@ -429,7 +413,7 @@
 				if (source) sourceDialogOpen = true;
 				break;
 			case 'meta':
-				if (here) await toggleMeta(here);
+				metaDialog.show(unitId);
 				break;
 			case 'project':
 				openProjectSetup(editor, { id: unitId, name: crumbs.at(-1)?.slug ?? view.slug }, view.id);
@@ -514,7 +498,7 @@
 					if (source) revealItemInDir(`${source.path}/${folderIdPath(f.id)}`).catch(console.error);
 				}
 			},
-			{ label: metaItem(f).label, icon: metaItem(f).icon, action: () => void toggleMeta(f) },
+			{ label: 'Metadata…', icon: metaItem(f).icon, action: () => metaDialog.show(f.id) },
 			{ divider: true },
 			{
 				label: isProject ? 'Stop being a project' : 'Turn into project',
@@ -557,7 +541,7 @@
 		else if (value === 'open') openFolder(f);
 		else if (value === 'reveal' && source)
 			revealItemInDir(`${source.path}/${folderIdPath(f.id)}`).catch(console.error);
-		else if (value === 'meta') void toggleMeta(f);
+		else if (value === 'meta') metaDialog.show(f.id);
 		else if (value === 'project' || value === 'unproject') {
 			View.forUnit(f.id, f.slug)
 				.then((v) => (value === 'project' ? v.save() : v.unsave()))

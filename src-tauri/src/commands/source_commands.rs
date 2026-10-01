@@ -599,6 +599,109 @@ pub async fn delete_folder(
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+pub struct FolderMeta {
+    explicit: Option<bool>,
+    writes: bool,
+    follows: bool,
+    repo: bool,
+    with_frontmatter: usize,
+}
+
+#[tauri::command]
+pub async fn folder_meta(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    source_id: String,
+    dir: String,
+) -> Result<FolderMeta, String> {
+    let uuid = Uuid::parse_str(&source_id).map_err(|e| e.to_string())?;
+    let source = find_source(&app, uuid)?;
+    let explicit = if dir.is_empty() {
+        source.use_frontmatter
+    } else {
+        source.frontmatter_dirs.get(&dir).copied()
+    };
+    let id = services::folder_id(&source_id, &dir);
+    let (repo, writes, parent): (bool, bool, Option<String>) =
+        sqlx::query_as("SELECT repo, writes_meta, parent_id FROM folders WHERE id = ?1")
+            .bind(&id)
+            .fetch_optional(&app_data.db)
+            .await
+            .map_err(|e| e.to_string())?
+            .unwrap_or((false, true, None));
+    let parent_writes: bool = match parent {
+        Some(p) => sqlx::query_scalar("SELECT writes_meta FROM folders WHERE id = ?1")
+            .bind(p)
+            .fetch_optional(&app_data.db)
+            .await
+            .map_err(|e| e.to_string())?
+            .unwrap_or(true),
+        None => true,
+    };
+    let follows = parent_writes && !(git_frontmatter_off(&app_data) && repo);
+
+    let rel_paths =
+        services::bulk_ops::fetch_paths_in_folder(&app_data.db, &source_id, &id).await?;
+    let root = source.path.clone();
+    let with_frontmatter = tauri::async_runtime::spawn_blocking(move || {
+        use rayon::prelude::*;
+        rel_paths
+            .par_iter()
+            .filter(|rel| {
+                resolve_in_source(&root, rel)
+                    .map(|p| services::frontmatter::has_frontmatter(&p))
+                    .unwrap_or(false)
+            })
+            .count()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(FolderMeta {
+        explicit,
+        writes,
+        follows,
+        repo,
+        with_frontmatter,
+    })
+}
+
+/// Takes the metadata out of every file in a folder and below, then re-reads the source so
+/// tags and properties that lived in those blocks drop away
+#[tauri::command]
+pub async fn strip_folder_frontmatter(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    source_id: String,
+    folder_id: String,
+) -> Result<services::bulk_ops::BulkResult, String> {
+    let root = source_root(&app, &source_id)?;
+    let result = app_data
+        .bulk
+        .run(
+            &app_data.db,
+            &app,
+            &root,
+            services::bulk_ops::BulkOp::new(
+                &source_id,
+                services::bulk_ops::BulkAction::StripFrontmatter { folder_id },
+            ),
+        )
+        .await?;
+    let uuid = Uuid::parse_str(&source_id).map_err(|e| e.to_string())?;
+    let source = find_source(&app, uuid)?;
+    run_reconcile(
+        app.clone(),
+        source,
+        app_data.db.clone(),
+        frontmatter_buffer_size(&app_data),
+        git_frontmatter_off(&app_data),
+    )
+    .await;
+    Ok(result)
+}
+
 #[tauri::command]
 pub fn make_dir(path: String, rel: String) -> Result<(), String> {
     let dir = resolve_in_source(Path::new(&path), &rel).map_err(|e| e.to_string())?;

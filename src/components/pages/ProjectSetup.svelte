@@ -59,17 +59,18 @@
 		!unitId && !!slug && folders.some((f) => f.sourceId === sourceId && folderIdPath(f.id) === slug)
 	);
 	const ready = $derived(!!unitId || (!!slug && !!sourceId && !taken));
-	const where = $derived.by(() => {
-		if (!unitId) return '';
-		const parts = [
-			sourceName(sources.find((s) => s.id === folderIdSource(unitId)) ?? { path: '', title: '' })
-		];
-		if (unitKind === 'folder') {
-			const dir = folderIdPath(unitId).split('/').slice(0, -1).join(' / ');
-			if (dir) parts.push(dir);
-		}
-		return unitKind === 'tag' ? 'tag' : parts.filter(Boolean).join(' / ');
+	const unitSource = $derived.by(() => {
+		if (!unitId || unitKind === 'tag') return '';
+		const s = sources.find((s) => s.id === folderIdSource(unitId));
+		return s ? sourceName(s) : '';
 	});
+	const where = $derived(
+		unitKind === 'tag'
+			? 'tag'
+			: unitKind === 'folder'
+				? folderIdPath(unitId!).split('/').slice(0, -1).join(' / ')
+				: ''
+	);
 
 	$effect(() => {
 		untrack(async () => {
@@ -104,7 +105,8 @@
 		{ id: 'empty', label: 'Empty folder', hint: 'Just the folder, no project', icon: FolderIcon }
 	];
 	// setting up a place that already exists has no use for "just make the folder"
-	const templates = $derived(unitId ? TEMPLATES.filter((t) => t.id !== 'empty') : TEMPLATES);
+	const off = (t: Template) => !!unitId && t.id === 'empty';
+	const offHint = $derived(unitKind === 'tag' ? 'Already a tag' : 'Already a folder');
 	let picked = $state(0);
 
 	const TODO = 'tag:todo';
@@ -209,11 +211,12 @@
 	function onKey(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
-			create(templates[picked].id);
+			create(TEMPLATES[picked].id);
 		}
 	}
 
 	const COLS = 3;
+
 	function onGridKey(e: KeyboardEvent) {
 		const step =
 			e.key === 'ArrowRight'
@@ -227,10 +230,13 @@
 							: 0;
 		if (step) {
 			e.preventDefault();
-			picked = (picked + step + templates.length) % templates.length;
+			let next = picked;
+			do next = (next + step + TEMPLATES.length) % TEMPLATES.length;
+			while (off(TEMPLATES[next]));
+			picked = next;
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
-			create(templates[picked].id);
+			create(TEMPLATES[picked].id);
 		}
 	}
 </script>
@@ -244,12 +250,24 @@
 
 		{#if unitId}
 			<div class="unit">
-				<span class="unit-icon"><UnitIcon size={17} strokeWidth={1.75} /></span>
+				<button
+					class="emoji"
+					type="button"
+					bind:this={emojiAnchor}
+					title="Set an emoji"
+					onclick={() => (emojiOpen = !emojiOpen)}
+				>
+					{#if emoji}{emoji}{:else}
+						<UnitIcon size={17} strokeWidth={1.75} />
+					{/if}
+				</button>
 				<span class="unit-text">
 					<span class="unit-name">{unitName}</span>
 					{#if where}<span class="unit-where">{where}</span>{/if}
 				</span>
-				<span class="unit-note">Using what's already here</span>
+				{#if unitSource}
+					<span class="unit-src"><FolderInput size={11} />{unitSource}</span>
+				{/if}
 			</div>
 		{:else}
 			<div class="name-row">
@@ -260,7 +278,9 @@
 					title="Set an emoji"
 					onclick={() => (emojiOpen = !emojiOpen)}
 				>
-					{#if emoji}{emoji}{:else}<Globe size={17} strokeWidth={1.75} />{/if}
+					{#if emoji}{emoji}{:else}
+						<Globe size={17} strokeWidth={1.75} />
+					{/if}
 				</button>
 				<input
 					class="name"
@@ -288,7 +308,7 @@
 		{/if}
 
 		<div class="grid" role="listbox" tabindex="-1" onkeydown={onGridKey}>
-			{#each templates as t, i (t.id)}
+			{#each TEMPLATES as t, i (t.id)}
 				{@const Icon = t.icon}
 				<button
 					class="card"
@@ -296,12 +316,13 @@
 					type="button"
 					role="option"
 					aria-selected={i === picked}
+					disabled={off(t)}
 					onclick={() => (picked = i)}
-					ondblclick={() => create(templates[picked].id)}
+					ondblclick={() => create(TEMPLATES[picked].id)}
 				>
 					<span class="card-icon"><Icon size={20} strokeWidth={1.5} /></span>
 					<span class="card-label">{t.label}</span>
-					<span class="card-hint">{t.hint}</span>
+					<span class="card-hint">{off(t) ? offHint : t.hint}</span>
 				</button>
 			{/each}
 		</div>
@@ -309,7 +330,7 @@
 		<div class="actions">
 			<p class="foot">
 				{#if unitId}
-					Its notes stay where they are; a project only adds the way you look at them.
+					Your notes stay where they are.
 				{:else}
 					Already have the notes?
 					<button class="link" type="button" onclick={() => palette.show()}>Find the folder</button>
@@ -320,9 +341,9 @@
 				class="create"
 				type="button"
 				disabled={busy || !ready}
-				onclick={() => create(templates[picked].id)}
+				onclick={() => create(TEMPLATES[picked].id)}
 			>
-				{templates[picked]?.id === 'empty'
+				{TEMPLATES[picked]?.id === 'empty'
 					? 'Create folder'
 					: unitId
 						? 'Set up project'
@@ -346,8 +367,13 @@
 	.setup {
 		height: 100%;
 		overflow-y: auto;
+		scrollbar-width: none;
 		font-family: var(--font-ui);
 		color: var(--color-text-primary);
+	}
+
+	.setup::-webkit-scrollbar {
+		display: none;
 	}
 
 	.inner {
@@ -372,16 +398,11 @@
 	.unit {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		gap: 8px;
 		margin-bottom: 26px;
-		padding: 14px 16px;
+		padding: 6px 16px 6px 8px;
 		border-radius: 10px;
 		background: var(--chip-bg);
-	}
-
-	.unit-icon {
-		display: inline-flex;
-		color: var(--color-ui-muted);
 	}
 
 	.unit-text {
@@ -401,10 +422,22 @@
 		color: var(--color-ui-muted);
 	}
 
-	.unit-note {
+	.unit-src {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
 		margin-left: auto;
+		padding: 2px 8px;
+		border-radius: 6px;
+		background: var(--chip-bg-hover);
 		font-size: 12px;
-		color: var(--color-ui-dulled);
+		color: var(--color-text-secondary);
+		white-space: nowrap;
+	}
+
+	.unit-src :global(svg) {
+		color: var(--color-ui-muted);
 	}
 
 	.name-row {
@@ -433,6 +466,10 @@
 
 	.emoji:hover {
 		background: var(--chip-bg);
+	}
+
+	.unit .emoji:hover {
+		background: var(--chip-bg-hover);
 	}
 
 	.emoji :global(svg) {
@@ -524,8 +561,13 @@
 			border-color 100ms ease;
 	}
 
-	.card:hover {
+	.card:hover:not(:disabled) {
 		background: var(--chip-bg);
+	}
+
+	.card:disabled {
+		opacity: 0.45;
+		cursor: default;
 	}
 
 	.card.picked {

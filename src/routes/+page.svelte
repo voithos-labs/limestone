@@ -14,6 +14,7 @@
 	import LicensesPage from '../components/pages/LicensesPage.svelte';
 	import DocumentEditor from '../components/editor/DocumentEditor.svelte';
 	import Palette from '../components/Palette.svelte';
+	import MetadataDialog from '../components/MetadataDialog.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import { actionForKey, keyCapture } from '$lib/actions';
@@ -226,6 +227,7 @@
 	</div>
 	<ContextMenu />
 	<Palette {session} onAddSource={addSource} />
+	<MetadataDialog />
 {/if}
 
 <style>

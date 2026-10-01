@@ -122,6 +122,10 @@ pub(crate) enum BulkAction {
     RewriteLinks {
         replacements: Vec<(String, String)>,
     },
+    /// Takes the frontmatter block out of every file in a folder and recur through children
+    StripFrontmatter {
+        folder_id: String,
+    },
 }
 
 impl BulkAction {
@@ -165,6 +169,12 @@ impl BulkAction {
                 validate_tag(new_slug)
             }
             BulkAction::RemoveTag { slug } => validate_tag(slug),
+            BulkAction::StripFrontmatter { folder_id } => {
+                if folder_id.is_empty() {
+                    return Err("no folder to strip".into());
+                }
+                Ok(())
+            }
             BulkAction::RewriteLinks { replacements } => {
                 if replacements.is_empty() {
                     return Err("no link replacements".into());
@@ -347,7 +357,39 @@ async fn fetch_rel_paths(db: &SqlitePool, op: &BulkOp) -> Result<Vec<String>, St
             let needles: Vec<&str> = replacements.iter().map(|(old, _)| old.as_str()).collect();
             fetch_paths_mentioning(db, source_id, &needles).await
         }
+        BulkAction::StripFrontmatter { folder_id } => {
+            fetch_paths_in_folder(db, source_id, folder_id).await
+        }
     }
+}
+
+/// Documents in a folder and everything below it. A source's root folder id ends at its
+/// separator, so the root's subtree is the whole source
+pub(crate) async fn fetch_paths_in_folder(
+    db: &SqlitePool,
+    source_id: &str,
+    folder_id: &str,
+) -> Result<Vec<String>, String> {
+    let below = format!("{folder_id}/");
+    let rows: Vec<(String,)> = if folder_id.ends_with(':') {
+        sqlx::query_as("SELECT rel_path FROM documents WHERE source_id = ?1 AND deleted_at IS NULL")
+            .bind(source_id)
+            .fetch_all(db)
+            .await
+    } else {
+        sqlx::query_as(
+            "SELECT rel_path FROM documents
+             WHERE source_id = ?1 AND deleted_at IS NULL
+               AND (folder_id = ?2 OR substr(folder_id, 1, length(?3)) = ?3)",
+        )
+        .bind(source_id)
+        .bind(folder_id)
+        .bind(&below)
+        .fetch_all(db)
+        .await
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
 }
 
 async fn execute(
@@ -626,6 +668,12 @@ async fn execute(
                 frontmatter::rewrite_document(path, None, &|text| {
                     body::rewrite_links(text, &replacements)
                 })
+            })
+            .await
+        }
+        BulkAction::StripFrontmatter { .. } => {
+            write_files(app, source_path, rel_paths, |_, path| {
+                frontmatter::strip_frontmatter(path)
             })
             .await
         }
