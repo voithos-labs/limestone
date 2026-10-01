@@ -336,11 +336,14 @@ export class FaceRows {
 	async rename(rowId: string, title: string): Promise<void> {
 		const row = this.rows.find((r) => r.id === rowId);
 		if (!row || !title.trim() || title.trim() === row.title) return;
+		const prev = row.title;
+		this.patchRow(rowId, { title: title.trim() });
 		try {
 			const doc = await DocHandle.fromID(rowId);
 			await doc.rename(title.trim());
 			this.patchRow(rowId, { title: doc.title });
 		} catch (e) {
+			this.patchRow(rowId, { title: prev });
 			this.error = String(e);
 		}
 	}
