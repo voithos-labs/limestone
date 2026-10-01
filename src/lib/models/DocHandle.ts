@@ -527,18 +527,19 @@ class DocHandle {
 	/**
 	 * Rename the document file, which is what the title is derived from
 	 *
-	 * @param newName
+	 * @param title
 	 */
-	async rename(newName: string): Promise<void> {
+	async rename(title: string): Promise<void> {
 		await this.ensureFile();
 		const oldRelPath = this._relPath;
+		const ext = oldRelPath.match(/\.[^./]+$/)?.[0] ?? '.md';
 		const newRel: string = await invoke('rename_document', {
 			sourceId: this.source.id,
 			relPath: oldRelPath,
-			newName
+			newName: title + ext
 		});
 		this._relPath = newRel;
-		this.title = newName.replace(/\.[^.]+$/, '');
+		this.title = title;
 		await this.updateLinks(oldRelPath);
 	}
 

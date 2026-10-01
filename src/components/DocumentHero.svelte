@@ -236,7 +236,7 @@
 				title = handle.title;
 				return;
 			}
-			await handle.rename(next + ext);
+			await handle.rename(next);
 			relPath = handle.relPath;
 		} catch (e) {
 			console.error('rename failed', e);
