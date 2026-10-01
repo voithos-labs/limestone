@@ -264,7 +264,6 @@
 	let folderOpen = $state(false);
 	let pickAnchor: HTMLElement | null = $state(null);
 
-
 	async function onPickFolder(groupId: string, path?: string) {
 		const targetSourceId = folderIdSource(groupId);
 		const target = sources.find((s) => s.id === targetSourceId) ?? source;

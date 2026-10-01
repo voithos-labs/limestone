@@ -996,8 +996,9 @@
 					title={movingId ? (rootBlock ?? '') : ''}
 					onclick={() => pick('')}
 				>
-					{#if movingId}Place here{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span>Move here</span>{:else}Select
-						this source{/if}
+					{#if movingId}Place here{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span
+							>Move here</span
+						>{:else}Select this source{/if}
 				</button>
 			</div>
 			<div class="root-divider"></div>
@@ -1039,7 +1040,9 @@
 							title={movingId ? (blockReason ?? '') : ''}
 							onclick={() => pick(folder.id)}
 						>
-							{#if movingId}Place{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span>Move</span>{:else}Select{/if}
+							{#if movingId}Place{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span
+									>Move</span
+								>{:else}Select{/if}
 						</button>
 					</div>
 				{/each}
@@ -1222,7 +1225,9 @@
 										title={movingId ? (blockReason ?? '') : ''}
 										onclick={() => pick(folder.id)}
 									>
-										{#if movingId}Place{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span>Move</span>{:else}Select{/if}
+										{#if movingId}Place{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span
+												>Move</span
+											>{:else}Select{/if}
 									</button>
 								{/if}
 							</div>
