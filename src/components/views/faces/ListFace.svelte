@@ -178,10 +178,13 @@
 	// ── Rename in place ────────────────────────────────────────────────────────
 	let renamingId: string | null = $state(null);
 	let renameDraft = $state('');
+	let renameAtEnd = false;
+	const TAIL = 12;
 
 	function startRename(e: MouseEvent, row: MemberRow) {
 		if (!editMode) return;
 		e.stopPropagation();
+		renameAtEnd = e.clientX > (e.currentTarget as HTMLElement).getBoundingClientRect().right - TAIL;
 		renamingId = row.id;
 		renameDraft = row.title;
 	}
@@ -202,9 +205,19 @@
 		}
 	}
 
+	function caretToEnd(e: MouseEvent) {
+		const wrap = e.currentTarget as HTMLElement;
+		if (e.target !== wrap) return;
+		e.preventDefault();
+		const input = wrap.querySelector('input')!;
+		input.focus();
+		input.setSelectionRange(input.value.length, input.value.length);
+	}
+
 	function renameFocus(node: HTMLInputElement) {
 		node.focus();
-		node.select();
+		if (renameAtEnd) node.setSelectionRange(node.value.length, node.value.length);
+		else node.select();
 	}
 
 	// ── Keyboard ───────────────────────────────────────────────────────────────
@@ -783,6 +796,7 @@
 								class="name rename-wrap"
 								role="presentation"
 								onclick={(e) => e.stopPropagation()}
+								onmousedown={caretToEnd}
 							>
 								<span class="rename-ghost">{renameDraft || ' '}</span>
 								<input
@@ -1077,6 +1091,12 @@
 
 	.name.editable {
 		cursor: text;
+	}
+
+	.name.editable,
+	.name.rename-wrap {
+		padding: 6px 12px 6px 0;
+		margin: -6px -12px -6px 0;
 	}
 
 	.name :global(mark) {
