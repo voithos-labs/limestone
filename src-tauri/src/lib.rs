@@ -269,6 +269,8 @@ pub fn run() {
             commands::source_commands::create_folder,
             commands::source_commands::move_folder,
             commands::source_commands::delete_folder,
+            commands::source_commands::folder_meta,
+            commands::source_commands::strip_folder_frontmatter,
             commands::source_commands::reconcile_source,
             commands::source_commands::check_sources,
             commands::source_commands::update_source_path,

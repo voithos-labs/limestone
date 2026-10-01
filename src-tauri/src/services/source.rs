@@ -745,7 +745,7 @@ pub(crate) fn tag_id(slug: &str) -> String {
     format!("tag:{}", fold_tag(slug))
 }
 
-fn folder_id(source_id: &str, path: &str) -> String {
+pub(crate) fn folder_id(source_id: &str, path: &str) -> String {
     format!("folder:{source_id}:{path}")
 }
 

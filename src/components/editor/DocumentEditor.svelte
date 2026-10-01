@@ -39,6 +39,7 @@
 	import { TextAlignStart } from '@lucide/svelte';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import DocumentHero from '../DocumentHero.svelte';
+	import { metaDialog } from '$lib/metaDialog.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import HistoryPanel from './HistoryPanel.svelte';
 	import { portal } from '$lib/util/portal';
@@ -70,6 +71,17 @@
 		if (!editor) return;
 		View.forUnit(unitId, name)
 			.then((v) => editor.showViewInTab(tab, v))
+			.catch((e) => console.error('open folder failed', e));
+	}
+
+	// the folder in a tab of its own, the document staying where it is, with its setting open
+	function onFolderMeta(unitId: string, name: string) {
+		if (!editor) return;
+		View.forUnit(unitId, name)
+			.then((v) => {
+				editor.openView(v);
+				metaDialog.show(unitId);
+			})
 			.catch((e) => console.error('open folder failed', e));
 	}
 
@@ -784,6 +796,7 @@
 			bind:historyOpen
 			{back}
 			{onOpenFolder}
+			{onFolderMeta}
 			{textTags}
 			onTextTag={findTextTag}
 		/>
@@ -816,6 +829,7 @@
 			bind:historyOpen
 			{back}
 			{onOpenFolder}
+			{onFolderMeta}
 			{textTags}
 			onTextTag={findTextTag}
 		/>

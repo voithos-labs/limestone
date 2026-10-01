@@ -14,5 +14,5 @@ pub use source::{
     cleanup_orphan_tags, contains_git_repo, create_source, fm_properties, index_document,
     reconcile_source, Source, Sources,
 };
-pub(crate) use source::{sync_folder_meta, sync_folders, sync_tags, upsert_folder};
+pub(crate) use source::{folder_id, sync_folder_meta, sync_folders, sync_tags, upsert_folder};
 pub use user::User;

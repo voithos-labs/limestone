@@ -4,6 +4,7 @@
 	import { isBuiltinUnit } from '$lib/models/View.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
 	import { openProjectSetup } from '$lib/views/projectSetup';
+	import { metaDialog } from '$lib/metaDialog.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { toasts } from '$lib/toasts.svelte';
 	import { onMount, onDestroy } from 'svelte';
@@ -42,6 +43,8 @@
 		Pencil,
 		ExternalLink,
 		Bookmark,
+		FileLock,
+		FilePen,
 		Settings,
 		SquareCheck
 	} from '@lucide/svelte';
@@ -345,6 +348,17 @@
 	);
 	const unitIsRoot = $derived(unitKind === 'folder' && isSourceRoot(view.unit!));
 	let header: ViewHeader | null = $state(null);
+
+	// the folder under a folder project, for its per-folder metadata switch (the folder page's
+	// own menu carries the same one); re-read whenever the menu opens so it's never stale
+	let unitFolder: Folder | null = $state(null);
+	$effect(() => {
+		if (!moreOpen || unitKind !== 'folder' || !view.unit) return;
+		Folder.fromID(view.unit)
+			.then((f) => (unitFolder = f))
+			.catch(() => (unitFolder = null));
+	});
+
 	let newFolderOpen = $state(false);
 	let newFolderAnchor: HTMLElement | null = $state(null);
 	let fabEl: HTMLButtonElement | null = $state(null);
@@ -396,11 +410,12 @@
 			return items;
 		}
 		if (unitKind) {
-			items.push({ value: 'new-note', label: 'New note', icon: FilePlus });
-			if (unitKind === 'folder') {
-				items.push({ value: 'new-folder', label: 'New folder', icon: FolderPlus });
-			}
-			items.push({ kind: 'divider' });
+			// making things is the fab's job; in a project this menu holds the place underneath
+			// and the project on top of it, so the place gets named
+			items.push({
+				kind: 'divider',
+				section: unitIsRoot ? 'Source' : unitKind === 'folder' ? 'Folder' : 'Tag'
+			});
 			if (unitIsRoot) {
 				items.push({ value: 'configure', label: 'Configure source', icon: Settings });
 			} else {
@@ -408,14 +423,22 @@
 			}
 			if (unitKind === 'folder') {
 				items.push({ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink });
+				if (unitFolder)
+					items.push({
+						value: 'meta',
+						label: 'Metadata…',
+						icon: unitFolder.writesMeta ? FilePen : FileLock,
+						hint: unitFolder.writesMeta ? 'On' : 'Off'
+					});
 			}
-			items.push(...cover);
 			items.push({ kind: 'divider' });
+			items.push(...cover);
 			items.push(
 				view.temporary
 					? { value: 'project', label: 'Turn into project', icon: Bookmark }
 					: { value: 'unproject', label: 'Stop being a project', icon: Bookmark }
 			);
+			items.push({ kind: 'divider' });
 			{
 				const what = unitIsRoot ? 'source' : unitKind === 'folder' ? 'folder' : 'tag';
 				const verb = unitIsRoot ? 'remove' : 'delete';
@@ -551,13 +574,10 @@
 		if (value === 'duplicate') duplicateView();
 		if (value === 'confirm-delete') unitKind ? deleteUnit() : deleteView();
 		if (value === 'new-note') newNote();
-		if (value === 'new-folder') {
-			newFolderAnchor = moreAnchor;
-			newFolderOpen = true;
-		}
 		if (value === 'rename') header?.focusTitle();
 		if (value === 'configure') configureSource();
 		if (value === 'reveal') revealUnit();
+		if (value === 'meta' && view.unit) metaDialog.show(view.unit);
 		if (value === 'project' && view.unit)
 			openProjectSetup(editor, { id: view.unit, name: view.slug }, view.id);
 		if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));

@@ -66,6 +66,41 @@ pub fn rewrite_document(
     fast_write(path, next.as_bytes())
 }
 
+/// The file without its frontmatter
+pub fn strip_content(content: &str) -> io::Result<Option<&str>> {
+    match split_content(content) {
+        (Some(_), body) => Ok(Some(body)),
+        (None, _) if has_unparsed_fence(content) => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "existing frontmatter could not be parsed",
+        )),
+        (None, _) => Ok(None),
+    }
+}
+
+/// Removes the file's frontmatter block, leaving its body exactly as it was
+pub fn strip_frontmatter(path: &Path) -> io::Result<()> {
+    let content = fs::read_to_string(path)?;
+    match strip_content(&content)? {
+        Some(body) => fast_write(path, body.as_bytes()),
+        None => Ok(()),
+    }
+}
+
+/// Whether the file opens with a frontmatter block, judged from its head only
+pub fn has_frontmatter(path: &Path) -> bool {
+    use std::io::Read;
+    let Ok(file) = fs::File::open(path) else {
+        return false;
+    };
+    let mut head = Vec::with_capacity(16 * 1024);
+    if file.take(64 * 1024).read_to_end(&mut head).is_err() {
+        return false;
+    }
+    let text = String::from_utf8_lossy(&head);
+    matches!(split_content(&text), (Some(_), _))
+}
+
 fn has_unparsed_fence(content: &str) -> bool {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
@@ -276,6 +311,47 @@ pub fn remove_tag(fm: &mut Value, slug: &str) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn strip_takes_the_block_and_keeps_the_body() {
+        let body = strip_content("---\ntags: [a]\ndue: 2026-10-02\n---\n# Title\n\ntext\n")
+            .unwrap()
+            .unwrap();
+        assert_eq!(body, "# Title\n\ntext\n");
+    }
+
+    #[test]
+    fn strip_leaves_a_file_without_a_block() {
+        assert!(strip_content("# Title\n---\nnot a fence\n")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn strip_refuses_an_unparsable_block() {
+        assert!(strip_content("---\ntags: [unclosed\n---\nbody").is_err());
+    }
+
+    #[test]
+    fn strip_keeps_a_rule_inside_the_body() {
+        let body = strip_content("---\na: 1\n---\nabove\n\n---\n\nbelow")
+            .unwrap()
+            .unwrap();
+        assert_eq!(body, "above\n\n---\n\nbelow");
+    }
+
+    #[test]
+    fn strip_writes_only_the_body() {
+        let dir = std::env::temp_dir().join(format!("ls-strip-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("n.md");
+        fs::write(&path, "---\nid: x\n---\nhello\n").unwrap();
+        strip_frontmatter(&path).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "hello\n");
+        strip_frontmatter(&path).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "hello\n");
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn split_no_frontmatter() {

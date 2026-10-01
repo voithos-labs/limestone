@@ -986,6 +986,24 @@
 		background: var(--chip-bg);
 	}
 
+	.row:hover,
+	.row:focus {
+		border-top-right-radius: 0;
+		border-bottom-right-radius: 0;
+	}
+
+	.row:hover::before,
+	.row:focus::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 100%;
+		width: 18px;
+		border-radius: 0 8px 8px 0;
+		background: inherit;
+	}
+
 	.check,
 	.new-mark {
 		flex: 0 0 auto;

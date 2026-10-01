@@ -8,6 +8,18 @@ import {
 	renameUnitViewPrefix
 } from '$lib/models/View.svelte';
 import { flushAll } from '$lib/util/flush';
+import type { BulkResult } from '$lib/models/View.svelte';
+
+// a folder's metadata policy: its own choice, or whatever its parent (and Git) decide
+export type MetaMode = 'follow' | 'write' | 'off';
+
+export interface FolderMeta {
+	mode: MetaMode;
+	writes: boolean; // what it resolves to now
+	follows: boolean; // what "follow" would resolve to
+	repo: boolean;
+	withFrontmatter: number; // files here and below that carry a block today
+}
 
 export interface FolderRow {
 	id: string;
@@ -103,6 +115,41 @@ class Folder {
 			id: this.sourceId,
 			dir: folderIdPath(this.id),
 			value: value === inherited ? null : value
+		});
+	}
+
+	static async meta(id: string): Promise<FolderMeta> {
+		const r = await invoke<{
+			explicit: boolean | null;
+			writes: boolean;
+			follows: boolean;
+			repo: boolean;
+			with_frontmatter: number;
+		}>('folder_meta', { sourceId: folderIdSource(id), dir: folderIdPath(id) });
+		return {
+			mode: r.explicit === null ? 'follow' : r.explicit ? 'write' : 'off',
+			writes: r.writes,
+			follows: r.follows,
+			repo: r.repo,
+			withFrontmatter: r.with_frontmatter
+		};
+	}
+
+	// a policy only: nothing in the files changes until they're next written
+	static async setMetaMode(id: string, mode: MetaMode): Promise<void> {
+		await invoke('set_folder_frontmatter', {
+			id: folderIdSource(id),
+			dir: folderIdPath(id),
+			value: mode === 'follow' ? null : mode === 'write'
+		});
+	}
+
+	// the one thing that does touch files: their frontmatter blocks go, bodies untouched
+	static async stripMeta(id: string): Promise<BulkResult> {
+		await flushAll();
+		return invoke<BulkResult>('strip_folder_frontmatter', {
+			sourceId: folderIdSource(id),
+			folderId: id
 		});
 	}
 

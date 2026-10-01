@@ -267,6 +267,7 @@
 							<span class="item-icon"><Icon size={13} strokeWidth={1.75} /></span>
 						{/if}
 						<span class="item-label">{entry.label}</span>
+						{#if entry.hint}<span class="item-hint">{entry.hint}</span>{/if}
 						{#if hasChildren}
 							<ChevronRight size={13} strokeWidth={2} />
 						{:else if isChecked(entry.value)}
@@ -395,6 +396,15 @@
 		background: var(--menu-scrollbar-thumb-hover);
 	}
 
+	/* a size smaller than the label, so it sits on the label's baseline rather than centred */
+	.item-hint {
+		align-self: baseline;
+		margin-left: auto;
+		padding-left: 16px;
+		font-size: 12px;
+		color: var(--color-ui-muted);
+	}
+
 	.menu-item {
 		display: flex;
 		align-items: center;
@@ -432,6 +442,7 @@
 	}
 
 	.item-label {
+		align-self: baseline;
 		flex: 1;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -450,11 +461,18 @@
 	}
 
 	.menu-section {
-		padding: 6px 10px 2px;
+		margin-top: 4px;
+		padding: 8px 10px 2px;
+		border-top: 1px solid var(--color-border);
 		color: var(--color-ui-dulled);
 		font-size: 10px;
 		font-weight: 600;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
+	}
+
+	.menu-section:first-child {
+		margin-top: 0;
+		border-top: none;
 	}
 </style>
