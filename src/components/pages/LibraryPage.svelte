@@ -350,7 +350,7 @@
 			<section class="lib-section">
 				<div class="docs-face">
 					{#key docsKey}
-						<ListFace view={recentView} face={recentFace} onOpenRow={openDoc} />
+						<ListFace view={recentView} face={recentFace} onOpenRow={openDoc} editable={false} />
 					{/key}
 				</div>
 			</section>

@@ -38,6 +38,14 @@ pub fn scan_tags(body: &str) -> Vec<String> {
     out
 }
 
+pub fn tag_mentions(body: &str) -> Vec<String> {
+    prose_spans(body)
+        .into_iter()
+        .flat_map(|span| tags_in(body, span))
+        .map(|tag| body[tag.name].to_string())
+        .collect()
+}
+
 pub fn merge_body_tags(tags: &mut Vec<String>, body: &str) {
     for tag in scan_tags(body) {
         if !tags.iter().any(|t| same_tag(t, &tag)) {
@@ -71,15 +79,7 @@ pub fn rewrite_tags(body: &str, old: &str, new: Option<&str>) -> Option<String> 
             }
             match new {
                 Some(new) => edits.push((tag.name, new)),
-                None => {
-                    let mut range = tag.hash..tag.name.end;
-                    if body[range.end..].starts_with(' ') {
-                        range.end += 1;
-                    } else if range.start > 0 && body[..range.start].ends_with(' ') {
-                        range.start -= 1;
-                    }
-                    edits.push((range, ""));
-                }
+                None => edits.push((tag.hash..tag.name.start, "")),
             }
         }
     }
@@ -351,11 +351,17 @@ mod tests {
     }
 
     #[test]
-    fn tag_remove_eats_one_space() {
-        assert_eq!(rewrite_tags("a #old b", "old", None).unwrap(), "a b");
-        assert_eq!(rewrite_tags("a #old", "old", None).unwrap(), "a");
-        assert_eq!(rewrite_tags("#old", "old", None).unwrap(), "");
-        assert_eq!(rewrite_tags("(#old)", "old", None).unwrap(), "()");
+    fn tag_remove_strips_hash() {
+        assert_eq!(rewrite_tags("a #old b", "old", None).unwrap(), "a old b");
+        assert_eq!(rewrite_tags("a #Old", "old", None).unwrap(), "a Old");
+        assert_eq!(
+            rewrite_tags("(#old), #old/sub", "old", None).unwrap(),
+            "(old), #old/sub"
+        );
+        assert_eq!(
+            rewrite_tags("`#old` #old", "old", None).unwrap(),
+            "`#old` old"
+        );
     }
 
     #[test]

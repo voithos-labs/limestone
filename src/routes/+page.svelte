@@ -16,7 +16,7 @@
 	import Palette from '../components/Palette.svelte';
 	import MetadataDialog from '../components/MetadataDialog.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
-	import type { TabState } from '$lib/models/EditorState.svelte.js';
+	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import { actionForKey, keyCapture } from '$lib/actions';
 	import { editorTakesKey } from '$lib/editor-chords';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
@@ -73,11 +73,6 @@
 		if (maxWidth && maxWidth > 0) {
 			document.documentElement.style.setProperty('--page-max-width', maxWidth + 'px');
 		}
-	});
-
-	$effect(() => {
-		const compact = session?.settings.get<boolean>('appearance.compact_doc_header') ?? true;
-		document.documentElement.dataset.docHeader = compact ? 'compact' : 'full';
 	});
 
 	let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -203,7 +198,7 @@
 		<TopBar {editor} settings={session.settings} onAddSource={addSource}></TopBar>
 		<main class="content-area">
 			{#if tab}
-				{#key tab.id}
+				{#key `${tab.id}:${TabState.idOf(tab.content)}`}
 					{#if tab.content.type === 'view' && tab.content.view.unit?.startsWith('folder:') && tab.content.view.temporary}
 						<FolderPage view={tab.content.view} {tab} {editor} settings={session.settings} />
 					{:else if tab.content.type === 'view'}

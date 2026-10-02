@@ -10,7 +10,7 @@
 	import SectionHead from '../SectionHead.svelte';
 	import RowEditors from '../RowEditors.svelte';
 	import NoteCard from '../NoteCard.svelte';
-	import { Check, SquareArrowOutUpRight, Plus, ChevronDown } from '@lucide/svelte';
+	import { Check, SquareArrowOutUpRight, Plus, ChevronDown, CornerDownLeft } from '@lucide/svelte';
 	import { onMount, tick } from 'svelte';
 	import { startMove, endMove } from '$lib/views/dragMove';
 
@@ -23,7 +23,8 @@
 		onTotal,
 		autoFocus = true,
 		onReorder,
-		moveable = false
+		moveable = false,
+		editable = true
 	}: {
 		view: View;
 		face: ViewFace;
@@ -34,6 +35,7 @@
 		autoFocus?: boolean; // the first row takes focus once loaded, if nothing else has it
 		onReorder?: (ids: string[]) => void; // rows drag into an order; the face keeps it unless told otherwise
 		moveable?: boolean; // rows drag out as documents to drop on a folder (no in-list reorder then)
+		editable?: boolean;
 	} = $props();
 
 	const rows = new FaceRows(
@@ -109,7 +111,7 @@
 
 	// browse: click a row to open, empties hidden. edit: click a value to change it, an explicit
 	// Open button, empties shown as placeholders so they can be set
-	const editMode = $derived(face.config.edit_in_place === true);
+	const editMode = $derived(editable);
 	const layout = $derived(face.config.layout === 'grid' ? 'grid' : 'list');
 	const checkField = $derived(rows.checkField);
 	const openTodos = $derived.by(() => {
@@ -174,6 +176,27 @@
 			stopListening();
 		};
 	});
+
+	function chipAt(e: MouseEvent): HTMLElement | null {
+		const lane = e.currentTarget as HTMLElement;
+		for (const el of lane.querySelectorAll<HTMLElement>('.value.editable')) {
+			const r = el.getBoundingClientRect();
+			if (e.clientX >= r.left && e.clientX <= r.right) return el;
+		}
+		return null;
+	}
+
+	function onLaneClick(e: MouseEvent) {
+		if (!editMode) return;
+		const chip = chipAt(e);
+		if (!chip || chip.contains(e.target as Node)) return;
+		e.stopPropagation();
+		chip.click();
+	}
+
+	function onLaneMove(e: PointerEvent) {
+		(e.currentTarget as HTMLElement).style.cursor = editMode && chipAt(e) ? 'default' : '';
+	}
 
 	// ── Rename in place ────────────────────────────────────────────────────────
 	let renamingId: string | null = $state(null);
@@ -649,15 +672,21 @@
 						strokeWidth={1.75}
 					/>{/if}
 			</span>
-			<input
-				class="new-input"
-				class:taken={titleTaken}
-				type="text"
-				placeholder={checkField ? 'New todo' : 'New note'}
-				bind:value={newTitle}
-				bind:this={newEl}
-				onkeydown={onNewKey}
-			/>
+			<span class="new-field">
+				<span class="new-ghost">{newTitle || (checkField ? 'New todo' : 'New note')}</span>
+				<input
+					class="new-input"
+					class:taken={titleTaken}
+					type="text"
+					placeholder={checkField ? 'New todo' : 'New note'}
+					bind:value={newTitle}
+					bind:this={newEl}
+					onkeydown={onNewKey}
+				/>
+			</span>
+			{#if newTitle.trim() && !titleTaken}
+				<span class="new-hint"><CornerDownLeft size={12} strokeWidth={1.75} />to create</span>
+			{/if}
 		</label>
 	{/if}
 {/snippet}
@@ -759,9 +788,7 @@
 						ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 						ondragend={endMove}
 						onpointerdown={(e) => armReorder(e, row)}
-						onclick={(e) => {
-							if (!editMode) onOpenRow?.(row.id, e.ctrlKey || e.metaKey);
-						}}
+						onclick={(e) => onOpenRow?.(row.id, e.ctrlKey || e.metaKey)}
 						onauxclick={(e) => {
 							if (e.button === 1) onOpenRow?.(row.id, true);
 						}}
@@ -821,7 +848,12 @@
 								)}
 							</span>
 						{/if}
-						<span class="inline">
+						<span
+							class="inline"
+							role="presentation"
+							onclick={onLaneClick}
+							onpointermove={onLaneMove}
+						>
 							<RowChips
 								{row}
 								fields={lanes.inline}
@@ -832,7 +864,12 @@
 							/>
 						</span>
 						<span class="spacer"></span>
-						<span class="values">
+						<span
+							class="values"
+							role="presentation"
+							onclick={onLaneClick}
+							onpointermove={onLaneMove}
+						>
 							<RowChips
 								{row}
 								fields={lanes.meta}
@@ -949,10 +986,6 @@
 		transition: background-color 80ms ease;
 	}
 
-	.row.editable {
-		cursor: default;
-	}
-
 	.group-head {
 		margin-top: 22px;
 	}
@@ -1029,6 +1062,7 @@
 	}
 
 	.check {
+		align-self: stretch;
 		padding: 0;
 		border: 0;
 		background: transparent;
@@ -1090,13 +1124,21 @@
 	}
 
 	.name.editable {
+		align-self: stretch;
+		line-height: 36px;
+		padding-right: 12px;
+		margin-right: -12px;
 		cursor: text;
 	}
 
-	.name.editable,
 	.name.rename-wrap {
 		padding: 6px 12px 6px 0;
 		margin: -6px -12px -6px 0;
+	}
+
+	.row.editable .check,
+	.row.editable :global(.value.editable) {
+		cursor: default;
 	}
 
 	.name :global(mark) {
@@ -1140,6 +1182,7 @@
 	/* what the note is: pills right after the title, clipped before the title is */
 	.inline {
 		flex: 0 1 auto;
+		align-self: stretch;
 		display: flex;
 		align-items: center;
 		gap: 6px;
@@ -1156,6 +1199,7 @@
 	/* when and how much: content-sized, packed right */
 	.values {
 		flex: 0 0 auto;
+		align-self: stretch;
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
@@ -1185,7 +1229,7 @@
 		opacity: 0;
 		transition:
 			opacity 80ms ease,
-			background-color 80ms ease;
+			color 80ms ease;
 	}
 
 	.row:hover .row-btn,
@@ -1195,7 +1239,6 @@
 	}
 
 	.row-btn:hover {
-		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
 
@@ -1222,10 +1265,35 @@
 		border-color: var(--color-ui-muted);
 	}
 
-	.new-input {
-		flex: 1 1 auto;
+	.new-field {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
 		min-width: 0;
 		height: 100%;
+	}
+
+	.new-ghost {
+		padding-right: 2px;
+		font-size: 14px;
+		white-space: pre;
+		visibility: hidden;
+	}
+
+	.new-hint {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
+		font-size: 12px;
+		color: var(--color-ui-dulled);
+	}
+
+	.new-input {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		padding: 0;
 		border: 0;
 		background: transparent;
 		font: inherit;

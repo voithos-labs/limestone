@@ -88,9 +88,7 @@
 	draggable={moveable}
 	ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 	ondragend={endMove}
-	onclick={(e) => {
-		if (!editMode) onOpen?.(row.id, e.ctrlKey || e.metaKey);
-	}}
+	onclick={(e) => onOpen?.(row.id, e.ctrlKey || e.metaKey)}
 	onauxclick={(e) => {
 		if (e.button === 1) onOpen?.(row.id, true);
 	}}
@@ -207,10 +205,6 @@
 		font-size: 13px;
 		cursor: pointer;
 		transition: background-color 80ms ease;
-	}
-
-	.card.editable {
-		cursor: default;
 	}
 
 	.card:hover,
@@ -359,7 +353,6 @@
 	}
 
 	.card-btn:hover {
-		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
 

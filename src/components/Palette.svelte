@@ -25,7 +25,7 @@
 	import Tag from '$lib/models/Tag';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
-	import { actions, type Action } from '$lib/actions';
+	import { actions, keyTokens, type Action } from '$lib/actions';
 	import { highlightTitle } from '$lib/util/highlight';
 	import { palette } from '$lib/palette.svelte';
 	import { openProjectSetup } from '$lib/views/projectSetup';
@@ -33,6 +33,7 @@
 
 	let { session, onAddSource }: { session: Session; onAddSource: () => void } = $props();
 	const editor = $derived(session.editors[0]);
+	const modLabel = keyTokens('mod+enter')[0];
 
 	// ── Items: one shape for everything the list can hold ─────────────────────
 	type Item = {
@@ -437,8 +438,8 @@
 
 			<div class="foot">
 				<span><kbd>↑↓</kbd> move</span>
-				<span><kbd>↵</kbd> open</span>
-				<span><kbd>⌘↵</kbd> open here</span>
+				<span><kbd><CornerDownLeft size={11} strokeWidth={2} /></kbd> open</span>
+				<span><kbd>{modLabel}<CornerDownLeft size={11} strokeWidth={2} /></kbd> open here</span>
 				<span class="grow"></span>
 				<span><kbd>/</kbd> commands</span>
 			</div>
@@ -509,6 +510,7 @@
 	kbd {
 		display: inline-flex;
 		align-items: center;
+		gap: 3px;
 		height: 18px;
 		padding: 0 5px;
 		border-radius: 4px;

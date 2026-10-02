@@ -25,6 +25,8 @@ import {
 } from '$lib/models/Source';
 import Folder, { folderIdPath } from '$lib/models/Folder';
 import DocHandle from '$lib/models/DocHandle';
+import { tagId } from '$lib/models/Tag';
+import { invoke } from '@tauri-apps/api/core';
 import { toasts } from '$lib/toasts.svelte';
 
 export type RowTag = { id: string; slug: string };
@@ -295,6 +297,7 @@ export class FaceRows {
 	}
 
 	async writeCell(row: MemberRow, field: ViewField, value: unknown): Promise<void> {
+		if (!this.writable(row)) return;
 		const before = row.properties;
 		this.patchRow(row.id, { properties: withStatefulValue(before, field, value) });
 		try {
@@ -318,11 +321,42 @@ export class FaceRows {
 		this.writeCell(row, field, rawStatefulValue(row, field) !== true);
 	}
 
-	async setTags(rowId: string, slugs: string[]): Promise<RowTag[] | null> {
+	private readTags(row: MemberRow): Promise<{ frontmatter: string[]; body: string[] }> {
+		return invoke('read_document_tags', { sourceId: row.source_id, relPath: row.rel_path });
+	}
+
+	async textTags(row: MemberRow): Promise<Map<string, number>> {
+		const counts = new Map<string, number>();
 		try {
-			const doc = await DocHandle.fromID(rowId);
-			await doc.setTags(slugs);
-			const tags = orderTags(doc.tags.map((t) => ({ id: t.id, slug: t.slug })));
+			for (const slug of (await this.readTags(row)).body) {
+				counts.set(tagId(slug), (counts.get(tagId(slug)) ?? 0) + 1);
+			}
+		} catch (e) {
+			console.error('read text tags failed', e);
+		}
+		return counts;
+	}
+
+	async setTag(rowId: string, slug: string, on: boolean): Promise<RowTag[] | null> {
+		const row = this.rows.find((r) => r.id === rowId);
+		if (!row || !this.writable(row)) return null;
+		try {
+			const id = tagId(slug);
+			const { frontmatter, body } = await this.readTags(row);
+			const kept = frontmatter.filter((t) => tagId(t) !== id);
+			if (!on && body.some((t) => tagId(t) === id)) {
+				await invoke('strip_document_tag', {
+					id: rowId,
+					sourceId: row.source_id,
+					relPath: row.rel_path,
+					slug
+				});
+			}
+			if (on || kept.length !== frontmatter.length) {
+				const doc = await DocHandle.fromID(rowId);
+				await doc.setTags(on ? [...kept, slug] : kept);
+			}
+			const tags = (await this.fetchTags([row]))[rowId] ?? [];
 			this.rowTags = { ...this.rowTags, [rowId]: tags };
 			const fid = this.view().fields.find((f) => f.type === 'tags')?.id;
 			if (fid && this.fieldAffectsView(fid)) this.load(true);

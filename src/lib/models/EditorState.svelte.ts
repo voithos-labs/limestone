@@ -54,7 +54,7 @@ export type TabContent =
 	| { type: 'licenses'; id: string };
 
 // a tab's back stack travels with it, as the same shapes the tab itself serializes
-export type TabJSON = TabJSONBase & { history?: TabJSONBase[] };
+export type TabJSON = TabJSONBase & { history?: TabJSONBase[]; tab_id?: string };
 
 type TabJSONBase =
 	| { type: 'markdown'; handleId: string; state: Record<string, any>; pinned?: boolean }
@@ -66,13 +66,20 @@ type TabJSONBase =
 // 'view' inlines the full JSON
 
 export class TabState {
+	readonly id: string;
 	content: TabContent = $state() as TabContent;
 	state: Record<string, any> = $state({});
 	pinned: boolean = $state(false);
 	// places this tab showed before the current one, most recent last; travels in state.json
 	history: { content: TabContent; state: Record<string, any> }[] = $state([]);
 
-	constructor(content: TabContent, state: Record<string, any> = {}, pinned = false) {
+	constructor(
+		content: TabContent,
+		state: Record<string, any> = {},
+		pinned = false,
+		id = TabState.idOf(content)
+	) {
+		this.id = id;
 		this.content = content;
 		this.state = state;
 		this.pinned = pinned;
@@ -80,10 +87,6 @@ export class TabState {
 
 	get type(): TabContent['type'] {
 		return this.content.type;
-	}
-
-	get id(): string {
-		return TabState.idOf(this.content);
 	}
 
 	static idOf(content: TabContent): string {
@@ -99,8 +102,13 @@ export class TabState {
 		}
 	}
 
+	get origin(): TabContent {
+		if (TabState.idOf(this.content) === this.id) return this.content;
+		return this.history.find((h) => TabState.idOf(h.content) === this.id)?.content ?? this.content;
+	}
+
 	get title(): string {
-		return TabState.titleOf(this.content);
+		return TabState.titleOf(this.origin);
 	}
 
 	static titleOf(content: TabContent): string {
@@ -130,6 +138,7 @@ export class TabState {
 	toJSON(): TabJSON {
 		return {
 			...TabState.contentToJSON(this.content, this.state, this.pinned),
+			tab_id: this.id,
 			history: this.history.map((h) => TabState.contentToJSON(h.content, h.state, false))
 		};
 	}
@@ -174,7 +183,10 @@ export class TabState {
 	private static readonly MAX_HISTORY = 10;
 
 	static async loadFromJSON(json: TabJSON): Promise<TabState> {
-		const tab = await TabState.contentFromJSON(json);
+		const loaded = await TabState.contentFromJSON(json);
+		const tab = json.tab_id
+			? new TabState(loaded.content, loaded.state, loaded.pinned, json.tab_id)
+			: loaded;
 		// a document deleted since the last run simply drops out of the stack
 		for (const entry of (json.history ?? []).slice(-TabState.MAX_HISTORY)) {
 			try {
@@ -301,13 +313,14 @@ class EditorState {
 		const tabs: TabState[] = [];
 		for (const tabJson of json.tabs ?? []) {
 			const id =
-				tabJson.type === 'markdown'
+				tabJson.tab_id ??
+				(tabJson.type === 'markdown'
 					? tabJson.handleId
 					: tabJson.type === 'view'
 						? tabJson.view.id
 						: tabJson.type === 'view-ref'
 							? tabJson.viewId
-							: tabJson.id;
+							: tabJson.id);
 			if (seen.has(id)) continue;
 			seen.add(id);
 			try {
@@ -377,9 +390,8 @@ class EditorState {
 		this.focusTab({ kind: 'tab', id: view.id });
 	}
 
-	// a tab navigates like a browser tab: it keeps its slot and takes the new content's identity,
-	// remembering where it was so the reader can go back. If that content is already open in
-	// another tab, go there instead
+	// a tab navigates like a browser tab: it keeps its slot and its identity, remembering where it
+	// was so the reader can go back, even if that content is open elsewhere
 	showViewInTab(tab: TabState, view: View) {
 		this.showInTab(tab, { type: 'view', view });
 	}
@@ -389,13 +401,7 @@ class EditorState {
 	}
 
 	private showInTab(tab: TabState, content: TabContent) {
-		const id = TabState.idOf(content);
-		if (id === tab.id) return;
-		const existing = this.tabs.find((t) => t.id === id);
-		if (existing) {
-			this.focusTab({ kind: 'tab', id });
-			return;
-		}
+		if (TabState.idOf(content) === TabState.idOf(tab.content)) return;
 		tab.history.push({ content: tab.content, state: tab.state });
 		this.swapContent(tab, content, {});
 	}
@@ -403,23 +409,13 @@ class EditorState {
 	goBack(tab: TabState) {
 		const prev = tab.history.pop();
 		if (!prev) return;
-		const existing = this.tabs.find((t) => t !== tab && t.id === TabState.idOf(prev.content));
-		if (existing) {
-			this.focusTab({ kind: 'tab', id: existing.id });
-			return;
-		}
 		this.swapContent(tab, prev.content, prev.state);
 	}
 
 	private swapContent(tab: TabState, content: TabContent, state: Record<string, any>) {
-		const oldId = tab.id;
 		tab.content = content;
 		tab.state = state;
-		if (tab === this.preview) return;
-		this.tabAccessOrderById = this.tabAccessOrderById.filter((v) => v !== oldId);
-		this.focusOrder = this.focusOrder.filter((t) => !(t.kind === 'tab' && t.id === oldId));
-		if (this.focused?.kind === 'tab' && this.focused.id === oldId) this.focused = null;
-		this.focusTab({ kind: 'tab', id: tab.id });
+		if (tab !== this.preview) this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	openNewTab() {
