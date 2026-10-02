@@ -603,7 +603,7 @@
 				</span>
 			</div>
 			{#if face && !folded.files}
-				<ListFace {view} {face} {onOpenRow} {scope} moveable />
+				<ListFace {view} {face} {onOpenRow} {scope} moveable editable={false} />
 			{/if}
 		</div>
 	</div>

@@ -650,7 +650,7 @@
 >
 	{#if searching}
 		<div class="hits">
-			<ListFace {view} face={searchFace} onOpenRow={jumpToHit} />
+			<ListFace {view} face={searchFace} onOpenRow={jumpToHit} editable={false} />
 		</div>
 	{:else}
 		<div class="day-nav" class:stuck bind:this={navEl}>

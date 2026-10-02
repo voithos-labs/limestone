@@ -167,7 +167,6 @@
 		todoFace.display_field_ids = [...l.display];
 		todoFace.config.right = [...l.right];
 		todoFace.config.hide_tag = TODO;
-		todoFace.config.edit_in_place = true;
 		todoFace.additive_filter = {
 			op: 'and',
 			children: [
@@ -185,7 +184,6 @@
 		doneFace.display_field_ids = [...l.display];
 		doneFace.config.right = [...l.right];
 		doneFace.config.hide_tag = TODO;
-		doneFace.config.edit_in_place = true;
 		doneFace.additive_filter = {
 			op: 'and',
 			children: [

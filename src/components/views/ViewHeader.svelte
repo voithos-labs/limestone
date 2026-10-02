@@ -24,7 +24,6 @@
 		EllipsisVertical,
 		Columns3Cog,
 		X,
-		TextCursorInput,
 		ArrowDownUp,
 		ArrowUpAZ,
 		ArrowDownAZ,
@@ -161,7 +160,6 @@
 		if (sortTarget) sortTarget.config.order = undefined;
 	}
 
-	const editInPlace = $derived(fieldTarget?.config.edit_in_place === true);
 	let filtersPos: { top: number; left: number } = $state({ top: 0, left: 0 });
 
 	function positionFilters() {
@@ -451,21 +449,6 @@
 		/>
 	{/if}
 
-	{#if fieldTarget?.type === 'list'}
-		<button
-			class="collapse-toggle"
-			class:on={editInPlace}
-			type="button"
-			aria-label="Edit in place"
-			title="Edit in place"
-			onclick={() => {
-				if (fieldTarget) fieldTarget.config.edit_in_place = !editInPlace;
-			}}
-		>
-			<TextCursorInput size={15} strokeWidth={1.75} />
-		</button>
-	{/if}
-
 	<label class="search-chip" bind:this={searchChipEl}>
 		<Search size={14} strokeWidth={1.75} />
 		<input
@@ -704,11 +687,6 @@
 	}
 
 	.collapse-toggle:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-	}
-
-	.collapse-toggle.on {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
 	}
