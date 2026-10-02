@@ -343,23 +343,23 @@
 				role="button"
 				tabindex="-1"
 			>
-				{#if d.content.type === 'view'}
-					{#if d.content.view.emoji}
-						<span class="tab-emoji">{d.content.view.emoji}</span>
+				{#if d.origin.type === 'view'}
+					{#if d.origin.view.emoji}
+						<span class="tab-emoji">{d.origin.view.emoji}</span>
 					{:else}
-						{@const TabIcon = getViewIcon(d.content.view)}
+						{@const TabIcon = getViewIcon(d.origin.view)}
 						<TabIcon size={13} />
 					{/if}
-				{:else if d.content.type === 'new'}
+				{:else if d.origin.type === 'new'}
 					<Bookmark size={13} />
-				{:else if d.content.type === 'home'}
+				{:else if d.origin.type === 'home'}
 					<House size={13} />
-				{:else if d.content.type === 'licenses'}
+				{:else if d.origin.type === 'licenses'}
 					<Scale size={13} />
 				{:else if !compactTabs || collapsed}
 					<TextAlignStart class="doc-icon" size={13} />
 				{/if}
-				<span class="tab-label">{d.content.type === 'new' ? 'New project' : d.title}</span>
+				<span class="tab-label">{d.origin.type === 'new' ? 'New project' : d.title}</span>
 				<span class="tab-fade"></span>
 				<span class="close-zone">
 					<button

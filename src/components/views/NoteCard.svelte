@@ -359,7 +359,6 @@
 	}
 
 	.card-btn:hover {
-		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
 

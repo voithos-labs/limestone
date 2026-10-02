@@ -1185,7 +1185,7 @@
 		opacity: 0;
 		transition:
 			opacity 80ms ease,
-			background-color 80ms ease;
+			color 80ms ease;
 	}
 
 	.row:hover .row-btn,
@@ -1195,7 +1195,6 @@
 	}
 
 	.row-btn:hover {
-		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
 
