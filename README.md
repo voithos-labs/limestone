@@ -11,7 +11,6 @@ Note taking, tasks, projects, etc.
 
 <img width="987" height="766" alt="image" src="https://github.com/user-attachments/assets/1a3d7e50-6ffc-4274-9f76-82e3249acbc5" />
 
-
 ## Editor
 
 The editor is [aragonite](https://github.com/voithos-labs/aragonite), the block editor we wrote for this, and it comes from npm now (`@voithos-labs/aragonite`). The old CodeMirror editor is gone. Things worth knowing:
