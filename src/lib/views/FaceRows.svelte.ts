@@ -297,6 +297,7 @@ export class FaceRows {
 	}
 
 	async writeCell(row: MemberRow, field: ViewField, value: unknown): Promise<void> {
+		if (!this.writable(row)) return;
 		const before = row.properties;
 		this.patchRow(row.id, { properties: withStatefulValue(before, field, value) });
 		try {
@@ -338,7 +339,7 @@ export class FaceRows {
 
 	async setTag(rowId: string, slug: string, on: boolean): Promise<RowTag[] | null> {
 		const row = this.rows.find((r) => r.id === rowId);
-		if (!row) return null;
+		if (!row || !this.writable(row)) return null;
 		try {
 			const id = tagId(slug);
 			const { frontmatter, body } = await this.readTags(row);

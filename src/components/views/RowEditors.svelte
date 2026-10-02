@@ -98,6 +98,7 @@
 	let ctxEl: HTMLElement | null = $state(null);
 	let ctxPos: { x: number; y: number } = $state({ x: 0, y: 0 });
 	const menuIsTodo = $derived(!!menuRowId && rows.tagSlugsFor(menuRowId).includes('todo'));
+	const menuRow = $derived(rows.rows.find((r) => r.id === menuRowId));
 	let confirmDelete = $state(false);
 	$effect(() => {
 		if (!menuOpen) confirmDelete = false;
@@ -106,10 +107,14 @@
 		{ value: 'open', label: 'Open', icon: ArrowUpRight },
 		{ value: 'open-tab', label: 'Open in new tab', icon: SquareArrowOutUpRight },
 		{ kind: 'divider' as const },
-		menuIsTodo
-			? { value: 'untodo', label: 'Remove from #todo', icon: SquareMinus }
-			: { value: 'todo', label: 'Add to #todo', icon: SquareCheck },
-		{ kind: 'divider' as const },
+		...(menuRow && rows.writable(menuRow)
+			? [
+					menuIsTodo
+						? { value: 'untodo', label: 'Remove from #todo', icon: SquareMinus }
+						: { value: 'todo', label: 'Add to #todo', icon: SquareCheck },
+					{ kind: 'divider' as const }
+				]
+			: []),
 		confirmDelete
 			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
 			: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
