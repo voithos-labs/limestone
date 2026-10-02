@@ -198,7 +198,7 @@
 		<TopBar {editor} settings={session.settings} onAddSource={addSource}></TopBar>
 		<main class="content-area">
 			{#if tab}
-				{#key TabState.idOf(tab.content)}
+				{#key `${tab.id}:${TabState.idOf(tab.content)}`}
 					{#if tab.content.type === 'view' && tab.content.view.unit?.startsWith('folder:') && tab.content.view.temporary}
 						<FolderPage view={tab.content.view} {tab} {editor} settings={session.settings} />
 					{:else if tab.content.type === 'view'}
