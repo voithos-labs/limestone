@@ -27,18 +27,44 @@
 	const GROUPS = groups as Group[];
 	const ALL: Emoji[] = GROUPS.flatMap((g) => g.emojis);
 	const COLS = 8;
-	const GROUP_OFFSETS: number[] = (() => {
-		const offs: number[] = [];
-		let acc = 0;
-		for (const g of GROUPS) {
-			offs.push(acc);
-			acc += g.emojis.length;
+	const ROW_H = 37;
+	const HEAD_H = 28;
+	const VIEW_H = 320;
+	const OVERSCAN = ROW_H * 4;
+
+	interface Row {
+		top: number;
+		height: number;
+		label: string | null;
+		start: number;
+		emojis: Emoji[];
+	}
+
+	function layout(sections: { name: string | null; emojis: Emoji[] }[]) {
+		const rows: Row[] = [];
+		let top = 0;
+		let start = 0;
+		for (const s of sections) {
+			if (s.name !== null) {
+				rows.push({ top, height: HEAD_H, label: s.name, start, emojis: [] });
+				top += HEAD_H;
+			}
+			for (let i = 0; i < s.emojis.length; i += COLS) {
+				const emojis = s.emojis.slice(i, i + COLS);
+				rows.push({ top, height: ROW_H, label: null, start, emojis });
+				top += ROW_H;
+				start += emojis.length;
+			}
 		}
-		return offs;
-	})();
+		return { rows, height: top };
+	}
+
+	const GROUP_GRID = layout(GROUPS);
 
 	let popEl: HTMLDivElement | null = $state(null);
 	let searchEl: HTMLInputElement | null = $state(null);
+	let scrollEl: HTMLDivElement | null = $state(null);
+	let scrollTop = $state(0);
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
 	let query = $state('');
 	let activeIndex = $state(-1);
@@ -46,20 +72,32 @@
 	const results = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		if (!q) return null;
-		return ALL.filter((e) => e.name.includes(q) || e.slug.includes(q)).slice(0, 180);
+		return ALL.filter((e) => e.name.toLowerCase().includes(q) || e.slug.includes(q));
 	});
 
 	const nav = $derived(results ?? ALL);
+	const grid = $derived(results ? layout([{ name: null, emojis: results }]) : GROUP_GRID);
+	const visible = $derived(
+		grid.rows.filter(
+			(r) => r.top + r.height > scrollTop - OVERSCAN && r.top < scrollTop + VIEW_H + OVERSCAN
+		)
+	);
 
 	$effect(() => {
 		query;
 		activeIndex = results && results.length > 0 ? 0 : -1;
+		scrollTop = 0;
+		if (scrollEl) scrollEl.scrollTop = 0;
 	});
 
 	function scrollActiveIntoView() {
-		queueMicrotask(() =>
-			popEl?.querySelector('.ep-cell.active')?.scrollIntoView({ block: 'nearest' })
+		const row = grid.rows.find(
+			(r) => activeIndex >= r.start && activeIndex < r.start + r.emojis.length
 		);
+		if (!row || !scrollEl) return;
+		const bottom = row.top + row.height - scrollEl.clientHeight;
+		if (row.top < scrollEl.scrollTop) scrollEl.scrollTop = row.top;
+		else if (bottom > scrollEl.scrollTop) scrollEl.scrollTop = bottom;
 	}
 
 	function move(delta: number) {
@@ -162,42 +200,38 @@
 			/>
 		</div>
 
-		<div class="ep-scroll">
-			{#if results}
-				{#if results.length}
-					<div class="ep-grid">
-						{#each results as e, i (e.slug)}
-							<button
-								class="ep-cell"
-								class:active={i === activeIndex}
-								type="button"
-								tabindex="-1"
-								title={e.name}
-								onmouseenter={() => (activeIndex = i)}
-								onclick={() => pick(e.emoji)}>{e.emoji}</button
-							>
-						{/each}
-					</div>
-				{:else}
-					<p class="ep-empty">No emoji</p>
-				{/if}
+		<div
+			class="ep-scroll"
+			bind:this={scrollEl}
+			style:max-height="{VIEW_H}px"
+			onscroll={(e) => (scrollTop = e.currentTarget.scrollTop)}
+		>
+			{#if grid.rows.length}
+				<div class="ep-rows" style:height="{grid.height}px">
+					{#each visible as row (row.top)}
+						{#if row.label !== null}
+							<div class="ep-group" style:top="{row.top}px" style:height="{row.height}px">
+								{row.label}
+							</div>
+						{:else}
+							<div class="ep-grid" style:top="{row.top}px" style:height="{row.height}px">
+								{#each row.emojis as e, j (e.slug)}
+									<button
+										class="ep-cell"
+										class:active={row.start + j === activeIndex}
+										type="button"
+										tabindex="-1"
+										title={e.name}
+										onmouseenter={() => (activeIndex = row.start + j)}
+										onclick={() => pick(e.emoji)}>{e.emoji}</button
+									>
+								{/each}
+							</div>
+						{/if}
+					{/each}
+				</div>
 			{:else}
-				{#each GROUPS as g, gi (g.name)}
-					<div class="ep-group">{g.name}</div>
-					<div class="ep-grid">
-						{#each g.emojis as e, j (e.slug)}
-							<button
-								class="ep-cell"
-								class:active={GROUP_OFFSETS[gi] + j === activeIndex}
-								type="button"
-								tabindex="-1"
-								title={e.name}
-								onmouseenter={() => (activeIndex = GROUP_OFFSETS[gi] + j)}
-								onclick={() => pick(e.emoji)}>{e.emoji}</button
-							>
-						{/each}
-					</div>
-				{/each}
+				<p class="ep-empty">No emoji</p>
 			{/if}
 		</div>
 	</div>
@@ -247,7 +281,6 @@
 	}
 
 	.ep-scroll {
-		max-height: 320px;
 		overflow-y: auto;
 		overflow-x: hidden;
 		scrollbar-width: thin;
@@ -263,9 +296,21 @@
 		border-radius: 3px;
 	}
 
+	.ep-rows {
+		position: relative;
+	}
+
+	.ep-group,
+	.ep-grid {
+		position: absolute;
+		left: 0;
+		right: 0;
+	}
+
 	.ep-group {
 		font-size: 11px;
 		font-weight: 600;
+		line-height: 16px;
 		letter-spacing: 0.03em;
 		color: var(--color-ui-muted);
 		padding: 8px 4px 4px;
@@ -274,16 +319,14 @@
 	.ep-grid {
 		display: grid;
 		grid-template-columns: repeat(8, minmax(0, 1fr));
-		gap: 2px;
-		content-visibility: auto;
-		contain-intrinsic-size: auto 800px;
+		column-gap: 2px;
+		padding-bottom: 2px;
 	}
 
 	.ep-cell {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		aspect-ratio: 1;
 		min-width: 0;
 		overflow: hidden;
 		border: none;
