@@ -863,7 +863,7 @@
 		display: flex;
 		align-items: center;
 		height: 22px;
-		margin: 16px 24px 8px;
+		margin: 28px 24px 8px;
 		font-size: 12px;
 		font-weight: 500;
 		color: var(--color-ui-muted);
