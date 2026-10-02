@@ -38,6 +38,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import DocHandle from '$lib/models/DocHandle';
 import View, { listSavedViewJSON } from '$lib/models/View.svelte.js';
+import type Session from '$lib/models/Session.svelte.js';
 
 // ── Focus (used elsewhere) ───────────────────────────────────────────────────────────
 
@@ -228,6 +229,7 @@ export interface EditorJSON {
 	tabAccessOrderById: string[];
 	focusOrder?: FocusTarget[];
 	focused?: FocusTarget;
+	flex?: number;
 }
 
 /**
@@ -248,6 +250,8 @@ class EditorState {
 	// the bookmark's surface: one transient tab outside the strip, shown until focus goes
 	// anywhere else, never persisted
 	preview: TabState | null = $state(null);
+	flex: number = $state(1);
+	session: Session | null = null;
 	private tabAccessOrderById: string[] = $state([]); // reverse accessed order, last = most recent
 	private focusOrder: FocusTarget[] = $state([]);
 	private closedTabs: { tab: TabState; index: number }[] = [];
@@ -256,6 +260,7 @@ class EditorState {
 		this.focused = json?.focused ?? null;
 		if (json?.tabAccessOrderById) this.tabAccessOrderById = json.tabAccessOrderById;
 		if (json?.focusOrder) this.focusOrder = json.focusOrder;
+		if (json?.flex) this.flex = json.flex;
 		if (tabs) this.tabs = tabs;
 	}
 
@@ -279,6 +284,18 @@ class EditorState {
 	}
 
 	// ── Getters ─────────────────────────────────────────────────────────────────────────
+
+	get peer(): EditorState | null {
+		return this.session?.editors.find((e) => e !== this) ?? null;
+	}
+
+	get aside(): EditorState {
+		return this.peer ?? this;
+	}
+
+	beside(): EditorState {
+		return this.session?.beside(this) ?? this;
+	}
 
 	get focusedTab(): TabState | undefined {
 		if (this.focused?.kind === 'preview') return this.preview ?? undefined;
@@ -340,7 +357,8 @@ class EditorState {
 			tabs: this.tabs.map((t) => t.toJSON()),
 			tabAccessOrderById: this.tabAccessOrderById,
 			focusOrder: this.focusOrder,
-			focused: this.focused ?? undefined
+			focused: this.focused ?? undefined,
+			flex: this.flex
 		};
 	}
 
@@ -372,6 +390,15 @@ class EditorState {
 	openTab(tab: TabState) {
 		if (this.tabs.some((d) => d.id === tab.id)) return; // dupe
 		this.tabs.push(tab);
+	}
+
+	insertTab(tab: TabState, index = this.tabs.length) {
+		if (!this.tabs.some((t) => t.id === tab.id)) {
+			const pinned = this.pinnedCount;
+			const at = tab.pinned ? Math.min(index, pinned) : Math.max(index, pinned);
+			this.tabs.splice(at, 0, tab);
+		}
+		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	// `state` is merged into the tab's own, e.g. a heading for the editor to jump to once it opens
@@ -435,22 +462,6 @@ class EditorState {
 	openLicenses() {
 		this.openTab(TabState.forLicenses());
 		this.focusTab({ kind: 'tab', id: 'licenses' });
-	}
-
-	navTargets(): FocusTarget[] {
-		return [
-			{ kind: 'settings' },
-			{ kind: 'search' },
-			...this.tabs.map((t): FocusTarget => ({ kind: 'tab', id: t.id }))
-		];
-	}
-
-	focusAdjacentTab(delta: number) {
-		const targets = this.navTargets();
-		const cur = this.focused ? targets.findIndex((t) => this.sameTarget(t, this.focused!)) : -1;
-		const base = cur === -1 ? (delta > 0 ? -1 : 0) : cur;
-		const next = (base + delta + targets.length) % targets.length;
-		this.focusTab(targets[next]);
 	}
 
 	/**

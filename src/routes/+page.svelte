@@ -6,17 +6,10 @@
 	import TopBar from '../components/nav/TopBar.svelte';
 	import { flushAll } from '$lib/util/flush';
 	import Session from '$lib/models/Session.svelte.js';
-	import HomePage from '../components/pages/HomePage.svelte';
-	import SettingsPage from '../components/pages/SettingsPage.svelte';
-	import ViewPage from '../components/pages/ViewPage.svelte';
-	import FolderPage from '../components/pages/FolderPage.svelte';
-	import ProjectSetup from '../components/pages/ProjectSetup.svelte';
-	import LicensesPage from '../components/pages/LicensesPage.svelte';
-	import DocumentEditor from '../components/editor/DocumentEditor.svelte';
+	import Pane from '../components/Pane.svelte';
 	import Palette from '../components/Palette.svelte';
 	import MetadataDialog from '../components/MetadataDialog.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
-	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import { actionForKey, keyCapture } from '$lib/actions';
 	import { editorTakesKey } from '$lib/editor-chords';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
@@ -25,7 +18,6 @@
 
 	let session = $state<Session>();
 	let addSourceSignal = $state(0);
-	let tab: TabState | undefined = $state();
 
 	Session.init().then((s) => (session = s));
 
@@ -57,10 +49,6 @@
 			vt.state.activeSection = 'general';
 			s.editors[0]?.focusTab({ kind: 'settings' });
 		});
-	});
-
-	$effect(() => {
-		tab = session?.editors[0]?.focusedTab;
 	});
 
 	$effect(() => {
@@ -142,7 +130,7 @@
 	}
 
 	function activeScroller(): HTMLElement | null {
-		const area = document.querySelector('.content-area');
+		const area = document.querySelector('.content-area.active');
 		if (!area) return null;
 		const r = area.getBoundingClientRect();
 		let el = document.elementFromPoint(
@@ -175,50 +163,64 @@
 	// An empty strip is never a blank window: Home takes the place, on first launch and when
 	// the last tab closes.
 	$effect(() => {
-		const ed = session?.editors[0];
-		if (!ed) return;
-		if (ed.tabs.length === 0) {
-			ed.openHome();
-			return;
+		if (!session) return;
+		for (const ed of session.editors) {
+			if (ed.tabs.length === 0) {
+				if (session.editors.length > 1) session.closeEditor(ed);
+				else ed.openHome();
+				return;
+			}
+			const f = ed.focused;
+			const valid =
+				f?.kind === 'settings' ||
+				(f?.kind === 'preview' && !!ed.preview) ||
+				(f?.kind === 'tab' && ed.tabs.some((t) => t.id === f.id));
+			if (!valid) ed.openHome();
 		}
-		const f = ed.focused;
-		const valid =
-			f?.kind === 'settings' ||
-			(f?.kind === 'preview' && !!ed.preview) ||
-			(f?.kind === 'tab' && ed.tabs.some((t) => t.id === f.id));
-		if (!valid) ed.openHome();
 	});
+
+	function onSeamMove(e: PointerEvent) {
+		const seam = e.currentTarget as HTMLElement;
+		if (!session || !seam.hasPointerCapture(e.pointerId)) return;
+		const r = seam.parentElement!.getBoundingClientRect();
+		const ratio = Math.min(0.75, Math.max(0.25, (e.clientX - r.left) / r.width));
+		session.editors[0].flex = ratio;
+		session.editors[1].flex = 1 - ratio;
+	}
+
+	function resetSeam() {
+		for (const ed of session?.editors ?? []) ed.flex = 1;
+	}
 </script>
 
 <svelte:window onkeydowncapture={onKeydown} onkeydown={onArrowScroll} />
 
 {#if session}
-	{@const editor = session.editors[0]}
-	<div class="app-layout">
-		<TopBar {editor} settings={session.settings} onAddSource={addSource}></TopBar>
-		<main class="content-area">
-			{#if tab}
-				{#key `${tab.id}:${TabState.idOf(tab.content)}`}
-					{#if tab.content.type === 'view' && tab.content.view.unit?.startsWith('folder:') && tab.content.view.temporary}
-						<FolderPage view={tab.content.view} {tab} {editor} settings={session.settings} />
-					{:else if tab.content.type === 'view'}
-						<ViewPage view={tab.content.view} {tab} {editor} settings={session.settings} />
-					{:else if tab.content.type === 'markdown'}
-						<DocumentEditor {tab} {editor} settings={session.settings} />
-					{:else if tab.content.type === 'home'}
-						<HomePage {editor} onAddSource={addSource} />
-					{:else if tab.content.type === 'new'}
-						<ProjectSetup {tab} {editor} />
-					{:else if tab.content.type === 'licenses'}
-						<LicensesPage {tab} />
-					{/if}
-				{/key}
-			{:else if editor.focused?.kind === 'settings'}
-				<SettingsPage viewTab={session.getViewTab('settings')} {session} {addSourceSignal} />
-			{:else}
-				<div class="panel-placeholder">No document selected</div>
+	{@const [first, second] = session.editors}
+	<div
+		class="app-layout"
+		style:--pane-cols={session.editors.map((e) => `minmax(0, ${e.flex}fr)`).join(' ')}
+	>
+		<TopBar {session} onAddSource={addSource}></TopBar>
+		<div class="panes">
+			{#each session.editors as editor (editor)}
+				<Pane {editor} {session} {addSourceSignal} onAddSource={addSource} />
+			{/each}
+			{#if second}
+				<div
+					class="seam"
+					style:left="{(first.flex / (first.flex + second.flex)) * 100}%"
+					onpointerdown={(e) => {
+						e.preventDefault();
+						e.currentTarget.setPointerCapture(e.pointerId);
+					}}
+					onpointermove={onSeamMove}
+					ondblclick={resetSeam}
+					role="separator"
+					aria-orientation="vertical"
+				></div>
 			{/if}
-		</main>
+		</div>
 	</div>
 	<ContextMenu />
 	<Palette {session} onAddSource={addSource} />
@@ -233,22 +235,21 @@
 		background: transparent;
 	}
 
-	.content-area {
+	.panes {
 		position: relative;
+		display: grid;
+		grid-template-columns: var(--pane-cols);
+		grid-template-rows: minmax(0, 1fr);
 		flex: 1;
-		margin: 0 12px 12px 12px;
-		background: var(--color-surface);
-		border-radius: 8px;
-		overflow: hidden;
+		min-height: 0;
 	}
 
-	.panel-placeholder {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		color: var(--color-ui-muted);
-		font-size: 14px;
-		text-transform: capitalize;
+	.seam {
+		position: absolute;
+		top: 0;
+		bottom: 12px;
+		width: 8px;
+		transform: translateX(-50%);
+		cursor: col-resize;
 	}
 </style>

@@ -225,9 +225,13 @@
 		if (source) show(`folder:${sourceId}:`, sourceName(source));
 	}
 
-	function onOpenRow(rowId: string, newTab = false) {
+	function onOpenRow(rowId: string, newTab: boolean | 'side' = false) {
 		DocHandle.fromID(rowId)
-			.then((d) => (newTab || !tab ? editor.openDoc(d) : editor.showDocInTab(tab, d)))
+			.then((d) => {
+				if (newTab === 'side') editor.beside().openDoc(d);
+				else if (newTab || !tab) editor.aside.openDoc(d);
+				else editor.showDocInTab(tab, d);
+			})
 			.catch(console.error);
 	}
 
@@ -863,7 +867,7 @@
 		display: flex;
 		align-items: center;
 		height: 22px;
-		margin: 16px 24px 8px;
+		margin: 28px 24px 8px;
 		font-size: 12px;
 		font-weight: 500;
 		color: var(--color-ui-muted);

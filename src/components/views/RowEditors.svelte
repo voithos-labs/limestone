@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		ArrowUpRight,
+		Columns2,
 		SquareArrowOutUpRight,
 		SquareCheck,
 		SquareMinus,
@@ -22,7 +23,11 @@
 		view,
 		rows,
 		onOpen
-	}: { view: View; rows: FaceRows; onOpen?: (rowId: string, newTab?: boolean) => void } = $props();
+	}: {
+		view: View;
+		rows: FaceRows;
+		onOpen?: (rowId: string, newTab?: boolean | 'side') => void;
+	} = $props();
 
 	// ── Value editor ───────────────────────────────────────────────────────────
 	let editing: { rowId: string; fieldId: string } | null = $state(null);
@@ -106,6 +111,7 @@
 	const menuItems = $derived([
 		{ value: 'open', label: 'Open', icon: ArrowUpRight },
 		{ value: 'open-tab', label: 'Open in new tab', icon: SquareArrowOutUpRight },
+		{ value: 'open-side', label: 'Open to the side', icon: Columns2 },
 		{ kind: 'divider' as const },
 		...(menuRow && rows.writable(menuRow)
 			? [
@@ -145,6 +151,7 @@
 		if (!rowId) return;
 		if (value === 'open') onOpen?.(rowId);
 		else if (value === 'open-tab') onOpen?.(rowId, true);
+		else if (value === 'open-side') onOpen?.(rowId, 'side');
 		else if (value === 'todo') await rows.setTag(rowId, 'todo', true);
 		else if (value === 'untodo') await rows.setTag(rowId, 'todo', false);
 		else if (value === 'confirm-delete') await rows.delete(rowId);

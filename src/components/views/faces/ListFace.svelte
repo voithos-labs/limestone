@@ -28,7 +28,7 @@
 	}: {
 		view: View;
 		face: ViewFace;
-		onOpenRow?: (rowId: string, newTab?: boolean) => void;
+		onOpenRow?: (rowId: string, newTab?: boolean | 'side') => void;
 		createSignal?: number;
 		scope?: FilterNode | null;
 		onTotal?: (n: number) => void; // how many rows the current search and scope leave
@@ -589,7 +589,7 @@
 			if (a.matches('button, a, [role="button"], [role="menuitem"], [tabindex="0"]')) return;
 			if (a.closest('.list-face, .grid')) return;
 		}
-		const first = document.querySelector<HTMLElement>(ITEM);
+		const first = document.querySelector<HTMLElement>(`.content-area.active :is(${ITEM})`);
 		if (!first || !listEl?.contains(first)) return;
 		e.preventDefault();
 		focusItem(e.key === 'ArrowDown' ? 0 : items().length - 1);
