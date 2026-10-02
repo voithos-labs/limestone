@@ -111,6 +111,7 @@
 	const folders = $derived(folderList);
 
 	let tagMenuOpen = $state(false);
+	let tagsSaved = $state(0);
 	let tagAnchor: HTMLElement | null = $state(null);
 
 	async function createTag(q: string) {
@@ -119,6 +120,7 @@
 		try {
 			await handle.setTags([...tagList.map((t) => t.slug), slug]);
 			tagList = handle.tags;
+			tagsSaved++;
 		} catch (e) {
 			console.error('create tag failed', e);
 		}
@@ -140,26 +142,14 @@
 		try {
 			await handle.setTags(next.map((t) => t.slug));
 			tagList = handle.tags;
+			tagsSaved++;
 		} catch (e) {
 			console.error('set tags failed', e);
 			tagList = handle.tags;
 		}
 	}
 
-	// the tag chip edits in place: open, and the chips grow an × and a query input; the menu
-	// under it is only the list of choices
-	let tagQuery = $state('');
-	let tagInputEl: HTMLInputElement | null = $state(null);
-	$effect(() => {
-		if (tagMenuOpen) queueMicrotask(() => tagInputEl?.focus());
-		else tagQuery = '';
-	});
-	function onTagInputKey(e: KeyboardEvent) {
-		if (e.key === 'Backspace' && tagQuery === '' && chipTags.length > 0) {
-			e.preventDefault();
-			void toggleTag(chipTags[chipTags.length - 1]);
-		}
-	}
+	// the tag chip edits in place: open, and the chips grow an ×; the menu under it searches
 
 	// the todo card carries #todo: it's not among the chips, and its × is the way off
 	const TODO_ID = 'tag:todo';
@@ -302,25 +292,20 @@
 	let menuOpen = $state(false);
 	let menuAnchor: HTMLElement | null = $state(null);
 
-	// The back card sits under the meta row, or beside the title when the pane leaves room for
-	// it there, and lifts off to float at the top of the scroller once the reader scrolls past
-	// it. Its slot keeps the space so the document doesn't jump
+	// The back card sits above the title, and lifts off to float at the top of the scroller once
+	// the reader scrolls past it. Its slot keeps the space so the document doesn't jump
 	let innerEl: HTMLElement | null = $state(null);
 	let innerWidth = $state(0);
 	let backSlot: HTMLElement | null = $state(null);
 	let backEl: HTMLElement | null = $state(null);
-	let gutter = $state(false);
-	let cardWidth = $state(0);
 	let floating = $state(false);
 	let floatAt = $state({ x: 0, y: 0 });
 	const FLOAT_INSET = 14;
-	const GUTTER_GAP = 16;
 	$effect(() => {
 		void innerWidth;
 		const slot = backSlot;
 		const inner = innerEl;
 		if (!slot || !inner) return;
-		const host = inner.closest('.content-area') ?? document.body;
 		let scroller: HTMLElement | null = slot.parentElement;
 		while (scroller) {
 			const oy = getComputedStyle(scroller).overflowY;
@@ -329,10 +314,6 @@
 		}
 		if (!scroller) return;
 		const update = () => {
-			const room =
-				inner.getBoundingClientRect().left + 24 - host.getBoundingClientRect().left - GUTTER_GAP;
-			if (!floating && backEl) cardWidth = backEl.offsetWidth;
-			gutter = room >= cardWidth;
 			const top = scroller!.getBoundingClientRect().top + FLOAT_INSET;
 			const r = slot.getBoundingClientRect();
 			floating = r.top < top;
@@ -365,7 +346,59 @@
 		titleInput?.select();
 	});
 
+	let metaRow: HTMLElement | null = $state(null);
+	$effect(() => {
+		const row = metaRow;
+		if (!row) return;
+		const mark = () => {
+			for (const sep of row.querySelectorAll<HTMLElement>('[data-sep]')) {
+				const next = sep.nextElementSibling;
+				const wrapped =
+					!next || next.getBoundingClientRect().top >= sep.getBoundingClientRect().bottom;
+				sep.style.visibility = wrapped ? 'hidden' : '';
+			}
+		};
+		const resize = new ResizeObserver(mark);
+		resize.observe(row);
+		const mutate = new MutationObserver(mark);
+		mutate.observe(row, { childList: true, subtree: true });
+		mark();
+		return () => {
+			resize.disconnect();
+			mutate.disconnect();
+		};
+	});
+
+	let lineWidth = $state(0);
+	let titleWidth = $state(0);
+	let actionsMeasured = $state(0);
+	let actionsWidth = $state(0);
+	$effect(() => {
+		if (actionsMeasured > 0) actionsWidth = actionsMeasured;
+	});
+	const showProps = $derived(propCount > 0 && !(meta.writes && frontmatterError));
+	const actionsInMenu = $derived(lineWidth > 0 && titleWidth + 12 + actionsWidth > lineWidth - 30);
+
 	const menuItems: MenuEntry[] = $derived([
+		...(actionsInMenu
+			? ([
+					{
+						value: 'history',
+						label: historyOpen ? 'Hide history' : 'Show history',
+						icon: History
+					},
+					...(showProps
+						? [
+								{
+									value: 'props',
+									label: propsOpen ? 'Hide properties' : 'Show properties',
+									icon: SlidersHorizontal
+								}
+							]
+						: []),
+					{ kind: 'divider' }
+				] as MenuEntry[])
+			: []),
 		...(onOpenFolder
 			? [{ value: 'parent', label: 'Go to folder', icon: FolderOpen } as MenuEntry]
 			: []),
@@ -413,6 +446,8 @@
 			return;
 		}
 		menuOpen = false;
+		if (value === 'history') historyOpen = !historyOpen;
+		if (value === 'props') propsOpen = !propsOpen;
 		if (value === 'parent') onOpenFolder?.(currentFolderId, dirParts.at(-1) ?? srcName);
 		if (value === 'duplicate') duplicateDoc();
 		if (value === 'reveal') revealDoc();
@@ -439,12 +474,7 @@
 
 {#snippet backCard()}
 	{#if back}
-		<div
-			class="back-slot"
-			class:gutter
-			style:width={gutter ? `${cardWidth}px` : null}
-			bind:this={backSlot}
-		>
+		<div class="back-slot" bind:this={backSlot}>
 			<button
 				class="back"
 				class:floating
@@ -471,39 +501,72 @@
 
 <div class="doc-hero">
 	<div class="hero-inner" class:compact bind:this={innerEl} bind:clientWidth={innerWidth}>
-		{#if back && gutter}{@render backCard()}{/if}
-		<button
-			class="kebab"
-			bind:this={menuAnchor}
-			title="More"
-			onclick={() => (menuOpen = !menuOpen)}
-		>
-			<EllipsisVertical size={15} strokeWidth={1.75} />
-		</button>
-
+		{#if back}{@render backCard()}{/if}
 		<div class="head-row">
-			<span class="title-left">
-				<span class="title-field">
-					<span class="title-ghost">{title || ' '}</span>
-					<input
-						class="title-input"
-						class:invalid={titleTaken || titleIllegal || titleFailed}
-						bind:this={titleInput}
-						bind:value={title}
-						oninput={() => (titleFailed = false)}
-						onblur={commitTitle}
-						onkeydown={onTitleKeydown}
-						spellcheck="false"
-					/>
+			<div class="title-line" bind:clientWidth={lineWidth}>
+				<span class="title-left">
+					<span class="title-field">
+						<span class="title-ghost" bind:offsetWidth={titleWidth}>{title || ' '}</span>
+						<input
+							class="title-input"
+							class:invalid={titleTaken || titleIllegal || titleFailed}
+							bind:this={titleInput}
+							bind:value={title}
+							oninput={() => (titleFailed = false)}
+							onblur={commitTitle}
+							onkeydown={onTitleKeydown}
+							spellcheck="false"
+						/>
+					</span>
 				</span>
-				<span class="ext">{ext}</span>
-			</span>
+				<div class="top-actions">
+					{#if !actionsInMenu}
+						<span class="collapsible" bind:offsetWidth={actionsMeasured}>
+							<button
+								class="props-chip history-chip"
+								class:open={historyOpen}
+								title={historyOpen ? 'Hide history' : 'Show history'}
+								onclick={() => (historyOpen = !historyOpen)}
+							>
+								<History size={12} strokeWidth={1.75} />
+								<span>Updated {formatDateFriendly(handle.updatedAt)}</span>
+							</button>
+							{#if showProps}
+								<button
+									class="props-chip"
+									class:open={propsOpen}
+									title={propsOpen ? 'Hide properties' : 'Show properties'}
+									onclick={() => (propsOpen = !propsOpen)}
+								>
+									<SlidersHorizontal size={12} strokeWidth={1.75} />
+									<span class="props-count">{propCount}</span>
+								</button>
+							{/if}
+						</span>
+					{/if}
+					{#if meta.writes && frontmatterError}
+						<button
+							class="props-chip fm-error"
+							class:open={fmMenuOpen}
+							bind:this={fmAnchor}
+							title="Frontmatter couldn't be parsed"
+							onclick={() => (fmMenuOpen = !fmMenuOpen)}
+						>
+							<TriangleAlert size={12} strokeWidth={1.75} />
+						</button>
+					{/if}
+				</div>
+				<button
+					class="kebab"
+					bind:this={menuAnchor}
+					title="More"
+					onclick={() => (menuOpen = !menuOpen)}
+				>
+					<EllipsisVertical size={15} strokeWidth={1.75} />
+				</button>
+			</div>
 
-			<div class="meta-row">
-				{#if back && !gutter}
-					{@render backCard()}
-					<span class="meta-sep"></span>
-				{/if}
+			<div class="meta-row" bind:this={metaRow}>
 				<span class="loc-stack" class:stacked={!!onOpenFolder && showOpenFolder}>
 					<button
 						class="loc-chip"
@@ -557,10 +620,7 @@
 						role="button"
 						tabindex="-1"
 						title={tagMenuOpen ? '' : 'Edit tags'}
-						onclick={() => {
-							if (tagMenuOpen) tagInputEl?.focus();
-							else tagMenuOpen = true;
-						}}
+						onclick={() => (tagMenuOpen = !tagMenuOpen)}
 					>
 						{#each chipTags as t (t.id)}
 							<span class="tag">
@@ -579,16 +639,7 @@
 								</button>
 							</span>
 						{/each}
-						{#if tagMenuOpen}
-							<input
-								class="tag-input"
-								bind:this={tagInputEl}
-								bind:value={tagQuery}
-								onkeydown={onTagInputKey}
-								placeholder="Add tag"
-								spellcheck="false"
-							/>
-						{:else if !chipTags.length}
+						{#if !chipTags.length}
 							<span class="add-tags"><Plus size={11} />tag</span>
 						{/if}
 					</span>
@@ -603,45 +654,15 @@
 						<Hash size={11} />{t.slug}
 					</button>
 				{/each}
-				{#if meta.writes && frontmatterError}
-					<button
-						class="props-chip fm-error"
-						class:open={fmMenuOpen}
-						bind:this={fmAnchor}
-						title="Frontmatter couldn't be parsed"
-						onclick={() => (fmMenuOpen = !fmMenuOpen)}
-					>
-						<TriangleAlert size={12} strokeWidth={1.75} />
-					</button>
-				{:else if propCount > 0}
-					<button
-						class="props-chip"
-						class:open={propsOpen}
-						title={propsOpen ? 'Hide properties' : 'Show properties'}
-						onclick={() => (propsOpen = !propsOpen)}
-					>
-						<SlidersHorizontal size={12} strokeWidth={1.75} />
-						<span class="props-count">{propCount}</span>
-					</button>
+				{#if meta.writes && isTodo}
+					<span class="meta-sep" data-sep></span>
+					<TodoCard {handle} version={tagsSaved} onRemove={removeTodo} />
 				{/if}
-				<button
-					class="props-chip history-chip"
-					class:open={historyOpen}
-					title={historyOpen ? 'Hide history' : 'Show history'}
-					onclick={() => (historyOpen = !historyOpen)}
-				>
-					<History size={12} strokeWidth={1.75} />
-					<span>Updated {formatDateFriendly(handle.updatedAt)}</span>
-				</button>
+				{#if meta.writes}
+					<DocProperties {handle} open={propsOpen} inline onCount={(n) => (propCount = n)} />
+				{/if}
 			</div>
 		</div>
-
-		{#if meta.writes}
-			{#if isTodo}
-				<div class="todo-row"><TodoCard {handle} onRemove={removeTodo} /></div>
-			{/if}
-			<DocProperties {handle} open={propsOpen} onCount={(n) => (propCount = n)} />
-		{/if}
 	</div>
 </div>
 
@@ -673,8 +694,6 @@
 />
 <TagMenu
 	bind:open={tagMenuOpen}
-	bind:query={tagQuery}
-	inline
 	anchor={tagAnchor}
 	selectedIds={[...tagList.map((t) => t.id), ...textTagPlaces.keys()]}
 	inText={textTagPlaces}
@@ -699,51 +718,41 @@
 		padding: 2px 24px 6px;
 	}
 
-	/* Meta sits inline with the title; when the row can't give it its basis width
-       it wraps to its own line, which is the old two-row layout. */
-	.head-row {
+	.meta-sep {
+		flex-shrink: 0;
+		width: 1px;
+		height: 16px;
+		margin: 0 4px;
+		background: var(--color-border);
+	}
+
+	.top-actions,
+	.collapsible {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		column-gap: 32px;
-		row-gap: 9px;
-		padding-right: 30px;
+		align-items: center;
+		flex-shrink: 0;
+		gap: 4px;
 	}
 
-	/* appearance.compact_doc_header off: meta always stacks under the title */
-	:global(:root[data-doc-header='full']) .head-row {
-		display: block;
-	}
-
-	:global(:root[data-doc-header='full']) .meta-row {
-		justify-content: flex-start;
-		margin-top: 10px;
-	}
-
-	/* Full header: the meta stacks under the title, so the history chip goes up beside the
-	   kebab, which sits on the title line out of flow. */
-	:global(:root[data-doc-header='full']) .history-chip {
-		position: absolute;
-		top: 35px;
-		right: 52px;
-		z-index: 1;
-	}
-
-	:global(:root[data-doc-header='full']) .hero-inner.compact .history-chip {
-		top: 3px;
+	.title-line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
 	}
 
 	.title-left {
 		display: flex;
 		align-items: baseline;
-		flex: 0 1 auto;
+		flex: 1 1 auto;
 		min-width: 0;
 	}
 
 	.title-field {
 		position: relative;
 		display: inline-flex;
+		min-width: 0;
 		max-width: 100%;
+		overflow: hidden;
 	}
 
 	/* Pinned: the hero is the editor's header, so it would inherit the document's 1.6
@@ -771,6 +780,7 @@
 		outline: none;
 		background: transparent;
 		color: var(--color-text-primary);
+		text-overflow: ellipsis;
 	}
 
 	.title-input.invalid {
@@ -779,31 +789,9 @@
 		text-underline-offset: 3px;
 	}
 
-	.ext {
-		flex-shrink: 0;
-		font-family: var(--font-ui);
-		font-size: 18px;
-		font-weight: 600;
-		line-height: 22px;
-		color: var(--color-ui-muted);
-	}
-
-	/* Out of flow so the meta can wrap under the title without dragging it along.
-       Sized to the metadata row, not the title. */
-	/* The 22px button matches the title's line box, so it centres on the title line
-       by simply starting where the row does. */
-	.todo-row {
-		display: flex;
-		justify-content: center;
-		margin-top: 10px;
-	}
-
 	.kebab {
-		position: absolute;
-		top: 34px;
-		right: 24px;
-		z-index: 1;
 		display: flex;
+		margin-left: -4px;
 		align-items: center;
 		justify-content: center;
 		width: 22px;
@@ -820,41 +808,13 @@
 			color 120ms ease;
 	}
 
-	.hero-inner.compact .kebab {
-		top: 2px;
-	}
-
 	/* A small card naming the place the reader came from: arrow, then the place's own icon
 	   and name. It floats at the top of the scroller once scrolled past; the slot holds its
 	   space so the document doesn't jump when it lifts off. */
-	/* The slot leads the meta row, or moves into the gutter beside the title on a wide pane */
+	/* The slot is its own row above the title */
 	.back-slot {
-		flex-shrink: 0;
 		height: 24px;
-	}
-
-	.meta-sep {
-		flex-shrink: 0;
-		width: 1px;
-		height: 16px;
-		margin: 0 4px;
-		background: var(--color-border);
-	}
-
-	.back-slot.gutter {
-		position: absolute;
-		top: 34px;
-		right: calc(100% - 8px);
-		margin: 0;
-		white-space: nowrap;
-	}
-
-	.hero-inner.compact .back-slot.gutter {
-		top: 2px;
-	}
-
-	.back-slot.gutter .back {
-		max-width: none;
+		margin-bottom: 10px;
 	}
 
 	.back {
@@ -891,19 +851,15 @@
 		opacity: 0.75;
 	}
 
-	/* The place is its own tinted segment of the card */
+	/* The place is split from the arrow by a full-height rule */
 	.back-place {
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
 		min-width: 0;
 		height: 24px;
-		padding: 0 8px 0 6px;
-		background: rgba(255, 255, 255, 0.16);
-	}
-
-	:global(:root[data-theme-type='dark']) .back-place {
-		background: rgba(0, 0, 0, 0.18);
+		padding: 0 8px 0 7px;
+		border-left: 1px solid rgba(255, 255, 255, 0.3);
 	}
 
 	.back-place > :global(svg) {
@@ -939,11 +895,10 @@
 	.meta-row {
 		display: flex;
 		align-items: center;
-		justify-content: flex-end;
+		flex-wrap: wrap;
 		gap: 6px;
-		flex: 1 1 340px;
 		min-width: 0;
-		margin-top: -1px;
+		margin-top: 10px;
 		font-family: var(--font-ui);
 		font-size: 12px;
 		color: var(--color-ui-muted);
@@ -959,7 +914,7 @@
 		align-items: center;
 		gap: 4px;
 		min-width: 0;
-		height: 20px;
+		height: 24px;
 		padding: 0 8px;
 		border: none;
 		border-radius: 6px;
@@ -984,7 +939,7 @@
 		display: inline-flex;
 		align-items: center;
 		flex-shrink: 0;
-		height: 20px;
+		height: 24px;
 		margin-left: 1px;
 		padding: 0 6px;
 		border: none;
@@ -1025,7 +980,7 @@
 		align-items: center;
 		gap: 4px;
 		flex-shrink: 0;
-		height: 20px;
+		height: 24px;
 		padding: 0 6px;
 		border: none;
 		border-radius: 5px;
@@ -1116,25 +1071,28 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		height: 20px;
+		height: 24px;
 		padding: 0 9px 0 6px;
 		border-radius: 999px;
-		border: 1px dashed var(--color-border);
+		background: var(--chip-bg);
 		color: var(--color-ui-muted);
 		font-family: var(--font-ui);
 		font-size: 11px;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
 	.tags-chip:hover .add-tags {
+		background: var(--chip-bg-hover);
 		color: var(--color-text-secondary);
-		border-color: var(--color-ui-muted);
 	}
 
 	.tag {
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		height: 20px;
+		height: 24px;
 		padding: 0 9px 0 6px;
 		border-radius: 999px;
 		background: var(--chip-bg);
@@ -1183,21 +1141,5 @@
 	.tag-x:hover {
 		opacity: 1;
 		background: rgba(127, 127, 127, 0.25);
-	}
-
-	.tag-input {
-		width: 72px;
-		height: 20px;
-		padding: 0 4px;
-		border: none;
-		background: transparent;
-		font-family: var(--font-ui);
-		font-size: 11px;
-		color: var(--color-text-primary);
-		outline: none;
-	}
-
-	.tag-input::placeholder {
-		color: var(--color-ui-dulled);
 	}
 </style>

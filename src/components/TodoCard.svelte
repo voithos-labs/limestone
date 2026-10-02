@@ -9,9 +9,13 @@
 	import { toasts } from '$lib/toasts.svelte';
 	import CellEditor from './views/CellEditor.svelte';
 
-	// A note that is a todo wears its todo-ness as one card under the title: the checkbox,
+	// A note that is a todo wears its todo-ness as one card in the meta row: the checkbox,
 	// its dates, and the way out. The registry defines the fields; this only draws them
-	let { handle, onRemove }: { handle: DocHandle; onRemove: () => void } = $props();
+	let {
+		handle,
+		version = 0,
+		onRemove
+	}: { handle: DocHandle; version?: number; onRemove: () => void } = $props();
 
 	const TODO = 'tag:todo';
 	let view = $state<View | null>(null);
@@ -30,6 +34,7 @@
 
 	$effect(() => {
 		void handle.id;
+		void version;
 		let live = true;
 		View.forUnit(TODO, 'todo')
 			.then(async (v) => {
@@ -79,8 +84,20 @@
 			aria-label={done ? 'Mark not done' : 'Mark done'}
 			onclick={() => doneField && write(doneField, !done)}
 		>
-			<span class="box"><Check size={12} strokeWidth={3} /></span>
-			<span class="label">Todo</span>
+			<span class="box"><Check size={11} strokeWidth={3} /></span>
+			<span class="name">todo</span>
+		</button>
+		<span class="sep"></span>
+		<button
+			class="date"
+			class:set={!!dateOf(schedField)}
+			type="button"
+			title="Scheduled"
+			aria-label={dateOf(schedField) ? `Scheduled ${dateOf(schedField)}` : 'Scheduled'}
+			onclick={(e) => edit(e, schedField)}
+		>
+			<CalendarClock size={12} strokeWidth={1.75} />
+			{#if dateOf(schedField)}<span class="date-value">{dateOf(schedField)}</span>{/if}
 		</button>
 		<span class="sep"></span>
 		<button
@@ -89,20 +106,11 @@
 			type="button"
 			onclick={(e) => edit(e, dueField)}
 		>
-			<Calendar size={13} strokeWidth={1.75} />
+			<Calendar size={12} strokeWidth={1.75} />
 			<span class="date-label">Due</span>
 			{#if dateOf(dueField)}<span class="date-value">{dateOf(dueField)}</span>{/if}
 		</button>
-		<button
-			class="date"
-			class:set={!!dateOf(schedField)}
-			type="button"
-			onclick={(e) => edit(e, schedField)}
-		>
-			<CalendarClock size={13} strokeWidth={1.75} />
-			<span class="date-label">Scheduled</span>
-			{#if dateOf(schedField)}<span class="date-value">{dateOf(schedField)}</span>{/if}
-		</button>
+		<span class="sep"></span>
 		<button
 			class="remove"
 			type="button"
@@ -110,7 +118,7 @@
 			aria-label="Remove from todo"
 			onclick={onRemove}
 		>
-			<X size={13} strokeWidth={2} />
+			<X size={12} strokeWidth={2} />
 		</button>
 	</div>
 	{#if editing}
@@ -126,32 +134,31 @@
 {/if}
 
 <style>
-	/* a small floating bar, in the register of the view header's controls */
+	/* a chip of the meta row, its buttons flush to its edges */
 	.todo {
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
-		height: 32px;
-		padding: 0 4px;
-		border-radius: 8px;
+		flex-shrink: 0;
+		height: 24px;
+		border-radius: 6px;
 		background: var(--chip-bg);
 		font-family: var(--font-ui);
-		font-size: 12.5px;
+		font-size: 12px;
 		color: var(--color-text-primary);
 	}
 
-	/* the checkbox and its word are one toggle, inset like the card's other buttons */
 	.check {
 		display: inline-flex;
 		align-items: center;
-		gap: 7px;
+		gap: 5px;
 		height: 24px;
 		padding: 0 8px 0 6px;
 		border: none;
 		border-radius: 6px;
 		background: transparent;
 		font: inherit;
-		color: inherit;
+		font-weight: 600;
+		color: var(--color-ui-muted);
 		cursor: pointer;
 		transition: background-color 80ms ease;
 	}
@@ -160,22 +167,14 @@
 		background: var(--chip-bg-hover);
 	}
 
-	/* a tag-like name for the card, not a status: the checkbox says done or not */
-	.label {
-		font-size: 11.5px;
-		font-weight: 600;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-	}
-
 	.box {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 16px;
-		height: 16px;
+		width: 14px;
+		height: 14px;
 		border: 1.5px solid var(--color-ui-muted);
-		border-radius: 5px;
+		border-radius: 4px;
 		color: transparent;
 		transition:
 			background-color 80ms ease,
@@ -189,14 +188,10 @@
 		color: #fff;
 	}
 
-	.todo.done .label {
-		color: var(--color-ui-muted);
-	}
-
 	.sep {
 		width: 1px;
-		height: 16px;
-		margin: 0 4px 0 0;
+		height: 14px;
+		margin: 0 4px;
 		background: var(--chip-divider);
 	}
 

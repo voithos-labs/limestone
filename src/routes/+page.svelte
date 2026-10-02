@@ -75,11 +75,6 @@
 		}
 	});
 
-	$effect(() => {
-		const compact = session?.settings.get<boolean>('appearance.compact_doc_header') ?? true;
-		document.documentElement.dataset.docHeader = compact ? 'compact' : 'full';
-	});
-
 	let persistTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
 		if (!session) return;

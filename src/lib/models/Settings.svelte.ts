@@ -72,13 +72,6 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				description: 'Shrink pinned tabs down to just their icon.'
 			},
 			{
-				key: 'appearance.compact_doc_header',
-				type: 'boolean',
-				control: 'toggle',
-				label: 'Compact Document Header',
-				description: 'Sit a document’s folder, tags, and date inline with its title when they fit.'
-			},
-			{
 				key: 'appearance.ui_scale_percent',
 				type: 'number',
 				control: 'select',

@@ -23,8 +23,14 @@
 	let {
 		handle,
 		open = false,
+		inline = false,
 		onCount
-	}: { handle: DocHandle; open?: boolean; onCount?: (n: number) => void } = $props();
+	}: {
+		handle: DocHandle;
+		open?: boolean;
+		inline?: boolean;
+		onCount?: (n: number) => void;
+	} = $props();
 
 	type Entry = { view: View; fields: ViewField[] };
 
@@ -138,39 +144,34 @@
 </script>
 
 {#if open && entries.length > 0 && row}
-	<div class="doc-props">
-		<div class="props-body">
-			{#each entries as entry (entry.view.id)}
-				<div class="view-group">
-					<div class="view-label">
-						{#if entry.view.emoji}
-							<span class="view-emoji">{entry.view.emoji}</span>
-						{:else}
-							<Box size={12} strokeWidth={1.75} />
-						{/if}
-						<span class="view-name">{entry.view.slug}</span>
-					</div>
-					<div class="group-rows">
-						{#each entry.fields as field (field.id)}
-							{@const Icon = getFieldIcon(field.type)}
-							<div class="prop-row">
-								<span class="prop-name">
-									<span class="prop-icon"><Icon size={12} strokeWidth={1.75} /></span>
-									<span class="prop-label">{fieldLabel(field)}</span>
-								</span>
-								<button
-									class="prop-value"
-									type="button"
-									onclick={(e) => onCellClick(e, entry.view, field)}
-								>
-									<CellValue {field} row={row!} />
-								</button>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/each}
-		</div>
+	<div class="doc-props" class:inline>
+		{#each entries as entry (entry.view.id)}
+			{#if inline}<span class="row-sep" data-sep></span>{/if}
+			<div class="view-row">
+				<span class="view-label">
+					{#if entry.view.emoji}
+						<span class="view-emoji">{entry.view.emoji}</span>
+					{:else}
+						<Box size={12} strokeWidth={1.75} />
+					{/if}
+					<span class="view-name">{entry.view.slug}</span>
+				</span>
+				{#each entry.fields as field (field.id)}
+					{@const Icon = getFieldIcon(field.type)}
+					<span class="sep"></span>
+					<button
+						class="prop"
+						type="button"
+						title={fieldLabel(field)}
+						onclick={(e) => onCellClick(e, entry.view, field)}
+					>
+						<Icon size={12} strokeWidth={1.75} />
+						<span class="prop-label">{fieldLabel(field)}</span>
+						<span class="prop-value"><CellValue {field} row={row!} /></span>
+					</button>
+				{/each}
+			</div>
+		{/each}
 	</div>
 {/if}
 
@@ -204,58 +205,50 @@
 
 <style>
 	.doc-props {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 6px;
 		margin-top: 10px;
 		font-family: var(--font-ui);
 	}
 
-	.props-body {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		margin-top: 6px;
+	.doc-props.inline {
+		display: contents;
 	}
 
-	.view-group {
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-	}
-
-	/* Guide line dropping from the view's icon down past its properties, the way a
-       nested folder tree carries its parent's line. Inset at both ends so it doesn't
-       run the full height of the rows. */
-	.group-rows {
-		position: relative;
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		margin-left: 5px;
-		padding-left: 12px;
-	}
-
-	.group-rows::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 6px;
-		bottom: 6px;
+	.row-sep {
+		flex-shrink: 0;
 		width: 1px;
-		border-radius: 999px;
+		height: 16px;
+		margin: 0 4px;
 		background: var(--color-border);
 	}
 
-	/* Lean section header: names the view the properties below belong to */
+	.view-row {
+		display: inline-flex;
+		flex-wrap: wrap;
+		align-items: center;
+		max-width: 100%;
+		min-height: 24px;
+		border-radius: 6px;
+		background: var(--chip-bg);
+		font-size: 12px;
+	}
+
 	.view-label {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		margin-bottom: 5px;
-		font-size: 11px;
-		color: var(--color-ui-dulled);
+		height: 24px;
+		padding: 0 8px;
+		color: var(--color-ui-muted);
+		font-weight: 600;
 	}
 
 	.view-label :global(svg) {
 		flex-shrink: 0;
+		color: var(--color-ui-dulled);
 	}
 
 	.view-name {
@@ -269,55 +262,52 @@
 		line-height: 1;
 	}
 
-	.prop-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		min-height: 26px;
+	.sep {
+		flex-shrink: 0;
+		width: 1px;
+		height: 14px;
+		margin: 0 4px;
+		background: var(--chip-divider);
 	}
 
-	.prop-name {
+	.prop {
+		--row-h: 20px;
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		flex: 0 0 160px;
+		gap: 5px;
 		min-width: 0;
-		font-size: 12px;
-		color: var(--color-ui-muted);
+		height: 24px;
+		padding: 0 8px 0 6px;
+		border: none;
+		border-radius: 6px;
+		background: transparent;
+		font: inherit;
+		color: var(--color-text-secondary);
+		white-space: nowrap;
+		cursor: pointer;
 	}
 
-	.prop-icon {
-		display: inline-flex;
-		align-items: center;
+	.prop > :global(svg) {
 		flex-shrink: 0;
 		color: var(--color-ui-dulled);
 	}
 
 	.prop-label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		color: var(--color-ui-muted);
 	}
 
 	.prop-value {
-		--row-h: 20px;
-		display: flex;
+		display: inline-flex;
 		align-items: center;
-		flex: 1 1 auto;
 		min-width: 0;
-		height: 26px;
-		padding: 0 8px;
-		border: none;
-		border-radius: 5px;
-		background: transparent;
-		font: inherit;
-		font-size: 12px;
-		color: var(--color-text-secondary);
-		text-align: left;
-		cursor: pointer;
 	}
 
-	.prop-value:hover {
+	.prop-value :global(.pill) {
+		padding: 0 8px;
+		border-radius: 6px;
+	}
+
+	.prop:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}

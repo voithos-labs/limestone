@@ -23,9 +23,7 @@
 		onToggle,
 		onCreate,
 		onMutated,
-		width = 240,
-		query = $bindable(''),
-		inline = false
+		width = 240
 	}: {
 		open: boolean;
 		anchor: HTMLElement | null;
@@ -35,9 +33,9 @@
 		onCreate?: (slug: string) => void | Promise<void>;
 		onMutated?: () => void;
 		width?: number;
-		query?: string; // the host can type into it from its own field
-		inline?: boolean; // the host draws the tokens and the input; only the list shows here
 	} = $props();
+
+	let query = $state('');
 
 	let menuEl: HTMLDivElement | null = $state(null);
 	let searchEl: HTMLInputElement | null = $state(null);
@@ -77,8 +75,6 @@
 		if (!q) return browseTags;
 		return browseTags.filter((t) => t.slug.toLowerCase().includes(q));
 	});
-	// the first row after the built-ins gets a divider above it
-	const builtinCount = $derived(filtered.filter((t) => isBuiltinUnit(t.id)).length);
 
 	const showCreate = $derived(
 		!!onCreate &&
@@ -266,7 +262,7 @@
 			reload().then(() => queueMicrotask(position));
 			queueMicrotask(() => {
 				position();
-				if (!inline) searchEl?.focus();
+				searchEl?.focus();
 			});
 			window.addEventListener('resize', position);
 			window.addEventListener('scroll', position, true);
@@ -306,25 +302,21 @@
 		role="menu"
 		tabindex="-1"
 	>
-		{#if !inline}
-			<div class="field" role="presentation" onclick={() => searchEl?.focus()}>
-				<input
-					class="search-input"
-					type="text"
-					bind:value={query}
-					bind:this={searchEl}
-					placeholder={onCreate ? 'Search or create a tag' : 'Search tags'}
-				/>
-			</div>
-		{/if}
+		<div class="field" role="presentation" onclick={() => searchEl?.focus()}>
+			<input
+				class="search-input"
+				type="text"
+				bind:value={query}
+				bind:this={searchEl}
+				placeholder={onCreate ? 'Search or create a tag' : 'Search tags'}
+			/>
+		</div>
 		<div class="list" onmouseleave={() => (activeIndex = -1)} role="presentation">
 			{#each filtered as t, i (t.id)}
-				{#if i === builtinCount && builtinCount > 0}
-					<div class="divider"></div>
-				{/if}
 				{@const on = selectedIds.includes(t.id)}
 				<div
 					class="row"
+					class:builtin={isBuiltinUnit(t.id)}
 					class:active={i === activeIndex}
 					class:selected={on}
 					class:confirming={confirmId === t.id}
@@ -387,6 +379,9 @@
 							<span class="in-text" title={textTitle(places)}>
 								<Pilcrow size={12} strokeWidth={1.75} />
 							</span>
+						{/if}
+						{#if isBuiltinUnit(t.id)}
+							<span class="builtin-tag">Built-in</span>
 						{/if}
 					{/if}
 				</div>
@@ -687,10 +682,24 @@
 		background: var(--error-a18);
 	}
 
-	.divider {
-		height: 1px;
-		margin: 4px 6px;
-		background: var(--menu-search-divider);
+	.row.builtin {
+		margin-bottom: 4px;
+		padding-right: 9px;
+		background: var(--chip-bg);
+		border-radius: 6px;
+	}
+
+	.row.builtin.active {
+		background: var(--chip-bg-hover);
+	}
+
+	.builtin-tag {
+		flex-shrink: 0;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--color-ui-dulled);
 	}
 
 	.empty {
