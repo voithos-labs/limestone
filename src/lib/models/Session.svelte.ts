@@ -10,7 +10,7 @@ import { load, type Store } from '@tauri-apps/plugin-store';
 import { SvelteSet } from 'svelte/reactivity';
 
 // internal
-import EditorState, { type EditorJSON } from '$lib/models/EditorState.svelte.js';
+import EditorState, { type EditorJSON, type TabState } from '$lib/models/EditorState.svelte.js';
 import { SettingsState, getSetting } from '$lib/models/Settings.svelte.js';
 import type { Source } from '$lib/models/Source';
 import {
@@ -75,7 +75,9 @@ async function updateAppState(partial: Partial<AppState>): Promise<void> {
 // ── Session ──────────────────────────────────────────────────────────────────────────
 
 class Session {
-	editors: EditorState[];
+	editors: EditorState[] = $state([]);
+	focusSignal = $state(0);
+	private current: EditorState | null = $state(null);
 	activeTheme: string = $state(''); // ;;;;;; replace the current theme config here, managed here
 	// sources: Source[];
 	missingSources = new SvelteSet<string>();
@@ -91,6 +93,7 @@ class Session {
 		viewTabs?: ViewTab[]
 	) {
 		this.editors = editors;
+		for (const e of editors) e.session = this;
 		this.activeTheme = activeTheme;
 		this.themeStore = themeStore;
 		if (viewTabs) {
@@ -129,6 +132,49 @@ class Session {
 		await session.settings.load();
 		await session.applyCurrentTheme();
 		return session;
+	}
+
+	get active(): EditorState {
+		return this.editors.find((e) => e === this.current) ?? this.editors[0];
+	}
+
+	activate(editor: EditorState, focus = false) {
+		if (focus && this.active !== editor) this.focusSignal++;
+		this.current = editor;
+	}
+
+	beside(editor: EditorState): EditorState {
+		if (editor.peer) return editor.peer;
+		const created = new EditorState();
+		created.session = this;
+		editor.flex = 1;
+		this.editors.push(created);
+		return created;
+	}
+
+	moveTab(tab: TabState, from: EditorState, to: EditorState, index?: number) {
+		if (from === to) return;
+		from.closeTab(tab.id, false);
+		if (to !== this.editors[0]) tab.pinned = false;
+		to.insertTab(tab, index);
+		this.activate(to, true);
+	}
+
+	cycleTab(delta: number) {
+		const all = this.editors.flatMap((editor) => editor.tabs.map((tab) => ({ editor, tab })));
+		if (all.length === 0) return;
+		const current = this.active.focusedTab;
+		const cur = all.findIndex((e) => e.editor === this.active && e.tab === current);
+		const base = cur === -1 ? (delta > 0 ? -1 : 0) : cur;
+		const next = all[(base + delta + all.length) % all.length];
+		next.editor.focusTab({ kind: 'tab', id: next.tab.id });
+		this.activate(next.editor, true);
+	}
+
+	closeEditor(editor: EditorState) {
+		const rest = this.editors.filter((e) => e !== editor);
+		if (this.active === editor) this.activate(rest[0], true);
+		this.editors = rest;
 	}
 
 	// ── Theme ───────────────────────────────────────────────────────────────────────────

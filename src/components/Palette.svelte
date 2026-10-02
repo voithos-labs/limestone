@@ -32,7 +32,7 @@
 	import { getViewIcon } from '$lib/views/filterDisplay';
 
 	let { session, onAddSource }: { session: Session; onAddSource: () => void } = $props();
-	const editor = $derived(session.editors[0]);
+	const editor = $derived(session.active);
 	const modLabel = keyTokens('mod+enter')[0];
 
 	// ── Items: one shape for everything the list can hold ─────────────────────

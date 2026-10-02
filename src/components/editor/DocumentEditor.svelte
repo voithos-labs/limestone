@@ -72,7 +72,7 @@
 	function onOpenFolder(unitId: string, name: string, newTab = false) {
 		if (!editor) return;
 		View.forUnit(unitId, name)
-			.then((v) => (newTab ? editor.openView(v) : editor.showViewInTab(tab, v)))
+			.then((v) => (newTab ? editor.aside.openView(v) : editor.showViewInTab(tab, v)))
 			.catch((e) => console.error('open folder failed', e));
 	}
 
@@ -81,7 +81,7 @@
 		if (!editor) return;
 		View.forUnit(unitId, name)
 			.then((v) => {
-				editor.openView(v);
+				editor.aside.openView(v);
 				metaDialog.show(unitId);
 			})
 			.catch((e) => console.error('open folder failed', e));
@@ -208,7 +208,7 @@
 		if (fromDisk === instance.getSource()) return;
 		// Marked saved before the re-seed, so the swap cannot schedule a write of what just came in.
 		savedBody = fromDisk;
-		content = fromDisk;
+		swapContent(fromDisk, null);
 	}
 
 	/**
@@ -556,6 +556,17 @@
 		return active.isContentEditable && !scrollEl?.contains(active);
 	}
 
+	export async function focusCaret() {
+		const selection = rememberedSelection();
+		// Restoring can fail (a file edited outside the app may no longer have the block that
+		// selection names), and setSelection reports that by returning false rather than throwing.
+		const placed = selection ? await instance?.setSelection(selection) : false;
+		// It also returns false in cases where the caret did land, so ask the editor before giving
+		// up. An open document has to be typable, and focusing the root leaves no caret, hence last.
+		const hasCaret = placed || (!!selection && instance?.getSelection() != null);
+		if (!hasCaret && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
+	}
+
 	async function restore() {
 		// The old editor's `cursorPos`/`scrollTop` tab keys are ignored: they measure a flat
 		// character offset and a scroller with the header outside it, neither of which exists here.
@@ -584,16 +595,7 @@
 		// A flow host (the journal) owns the scroll, and placing a caret scrolls it into view: the
 		// reader switching day would be yanked to wherever that document's caret last was. The
 		// remembered caret stays on the tab for when it's opened on its own.
-		if (!typingElsewhere() && !flow) {
-			const selection = rememberedSelection();
-			// Restoring can fail (a file edited outside the app may no longer have the block that
-			// selection names), and setSelection reports that by returning false rather than throwing.
-			const placed = selection ? await instance?.setSelection(selection) : false;
-			// It also returns false in cases where the caret did land, so ask the editor before giving
-			// up. An open document has to be typable, and focusing the root leaves no caret, hence last.
-			const hasCaret = placed || (!!selection && instance?.getSelection() != null);
-			if (!hasCaret && !flow && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
-		}
+		if (!typingElsewhere() && !flow) await focusCaret();
 		if (typeof tab.state.scrollTopBlocks === 'number' && scrollEl) {
 			blocksTop = measureBlocksTop(scrollEl);
 			scrollEl.scrollTop = tab.state.scrollTopBlocks + blocksTop;
@@ -670,7 +672,7 @@
 		}
 		if (hit) {
 			const doc = await DocHandle.fromID(hit.id);
-			editor.openDoc(doc, heading ? { [OPEN_AT_HEADING]: heading } : {});
+			editor.aside.openDoc(doc, heading ? { [OPEN_AT_HEADING]: heading } : {});
 			return;
 		}
 		const slash = target.lastIndexOf('/');
@@ -679,20 +681,21 @@
 			...(slash > 0 ? { dir: target.slice(0, slash) } : {})
 		});
 		touchLinkIndex();
-		editor.openDoc(created);
+		editor.aside.openDoc(created);
 	}
 
 	async function openTagView(slug: string): Promise<void> {
 		if (!editor) return;
 		const unitId = tagId(slug);
-		const existing = editor.tabs.find(
+		const target = editor.aside;
+		const existing = target.tabs.find(
 			(t) => t.content.type === 'view' && t.content.view.unit === unitId
 		);
 		if (existing) {
-			editor.focusTab({ kind: 'tab', id: existing.id });
+			target.focusTab({ kind: 'tab', id: existing.id });
 			return;
 		}
-		editor.openView(await View.forUnit(unitId, slug));
+		target.openView(await View.forUnit(unitId, slug));
 	}
 
 	// Puts the caret on the heading the link names; false if the note has no such heading

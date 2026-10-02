@@ -4,6 +4,7 @@
 	import { openProjectSetup } from '$lib/views/projectSetup';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import { TabState, type FocusTarget } from '$lib/models/EditorState.svelte.js';
+	import type Session from '$lib/models/Session.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import WindowControls from './WindowControls.svelte';
 	import { hostWindowStyle, resolveWindowStyle } from '$lib/services/platform';
@@ -24,20 +25,19 @@
 		PinOff,
 		CircleX,
 		Scale,
-		Blocks
+		Blocks,
+		Columns2
 	} from '@lucide/svelte';
-	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { listSources, sourceName, type Source } from '$lib/models/Source';
 	import { folderId } from '$lib/models/Folder';
 	import View, { BUILTIN_UNITS } from '$lib/models/View.svelte';
 	import { FolderInput, SquareArrowOutUpRight } from '@lucide/svelte';
 
-	let {
-		editor,
-		settings,
-		onAddSource
-	}: { editor: EditorState; settings: SettingsState; onAddSource?: () => void } = $props();
+	let { session, onAddSource }: { session: Session; onAddSource?: () => void } = $props();
+
+	const settings = $derived(session.settings);
+	const editor = $derived(session.editors[0]);
 
 	let compactTabs = $derived(settings.get<boolean>('appearance.compact_tabs') ?? false);
 
@@ -53,12 +53,13 @@
 
 	// the bookmark shows its pick on a transient surface, not a tab: gone once you go elsewhere
 	function openUnitView(unitId: string, name: string, newTab = false) {
-		const existing = editor.tabs.find(
+		const target = newTab ? editor.aside : editor;
+		const existing = target.tabs.find(
 			(t) => t.content.type === 'view' && t.content.view.unit === unitId
 		);
-		if (existing) return editor.focusTab({ kind: 'tab', id: existing.id });
+		if (existing) return target.focusTab({ kind: 'tab', id: existing.id });
 		View.forUnit(unitId, name)
-			.then((v) => (newTab ? editor.openView(v) : editor.showPreview(TabState.forView(v))))
+			.then((v) => (newTab ? target.openView(v) : editor.showPreview(TabState.forView(v))))
 			.catch(console.error);
 	}
 
@@ -112,7 +113,7 @@
 				aux: {
 					icon: SquareArrowOutUpRight,
 					label: 'Open in new tab',
-					action: () => editor.openView(v)
+					action: () => editor.aside.openView(v)
 				},
 				action: () => editor.showPreview(TabState.forView(v))
 			})),
@@ -122,6 +123,7 @@
 	}
 
 	async function openBookmarks(e: MouseEvent) {
+		session.activate(editor, true);
 		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		try {
 			[bmSources, bmViews] = await Promise.all([listSources(), View.listSaved()]);
@@ -133,84 +135,145 @@
 	}
 
 	// ── Tab drag and drop ───────────────────────────────────────────────────────
-	let dragDocId: string | null = $state(null);
+	// Pinned tabs occupy the front of the strip; a divider separates them from the
+	// open tabs. Dragging reorders within a zone only — pinning is deliberate (the
+	// tab context menu), never an accident of dragging.
+	type Box = { left: number; top: number; width: number; height: number };
+
+	let navEl: HTMLElement | null = $state(null);
+	let dragFrom: EditorState | null = $state(null);
+	let dragTab: TabState | null = $state(null);
 	let dragDeltaX = $state(0);
 	let dropIndex = $state(-1);
 	let suppressTransition = $state(false);
 	let dragActive = $state(false);
+	let ghost: Box | null = $state(null);
+	let drop: { editor: EditorState | null; index: number; box: Box } | null = $state(null);
 	let originalIndex = -1;
+	let homeIndex = -1;
 	let dragStartX = 0;
-	let tabWidths: number[] = [];
-	let tabLefts: number[] = [];
-	let tabEls: HTMLElement[] = $state([]);
+	let dragStartY = 0;
+	let stripRects: DOMRect[] = [];
+	let tabRects: DOMRect[][] = [];
+	let paneRects: DOMRect[] = [];
 
 	const DRAG_THRESHOLD = 4;
+	const DETACH_SLOP = 12;
 
-	// Pinned tabs occupy the front of the strip; a divider separates them from the
-	// open tabs. Dragging reorders within a zone only — pinning is deliberate (the
-	// tab context menu), never an accident of dragging.
-	let pinnedCount = $derived(editor.tabs.filter((t) => t.pinned).length);
+	function rectsOf(root: ParentNode, selector: string): DOMRect[] {
+		return [...root.querySelectorAll(selector)].map((el) => el.getBoundingClientRect());
+	}
 
-	function onPointerDown(e: PointerEvent, index: number) {
+	function onPointerDown(e: PointerEvent, from: EditorState, index: number) {
 		if ((e.target as HTMLElement).closest('.close-btn')) return;
-		if (e.button !== 0) return;
-		const el = tabEls[index];
-		if (!el) return;
+		if (e.button !== 0 || !navEl) return;
 
 		e.preventDefault();
-		el.setPointerCapture(e.pointerId);
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		session.activate(from, true);
 
-		dragDocId = editor.tabs[index].id;
+		dragFrom = from;
+		dragTab = from.tabs[index];
 		dragStartX = e.clientX;
+		dragStartY = e.clientY;
 		dragDeltaX = 0;
 		dragActive = false;
 		originalIndex = index;
+		homeIndex = session.editors.indexOf(from);
 		dropIndex = index;
 
-		const els = tabEls.slice(0, editor.tabs.length);
-		tabWidths = els.map((t) => t?.getBoundingClientRect().width ?? 0);
-		tabLefts = els.map((t) => t?.getBoundingClientRect().left ?? 0);
+		stripRects = rectsOf(navEl, '.strip');
+		tabRects = [...navEl.querySelectorAll('.strip')].map((s) => rectsOf(s, '.tabs-scroll > .tab'));
+		paneRects = rectsOf(document, '.content-area');
+	}
+
+	function dropAt(x: number, y: number): typeof drop {
+		if (!dragFrom || !dragTab) return null;
+		const over = (rects: DOMRect[]) => rects.findIndex((r) => x >= r.left && x <= r.right);
+
+		if (y <= stripRects[homeIndex].bottom) {
+			const s = over(stripRects);
+			const target = session.editors[s];
+			const tabs = tabRects[s];
+			if (!target || target === dragFrom || !tabs.length) return null;
+			const pinned = target.pinnedCount;
+			const raw = tabs.filter((r) => x > r.left + r.width / 2).length;
+			const index = dragTab.pinned && s === 0 ? Math.min(raw, pinned) : Math.max(raw, pinned);
+			const edge = tabs[index]?.left ?? tabs[tabs.length - 1].right + 6;
+			const box = { left: edge - 4, top: stripRects[s].top + 10, width: 2, height: 24 };
+			return { editor: target, index, box };
+		}
+
+		if (paneRects.length === 1) {
+			const r = paneRects[0];
+			if (dragFrom.tabs.length < 2 || x < r.left + r.width / 2) return null;
+			const box = { left: r.left + r.width / 2, top: r.top, width: r.width / 2, height: r.height };
+			return { editor: null, index: 0, box };
+		}
+
+		const p = over(paneRects);
+		const target = session.editors[p];
+		if (!target || target === dragFrom) return null;
+		return { editor: target, index: target.tabs.length, box: paneRects[p] };
 	}
 
 	function onPointerMove(e: PointerEvent) {
-		if (dragDocId === null) return;
+		if (!dragFrom || !dragTab) return;
 
 		if (!dragActive) {
-			if (Math.abs(e.clientX - dragStartX) < DRAG_THRESHOLD) return;
+			if (Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY) < DRAG_THRESHOLD) return;
 			dragActive = true;
 		}
 
-		// A tab reorders only within its own pinned/unpinned zone
-		const draggedPinned = editor.tabs[originalIndex].pinned;
-		const zoneStart = draggedPinned ? 0 : pinnedCount;
-		const zoneEnd = draggedPinned ? pinnedCount - 1 : editor.tabs.length - 1;
+		const home = stripRects[homeIndex];
+		const own = tabRects[homeIndex];
 
-		const minDelta = tabLefts[zoneStart] - tabLefts[originalIndex];
-		const maxDelta =
-			tabLefts[zoneEnd] + tabWidths[zoneEnd] - (tabLefts[originalIndex] + tabWidths[originalIndex]);
+		if (e.clientY > home.bottom + DETACH_SLOP || e.clientX < home.left || e.clientX > home.right) {
+			const r = own[originalIndex];
+			ghost = {
+				left: r.left + e.clientX - dragStartX,
+				top: r.top + e.clientY - dragStartY,
+				width: r.width,
+				height: r.height
+			};
+			drop = dropAt(e.clientX, e.clientY);
+			dragDeltaX = 0;
+			dropIndex = originalIndex;
+			return;
+		}
+		ghost = null;
+		drop = null;
+
+		// A tab reorders only within its own pinned/unpinned zone
+		const pinnedCount = dragFrom.pinnedCount;
+		const zoneStart = dragTab.pinned ? 0 : pinnedCount;
+		const zoneEnd = dragTab.pinned ? pinnedCount - 1 : dragFrom.tabs.length - 1;
+
+		const minDelta = own[zoneStart].left - own[originalIndex].left;
+		const maxDelta = own[zoneEnd].right - own[originalIndex].right;
 		dragDeltaX = Math.max(minDelta, Math.min(maxDelta, e.clientX - dragStartX));
 
-		const draggedLeft = tabLefts[originalIndex] + dragDeltaX;
-		const draggedRight = draggedLeft + tabWidths[originalIndex];
+		const draggedLeft = own[originalIndex].left + dragDeltaX;
+		const draggedRight = draggedLeft + own[originalIndex].width;
 
 		let newIndex = originalIndex;
 		for (let i = originalIndex + 1; i <= zoneEnd; i++) {
-			if (draggedRight > tabLefts[i] + tabWidths[i] / 2) newIndex = i;
+			if (draggedRight > own[i].left + own[i].width / 2) newIndex = i;
 			else break;
 		}
 		for (let i = originalIndex - 1; i >= zoneStart; i--) {
-			if (draggedLeft < tabLefts[i] + tabWidths[i] / 2) newIndex = i;
+			if (draggedLeft < own[i].left + own[i].width / 2) newIndex = i;
 			else break;
 		}
 		dropIndex = newIndex;
 	}
 
-	function tabTransform(index: number): string {
-		if (dragDocId === null || !dragActive) return '';
+	function tabTransform(from: EditorState, index: number): string {
+		if (from !== dragFrom || !dragActive) return '';
 		if (index === originalIndex) return `translateX(${dragDeltaX}px)`;
 
 		const gap = 6;
-		const shift = tabWidths[originalIndex] + gap;
+		const shift = tabRects[homeIndex][originalIndex].width + gap;
 
 		if (dropIndex > originalIndex && index > originalIndex && index <= dropIndex) {
 			return `translateX(-${shift}px)`;
@@ -222,16 +285,21 @@
 	}
 
 	function endDrag() {
-		dragDocId = null;
+		dragFrom = null;
+		dragTab = null;
 		dragDeltaX = 0;
 		dragActive = false;
 		dropIndex = -1;
+		ghost = null;
+		drop = null;
 	}
 
 	function onPointerUp() {
-		if (dragDocId !== null && dropIndex !== originalIndex) {
+		if (dragFrom && dragTab && drop) {
+			session.moveTab(dragTab, dragFrom, drop.editor ?? session.beside(dragFrom), drop.index);
+		} else if (dragFrom && dropIndex !== originalIndex) {
 			suppressTransition = true;
-			editor.moveTab(originalIndex, dropIndex);
+			dragFrom.moveTab(originalIndex, dropIndex);
 			requestAnimationFrame(() => {
 				suppressTransition = false;
 			});
@@ -240,21 +308,29 @@
 	}
 
 	// ── Per-tab context menu ─────────────────────────────────────────────────────
-	function tabMenu(tab: TabState): CtxEntry[] {
+	function tabMenu(from: EditorState, tab: TabState): CtxEntry[] {
 		const pinned = tab.pinned;
+		const split = session.editors.length > 1;
+		const pin: CtxEntry = {
+			label: pinned ? 'Unpin' : 'Pin',
+			icon: pinned ? PinOff : Pin,
+			action: () => from.togglePin(tab.id)
+		};
 		return [
+			...(pinned || from === session.editors[0] ? [pin] : []),
 			{
-				label: pinned ? 'Unpin' : 'Pin',
-				icon: pinned ? PinOff : Pin,
-				action: () => editor.togglePin(tab.id)
+				label: split ? 'Move to other side' : 'Open to the side',
+				icon: Columns2,
+				action: () => session.moveTab(tab, from, session.beside(from)),
+				disabled: !split && from.tabs.length < 2
 			},
 			{ divider: true },
-			{ label: 'Close', icon: X, action: () => editor.closeTab(tab.id) },
+			{ label: 'Close', icon: X, action: () => from.closeTab(tab.id) },
 			{
 				label: 'Close all',
 				icon: CircleX,
-				action: () => editor.closeUnpinned(),
-				disabled: editor.tabs.every((t) => t.pinned)
+				action: () => from.closeUnpinned(),
+				disabled: from.tabs.every((t) => t.pinned)
 			}
 		];
 	}
@@ -282,123 +358,194 @@
 	</div>
 {/snippet}
 
-<nav class="nav-bar" class:mac={isMac} onmousedown={handleDrag}>
-	<!-- Leading: traffic lights on macOS, the logo drag handle elsewhere -->
-	{#if isMac}
-		<WindowControls style={windowStyle} native={nativeLights} />
-	{:else}
-		{@render grip()}
+{#snippet face(d: TabState, collapsed: boolean)}
+	{#if d.origin.type === 'view'}
+		{#if d.origin.view.emoji}
+			<span class="tab-emoji">{d.origin.view.emoji}</span>
+		{:else}
+			{@const TabIcon = getViewIcon(d.origin.view)}
+			<TabIcon size={13} />
+		{/if}
+	{:else if d.origin.type === 'new'}
+		<Bookmark size={13} />
+	{:else if d.origin.type === 'home'}
+		<House size={13} />
+	{:else if d.origin.type === 'licenses'}
+		<Scale size={13} />
+	{:else if !compactTabs || collapsed}
+		<TextAlignStart class="doc-icon" size={13} />
 	{/if}
+	<span class="tab-label">{d.origin.type === 'new' ? 'New project' : d.title}</span>
+{/snippet}
 
-	<!-- Pinned icon tabs -->
-	<div
-		class="tab icon-tab"
-		class:active={editor.isTabFocused(settingsTab)}
-		onclick={() => editor.focusTab(settingsTab)}
-		role="button"
-		tabindex="-1"
-	>
-		<Settings size={16} />
-	</div>
-	<!-- Bookmarks: a menu of places, not a tab -->
-	<div
-		class="tab icon-tab bookmarks"
-		class:active={editor.focused?.kind === 'preview'}
-		onclick={openBookmarks}
-		role="button"
-		tabindex="-1"
-	>
-		<Bookmark size={16} />
-		<ChevronDown size={12} strokeWidth={2} />
-	</div>
-
-	<!-- Divider -->
-	<div class="divider"></div>
-
-	<!-- Tabs -->
-	<div class="tabs-scroll">
-		{#each editor.tabs as d, i (d.id)}
-			{@const target: FocusTarget = {kind: 'tab', id: d.id}}
-			{#if i === pinnedCount && pinnedCount > 0}
-				<div class="pin-divider"></div>
-			{/if}
-			{@const collapsed = d.pinned && collapsePinned}
-			<div
-				class="tab"
-				class:active={editor.isTabFocused(target)}
-				class:pinned={d.pinned}
-				class:collapsed
-				class:dragging={dragActive && dragDocId === d.id}
-				class:no-transition={suppressTransition}
-				style:transform={tabTransform(i)}
-				title={collapsed ? d.title : null}
-				use:ctxMenu={() => tabMenu(d)}
-				onclick={() => editor.focusTab(target)}
-				onpointerdown={(e) => onPointerDown(e, i)}
-				onpointermove={onPointerMove}
-				onpointerup={onPointerUp}
-				onpointercancel={onPointerUp}
-				onlostpointercapture={onPointerUp}
-				bind:this={tabEls[i]}
-				role="button"
-				tabindex="-1"
-			>
-				{#if d.origin.type === 'view'}
-					{#if d.origin.view.emoji}
-						<span class="tab-emoji">{d.origin.view.emoji}</span>
-					{:else}
-						{@const TabIcon = getViewIcon(d.origin.view)}
-						<TabIcon size={13} />
-					{/if}
-				{:else if d.origin.type === 'new'}
-					<Bookmark size={13} />
-				{:else if d.origin.type === 'home'}
-					<House size={13} />
-				{:else if d.origin.type === 'licenses'}
-					<Scale size={13} />
-				{:else if !compactTabs || collapsed}
-					<TextAlignStart class="doc-icon" size={13} />
+<nav class="nav-bar" class:mac={isMac} onmousedown={handleDrag} bind:this={navEl}>
+	{#each session.editors as ed, s (ed)}
+		{@const pinnedCount = ed.pinnedCount}
+		<div class="strip" class:inactive={session.editors.length > 1 && session.active !== ed}>
+			{#if s === 0}
+				<!-- Leading: traffic lights on macOS, the logo drag handle elsewhere -->
+				{#if isMac}
+					<WindowControls style={windowStyle} native={nativeLights} />
+				{:else}
+					{@render grip()}
 				{/if}
-				<span class="tab-label">{d.origin.type === 'new' ? 'New project' : d.title}</span>
-				<span class="tab-fade"></span>
-				<span class="close-zone">
-					<button
-						class="close-btn"
-						title="Close tab"
-						tabindex="-1"
-						onclick={(e) => {
-							e.stopPropagation();
-							editor.closeTab(d.id);
-						}}
-					>
-						<X size={12} />
-					</button>
-				</span>
-			</div>
-		{/each}
-		<button class="new-tab-btn" title="New" tabindex="-1" onclick={() => palette.show()}>
-			<Plus size={15} />
-		</button>
-	</div>
 
-	<!-- Trailing: the logo is right-justified on macOS, controls elsewhere -->
-	{#if isMac}
-		{@render grip()}
-	{:else}
-		<WindowControls style={windowStyle} />
-	{/if}
+				<!-- Pinned icon tabs -->
+				<div
+					class="tab icon-tab"
+					class:active={ed.isTabFocused(settingsTab)}
+					onclick={() => {
+						session.activate(ed, true);
+						ed.focusTab(settingsTab);
+					}}
+					role="button"
+					tabindex="-1"
+				>
+					<Settings size={16} />
+				</div>
+				<!-- Bookmarks: a menu of places, not a tab -->
+				<div
+					class="tab icon-tab bookmarks"
+					class:active={ed.focused?.kind === 'preview'}
+					onclick={openBookmarks}
+					role="button"
+					tabindex="-1"
+				>
+					<Bookmark size={16} />
+					<ChevronDown size={12} strokeWidth={2} />
+				</div>
+
+				<!-- Divider -->
+				<div class="divider"></div>
+			{/if}
+
+			<!-- Tabs -->
+			<div class="tabs-scroll">
+				{#each ed.tabs as d, i (d.id)}
+					{@const target: FocusTarget = {kind: 'tab', id: d.id}}
+					{#if i === pinnedCount && pinnedCount > 0}
+						<div class="pin-divider"></div>
+					{/if}
+					{@const collapsed = d.pinned && collapsePinned}
+					<div
+						class="tab"
+						class:active={ed.isTabFocused(target)}
+						class:pinned={d.pinned}
+						class:collapsed
+						class:dragging={dragActive && dragTab === d}
+						class:lifted={!!ghost && dragTab === d}
+						class:no-transition={suppressTransition}
+						style:transform={tabTransform(ed, i)}
+						title={collapsed ? d.title : null}
+						use:ctxMenu={() => tabMenu(ed, d)}
+						onclick={() => {
+							if (ed.tabs.includes(d)) ed.focusTab(target);
+						}}
+						onpointerdown={(e) => onPointerDown(e, ed, i)}
+						onpointermove={onPointerMove}
+						onpointerup={onPointerUp}
+						onpointercancel={onPointerUp}
+						onlostpointercapture={onPointerUp}
+						role="button"
+						tabindex="-1"
+					>
+						{@render face(d, collapsed)}
+						<span class="tab-fade"></span>
+						<span class="close-zone">
+							<button
+								class="close-btn"
+								title="Close tab"
+								tabindex="-1"
+								onclick={(e) => {
+									e.stopPropagation();
+									ed.closeTab(d.id);
+								}}
+							>
+								<X size={12} />
+							</button>
+						</span>
+					</div>
+				{/each}
+				<button
+					class="new-tab-btn"
+					title="New"
+					tabindex="-1"
+					onclick={() => {
+						session.activate(ed);
+						palette.show();
+					}}
+				>
+					<Plus size={15} />
+				</button>
+			</div>
+
+			{#if s === session.editors.length - 1}
+				<!-- Trailing: the logo is right-justified on macOS, controls elsewhere -->
+				{#if isMac}
+					{@render grip()}
+				{:else}
+					<WindowControls style={windowStyle} />
+				{/if}
+			{/if}
+		</div>
+	{/each}
 </nav>
+
+{#if ghost && dragTab}
+	{@const collapsed = dragTab.pinned && collapsePinned}
+	<div
+		class="tab ghost"
+		class:collapsed
+		style:left="{ghost.left}px"
+		style:top="{ghost.top}px"
+		style:width="{ghost.width}px"
+	>
+		{@render face(dragTab, collapsed)}
+	</div>
+{/if}
+{#if drop}
+	<div
+		class="drop-zone"
+		style:left="{drop.box.left}px"
+		style:top="{drop.box.top}px"
+		style:width="{drop.box.width}px"
+		style:height="{drop.box.height}px"
+	></div>
+{/if}
 
 <style>
 	.nav-bar {
-		display: flex;
-		align-items: flex-end;
+		display: grid;
+		grid-template-columns: var(--pane-cols, 1fr);
 		height: 42px;
 		width: 100%;
 		background: transparent;
-		padding-left: 10px;
+		overflow: hidden;
+	}
+
+	.strip {
+		display: flex;
+		align-items: flex-end;
+		min-width: 0;
+		padding-left: 3px;
 		gap: 6px;
 		overflow: hidden;
+	}
+
+	.strip:not(:first-child) .tabs-scroll {
+		padding-left: 0;
+	}
+
+	.strip:not(:first-child) .tab.active:first-child::before {
+		display: none;
+	}
+
+	.strip:first-child {
+		padding-left: 10px;
+	}
+
+	.strip:not(:last-child) {
+		padding-right: 12px;
 	}
 
 	/* ── Drag handle ── */
@@ -421,7 +568,7 @@
 		margin-left: auto;
 	}
 
-	.nav-bar.mac {
+	.nav-bar.mac .strip:first-child {
 		padding-left: 12px;
 	}
 
@@ -493,6 +640,37 @@
 		opacity: 0.9;
 		transition: none;
 		cursor: grabbing;
+	}
+
+	.tab.lifted {
+		opacity: 0.35;
+	}
+
+	.tab.ghost {
+		position: fixed;
+		z-index: 60;
+		margin: 0;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+		opacity: 0.9;
+		pointer-events: none;
+	}
+
+	.tab.ghost.collapsed {
+		padding: 0;
+		justify-content: center;
+	}
+
+	.drop-zone {
+		position: fixed;
+		z-index: 59;
+		border-radius: 8px;
+		background: var(--accent-a14);
+		box-shadow: inset 0 0 0 1.5px var(--color-accent);
+		pointer-events: none;
+	}
+
+	.strip.inactive .tab.active {
+		color: var(--color-ui-muted);
 	}
 
 	.tabs-scroll .tab {

@@ -30,7 +30,7 @@
 		view: View;
 		face: ViewFace;
 		flow?: boolean;
-		onOpenRow?: (rowId: string, newTab?: boolean) => void;
+		onOpenRow?: (rowId: string, newTab?: boolean | 'side') => void;
 		createSignal?: number;
 		docPicker?: DocPicker;
 		tab?: TabState;
@@ -273,9 +273,9 @@
 		searchFace.config.keep_sort = true;
 	});
 
-	async function jumpToHit(id: string, newTab?: boolean) {
+	async function jumpToHit(id: string, newTab?: boolean | 'side') {
 		if (newTab) {
-			onOpenRow?.(id, true);
+			onOpenRow?.(id, newTab);
 			return;
 		}
 		let d: Date | null = null;

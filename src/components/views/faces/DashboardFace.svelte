@@ -39,7 +39,7 @@
 	}: {
 		view: View;
 		face: ViewFace;
-		onOpenRow?: (rowId: string, newTab?: boolean) => void;
+		onOpenRow?: (rowId: string, newTab?: boolean | 'side') => void;
 		onOpenUnit?: (id: string, name: string) => void;
 	} = $props();
 

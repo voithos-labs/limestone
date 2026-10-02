@@ -120,7 +120,7 @@ export const actions: Action[] = [
 		title: 'Next tab',
 		category: 'tabs',
 		defaultKeys: ['ctrl+tab', 'mod+]', 'mod+alt+arrowright'],
-		run: (session) => session.editors[0].focusAdjacentTab(1)
+		run: (session) => session.cycleTab(1)
 	},
 	{
 		id: 'tab.prev',
@@ -128,7 +128,7 @@ export const actions: Action[] = [
 		category: 'tabs',
 		// `mod+,` stays with settings, the way it reads on every other desktop app
 		defaultKeys: ['ctrl+shift+tab', 'mod+[', 'mod+alt+arrowleft'],
-		run: (session) => session.editors[0].focusAdjacentTab(-1)
+		run: (session) => session.cycleTab(-1)
 	},
 	{
 		id: 'tab.close',
@@ -136,7 +136,7 @@ export const actions: Action[] = [
 		category: 'tabs',
 		defaultKeys: ['mod+w'],
 		run: (session) => {
-			const ed = session.editors[0];
+			const ed = session.active;
 			const f = ed.focused;
 			if (f?.kind === 'tab' && !ed.isPinned(f.id)) ed.closeTab(f.id);
 		}
@@ -146,7 +146,29 @@ export const actions: Action[] = [
 		title: 'Reopen closed tab',
 		category: 'tabs',
 		defaultKeys: ['mod+shift+t'],
-		run: (session) => session.editors[0].reopenClosedTab()
+		run: (session) => session.active.reopenClosedTab()
+	},
+	{
+		id: 'tab.move_across',
+		title: 'Move tab to other side',
+		category: 'tabs',
+		defaultKeys: ['mod+\\'],
+		run: (session) => {
+			const ed = session.active;
+			const tab = ed.focusedTab;
+			if (!tab || tab === ed.preview) return;
+			if (session.editors.length > 1 || ed.tabs.length > 1)
+				session.moveTab(tab, ed, session.beside(ed));
+		}
+	},
+	{
+		id: 'pane.focus_other',
+		title: 'Focus other side',
+		category: 'tabs',
+		run: (session) => {
+			const other = session.active.peer;
+			if (other) session.activate(other, true);
+		}
 	},
 	{
 		id: 'doc.new',
@@ -155,7 +177,7 @@ export const actions: Action[] = [
 		defaultKeys: ['mod+n'],
 		run: async (session) => {
 			const doc = await DocHandle.createDraft();
-			if (doc) session.editors[0].openDoc(doc);
+			if (doc) session.active.openDoc(doc);
 		}
 	},
 	{
@@ -164,7 +186,7 @@ export const actions: Action[] = [
 		category: 'navigation',
 		defaultKeys: ['alt+arrowleft'],
 		run: (session) => {
-			const ed = session.editors[0];
+			const ed = session.active;
 			const tab = ed.focusedTab;
 			if (tab) ed.goBack(tab);
 		}
@@ -174,7 +196,7 @@ export const actions: Action[] = [
 		title: 'Open home',
 		category: 'navigation',
 		defaultKeys: ['mod+l'],
-		run: (session) => session.editors[0].openHome()
+		run: (session) => session.active.openHome()
 	},
 	{
 		id: 'nav.settings',
@@ -183,6 +205,9 @@ export const actions: Action[] = [
 		// Not Mod+I: the editor uses it for italic, and a key the editor takes never reaches this
 		// handler while a document has focus. Any replacement has to be one the editor leaves alone.
 		defaultKeys: ['mod+,'],
-		run: (session) => session.editors[0].focusTab({ kind: 'settings' })
+		run: (session) => {
+			session.activate(session.editors[0], true);
+			session.editors[0].focusTab({ kind: 'settings' });
+		}
 	}
 ];
