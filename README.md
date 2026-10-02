@@ -9,9 +9,8 @@ Note taking, tasks, projects, etc.
 
 ## Monthly major updates, see the new project overhaul:
 
-<img width="1031" height="803" alt="image" src="https://github.com/user-attachments/assets/38bf298d-936c-444c-8fac-6f92b26475e3" />
+<img width="987" height="766" alt="image" src="https://github.com/user-attachments/assets/1a3d7e50-6ffc-4274-9f76-82e3249acbc5" />
 
-<img width="1140" height="858" alt="image" src="https://github.com/user-attachments/assets/cf92bbef-0ce2-46c9-a3ac-d3cf2a1841dc" />
 
 ## Editor
 
