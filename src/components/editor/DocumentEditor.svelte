@@ -14,7 +14,7 @@
 	import { EDITOR_PLUGINS } from './editor-plugins';
 	import { isImageTarget } from './image-targets';
 	import { createPasteImportLedger } from './paste-imports';
-	import { convertFileSrc } from '@tauri-apps/api/core';
+	import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { deleteSourceAsset, importSourceAssetBytes } from '$lib/services/assets';
 	import { currentThemeType } from '$lib/services/theme.svelte';
@@ -401,6 +401,17 @@
 	function findTextTag(slug: string): void {
 		const place = nextTagPlace(textTags, slug);
 		if (place) void instance?.getRects().navigateTo(place.path, place.end);
+	}
+
+	async function removeTextTag(slug: string): Promise<void> {
+		if (!instance) return;
+		const body = await invoke<string | null>('strip_body_tag', {
+			body: instance.getSource(),
+			slug
+		});
+		if (body === null) return;
+		content = body;
+		await flushSave({ body });
 	}
 
 	let zoom = $state(
@@ -802,6 +813,7 @@
 			{onFolderMeta}
 			{textTags}
 			onTextTag={findTextTag}
+			onRemoveTextTag={removeTextTag}
 		/>
 	{/if}
 {/snippet}
@@ -836,6 +848,7 @@
 			{onFolderMeta}
 			{textTags}
 			onTextTag={findTextTag}
+			onRemoveTextTag={removeTextTag}
 		/>
 	{/if}
 	{#if loaded}

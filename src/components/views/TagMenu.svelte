@@ -8,7 +8,8 @@
 		ArrowLeft,
 		Check,
 		X,
-		EllipsisVertical
+		EllipsisVertical,
+		Pilcrow
 	} from '@lucide/svelte';
 	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import Tag, { tagId } from '$lib/models/Tag';
@@ -18,6 +19,7 @@
 		open = $bindable(false),
 		anchor,
 		selectedIds = [],
+		inText,
 		onToggle,
 		onCreate,
 		onMutated,
@@ -28,6 +30,7 @@
 		open: boolean;
 		anchor: HTMLElement | null;
 		selectedIds?: string[];
+		inText?: Map<string, number>;
 		onToggle: (tag: Tag) => void | Promise<void>;
 		onCreate?: (slug: string) => void | Promise<void>;
 		onMutated?: () => void;
@@ -83,6 +86,19 @@
 			!tags.some((t) => t.slug.toLowerCase() === query.trim().toLowerCase())
 	);
 	const navCount = $derived(filtered.length + (showCreate ? 1 : 0));
+
+	function matchParts(slug: string): [string, string, string] {
+		const q = query.trim().toLowerCase();
+		const i = q ? slug.toLowerCase().indexOf(q) : -1;
+		if (i < 0) return [slug, '', ''];
+		return [slug.slice(0, i), slug.slice(i, i + q.length), slug.slice(i + q.length)];
+	}
+
+	function textTitle(n: number): string {
+		return n === 1
+			? 'Written in the text. Unchecking removes its #'
+			: `Written in the text. Unchecking removes the # in ${n} places`;
+	}
 
 	async function reload() {
 		try {
@@ -273,6 +289,7 @@
 	$effect(() => {
 		const searching = query.trim() !== '';
 		if (hadQuery && !searching) untrack(snapshotOrder);
+		if (searching || hadQuery) activeIndex = searching ? 0 : -1;
 		hadQuery = searching;
 		if (open) queueMicrotask(position);
 	});
@@ -345,9 +362,15 @@
 							/>
 						</span>
 					{:else}
+						{@const [pre, hit, post] = matchParts(t.slug)}
+						{@const places = inText?.get(t.id)}
 						<button class="name" type="button" tabindex="-1" onclick={() => onToggle(t)}>
-							<span class="box" class:on><Check size={11} strokeWidth={3} /></span>
-							<span class="name-text" class:builtin={isBuiltinUnit(t.id)}>{t.slug}</span>
+							{#if on || i === activeIndex}
+								<span class="box" class:on><Check size={11} strokeWidth={3} /></span>
+							{:else}
+								<span class="lead"><Hash size={13} strokeWidth={1.75} /></span>
+							{/if}
+							<span class="name-text">{pre}<b>{hit}</b>{post}</span>
 						</button>
 						{#if !isBuiltinUnit(t.id)}
 							<button
@@ -359,6 +382,11 @@
 							>
 								<EllipsisVertical size={13} strokeWidth={1.75} />
 							</button>
+						{/if}
+						{#if places}
+							<span class="in-text" title={textTitle(places)}>
+								<Pilcrow size={12} strokeWidth={1.75} />
+							</span>
 						{/if}
 					{/if}
 				</div>
@@ -375,8 +403,9 @@
 					role="presentation"
 				>
 					<button class="name" type="button" tabindex="-1" onclick={create}>
-						<span class="box plus"><Plus size={11} strokeWidth={2.5} /></span>
-						<span class="name-text">Create <b>{query.trim()}</b></span>
+						<span class="lead"><Plus size={13} strokeWidth={2} /></span>
+						<span class="name-text">Create</span>
+						<span class="token"><Hash size={10} strokeWidth={2} />{query.trim()}</span>
 					</button>
 				</div>
 			{/if}
@@ -407,7 +436,7 @@
 		cursor: progress;
 	}
 
-	/* the field holds what's chosen as tokens, then the query; it's the whole top edge */
+	/* the query field is the whole top edge */
 	.field {
 		display: flex;
 		flex-wrap: wrap;
@@ -494,16 +523,9 @@
 	}
 
 	.name-text {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-
-	.name-text :global(svg) {
-		opacity: 0.6;
 	}
 
 	.name-text b {
@@ -511,11 +533,56 @@
 	}
 
 	.row.create .name-text {
+		flex: none;
 		color: var(--color-ui-muted);
 	}
 
 	.row.create.active .name-text {
 		color: var(--color-text-primary);
+	}
+
+	.token {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		min-width: 0;
+		height: 20px;
+		padding: 0 8px 0 6px;
+		border-radius: 999px;
+		background: var(--chip-bg);
+		color: var(--color-text-secondary);
+		font-size: 12px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.name .token :global(svg) {
+		color: inherit;
+		opacity: 0.7;
+	}
+
+	.lead {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 15px;
+		height: 15px;
+	}
+
+	.lead :global(svg) {
+		opacity: 0.7;
+	}
+
+	.in-text {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 22px;
+		height: 22px;
+		color: var(--color-ui-dulled);
+		cursor: default;
 	}
 
 	.name-input {
@@ -563,7 +630,7 @@
 		color: var(--color-text-primary);
 	}
 
-	/* a checkbox leads each row, as in any picker; the count trails */
+	/* checked, or under the pointer: the box replaces the # */
 	.box {
 		display: inline-flex;
 		align-items: center;
@@ -588,22 +655,6 @@
 	/* the row's icon rule would mute the tick; it stays white on the accent */
 	.box :global(svg) {
 		color: inherit;
-	}
-
-	.box.plus {
-		border-style: dashed;
-		color: var(--color-ui-muted);
-	}
-
-	.name-text.builtin {
-		color: var(--color-accent);
-	}
-
-	.count {
-		margin-left: auto;
-		padding-left: 8px;
-		font-size: 11px;
-		color: var(--color-ui-muted);
 	}
 
 	.row .more {

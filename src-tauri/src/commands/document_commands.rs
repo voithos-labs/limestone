@@ -1,8 +1,12 @@
 use crate::commands::source_commands::{doc_writes_meta, source_root};
-use crate::services::body::merge_body_tags;
+use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
 use crate::services::fs::{atomic_write, move_file, resolve_in_source, validate_file_name};
 use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
 use crate::AppData;
+use serde::Serialize;
+use serde_json::Value;
+use sqlx::SqlitePool;
+use std::path::Path;
 use tauri::{AppHandle, State};
 
 fn mtime(path: &std::path::Path) -> i64 {
@@ -12,6 +16,39 @@ fn mtime(path: &std::path::Path) -> i64 {
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+fn fm_tags(fm: Option<&Value>) -> Vec<String> {
+    fm.and_then(|fm| fm.get("tags"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn sync_file_tags(
+    db: &SqlitePool,
+    id: &str,
+    path: &Path,
+    mut tags: Vec<String>,
+) -> Result<(), String> {
+    if let Ok(contents) = std::fs::read_to_string(path) {
+        merge_body_tags(&mut tags, frontmatter::split_content(&contents).1);
+    }
+    let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+    sqlx::query("UPDATE documents SET mtime = ?1 WHERE id = ?2")
+        .bind(mtime(path))
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sync_tags(&mut tx, id, &tags)
+        .await
+        .map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -80,16 +117,7 @@ pub async fn write_document(
             .await
             .map_err(|e| e.to_string())?;
     if let Some(doc_id) = doc_id {
-        let mut tags: Vec<String> = fm
-            .as_ref()
-            .and_then(|fm| fm.get("tags"))
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let mut tags = fm_tags(fm.as_ref());
         merge_body_tags(&mut tags, body);
         sync_tags(&mut tx, &doc_id, &tags)
             .await
@@ -117,6 +145,11 @@ pub async fn write_document(
 
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn strip_body_tag(body: String, slug: String) -> Option<String> {
+    rewrite_tags(&body, &slug, None)
 }
 
 #[tauri::command]
@@ -156,23 +189,47 @@ pub async fn set_document_tags(
     })
     .map_err(|e| e.to_string())?;
 
-    let mut tags = tags;
-    if let Ok(contents) = std::fs::read_to_string(&full_path) {
-        merge_body_tags(&mut tags, frontmatter::split_content(&contents).1);
-    }
+    sync_file_tags(&app_data.db, &id, &full_path, tags).await
+}
 
-    let mut tx = app_data.db.begin().await.map_err(|e| e.to_string())?;
-    sqlx::query("UPDATE documents SET mtime = ?1 WHERE id = ?2")
-        .bind(mtime(&full_path))
-        .bind(&id)
-        .execute(&mut *tx)
-        .await
+#[derive(Serialize)]
+pub struct DocumentTags {
+    frontmatter: Vec<String>,
+    body: Vec<String>,
+}
+
+#[tauri::command]
+pub fn read_document_tags(
+    app: AppHandle,
+    source_id: String,
+    rel_path: String,
+) -> Result<DocumentTags, String> {
+    let root = source_root(&app, &source_id)?;
+    let full_path = resolve_in_source(&root, &rel_path).map_err(|e| e.to_string())?;
+    let contents = std::fs::read_to_string(&full_path).map_err(|e| e.to_string())?;
+    let (fm, body) = frontmatter::split_content(&contents);
+    Ok(DocumentTags {
+        frontmatter: fm_tags(fm.as_ref()),
+        body: tag_mentions(body),
+    })
+}
+
+#[tauri::command]
+pub async fn strip_document_tag(
+    app_data: State<'_, AppData>,
+    app: AppHandle,
+    id: String,
+    source_id: String,
+    rel_path: String,
+    slug: String,
+) -> Result<(), String> {
+    let root = source_root(&app, &source_id)?;
+    let full_path = resolve_in_source(&root, &rel_path).map_err(|e| e.to_string())?;
+    frontmatter::rewrite_document(&full_path, None, &|body| rewrite_tags(body, &slug, None))
         .map_err(|e| e.to_string())?;
-    sync_tags(&mut tx, &id, &tags)
-        .await
-        .map_err(|e| e.to_string())?;
-    tx.commit().await.map_err(|e| e.to_string())?;
-    Ok(())
+    let contents = std::fs::read_to_string(&full_path).map_err(|e| e.to_string())?;
+    let tags = fm_tags(frontmatter::split_content(&contents).0.as_ref());
+    sync_file_tags(&app_data.db, &id, &full_path, tags).await
 }
 
 #[tauri::command]

@@ -49,20 +49,32 @@
 	let tagMenuAnchor: HTMLElement | null = $state(null);
 	let tagRowId: string | null = $state(null);
 	let tagDraft: RowTag[] = $state([]);
+	let textTags: Map<string, number> = $state(new Map());
+
+	async function readTextTags(row: MemberRow) {
+		const counts = await rows.textTags(row);
+		if (tagRowId === row.id) textTags = counts;
+	}
 
 	export function tags(row: MemberRow, anchor: HTMLElement) {
 		tagRowId = row.id;
 		tagDraft = [...(rows.rowTags[row.id] ?? [])];
+		textTags = new Map();
+		void readTextTags(row);
 		tagMenuAnchor = anchor;
 		tagMenuOpen = true;
 	}
 
-	async function applyTags(slugs: string[]) {
+	async function applyTag(slug: string, on: boolean) {
 		const rowId = tagRowId;
 		if (!rowId) return;
-		const next = await rows.setTags(rowId, slugs);
+		const row = rows.rows.find((r) => r.id === rowId);
+		const next = await rows.setTag(rowId, slug, on);
 		if (!next) tagMenuOpen = false;
-		else if (tagRowId === rowId) tagDraft = next;
+		else if (tagRowId === rowId) {
+			tagDraft = next;
+			if (row) void readTextTags(row);
+		}
 	}
 
 	function toggleTag(tag: Tag) {
@@ -70,13 +82,13 @@
 		tagDraft = has
 			? tagDraft.filter((t) => t.id !== tag.id)
 			: [...tagDraft, { id: tag.id, slug: tag.slug }];
-		applyTags(tagDraft.map((t) => t.slug));
+		applyTag(tag.slug, !has);
 	}
 
 	function createTag(slug: string) {
 		const s = slug.trim();
 		if (!s || tagDraft.some((t) => t.slug === s)) return;
-		applyTags([...tagDraft.map((t) => t.slug), s]);
+		applyTag(s, true);
 	}
 
 	// ── Row menu ───────────────────────────────────────────────────────────────
@@ -128,12 +140,8 @@
 		if (!rowId) return;
 		if (value === 'open') onOpen?.(rowId);
 		else if (value === 'open-tab') onOpen?.(rowId, true);
-		else if (value === 'todo') await rows.setTags(rowId, [...rows.tagSlugsFor(rowId), 'todo']);
-		else if (value === 'untodo')
-			await rows.setTags(
-				rowId,
-				rows.tagSlugsFor(rowId).filter((s) => s !== 'todo')
-			);
+		else if (value === 'todo') await rows.setTag(rowId, 'todo', true);
+		else if (value === 'untodo') await rows.setTag(rowId, 'todo', false);
 		else if (value === 'confirm-delete') await rows.delete(rowId);
 	}
 
@@ -172,6 +180,7 @@
 	bind:open={tagMenuOpen}
 	anchor={tagMenuAnchor}
 	selectedIds={tagDraft.map((t) => t.id)}
+	inText={textTags}
 	onToggle={toggleTag}
 	onCreate={createTag}
 	onMutated={() => rows.load(true)}

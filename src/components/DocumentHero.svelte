@@ -54,7 +54,8 @@
 		showOpenFolder = true,
 		onFolderMeta,
 		textTags = [],
-		onTextTag
+		onTextTag,
+		onRemoveTextTag
 	}: {
 		handle: DocHandle;
 		onDelete?: () => void;
@@ -71,8 +72,9 @@
 		showOpenFolder?: boolean;
 		onFolderMeta?: (unitId: string, name: string) => void; // the folder, and its metadata setting
 		// tags written in the note's text; shown read-only, and a click finds them in the text
-		textTags?: { slug: string }[];
+		textTags?: { slug: string; places: unknown[] }[];
 		onTextTag?: (slug: string) => void;
+		onRemoveTextTag?: (slug: string) => Promise<void>;
 	} = $props();
 
 	let fmMenuOpen = $state(false);
@@ -123,7 +125,16 @@
 	}
 
 	async function toggleTag(tag: Tag) {
+		const inText = textTagPlaces.has(tag.id);
 		const has = tagList.some((t) => t.id === tag.id);
+		if (inText) {
+			try {
+				await onRemoveTextTag?.(tag.slug);
+			} catch (e) {
+				console.error('remove text tag failed', e);
+			}
+			if (!has) return;
+		}
 		const next = has ? tagList.filter((t) => t.id !== tag.id) : [...tagList, tag];
 		tagList = next;
 		try {
@@ -155,6 +166,7 @@
 	const isTodo = $derived(tagList.some((t) => t.id === TODO_ID));
 	const chipTags = $derived(tagList.filter((t) => t.id !== TODO_ID));
 	// a tag in both the frontmatter and the text is the frontmatter's chip, so it shows once
+	const textTagPlaces = $derived(new Map(textTags.map((t) => [tagId(t.slug), t.places.length])));
 	const textOnlyTags = $derived(
 		textTags.filter((t) => !tagList.some((x) => x.id === tagId(t.slug)))
 	);
@@ -664,7 +676,8 @@
 	bind:query={tagQuery}
 	inline
 	anchor={tagAnchor}
-	selectedIds={tagList.map((t) => t.id)}
+	selectedIds={[...tagList.map((t) => t.id), ...textTagPlaces.keys()]}
+	inText={textTagPlaces}
 	onToggle={toggleTag}
 	onCreate={createTag}
 	onMutated={tagsMutated}
