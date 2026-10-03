@@ -12,6 +12,7 @@
 		valueFor
 	} from '$lib/views/fieldValue';
 	import { formatDateCompact } from '$lib/views/dateFormat';
+	import { dueState } from '$lib/views/due';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import { listPrefixed } from '$lib/views/listLayout';
 	import type { FaceRows } from '$lib/views/FaceRows.svelte';
@@ -80,10 +81,13 @@
 	{@const has = hasValue(f)}
 	{#if rows.memberOf(row, f) && (has || editable(f))}
 		{@const Icon = getFieldIcon(f.type)}
+		{@const due = has ? dueState(row, f) : null}
 		<span
 			class="value"
 			class:chip={listPrefixed(f.type)}
 			class:date={isDate(f)}
+			class:due-today={due === 'today'}
+			class:overdue={due === 'overdue'}
 			class:empty={!has}
 			class:tag-slot={f.type === 'tags' && !has}
 			class:editable={editable(f)}
@@ -192,6 +196,24 @@
 		font-size: 13px;
 		color: var(--color-ui-muted);
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* a todo due today or overdue wears the error colour, label and all: it has to stand out
+	   in a list, and the accent doesn't */
+	.value.due-today,
+	.value.due-today .prefix,
+	.value.due-today :global(*),
+	.value.overdue,
+	.value.overdue .prefix,
+	.value.overdue :global(*) {
+		color: var(--error-fg);
+	}
+
+	.value.due-today.chip,
+	.value.due-today.chip.editable:hover,
+	.value.overdue.chip,
+	.value.overdue.chip.editable:hover {
+		background: var(--error-bg);
 	}
 
 	.value.date:not(.chip) {
