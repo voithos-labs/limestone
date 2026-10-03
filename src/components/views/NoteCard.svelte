@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Check, SquareArrowOutUpRight } from '@lucide/svelte';
+	import { Check, PanelRight } from '@lucide/svelte';
+	import { openHow } from '$lib/views/rowOpen';
 	import { startMove, endMove } from '$lib/views/dragMove';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
 	import type { FaceRows } from '$lib/views/FaceRows.svelte';
@@ -88,10 +89,7 @@
 	draggable={moveable}
 	ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 	ondragend={endMove}
-	onclick={(e) => {
-		const mod = e.ctrlKey || e.metaKey;
-		onOpen?.(row.id, mod && e.shiftKey ? 'side' : mod);
-	}}
+	onclick={(e) => onOpen?.(row.id, openHow(e))}
 	onauxclick={(e) => {
 		if (e.button === 1) onOpen?.(row.id, true);
 	}}
@@ -143,14 +141,14 @@
 			class="card-btn"
 			type="button"
 			tabindex="-1"
-			aria-label="Open in new tab"
-			title="Open in new tab"
+			aria-label="Open to the side"
+			title="Open to the side"
 			onclick={(e) => {
 				e.stopPropagation();
-				onOpen?.(row.id, true);
+				onOpen?.(row.id, 'side');
 			}}
 		>
-			<SquareArrowOutUpRight size={14} strokeWidth={1.75} />
+			<PanelRight size={14} strokeWidth={1.75} />
 		</button>
 	</div>
 

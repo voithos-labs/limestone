@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { untrack, type Component } from 'svelte';
 
 	let {
 		open = $bindable(false),
@@ -7,6 +7,7 @@
 		value,
 		inputType = 'text',
 		placeholder = '',
+		icon: Icon,
 		onChange
 	}: {
 		open: boolean;
@@ -14,6 +15,7 @@
 		value: string;
 		inputType?: 'text' | 'number' | 'date';
 		placeholder?: string;
+		icon?: Component;
 		onChange: (value: string) => void;
 	} = $props();
 
@@ -89,7 +91,10 @@
 
 {#if open}
 	<div class="pop" bind:this={popEl} style:top="{pos.top}px" style:left="{pos.left}px">
-		<input bind:this={inputEl} bind:value={draft} type={inputType} {placeholder} class="input" />
+		<div class="field" class:date={inputType === 'date'}>
+			{#if Icon}<span class="lead"><Icon size={14} strokeWidth={1.75} /></span>{/if}
+			<input bind:this={inputEl} bind:value={draft} type={inputType} {placeholder} class="input" />
+		</div>
 	</div>
 {/if}
 
@@ -105,24 +110,41 @@
 		font-family: var(--font-ui);
 	}
 
-	.input {
+	.field {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		width: 200px;
 		padding: 5px 8px;
 		border: 1px solid var(--color-border);
 		border-radius: 5px;
 		background: var(--color-bg);
+	}
+
+	.field:focus-within {
+		border-color: var(--focus-border);
+	}
+
+	.field.date {
+		width: 160px;
+	}
+
+	.lead {
+		display: inline-flex;
+		flex-shrink: 0;
+		color: var(--color-ui-muted);
+	}
+
+	.input {
+		flex: 1;
+		min-width: 0;
+		padding: 0;
+		border: 0;
+		background: transparent;
 		font-family: var(--font-ui);
 		font-size: 13px;
 		line-height: 1.4;
 		color: var(--color-text-primary);
 		outline: none;
-	}
-
-	.input:focus {
-		border-color: var(--focus-border);
-	}
-
-	.input[type='date'] {
-		width: 160px;
 	}
 </style>

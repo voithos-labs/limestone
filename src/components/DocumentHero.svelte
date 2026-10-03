@@ -48,7 +48,6 @@
 		handle,
 		onDelete,
 		onDuplicated,
-		compact = false,
 		loaded = true,
 		frontmatterError = null,
 		onFrontmatterFix,
@@ -66,7 +65,6 @@
 		handle: DocHandle;
 		onDelete?: () => void;
 		onDuplicated?: (copy: DocHandle) => void;
-		compact?: boolean;
 		loaded?: boolean;
 		frontmatterError?: string | null;
 		onFrontmatterFix?: (mode: 'keep' | 'rebuild') => void;
@@ -501,12 +499,14 @@
 </script>
 
 {#snippet place(p: Place)}
-	{#if p.emoji}
-		<span class="place-emoji">{p.emoji}</span>
-	{:else}
-		<p.icon size={12} strokeWidth={1.75} />
-	{/if}
-	<span class="place-label">{p.label}</span>
+	<span class="place">
+		{#if p.emoji}
+			<span class="place-emoji">{p.emoji}</span>
+		{:else}
+			<p.icon size={12} strokeWidth={1.75} />
+		{/if}
+		<span class="place-label">{p.label}</span>
+	</span>
 {/snippet}
 
 {#snippet backCard()}
@@ -521,14 +521,14 @@
 			>
 				{#if back}
 					<button class="chip" type="button" title={back.label} onclick={back.go}>
-						<ArrowLeft size={14} strokeWidth={2} />
+						<span class="arrow"><ArrowLeft size={14} strokeWidth={2} /></span>
 						{@render place(back)}
 					</button>
 				{/if}
 				{#if forward}
 					<button class="chip" type="button" title={forward.label} onclick={forward.go}>
 						{@render place(forward)}
-						<ArrowRight size={14} strokeWidth={2} />
+						<span class="arrow"><ArrowRight size={14} strokeWidth={2} /></span>
 					</button>
 				{/if}
 			</div>
@@ -537,7 +537,7 @@
 {/snippet}
 
 <div class="doc-hero">
-	<div class="hero-inner" class:compact bind:this={innerEl} bind:clientWidth={innerWidth}>
+	<div class="hero-inner" bind:this={innerEl} bind:clientWidth={innerWidth}>
 		{#if back || forward}{@render backCard()}{/if}
 		<div class="head-row">
 			<div class="title-line" bind:clientWidth={lineWidth}>
@@ -754,11 +754,7 @@
 		position: relative;
 		max-width: var(--page-max-width, 1200px);
 		margin: 0 auto;
-		padding: 34px 24px 20px;
-	}
-
-	.hero-inner.compact {
-		padding: 2px 24px 6px;
+		padding: 34px 24px 32px;
 	}
 
 	.meta-sep {
@@ -857,15 +853,10 @@
 	/* The slot is its own row above the title */
 	.back-slot {
 		position: absolute;
-		top: 5px;
+		top: 2px;
 		left: 24px;
 		right: 24px;
 		height: 24px;
-	}
-
-	.hero-inner.compact .back-slot {
-		position: static;
-		margin-bottom: 6px;
 	}
 
 	.nav {
@@ -882,14 +873,14 @@
 
 	.chip {
 		display: inline-flex;
-		align-items: center;
-		gap: 5px;
+		align-items: stretch;
 		min-width: 0;
 		max-width: 200px;
-		padding: 0 8px 0 7px;
+		padding: 0;
 		border: none;
 		border-radius: 6px;
 		background: var(--chip-bg);
+		overflow: hidden;
 		font-family: var(--font-ui);
 		font-size: 12px;
 		font-weight: 500;
@@ -904,10 +895,32 @@
 	}
 
 	.nav.floating .chip {
+		background: linear-gradient(var(--chip-bg), var(--chip-bg)), var(--color-surface);
 		box-shadow: var(--menu-shadow);
 	}
 
-	.chip > :global(svg) {
+	.nav.floating .chip:hover {
+		background: linear-gradient(var(--chip-bg-hover), var(--chip-bg-hover)), var(--color-surface);
+	}
+
+	.arrow {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		padding: 0 7px;
+		background: var(--accent-a14);
+		color: var(--color-accent);
+	}
+
+	.place {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		min-width: 0;
+		padding: 0 8px 0 7px;
+	}
+
+	.place > :global(svg) {
 		flex-shrink: 0;
 	}
 

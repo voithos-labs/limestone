@@ -10,6 +10,7 @@
 	} from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
+	import { openHow, type RowOpen } from '$lib/views/rowOpen';
 	import CellValue from './CellValue.svelte';
 
 	let {
@@ -31,7 +32,7 @@
 		image?: string;
 		matchIndices?: number[];
 		snippet?: string;
-		onOpen?: () => void;
+		onOpen?: (how: RowOpen) => void;
 	} = $props();
 
 	const titleHtml = $derived(highlightTitle(row.title || 'untitled', matchIndices));
@@ -68,7 +69,14 @@
 	const shown = $derived(fields.filter((f) => f.type !== 'title' && hasValue(f)));
 </script>
 
-<button class="face-card" type="button" onclick={() => onOpen?.()}>
+<button
+	class="face-card"
+	type="button"
+	onclick={(e) => onOpen?.(openHow(e))}
+	onauxclick={(e) => {
+		if (e.button === 1) onOpen?.(true);
+	}}
+>
 	<span class="fc-title">{@html titleHtml}</span>
 	{#if previewHtml}
 		<!-- prettier-ignore -->
