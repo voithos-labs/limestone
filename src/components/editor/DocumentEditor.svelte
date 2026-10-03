@@ -814,7 +814,6 @@
 			onDelete={deleteDoc}
 			onDuplicated={(d) => editor?.openDoc(d)}
 			{loaded}
-			compact={false}
 			{frontmatterError}
 			onFrontmatterFix={fixFrontmatter}
 			bind:propsOpen
@@ -850,7 +849,6 @@
 			onDelete={deleteDoc}
 			onDuplicated={(d) => editor?.openDoc(d)}
 			{loaded}
-			compact
 			{frontmatterError}
 			onFrontmatterFix={fixFrontmatter}
 			bind:propsOpen
@@ -904,6 +902,14 @@
 	.doc-editor.flow {
 		display: block;
 		height: auto;
+	}
+
+	/* In flow the host stacks entries and spaces them itself, so the hero's room above the
+	   title is pulled back past the host's own gap, and the room below it is a step tighter
+	   than on a page. */
+	.doc-editor.flow :global(.hero-inner) {
+		margin-top: -40px;
+		padding-bottom: 16px;
 	}
 
 	/* The app pane already draws the frame, and the native scrollbar would double up with

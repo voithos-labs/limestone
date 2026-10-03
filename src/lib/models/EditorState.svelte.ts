@@ -446,6 +446,10 @@ class EditorState {
 		this.showInTab(tab, { type: 'markdown', handle: doc }, state);
 	}
 
+	showSetupInTab(tab: TabState, state: Record<string, any> = {}) {
+		this.showInTab(tab, { type: 'new', id: uuidv4() }, state);
+	}
+
 	private showInTab(tab: TabState, content: TabContent, state: Record<string, any> = {}) {
 		if (TabState.idOf(content) === TabState.idOf(tab.content)) return;
 		tab.history.push({ content: tab.content, state: tab.state });

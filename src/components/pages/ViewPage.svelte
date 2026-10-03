@@ -2,7 +2,7 @@
 	import Folder, { folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
 	import Tag from '$lib/models/Tag';
 	import { isBuiltinUnit } from '$lib/models/View.svelte';
-	import InputPopover from '../views/InputPopover.svelte';
+	import NewFolderDialog from '../NewFolderDialog.svelte';
 	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { metaDialog } from '$lib/metaDialog.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
@@ -360,7 +360,6 @@
 	});
 
 	let newFolderOpen = $state(false);
-	let newFolderAnchor: HTMLElement | null = $state(null);
 	let fabEl: HTMLButtonElement | null = $state(null);
 
 	const fabItems = $derived.by(() => {
@@ -392,10 +391,7 @@
 	function onFabSelect(value: string) {
 		if (value === 'new-note') newNote();
 		else if (value === 'new-todo') void newDoc(true);
-		else if (value === 'new-folder') {
-			newFolderAnchor = fabEl;
-			newFolderOpen = true;
-		}
+		else if (value === 'new-folder') newFolderOpen = true;
 	}
 
 	const moreItems = $derived.by(() => {
@@ -471,8 +467,7 @@
 	});
 
 	async function createFolder(name: string) {
-		newFolderOpen = false;
-		if (!name || !view.unit) return;
+		if (!view.unit) return;
 		try {
 			const sourceId = folderIdSource(view.unit);
 			const path = folderIdPath(view.unit);
@@ -579,7 +574,7 @@
 		if (value === 'reveal') revealUnit();
 		if (value === 'meta' && view.unit) metaDialog.show(view.unit);
 		if (value === 'project' && view.unit)
-			openProjectSetup(editor, { id: view.unit, name: view.slug }, view.id);
+			openProjectSetup(editor, { id: view.unit, name: view.slug }, tab);
 		if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));
 	}
 
@@ -747,13 +742,7 @@
 	onSelect={onMoreSelect}
 	minWidth={170}
 />
-<InputPopover
-	bind:open={newFolderOpen}
-	anchor={newFolderOpen ? newFolderAnchor : null}
-	value=""
-	placeholder="New folder"
-	onChange={(v) => createFolder(String(v ?? ''))}
-/>
+<NewFolderDialog bind:open={newFolderOpen} onCreate={createFolder} />
 <SourceDialog bind:open={sourceDialogOpen} mode="edit" source={dialogSource} onSaved={() => {}} />
 <CoverSourceDialog
 	bind:open={coverDialogOpen}

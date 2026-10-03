@@ -46,7 +46,6 @@
 		handle,
 		onDelete,
 		onDuplicated,
-		compact = false,
 		loaded = true,
 		frontmatterError = null,
 		onFrontmatterFix,
@@ -64,7 +63,6 @@
 		handle: DocHandle;
 		onDelete?: () => void;
 		onDuplicated?: (copy: DocHandle) => void;
-		compact?: boolean;
 		loaded?: boolean;
 		frontmatterError?: string | null;
 		onFrontmatterFix?: (mode: 'keep' | 'rebuild') => void;
@@ -516,7 +514,7 @@
 {/snippet}
 
 <div class="doc-hero">
-	<div class="hero-inner" class:compact bind:this={innerEl} bind:clientWidth={innerWidth}>
+	<div class="hero-inner" bind:this={innerEl} bind:clientWidth={innerWidth}>
 		{#if back || forward}{@render backCard()}{/if}
 		<div class="head-row">
 			<div class="title-line" bind:clientWidth={lineWidth}>
@@ -727,11 +725,7 @@
 		position: relative;
 		max-width: var(--page-max-width, 1200px);
 		margin: 0 auto;
-		padding: 34px 24px 20px;
-	}
-
-	.hero-inner.compact {
-		padding: 2px 24px 6px;
+		padding: 34px 24px 32px;
 	}
 
 	.meta-sep {
@@ -834,11 +828,6 @@
 		left: 24px;
 		right: 24px;
 		height: 24px;
-	}
-
-	.hero-inner.compact .back-slot {
-		position: static;
-		margin-bottom: 6px;
 	}
 
 	.nav {

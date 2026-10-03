@@ -19,6 +19,8 @@
 	import ListFace from '../views/faces/ListFace.svelte';
 	import Menu from '../views/Menu.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
+	import NewFolderDialog from '../NewFolderDialog.svelte';
+	import frog from '$lib/frog.txt?raw';
 	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { metaDialog } from '$lib/metaDialog.svelte';
 	import { isMove, readMove, movingNow, moveInto, type MovePayload } from '$lib/views/dragMove';
@@ -26,6 +28,7 @@
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
 	import NewFab from '../views/NewFab.svelte';
+	import { contextMenu } from '$lib/contextMenu.svelte';
 	import { createInView } from '$lib/views/FaceRows.svelte';
 	import {
 		ChevronRight,
@@ -240,10 +243,12 @@
 	// ── Sections fold; the folded set lives on the tab so it survives navigation ──
 	type SectionId = 'projects' | 'folders' | 'files';
 	const folded = $derived((tab?.state.folded as Record<string, boolean> | undefined) ?? {});
+
 	function toggleFold(id: SectionId) {
 		if (!tab) return;
 		tab.state.folded = { ...folded, [id]: !folded[id] };
 	}
+
 	let selectedFolder: string | null = $state(null);
 	let foldersShowAll = $state(false);
 	let foldersHidden = $state(0);
@@ -282,10 +287,9 @@
 	let menuEl: HTMLElement | null = $state(null);
 	let nameOpen = $state(false);
 	let sourceDialogOpen = $state(false);
-	let nameMode: 'new-folder' | 'rename' = $state('new-folder');
+	let newFolderOpen = $state(false);
 
 	let fabEl: HTMLButtonElement | null = $state(null);
-	let nameAnchor: HTMLElement | null = $state(null);
 	const fabItems = [
 		{ value: 'new-note', label: 'New note', icon: FilePlus },
 		{ value: 'new-todo', label: 'New todo', icon: SquareCheck },
@@ -304,11 +308,23 @@
 	}
 
 	function onFabSelect(value: string) {
-		if (value === 'new-folder') {
-			nameMode = 'new-folder';
-			nameAnchor = fabEl;
-			nameOpen = true;
-		} else void newDoc(value === 'new-todo');
+		if (value === 'new-folder') newFolderOpen = true;
+		else void newDoc(value === 'new-todo');
+	}
+
+	// the blank page is the FAB's menu, where the pointer is
+	function onBodyContextMenu(e: MouseEvent) {
+		if ((e.target as Element).closest('.head, button, input, a')) return;
+		e.preventDefault();
+		contextMenu.show(
+			e.clientX,
+			e.clientY,
+			fabItems.map((it) => ({
+				label: it.label,
+				icon: it.icon,
+				action: () => onFabSelect(it.value)
+			}))
+		);
 	}
 
 	let confirmingDelete = $state(false);
@@ -382,8 +398,6 @@
 		menuOpen = false;
 		switch (value) {
 			case 'rename':
-				nameMode = 'rename';
-				nameAnchor = menuEl;
 				nameOpen = true;
 				break;
 			case 'reveal':
@@ -396,7 +410,7 @@
 				metaDialog.show(unitId);
 				break;
 			case 'project':
-				openProjectSetup(editor, { id: unitId, name: crumbs.at(-1)?.slug ?? view.slug }, view.id);
+				openProjectSetup(editor, { id: unitId, name: crumbs.at(-1)?.slug ?? view.slug }, tab);
 				break;
 			case 'unproject':
 				await view.unsave();
@@ -408,31 +422,35 @@
 		}
 	}
 
+	async function createFolder(name: string) {
+		try {
+			const created = await Folder.create(name, sourceId, path ? { id: unitId, path } : undefined);
+			await loadFolders();
+			show(created.id, created.slug);
+		} catch (e) {
+			toasts.push(Folder.describeOpError(e, "That folder couldn't be created."));
+		}
+	}
+
 	async function commitName(raw: string) {
 		const name = raw.trim();
 		nameOpen = false;
 		if (!name) return;
 		try {
-			if (nameMode === 'new-folder') {
-				const created = await Folder.create(
-					name,
-					sourceId,
-					path ? { id: unitId, path } : undefined
-				);
-				await loadFolders();
-				show(created.id, created.slug);
-			} else {
-				const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
-				const newId = await Folder.move(sourceId, path, `${parent}${name}`);
-				const f = await Folder.fromID(newId);
-				show(newId, f.slug);
-			}
+			const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
+			const newId = await Folder.move(sourceId, path, `${parent}${name}`);
+			const f = await Folder.fromID(newId);
+			show(newId, f.slug);
 		} catch (e) {
 			toasts.push(Folder.describeOpError(e, "That couldn't be done."));
 		}
 	}
 
 	let bodyEl: HTMLDivElement | null = $state(null);
+
+	// nothing here at all: no search, no folders, and the list came back empty
+	let fileTotal: number | null = $state(null);
+	const bare = $derived(!query && children.length === 0 && fileTotal === 0);
 </script>
 
 {#snippet fold(id: SectionId, label: string)}
@@ -443,8 +461,14 @@
 {/snippet}
 
 <div class="folder-page">
-	<div class="body" bind:this={bodyEl}>
-		<div class="inner">
+	<div
+		class="body"
+		class:bare
+		bind:this={bodyEl}
+		oncontextmenu={onBodyContextMenu}
+		role="presentation"
+	>
+		<div class="inner" class:bare>
 			<header class="head">
 				<span class="place-icon">
 					{#if isRoot}<FolderInput size={18} strokeWidth={1.75} />{:else}<FolderIcon
@@ -463,7 +487,9 @@
 						ondragleave={() => overCrumb === '' && (overCrumb = null)}
 						ondrop={(e) => onCrumbDrop(e, '')}
 					>
-						{#if root?.repo}<GitBranch size={13} strokeWidth={1.75} />{/if}
+						{#if root?.repo}
+							<GitBranch size={13} strokeWidth={1.75} />
+						{/if}
 						{source ? sourceName(source) : ''}
 					</button>
 					{#each crumbs as c, i (c.path)}
@@ -478,10 +504,9 @@
 							ondragleave={() => overCrumb === c.path && (overCrumb = null)}
 							ondrop={(e) => onCrumbDrop(e, c.path)}
 						>
-							{#if folders.find((f) => f.id === `folder:${sourceId}:${c.path}`)?.repo}<GitBranch
-									size={13}
-									strokeWidth={1.75}
-								/>{/if}
+							{#if folders.find((f) => f.id === `folder:${sourceId}:${c.path}`)?.repo}
+								<GitBranch size={13} strokeWidth={1.75} />
+							{/if}
 							{c.slug}
 						</button>
 					{/each}
@@ -546,10 +571,11 @@
 							type="button"
 							onclick={() => (foldersShowAll = !foldersShowAll)}
 						>
-							{#if foldersShowAll}<ChevronUp size={13} strokeWidth={1.75} />{:else}<ChevronDown
-									size={13}
-									strokeWidth={1.75}
-								/>{/if}
+							{#if foldersShowAll}
+								<ChevronUp size={13} strokeWidth={1.75} />
+							{:else}
+								<ChevronDown size={13} strokeWidth={1.75} />
+							{/if}
 							<span>{foldersShowAll ? 'fewer' : `${foldersHidden} more`}</span>
 						</button>
 					{/if}
@@ -609,7 +635,21 @@
 				</span>
 			</div>
 			{#if face && !folded.files}
-				<ListFace {view} {face} {onOpenRow} {scope} moveable editable={false} />
+				<ListFace
+					{view}
+					{face}
+					{onOpenRow}
+					{scope}
+					moveable
+					editable={false}
+					onTotal={(n) => (fileTotal = n)}
+				/>
+			{/if}
+			{#if bare}
+				<div class="nothing">
+					<pre class="frog">{frog}</pre>
+					<p class="bare-text">pretty empty...</p>
+				</div>
 			{/if}
 		</div>
 	</div>
@@ -645,11 +685,13 @@
 />
 <InputPopover
 	bind:open={nameOpen}
-	anchor={nameOpen ? nameAnchor : null}
-	value={nameMode === 'rename' ? (crumbs.at(-1)?.slug ?? '') : ''}
-	placeholder={nameMode === 'rename' ? 'Folder name' : 'New folder'}
+	anchor={nameOpen ? menuEl : null}
+	value={crumbs.at(-1)?.slug ?? ''}
+	placeholder="Folder name"
+	icon={FolderIcon}
 	onChange={(v) => commitName(String(v ?? ''))}
 />
+<NewFolderDialog bind:open={newFolderOpen} onCreate={createFolder} />
 
 <style>
 	.folder-page {
@@ -861,8 +903,48 @@
 		padding: 16px 16px 0 24px;
 	}
 
+	/* an empty folder fills the page so the frog can sit in the middle of what's left */
+	.body.bare {
+		padding-bottom: 0;
+	}
+
+	.inner.bare {
+		display: flex;
+		flex-direction: column;
+		box-sizing: border-box;
+		min-height: 100%;
+	}
+
 	.strip {
 		margin: 0 24px 6px;
+	}
+
+	.nothing {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 16px;
+		margin: 0 24px;
+		padding-bottom: 48px;
+		color: var(--color-ui-dulled);
+	}
+
+	.frog {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		line-height: 1.2;
+		white-space: pre;
+		user-select: none;
+	}
+
+	.bare-text {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 12px;
+		color: var(--color-ui-muted);
 	}
 
 	.section-label {

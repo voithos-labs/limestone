@@ -21,6 +21,10 @@
 		onChange: (value: unknown, folderDir?: string) => void;
 		onRenameOption?: (oldValue: string, newValue: string) => void;
 	} = $props();
+
+	const isDate = $derived(
+		field.type === 'date' || field.type === 'created_at' || field.type === 'updated_at'
+	);
 </script>
 
 {#if field.type === 'select' || field.type === 'multiselect'}
@@ -54,7 +58,7 @@
 		{value}
 		onChange={(v) => {
 			onChange(v);
-			open = false;
+			if (!isDate) open = false;
 		}}
 	/>
 {/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { ChevronLeft, ChevronRight, Clock, X } from '@lucide/svelte';
+	import { ChevronLeft, ChevronRight, Clock } from '@lucide/svelte';
+	import Toggle from '../Toggle.svelte';
 	import { isRelativeDate, resolveRelativeDate } from '$lib/views/dateFormat';
 
 	let {
@@ -80,6 +81,7 @@
 			h = Math.max(1, Math.min(12, h));
 			hh = (h % 12) + (meridiem === 'PM' ? 12 : 0);
 		}
+		commit();
 	}
 
 	function changeMeridiem(next: '24' | 'AM' | 'PM') {
@@ -90,6 +92,7 @@
 		const base = hh % 12;
 		hh = next === 'PM' ? base + 12 : base;
 		meridiem = next;
+		commit();
 	}
 
 	let viewYear = $state(new Date().getFullYear());
@@ -261,10 +264,8 @@
 			hh = p.hh;
 			mm = pad(p.mm);
 		}
-		if (!showTime) {
-			onChange(compose());
-			open = false;
-		}
+		commit();
+		if (!showTime) open = false;
 	}
 
 	const cells = $derived.by(() => {
@@ -322,21 +323,22 @@
 		return showTime ? `${date}T${pad(hh)}:${clampMM(mm)}` : date;
 	}
 
+	let lastSent: string | null = null;
+
+	function commit() {
+		const v = compose();
+		if (v === null || v === lastSent) return;
+		lastSent = v;
+		onChange(v);
+	}
+
 	function pickDay(c: { y: number; m: number; d: number }) {
 		relToken = null;
 		selY = c.y;
 		selM = c.m;
 		selD = c.d;
-		if (!showTime) {
-			onChange(compose());
-			open = false;
-		}
-		// with time: stay open, user adjusts time then Apply
-	}
-
-	function apply() {
-		onChange(compose());
-		open = false;
+		commit();
+		if (!showTime) open = false;
 	}
 
 	function setNow() {
@@ -350,10 +352,8 @@
 			hh = n.getHours();
 			mm = pad(n.getMinutes());
 		}
-		if (!showTime) {
-			onChange(compose());
-			open = false;
-		}
+		commit();
+		if (!showTime) open = false;
 	}
 
 	function clear() {
@@ -361,13 +361,14 @@
 		open = false;
 	}
 
-	function addTime() {
-		hasTime = true;
+	function setTime(on: boolean) {
+		hasTime = on;
 		const n = new Date();
-		if (hh === 0 && mm === '00') {
+		if (on && hh === 0 && mm === '00') {
 			hh = n.getHours();
 			mm = pad(n.getMinutes());
 		}
+		commit();
 	}
 
 	function clampMM(v: string): string {
@@ -411,6 +412,7 @@
 				// default to the locale's 12/24h preference
 				meridiem = prefers24h() ? '24' : hh >= 12 ? 'PM' : 'AM';
 				textValue = relToken ?? selectionText();
+				lastSent = relToken ? null : compose();
 				cursor = null;
 			});
 			requestAnimationFrame(() => {
@@ -453,7 +455,7 @@
 	});
 
 	function position() {
-		if (!anchor || !popEl) return;
+		if (!anchor?.isConnected || !popEl) return;
 		const a = anchor.getBoundingClientRect();
 		const m = popEl.getBoundingClientRect();
 		const margin = 4;
@@ -544,10 +546,13 @@
 		/>
 
 		<div class="head">
+			<span class="title">{MONTHS[viewMonth]} {viewYear}</span>
+			<button type="button" class="today-btn" onclick={setNow}>
+				{mode === 'datetime' ? 'Now' : 'Today'}
+			</button>
 			<button type="button" class="nav" aria-label="Previous month" onclick={prevMonth}>
 				<ChevronLeft size={15} strokeWidth={2} />
 			</button>
-			<span class="title">{MONTHS[viewMonth]} {viewYear}</span>
 			<button type="button" class="nav" aria-label="Next month" onclick={nextMonth}>
 				<ChevronRight size={15} strokeWidth={2} />
 			</button>
@@ -574,67 +579,66 @@
 			{/each}
 		</div>
 
-		{#if showTime}
-			<div class="time-row">
-				<span class="clock" title="Times shown in {tzLabel}"
-					><Clock size={13} strokeWidth={1.75} /></span
-				>
-				<input
-					class="time-input"
-					inputmode="numeric"
-					maxlength="2"
-					value={displayHour}
-					onblur={(e) => commitHour((e.currentTarget as HTMLInputElement).value)}
-				/>
-				<span class="colon">:</span>
-				<input
-					class="time-input"
-					inputmode="numeric"
-					maxlength="2"
-					bind:value={mm}
-					onblur={() => (mm = clampMM(mm))}
-				/>
-				<select
-					class="meridiem"
-					value={meridiem}
-					onchange={(e) =>
-						changeMeridiem((e.currentTarget as HTMLSelectElement).value as '24' | 'AM' | 'PM')}
-				>
-					<option value="24">24h</option>
-					<option value="AM">AM</option>
-					<option value="PM">PM</option>
-				</select>
-				<button type="button" class="apply" onclick={apply} disabled={!hasSelection}>Apply</button>
-			</div>
-		{/if}
-
-		<div class="foot">
-			<button type="button" class="foot-btn" onclick={setNow}>
-				{mode === 'datetime' ? 'Now' : 'Today'}
-			</button>
-			<div class="foot-right">
-				{#if allowTime && mode === 'date' && !hasTime}
-					<button type="button" class="foot-btn" onclick={addTime}>
-						<Clock size={12} strokeWidth={1.75} />
-						Add time
-					</button>
+		{#if (allowTime && mode === 'date') || showTime || (hasSelection && clearable)}
+			<div class="opts">
+				{#if allowTime && mode === 'date'}
+					<div class="opt">
+						<span>Include time</span>
+						<Toggle bind:checked={() => hasTime, setTime} />
+					</div>
+				{/if}
+				{#if showTime}
+					<div class="time-row">
+						<span class="clock" title="Times shown in {tzLabel}"
+							><Clock size={13} strokeWidth={1.75} /></span
+						>
+						<input
+							class="time-input"
+							inputmode="numeric"
+							maxlength="2"
+							value={displayHour}
+							onblur={(e) => commitHour((e.currentTarget as HTMLInputElement).value)}
+						onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+						/>
+						<span class="colon">:</span>
+						<input
+							class="time-input"
+							inputmode="numeric"
+							maxlength="2"
+							bind:value={mm}
+							onblur={() => {
+							mm = clampMM(mm);
+							commit();
+						}}
+						onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+						/>
+						<select
+							class="meridiem"
+							value={meridiem}
+							onchange={(e) =>
+								changeMeridiem((e.currentTarget as HTMLSelectElement).value as '24' | 'AM' | 'PM')}
+						>
+							<option value="24">24h</option>
+							<option value="AM">AM</option>
+							<option value="PM">PM</option>
+						</select>
+					</div>
 				{/if}
 				{#if hasSelection && clearable}
-					<button type="button" class="foot-btn muted" onclick={clear}>
-						<X size={12} strokeWidth={2} />
-						Clear
-					</button>
+					<button type="button" class="opt opt-btn" onclick={clear}>Clear</button>
 				{/if}
 			</div>
-		</div>
+		{/if}
 	</div>
 {/if}
 
 <style>
 	.pop {
+		--cell: 32px;
 		position: fixed;
 		z-index: 1000;
-		width: 232px;
+		box-sizing: border-box;
+		width: calc(var(--cell) * 7 + 18px);
 		max-height: calc(100vh - 16px);
 		overflow-y: auto;
 		background: var(--color-bg);
@@ -648,6 +652,7 @@
 	}
 
 	.date-text {
+		box-sizing: border-box;
 		width: 100%;
 		margin-bottom: 8px;
 		padding: 6px 8px;
@@ -676,21 +681,37 @@
 	.head {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		padding: 0 2px 6px;
+		gap: 2px;
+		padding: 0 0 4px 6px;
 	}
 
 	.title {
-		font-size: 12px;
+		flex: 1;
+		font-size: 13px;
 		font-weight: 600;
+	}
+
+	.today-btn {
+		height: 24px;
+		padding: 0 6px;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		font: inherit;
+		font-size: 12px;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
 	.nav {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 22px;
-		height: 22px;
+		width: 24px;
+		height: 24px;
 		padding: 0;
 		border: 0;
 		border-radius: 5px;
@@ -702,6 +723,7 @@
 			color 120ms ease;
 	}
 
+	.today-btn:hover,
 	.nav:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
@@ -709,14 +731,14 @@
 
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(7, 1fr);
+		grid-template-columns: repeat(7, var(--cell));
 	}
 
 	.weekday {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		height: 22px;
+		height: 24px;
 		font-size: 10px;
 		font-weight: 500;
 		color: var(--color-ui-dulled);
@@ -726,13 +748,15 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		height: 28px;
+		width: var(--cell);
+		height: var(--cell);
 		padding: 0;
 		border: 0;
-		border-radius: 6px;
+		border-radius: 7px;
 		background: transparent;
 		font: inherit;
 		font-size: 12px;
+		font-variant-numeric: tabular-nums;
 		color: var(--color-text-primary);
 		cursor: pointer;
 		transition:
@@ -749,26 +773,65 @@
 	}
 
 	.day.today {
-		font-weight: 700;
+		box-shadow: inset 0 0 0 1.5px var(--color-accent);
+		font-weight: 600;
 	}
 
 	.day.selected,
 	.day.selected:hover {
 		background: var(--color-accent);
 		color: var(--color-accent-contrast);
+		box-shadow: none;
 	}
 
 	.day.cursor:not(.selected) {
 		background: var(--chip-bg-hover);
 	}
 
+	.opts {
+		display: flex;
+		flex-direction: column;
+		margin-top: 6px;
+		padding-top: 6px;
+		border-top: 1px solid var(--menu-search-divider);
+	}
+
+	.opt {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		height: 30px;
+		padding: 0 6px;
+		border-radius: 6px;
+		font-size: 12.5px;
+		color: var(--color-text-primary);
+	}
+
+	.opt-btn {
+		width: 100%;
+		border: 0;
+		background: transparent;
+		font: inherit;
+		font-size: 12.5px;
+		color: var(--color-ui-muted);
+		text-align: left;
+		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
+	}
+
+	.opt-btn:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
 	.time-row {
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		margin-top: 6px;
-		padding-top: 6px;
-		border-top: 1px solid var(--menu-search-divider);
+		height: 32px;
+		padding: 0 2px 0 6px;
 		color: var(--color-ui-muted);
 	}
 
@@ -780,6 +843,7 @@
 		background: var(--color-bg);
 		font: inherit;
 		font-size: 12px;
+		font-variant-numeric: tabular-nums;
 		text-align: center;
 		color: var(--color-text-primary);
 		outline: none;
@@ -813,63 +877,5 @@
 
 	.meridiem:focus {
 		border-color: var(--focus-border);
-	}
-
-	.apply {
-		margin-left: auto;
-		padding: 4px 10px;
-		border: 0;
-		border-radius: 5px;
-		background: var(--color-accent);
-		font: inherit;
-		font-size: 12px;
-		color: var(--color-accent-contrast);
-		cursor: pointer;
-	}
-
-	.apply:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-
-	.foot {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 6px;
-		margin-top: 6px;
-		padding-top: 6px;
-		border-top: 1px solid var(--menu-search-divider);
-	}
-
-	.foot-right {
-		display: flex;
-		gap: 2px;
-	}
-
-	.foot-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 4px 8px;
-		border: 0;
-		border-radius: 5px;
-		background: transparent;
-		font: inherit;
-		font-size: 12px;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-		transition:
-			background-color 120ms ease,
-			color 120ms ease;
-	}
-
-	.foot-btn:hover {
-		background: var(--chip-bg-hover);
-		color: var(--color-text-primary);
-	}
-
-	.foot-btn.muted {
-		color: var(--color-ui-dulled);
 	}
 </style>

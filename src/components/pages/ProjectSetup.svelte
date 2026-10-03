@@ -336,6 +336,11 @@
 					and turn it into a project.
 				{/if}
 			</p>
+			{#if tab.back}
+				<button class="cancel" type="button" disabled={busy} onclick={() => editor.goBack(tab)}>
+					Cancel
+				</button>
+			{/if}
 			<button
 				class="create"
 				type="button"
@@ -623,6 +628,32 @@
 
 	.link:hover {
 		color: var(--color-text-primary);
+	}
+
+	.cancel {
+		flex-shrink: 0;
+		height: 34px;
+		padding: 0 14px;
+		border: none;
+		border-radius: 8px;
+		background: var(--chip-bg);
+		font: inherit;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		transition:
+			background-color 100ms ease,
+			color 100ms ease;
+	}
+
+	.cancel:hover:not(:disabled) {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.cancel + .create {
+		margin-left: -14px;
 	}
 
 	.create {
