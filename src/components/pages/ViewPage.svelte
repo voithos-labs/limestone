@@ -592,9 +592,10 @@
 	function onOpenRow(rowId: string, newTab: boolean | 'side' = false) {
 		DocHandle.fromID(rowId)
 			.then((d) => {
-				if (newTab === 'side') editor.beside().openDoc(d);
+				const content = { type: 'markdown', handle: d } as const;
+				if (newTab === 'side') editor.beside().openDetail(content, view.slug);
 				else if (newTab || !tab) editor.openDoc(d);
-				else if (editor.peer) editor.peer.openDetail({ type: 'markdown', handle: d }, view.slug);
+				else if (editor.peer) editor.peer.openDetail(content, view.slug);
 				else editor.showDocInTab(tab, d);
 			})
 			.catch(console.error);

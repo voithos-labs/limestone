@@ -38,7 +38,7 @@
 	}: {
 		view: View;
 		face: ViewFace;
-		onOpenRow?: (rowId: string, newTab?: boolean) => void;
+		onOpenRow?: (rowId: string, newTab?: boolean | 'side') => void;
 		createSignal?: number;
 		scope?: FilterNode | null;
 		createCard?: boolean;
@@ -434,7 +434,7 @@
 							image={images[row.id] ?? ''}
 							matchIndices={searchHits[row.id]?.match_indices ?? []}
 							snippet={searchHits[row.id]?.snippet ?? ''}
-							onOpen={() => onOpenRow?.(row.id)}
+							onOpen={(how) => onOpenRow?.(row.id, how)}
 						/>
 					{/if}
 				</div>

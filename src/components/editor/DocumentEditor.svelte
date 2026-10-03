@@ -696,14 +696,14 @@
 			touchLinkIndex();
 		}
 		const state = heading ? { [OPEN_AT_HEADING]: heading } : {};
-		if (side) editor.beside().openDoc(doc, state);
+		if (side) editor.beside().openDetail({ type: 'markdown', handle: doc }, h.title);
 		else editor.showDocInTab(tab, doc, state);
 	}
 
 	async function openTagView(slug: string, side = false): Promise<void> {
 		if (!editor) return;
 		const view = await View.forUnit(tagId(slug), slug);
-		if (side) editor.beside().openView(view);
+		if (side) editor.beside().openDetail({ type: 'view', view }, handle?.title ?? slug);
 		else editor.showViewInTab(tab, view);
 	}
 

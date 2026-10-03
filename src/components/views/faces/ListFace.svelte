@@ -10,7 +10,8 @@
 	import SectionHead from '../SectionHead.svelte';
 	import RowEditors from '../RowEditors.svelte';
 	import NoteCard from '../NoteCard.svelte';
-	import { Check, SquareArrowOutUpRight, Plus, ChevronDown, CornerDownLeft } from '@lucide/svelte';
+	import { Check, PanelRight, Plus, ChevronDown, CornerDownLeft } from '@lucide/svelte';
+	import { openHow } from '$lib/views/rowOpen';
 	import { onMount, tick } from 'svelte';
 	import { startMove, endMove } from '$lib/views/dragMove';
 
@@ -252,11 +253,6 @@
 	let focusIdx = $state(-1);
 
 	const ITEM = '[data-id].row, [data-id].card';
-
-	function openHow(e: MouseEvent): boolean | 'side' {
-		const mod = e.ctrlKey || e.metaKey;
-		return mod && e.shiftKey ? 'side' : mod;
-	}
 
 	function items(): HTMLElement[] {
 		return Array.from(listEl?.querySelectorAll<HTMLElement>(ITEM) ?? []);
@@ -888,14 +884,15 @@
 							class="row-btn"
 							type="button"
 							tabindex="-1"
-							aria-label="Open in new tab"
-							title="Open in new tab"
+							aria-label="Open to the side"
+							title="Open to the side"
 							onclick={(e) => {
 								e.stopPropagation();
-								onOpenRow?.(row.id, true);
+								e.currentTarget.closest<HTMLElement>('.row')?.focus();
+								onOpenRow?.(row.id, 'side');
 							}}
 						>
-							<SquareArrowOutUpRight size={14} strokeWidth={1.75} />
+							<PanelRight size={14} strokeWidth={1.75} />
 						</button>
 					</div>
 				{/each}
@@ -1051,7 +1048,7 @@
 		top: 0;
 		bottom: 0;
 		left: 100%;
-		width: 18px;
+		width: 26px;
 		border-radius: 0 8px 8px 0;
 		background: inherit;
 	}
@@ -1218,12 +1215,12 @@
 	.row-btn {
 		position: absolute;
 		top: 50%;
-		left: calc(100% - 6px);
+		left: calc(100% - 10px);
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 20px;
-		height: 24px;
+		width: 36px;
+		height: 36px;
 		padding: 0;
 		border: 0;
 		border-radius: 6px;
