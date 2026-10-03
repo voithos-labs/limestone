@@ -160,17 +160,6 @@ class Session {
 		this.activate(to, true);
 	}
 
-	cycleTab(delta: number) {
-		const all = this.editors.flatMap((editor) => editor.tabs.map((tab) => ({ editor, tab })));
-		if (all.length === 0) return;
-		const current = this.active.focusedTab;
-		const cur = all.findIndex((e) => e.editor === this.active && e.tab === current);
-		const base = cur === -1 ? (delta > 0 ? -1 : 0) : cur;
-		const next = all[(base + delta + all.length) % all.length];
-		next.editor.focusTab({ kind: 'tab', id: next.tab.id });
-		this.activate(next.editor, true);
-	}
-
 	closeEditor(editor: EditorState) {
 		const rest = this.editors.filter((e) => e !== editor);
 		if (this.active === editor) this.activate(rest[0], true);
