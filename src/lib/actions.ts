@@ -120,7 +120,7 @@ export const actions: Action[] = [
 		title: 'Next tab',
 		category: 'tabs',
 		defaultKeys: ['ctrl+tab', 'mod+]', 'mod+alt+arrowright'],
-		run: (session) => session.cycleTab(1)
+		run: (session) => session.active.focusAdjacentTab(1)
 	},
 	{
 		id: 'tab.prev',
@@ -128,7 +128,7 @@ export const actions: Action[] = [
 		category: 'tabs',
 		// `mod+,` stays with settings, the way it reads on every other desktop app
 		defaultKeys: ['ctrl+shift+tab', 'mod+[', 'mod+alt+arrowleft'],
-		run: (session) => session.cycleTab(-1)
+		run: (session) => session.active.focusAdjacentTab(-1)
 	},
 	{
 		id: 'tab.close',
@@ -162,13 +162,20 @@ export const actions: Action[] = [
 		}
 	},
 	{
-		id: 'pane.focus_other',
-		title: 'Focus other side',
+		id: 'pane.focus_right',
+		title: 'Focus right side',
 		category: 'tabs',
+		defaultKeys: ['mod+shift+}', 'mod+alt+shift+arrowright'],
 		run: (session) => {
-			const other = session.active.peer;
-			if (other) session.activate(other, true);
+			if (session.editors[1]) session.activate(session.editors[1], true);
 		}
+	},
+	{
+		id: 'pane.focus_left',
+		title: 'Focus left side',
+		category: 'tabs',
+		defaultKeys: ['mod+shift+{', 'mod+alt+shift+arrowleft'],
+		run: (session) => session.activate(session.editors[0], true)
 	},
 	{
 		id: 'doc.new',
