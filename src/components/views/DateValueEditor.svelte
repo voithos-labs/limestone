@@ -598,7 +598,7 @@
 							maxlength="2"
 							value={displayHour}
 							onblur={(e) => commitHour((e.currentTarget as HTMLInputElement).value)}
-						onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+							onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
 						/>
 						<span class="colon">:</span>
 						<input
@@ -607,10 +607,10 @@
 							maxlength="2"
 							bind:value={mm}
 							onblur={() => {
-							mm = clampMM(mm);
-							commit();
-						}}
-						onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+								mm = clampMM(mm);
+								commit();
+							}}
+							onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
 						/>
 						<select
 							class="meridiem"
