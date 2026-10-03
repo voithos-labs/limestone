@@ -17,6 +17,7 @@ export interface ActivateDetail {
 	kind: 'wikilink' | 'tag';
 	target: string;
 	fragment?: string;
+	side?: boolean;
 }
 
 export const ACTIVATE_EVENT = 'limestone-activate';

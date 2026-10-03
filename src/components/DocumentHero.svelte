@@ -29,6 +29,7 @@
 		RefreshCw,
 		History,
 		ArrowLeft,
+		ArrowRight,
 		X,
 		GitBranch,
 		FileLock,
@@ -38,6 +39,8 @@
 	import { readTextFile } from '@tauri-apps/plugin-fs';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { flushAll } from '$lib/util/flush';
+
+	type Place = { label: string; icon: Component; emoji?: string; go: () => void };
 
 	let {
 		handle,
@@ -50,6 +53,7 @@
 		propsOpen = $bindable(false),
 		historyOpen = $bindable(false),
 		back,
+		forward,
 		onOpenFolder,
 		showOpenFolder = true,
 		onFolderMeta,
@@ -67,7 +71,8 @@
 		propsOpen?: boolean;
 		historyOpen?: boolean;
 		// where this tab was before, if it navigated here
-		back?: { label: string; icon: Component; emoji?: string; go: () => void };
+		back?: Place;
+		forward?: Place;
 		onOpenFolder?: (unitId: string, name: string, newTab?: boolean) => void;
 		showOpenFolder?: boolean;
 		onFolderMeta?: (unitId: string, name: string) => void; // the folder, and its metadata setting
@@ -472,36 +477,45 @@
 	});
 </script>
 
+{#snippet place(p: Place)}
+	{#if p.emoji}
+		<span class="place-emoji">{p.emoji}</span>
+	{:else}
+		<p.icon size={12} strokeWidth={1.75} />
+	{/if}
+	<span class="place-label">{p.label}</span>
+{/snippet}
+
 {#snippet backCard()}
-	{#if back}
+	{#if back || forward}
 		<div class="back-slot" bind:this={backSlot}>
-			<button
-				class="back"
+			<div
+				class="nav"
 				class:floating
 				bind:this={backEl}
 				style:left={floating ? `${floatAt.x}px` : null}
 				style:top={floating ? `${floatAt.y}px` : null}
-				type="button"
-				title="Back"
-				onclick={back.go}
 			>
-				<span class="back-arrow"><ArrowLeft size={14} strokeWidth={2} /></span>
-				<span class="back-place">
-					{#if back.emoji}
-						<span class="back-emoji">{back.emoji}</span>
-					{:else}
-						<back.icon size={12} strokeWidth={1.75} />
-					{/if}
-					<span class="back-label">{back.label}</span>
-				</span>
-			</button>
+				{#if back}
+					<button class="chip" type="button" title={back.label} onclick={back.go}>
+						<ArrowLeft size={14} strokeWidth={2} />
+						{@render place(back)}
+					</button>
+				{/if}
+				{#if forward}
+					<button class="chip" type="button" title={forward.label} onclick={forward.go}>
+						{@render place(forward)}
+						<ArrowRight size={14} strokeWidth={2} />
+					</button>
+				{/if}
+			</div>
 		</div>
 	{/if}
 {/snippet}
 
 <div class="doc-hero">
 	<div class="hero-inner" class:compact bind:this={innerEl} bind:clientWidth={innerWidth}>
-		{#if back}{@render backCard()}{/if}
+		{#if back || forward}{@render backCard()}{/if}
 		<div class="head-row">
 			<div class="title-line" bind:clientWidth={lineWidth}>
 				<span class="title-left">
@@ -813,77 +827,70 @@
 	   space so the document doesn't jump when it lifts off. */
 	/* The slot is its own row above the title */
 	.back-slot {
+		position: absolute;
+		top: 5px;
+		left: 24px;
+		right: 24px;
 		height: 24px;
-		margin-bottom: 10px;
 	}
 
-	.back {
+	.hero-inner.compact .back-slot {
+		position: static;
+		margin-bottom: 6px;
+	}
+
+	.nav {
 		display: inline-flex;
-		align-items: center;
-		gap: 0;
+		gap: 4px;
 		height: 24px;
 		max-width: 100%;
-		padding: 0;
-		border: none;
-		border-radius: 6px;
-		background: var(--color-accent);
-		font-family: var(--font-ui);
-		font-size: 12px;
-		font-weight: 500;
-		color: #fff;
-		cursor: pointer;
-		transition:
-			filter 120ms ease,
-			box-shadow 120ms ease;
 	}
 
-	.back.floating {
+	.nav.floating {
 		position: fixed;
 		z-index: 4;
-		box-shadow: var(--menu-shadow);
 	}
 
-	.back-arrow {
-		display: inline-flex;
-		align-items: center;
-		flex-shrink: 0;
-		padding: 0 7px;
-		opacity: 0.75;
-	}
-
-	/* The place is split from the arrow by a full-height rule */
-	.back-place {
+	.chip {
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
 		min-width: 0;
-		height: 24px;
+		max-width: 200px;
 		padding: 0 8px 0 7px;
-		border-left: 1px solid rgba(255, 255, 255, 0.3);
+		border: none;
+		border-radius: 6px;
+		background: var(--chip-bg);
+		font-family: var(--font-ui);
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		transition: background-color 120ms ease;
 	}
 
-	.back-place > :global(svg) {
+	.chip:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.nav.floating .chip {
+		box-shadow: var(--menu-shadow);
+	}
+
+	.chip > :global(svg) {
 		flex-shrink: 0;
-		opacity: 0.85;
 	}
 
-	.back-emoji {
+	.place-emoji {
 		font-size: 10px;
 		line-height: 1;
 	}
 
-	.back-label {
+	.place-label {
 		overflow: hidden;
 		white-space: nowrap;
 		text-overflow: ellipsis;
-	}
-
-	.back:hover .back-arrow {
-		opacity: 1;
-	}
-
-	.back:hover {
-		filter: brightness(1.08);
 	}
 
 	.kebab:hover {

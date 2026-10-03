@@ -253,6 +253,11 @@
 
 	const ITEM = '[data-id].row, [data-id].card';
 
+	function openHow(e: MouseEvent): boolean | 'side' {
+		const mod = e.ctrlKey || e.metaKey;
+		return mod && e.shiftKey ? 'side' : mod;
+	}
+
 	function items(): HTMLElement[] {
 		return Array.from(listEl?.querySelectorAll<HTMLElement>(ITEM) ?? []);
 	}
@@ -788,7 +793,7 @@
 						ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 						ondragend={endMove}
 						onpointerdown={(e) => armReorder(e, row)}
-						onclick={(e) => onOpenRow?.(row.id, e.ctrlKey || e.metaKey)}
+						onclick={(e) => onOpenRow?.(row.id, openHow(e))}
 						onauxclick={(e) => {
 							if (e.button === 1) onOpenRow?.(row.id, true);
 						}}

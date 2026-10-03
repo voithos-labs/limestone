@@ -53,13 +53,12 @@
 
 	// the bookmark shows its pick on a transient surface, not a tab: gone once you go elsewhere
 	function openUnitView(unitId: string, name: string, newTab = false) {
-		const target = newTab ? editor.aside : editor;
-		const existing = target.tabs.find(
+		const existing = editor.tabs.find(
 			(t) => t.content.type === 'view' && t.content.view.unit === unitId
 		);
-		if (existing) return target.focusTab({ kind: 'tab', id: existing.id });
+		if (existing) return editor.focusTab({ kind: 'tab', id: existing.id });
 		View.forUnit(unitId, name)
-			.then((v) => (newTab ? target.openView(v) : editor.showPreview(TabState.forView(v))))
+			.then((v) => (newTab ? editor.openView(v) : editor.showPreview(TabState.forView(v))))
 			.catch(console.error);
 	}
 
@@ -113,7 +112,7 @@
 				aux: {
 					icon: SquareArrowOutUpRight,
 					label: 'Open in new tab',
-					action: () => editor.aside.openView(v)
+					action: () => editor.openView(v)
 				},
 				action: () => editor.showPreview(TabState.forView(v))
 			})),

@@ -3,7 +3,17 @@
 	 * todo:
 	 */
 	import { untrack } from 'svelte';
-	import { Check, Plus, PaintBucket, Trash2, ArrowLeft, X } from '@lucide/svelte';
+	import {
+		Check,
+		Plus,
+		Pencil,
+		PaintBucket,
+		Trash2,
+		ArrowLeft,
+		X,
+		EllipsisVertical
+	} from '@lucide/svelte';
+	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import type { ViewField } from '$lib/models/View.svelte';
 
 	interface TagOption {
@@ -40,6 +50,37 @@
 	let renamingFor: string | null = $state(null);
 	let renameDraft = $state('');
 	let renameInput: HTMLInputElement | null = $state(null);
+
+	function rowMenu(opt: TagOption): CtxEntry[] {
+		return [
+			{ label: 'Rename', icon: Pencil, action: () => startRename(opt) },
+			{
+				label: 'Change color',
+				icon: PaintBucket,
+				action: () => {
+					renamingFor = null;
+					confirmDeleteFor = null;
+					colorEditFor = opt.value;
+				}
+			},
+			{
+				label: 'Delete option',
+				icon: Trash2,
+				danger: true,
+				action: () => {
+					renamingFor = null;
+					colorEditFor = null;
+					confirmDeleteFor = opt.value;
+				}
+			}
+		];
+	}
+
+	function openRowMenu(e: MouseEvent, opt: TagOption) {
+		e.stopPropagation();
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		contextMenu.show(r.right, r.bottom + 4, () => rowMenu(opt));
+	}
 
 	function startRename(opt: TagOption) {
 		renamingFor = opt.value;
@@ -173,12 +214,13 @@
 		const t = e.target as Node;
 		if (popEl?.contains(t)) {
 			// Clicking inside the menu but outside the open color panel dismisses it
-			if (colorEditFor && !(e.target as HTMLElement).closest?.('.color-panel, .opt-icon')) {
+			if (colorEditFor && !(e.target as HTMLElement).closest?.('.color-panel, .more')) {
 				colorEditFor = null;
 			}
 			return;
 		}
 		if (anchor?.contains(t)) return;
+		if ((t as HTMLElement).closest?.('.ctx-menu')) return;
 		open = false;
 	}
 
@@ -191,9 +233,11 @@
 	}
 
 	function onKey(e: KeyboardEvent) {
-		if (!open) return;
+		if (!open || contextMenu.open) return;
 		if (e.key === 'Escape') {
-			open = false;
+			if (confirmDeleteFor) confirmDeleteFor = null;
+			else if (colorEditFor) colorEditFor = null;
+			else open = false;
 			e.preventDefault();
 		} else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
 			e.preventDefault();
@@ -272,39 +316,37 @@
 					class="opt-row"
 					class:active={i === activeIndex}
 					class:confirming={confirmDeleteFor === opt.value}
+					onmouseenter={() => (activeIndex = i)}
+					use:ctxMenu={() => rowMenu(opt)}
+					role="presentation"
 				>
 					{#if renamingFor === opt.value}
-						<span class="opt rename">
-							<input
-								class="rename-input"
-								bind:this={renameInput}
-								bind:value={renameDraft}
-								onkeydown={(e) => {
-									e.stopPropagation();
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										commitRename(opt.value);
-									} else if (e.key === 'Escape') {
-										e.preventDefault();
-										renamingFor = null;
-									}
-								}}
-								onblur={() => commitRename(opt.value)}
-							/>
+						<span class="opt">
+							<span class="pill grow tag-c{opt.color}" data-value={renameDraft}>
+								<input
+									class="rename-input"
+									bind:this={renameInput}
+									bind:value={renameDraft}
+									onkeydown={(e) => {
+										e.stopPropagation();
+										if (e.key === 'Enter') {
+											e.preventDefault();
+											commitRename(opt.value);
+										} else if (e.key === 'Escape') {
+											e.preventDefault();
+											renamingFor = null;
+										}
+									}}
+									onblur={() => commitRename(opt.value)}
+								/>
+							</span>
 						</span>
 					{:else}
-						<button
-							class="opt"
-							type="button"
-							tabindex="-1"
-							onclick={() => pick(opt.value)}
-							ondblclick={(e) => {
-								e.stopPropagation();
-								startRename(opt);
-							}}
-							onmouseenter={() => (activeIndex = i)}
-						>
+						<button class="opt" type="button" tabindex="-1" onclick={() => pick(opt.value)}>
 							<span class="pill tag-c{opt.color}">{opt.value}</span>
+							<span class="opt-check" class:shown={isSelected(opt.value)}>
+								<Check size={13} strokeWidth={2} />
+							</span>
 						</button>
 					{/if}
 					{#if confirmDeleteFor === opt.value}
@@ -332,36 +374,15 @@
 							Confirm
 						</button>
 					{:else}
-						{#if i === activeIndex}
-							<button
-								class="opt-icon"
-								type="button"
-								tabindex="-1"
-								aria-label="Change color"
-								onclick={(e) => {
-									e.stopPropagation();
-									colorEditFor = colorEditFor === opt.value ? null : opt.value;
-								}}
-							>
-								<PaintBucket size={14} strokeWidth={1.75} />
-							</button>
-							<button
-								class="opt-icon danger"
-								type="button"
-								tabindex="-1"
-								aria-label="Delete option"
-								onclick={(e) => {
-									e.stopPropagation();
-									confirmDeleteFor = opt.value;
-									colorEditFor = null;
-								}}
-							>
-								<Trash2 size={14} strokeWidth={1.75} />
-							</button>
-						{/if}
-						<span class="opt-check" class:shown={isSelected(opt.value)}>
-							<Check size={13} strokeWidth={2} />
-						</span>
+						<button
+							class="opt-icon more"
+							type="button"
+							tabindex="-1"
+							aria-label="More"
+							onclick={(e) => openRowMenu(e, opt)}
+						>
+							<EllipsisVertical size={13} strokeWidth={1.75} />
+						</button>
 					{/if}
 				</div>
 				{#if colorEditFor === opt.value}
@@ -494,28 +515,28 @@
 		background: var(--error-a18);
 	}
 
-	.opt.rename {
-		display: flex;
-		align-items: center;
-		flex: 1;
-		min-width: 0;
-		padding: 4px 6px;
+	/* the chip becomes the field: a hidden copy of the draft sizes it, so nothing else moves */
+	.pill.grow {
+		position: relative;
+		overflow: visible;
+	}
+
+	.pill.grow::after {
+		content: attr(data-value) ' ';
+		visibility: hidden;
+		white-space: pre;
 	}
 
 	.rename-input {
+		position: absolute;
+		inset: 0;
 		width: 100%;
-		padding: 2px 6px;
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		background: var(--color-bg);
+		padding: 1px 8px;
+		border: 0;
+		background: transparent;
 		font: inherit;
-		font-size: 13px;
-		color: var(--color-text-primary);
+		color: inherit;
 		outline: none;
-	}
-
-	.rename-input:focus {
-		border-color: var(--color-ui-muted);
 	}
 
 	.opt {
@@ -557,9 +578,13 @@
 		color: var(--color-text-primary);
 	}
 
-	.opt-icon.danger:hover {
-		background: var(--chip-bg-hover);
-		color: var(--color-text-primary);
+	.opt-row .more {
+		opacity: 0;
+	}
+
+	.opt-row.active .more,
+	.opt-row:hover .more {
+		opacity: 1;
 	}
 
 	.clear-row {

@@ -12,7 +12,7 @@
 	function onClick(e: MouseEvent): void {
 		if (!isWidgetActivationClick(e.ctrlKey || e.metaKey, getPresentationMode())) return;
 		e.preventDefault();
-		const detail: ActivateDetail = { kind: 'tag', target: source.slice(1) };
+		const detail: ActivateDetail = { kind: 'tag', target: source.slice(1), side: e.shiftKey };
 		el?.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { bubbles: true, detail }));
 	}
 </script>

@@ -593,7 +593,8 @@
 		DocHandle.fromID(rowId)
 			.then((d) => {
 				if (newTab === 'side') editor.beside().openDoc(d);
-				else if (newTab || !tab) editor.aside.openDoc(d);
+				else if (newTab || !tab) editor.openDoc(d);
+				else if (editor.peer) editor.peer.openDetail({ type: 'markdown', handle: d }, view.slug);
 				else editor.showDocInTab(tab, d);
 			})
 			.catch(console.error);

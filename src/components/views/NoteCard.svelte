@@ -32,7 +32,7 @@
 		meta?: ViewField[];
 		editMode?: boolean;
 		preview?: Preview;
-		onOpen?: (rowId: string, newTab?: boolean) => void;
+		onOpen?: (rowId: string, newTab?: boolean | 'side') => void;
 		moveable?: boolean;
 		onFocus?: () => void;
 	} = $props();
@@ -88,7 +88,10 @@
 	draggable={moveable}
 	ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 	ondragend={endMove}
-	onclick={(e) => onOpen?.(row.id, e.ctrlKey || e.metaKey)}
+	onclick={(e) => {
+		const mod = e.ctrlKey || e.metaKey;
+		onOpen?.(row.id, mod && e.shiftKey ? 'side' : mod);
+	}}
 	onauxclick={(e) => {
 		if (e.button === 1) onOpen?.(row.id, true);
 	}}

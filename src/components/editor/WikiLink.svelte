@@ -32,7 +32,7 @@
 	function onClick(e: MouseEvent): void {
 		if (!isWidgetActivationClick(e.ctrlKey || e.metaKey, getPresentationMode())) return;
 		e.preventDefault();
-		const detail: ActivateDetail = { kind: 'wikilink', target, fragment };
+		const detail: ActivateDetail = { kind: 'wikilink', target, fragment, side: e.shiftKey };
 		el?.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { bubbles: true, detail }));
 	}
 </script>

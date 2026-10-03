@@ -192,6 +192,17 @@ export const actions: Action[] = [
 		}
 	},
 	{
+		id: 'nav.forward',
+		title: 'Forward',
+		category: 'navigation',
+		defaultKeys: ['alt+arrowright'],
+		run: (session) => {
+			const ed = session.active;
+			const tab = ed.focusedTab;
+			if (tab) ed.goForward(tab);
+		}
+	},
+	{
 		id: 'nav.home',
 		title: 'Open home',
 		category: 'navigation',

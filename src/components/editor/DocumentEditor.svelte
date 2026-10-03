@@ -34,9 +34,9 @@
 	import { noteLinkMenu } from './note-link-menu';
 	import { tagMenu } from './tag-menu';
 	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
-	import { TabState } from '$lib/models/EditorState.svelte.js';
+	import { TabState, type TabContent } from '$lib/models/EditorState.svelte.js';
 	import { getViewIcon } from '$lib/views/filterDisplay';
-	import { TextAlignStart } from '@lucide/svelte';
+	import { LayoutList, TextAlignStart } from '@lucide/svelte';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import DocumentHero from '../DocumentHero.svelte';
 	import { metaDialog } from '$lib/metaDialog.svelte';
@@ -72,7 +72,7 @@
 	function onOpenFolder(unitId: string, name: string, newTab = false) {
 		if (!editor) return;
 		View.forUnit(unitId, name)
-			.then((v) => (newTab ? editor.aside.openView(v) : editor.showViewInTab(tab, v)))
+			.then((v) => (newTab ? editor.openView(v) : editor.showViewInTab(tab, v)))
 			.catch((e) => console.error('open folder failed', e));
 	}
 
@@ -81,22 +81,35 @@
 		if (!editor) return;
 		View.forUnit(unitId, name)
 			.then((v) => {
-				editor.aside.openView(v);
+				editor.openView(v);
 				metaDialog.show(unitId);
 			})
 			.catch((e) => console.error('open folder failed', e));
 	}
 
-	const back = $derived.by(() => {
-		const prev = tab.back?.content;
-		if (!prev || !editor) return undefined;
-		const view = prev.type === 'view' ? prev.view : undefined;
+	function describe(content: TabContent) {
+		const view = content.type === 'view' ? content.view : undefined;
 		return {
-			label: TabState.titleOf(prev),
+			label: TabState.titleOf(content),
 			icon: view ? getViewIcon(view) : TextAlignStart,
-			emoji: view?.emoji,
-			go: () => editor!.goBack(tab)
+			emoji: view?.emoji
 		};
+	}
+
+	const back = $derived.by(() => {
+		if (!editor) return undefined;
+		const prev = tab.back?.content;
+		if (prev) return { ...describe(prev), go: () => editor!.goBack(tab) };
+		if (tab.detail) {
+			return { label: tab.detail, icon: LayoutList, go: () => editor!.closeTab(tab.id, false) };
+		}
+		return undefined;
+	});
+
+	const forward = $derived.by(() => {
+		const next = tab.next?.content;
+		if (!next || !editor) return undefined;
+		return { ...describe(next), go: () => editor!.goForward(tab) };
 	});
 	let instance = $state<EditorInstance>();
 	let wrapperEl = $state<HTMLDivElement | null>(null);
@@ -595,7 +608,8 @@
 		// A flow host (the journal) owns the scroll, and placing a caret scrolls it into view: the
 		// reader switching day would be yanked to wherever that document's caret last was. The
 		// remembered caret stays on the tab for when it's opened on its own.
-		if (!typingElsewhere() && !flow) await focusCaret();
+		const inactivePane = !!editor?.session && editor.session.active !== editor;
+		if (!typingElsewhere() && !flow && !inactivePane) await focusCaret();
 		if (typeof tab.state.scrollTopBlocks === 'number' && scrollEl) {
 			blocksTop = measureBlocksTop(scrollEl);
 			scrollEl.scrollTop = tab.state.scrollTopBlocks + blocksTop;
@@ -661,41 +675,36 @@
 		void openWikiLink(target);
 	}
 
-	async function openWikiLink(target: string, heading?: string): Promise<void> {
+	async function openWikiLink(target: string, heading?: string, side = false): Promise<void> {
 		const h = handle;
 		if (!h || !editor) return;
 		const hit = await resolveWikiLink(h.source.id, target);
 		// this note is already open here and won't reopen, so its heading is jumped to in place
-		if (hit?.id === h.id) {
+		if (hit?.id === h.id && !side) {
 			if (heading) void jumpToHeading(heading);
 			return;
 		}
+		let doc: DocHandle;
 		if (hit) {
-			const doc = await DocHandle.fromID(hit.id);
-			editor.aside.openDoc(doc, heading ? { [OPEN_AT_HEADING]: heading } : {});
-			return;
+			doc = await DocHandle.fromID(hit.id);
+		} else {
+			const slash = target.lastIndexOf('/');
+			doc = await DocHandle.createFromTitle(h.source, {
+				title: targetStem(target),
+				...(slash > 0 ? { dir: target.slice(0, slash) } : {})
+			});
+			touchLinkIndex();
 		}
-		const slash = target.lastIndexOf('/');
-		const created = await DocHandle.createFromTitle(h.source, {
-			title: targetStem(target),
-			...(slash > 0 ? { dir: target.slice(0, slash) } : {})
-		});
-		touchLinkIndex();
-		editor.aside.openDoc(created);
+		const state = heading ? { [OPEN_AT_HEADING]: heading } : {};
+		if (side) editor.beside().openDoc(doc, state);
+		else editor.showDocInTab(tab, doc, state);
 	}
 
-	async function openTagView(slug: string): Promise<void> {
+	async function openTagView(slug: string, side = false): Promise<void> {
 		if (!editor) return;
-		const unitId = tagId(slug);
-		const target = editor.aside;
-		const existing = target.tabs.find(
-			(t) => t.content.type === 'view' && t.content.view.unit === unitId
-		);
-		if (existing) {
-			target.focusTab({ kind: 'tab', id: existing.id });
-			return;
-		}
-		target.openView(await View.forUnit(unitId, slug));
+		const view = await View.forUnit(tagId(slug), slug);
+		if (side) editor.beside().openView(view);
+		else editor.showViewInTab(tab, view);
 	}
 
 	// Puts the caret on the heading the link names; false if the note has no such heading
@@ -708,10 +717,10 @@
 	}
 
 	function onActivate(e: Event): void {
-		const { kind, target, fragment } = (e as CustomEvent<ActivateDetail>).detail;
-		if (kind === 'wikilink' && target) void openWikiLink(target, fragment);
+		const { kind, target, fragment, side } = (e as CustomEvent<ActivateDetail>).detail;
+		if (kind === 'wikilink' && target) void openWikiLink(target, fragment, side);
 		else if (kind === 'wikilink' && fragment) void jumpToHeading(fragment);
-		else if (kind === 'tag') void openTagView(target);
+		else if (kind === 'tag') void openTagView(target, side);
 	}
 
 	$effect(() => {
@@ -811,6 +820,7 @@
 			bind:propsOpen
 			bind:historyOpen
 			{back}
+			{forward}
 			{onOpenFolder}
 			{showOpenFolder}
 			{onFolderMeta}
@@ -846,6 +856,7 @@
 			bind:propsOpen
 			bind:historyOpen
 			{back}
+			{forward}
 			{onOpenFolder}
 			{showOpenFolder}
 			{onFolderMeta}
