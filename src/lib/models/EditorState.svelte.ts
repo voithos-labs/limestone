@@ -464,6 +464,15 @@ class EditorState {
 		this.focusTab({ kind: 'tab', id: 'licenses' });
 	}
 
+	focusAdjacentTab(delta: number) {
+		const count = this.tabs.length;
+		if (count === 0) return;
+		const f = this.focused;
+		const cur = f?.kind === 'tab' ? this.tabs.findIndex((t) => t.id === f.id) : -1;
+		const base = cur === -1 ? (delta > 0 ? -1 : 0) : cur;
+		this.focusTab({ kind: 'tab', id: this.tabs[(base + delta + count) % count].id });
+	}
+
 	/**
 	 * Swap the tab `oldId` for `tab` in place
 	 */

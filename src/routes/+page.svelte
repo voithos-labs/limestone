@@ -199,7 +199,9 @@
 	{@const [first, second] = session.editors}
 	<div
 		class="app-layout"
-		style:--pane-cols={session.editors.map((e) => `minmax(0, ${e.flex}fr)`).join(' ')}
+		style:--pane-cols={second
+			? session.editors.map((e) => `minmax(0, ${e.flex}fr)`).join(' ')
+			: '1fr'}
 	>
 		<TopBar {session} onAddSource={addSource}></TopBar>
 		<div class="panes">
