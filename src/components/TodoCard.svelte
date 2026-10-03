@@ -6,6 +6,7 @@
 	import type DocHandle from '$lib/models/DocHandle';
 	import { rawStatefulValue, withStatefulValue } from '$lib/views/fieldValue';
 	import { formatDateCompact } from '$lib/views/dateFormat';
+	import { dueState } from '$lib/views/due';
 	import { toasts } from '$lib/toasts.svelte';
 	import CellEditor from './views/CellEditor.svelte';
 
@@ -25,6 +26,8 @@
 	const dueField = $derived(view?.fields.find((f) => f.id === `${TODO}/due`) ?? null);
 	const schedField = $derived(view?.fields.find((f) => f.id === `${TODO}/scheduled`) ?? null);
 	const done = $derived(!!row && !!doneField && rawStatefulValue(row, doneField) === true);
+
+	const due = $derived(row && dueField ? dueState(row, dueField) : null);
 
 	function dateOf(f: ViewField | null): string {
 		if (!row || !f) return '';
@@ -103,6 +106,8 @@
 		<button
 			class="date"
 			class:set={!!dateOf(dueField)}
+			class:today={due === 'today'}
+			class:overdue={due === 'overdue'}
 			type="button"
 			onclick={(e) => edit(e, dueField)}
 		>
@@ -231,9 +236,30 @@
 		color: var(--color-ui-dulled);
 	}
 
-	.date:hover {
+	/* due today or overdue: the error colour on its wash, so the state reads at a glance */
+	.date.today,
+	.date.today .date-label,
+	.date.today :global(svg),
+	.date.overdue,
+	.date.overdue .date-label,
+	.date.overdue :global(svg) {
+		color: var(--error-fg);
+	}
+
+	.date.today,
+	.date.overdue {
+		background: var(--error-bg);
+	}
+
+	.date:hover:not(.today):not(.overdue) {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
+	}
+
+	/* a pressing date keeps its colour on hover; only its wash deepens */
+	.date.today:hover,
+	.date.overdue:hover {
+		filter: brightness(0.96) saturate(1.2);
 	}
 
 	.remove {
