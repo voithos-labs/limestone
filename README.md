@@ -5,7 +5,9 @@
 > [!WARNING]
 > Limestone is still in pre-release state, expect bugs.
 
-Note taking, tasks, projects, etc.
+Note taking, tasks, projects, etc. all local, all markdown `.md`, no account needed.
+
+Live collab and cloud sync, when they're out in about 4 months (to 50 years, upper limit), will need an account. The local app will never require one, and will always be free.
 
 ## Monthly major updates, see the new project overhaul:
 

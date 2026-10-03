@@ -2,6 +2,7 @@
 	import DocHandle from '$lib/models/DocHandle';
 	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
+	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import type Tag from '$lib/models/Tag';
 	import { tagId } from '$lib/models/Tag';
 	import { formatDateFriendly } from '$lib/views/dateFormat';
@@ -33,7 +34,8 @@
 		X,
 		GitBranch,
 		FileLock,
-		ArrowUpRight
+		ArrowUpRight,
+		Bookmark
 	} from '@lucide/svelte';
 	import { onMount, untrack, type Component } from 'svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -191,6 +193,27 @@
 	const ext = $derived(relPath.match(/\.[^.]+$/)?.[0] ?? '.md');
 	const srcName = $derived(sourceName(source));
 	const dirParts = $derived(folderDir(relPath).split('/').filter(Boolean));
+
+	let projects: { unit: string; slug: string; emoji?: string }[] = $state([]);
+	onMount(() => {
+		listSavedViewJSON()
+			.then((vs) => {
+				projects = vs.flatMap((v) =>
+					v.unit?.startsWith('folder:') ? [{ unit: v.unit, slug: v.slug, emoji: v.emoji }] : []
+				);
+			})
+			.catch((e) => console.error('load projects failed', e));
+	});
+	const project = $derived.by(() => {
+		for (let depth = dirParts.length; depth >= 0; depth--) {
+			const id = folderId(source.id, dirParts.slice(0, depth).join('/'));
+			const hit = projects.find((p) => p.unit === id);
+			if (hit) return { ...hit, depth };
+		}
+		return null;
+	});
+	const locParts = $derived(project ? dirParts.slice(project.depth) : dirParts);
+	const fullPath = $derived([srcName, ...dirParts].join(' / '));
 
 	const currentFolderId = $derived.by(() => {
 		const dir = folderDir(relPath);
@@ -585,12 +608,18 @@
 					<button
 						class="loc-chip"
 						bind:this={pickAnchor}
-						title="Move document"
+						title="Move document from {fullPath}"
 						onclick={() => (folderOpen = !folderOpen)}
 					>
-						<FolderInput size={12} />
-						<span class="loc-part src">{srcName}</span>
-						{#each dirParts as part}
+						{#if project?.emoji}
+							<span class="loc-emoji">{project.emoji}</span>
+						{:else if project}
+							<Bookmark size={12} />
+						{:else}
+							<FolderInput size={12} />
+						{/if}
+						<span class="loc-part src">{project?.slug ?? srcName}</span>
+						{#each locParts as part}
 							<span class="crumb-sep">/</span>
 							<span class="loc-part">{part}</span>
 						{/each}
@@ -967,6 +996,11 @@
 	.loc-chip :global(svg) {
 		color: var(--color-ui-muted);
 		flex-shrink: 0;
+	}
+
+	.loc-emoji {
+		font-size: 11px;
+		line-height: 1;
 	}
 
 	.loc-part {
