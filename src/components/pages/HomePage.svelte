@@ -220,7 +220,7 @@
 		color: var(--color-ui-muted);
 	}
 
-	@container (max-width: 520px) {
+	@media (max-width: 568px) {
 		.cards {
 			grid-template-columns: 1fr;
 			gap: 8px;
@@ -239,6 +239,30 @@
 		.card-icon {
 			grid-row: span 2;
 			margin-bottom: 0;
+		}
+	}
+
+	@supports (container-type: inline-size) {
+		@container (max-width: 520px) {
+			.cards {
+				grid-template-columns: 1fr;
+				gap: 8px;
+			}
+
+			.card {
+				display: grid;
+				grid-template-columns: auto 1fr;
+				column-gap: 12px;
+				row-gap: 2px;
+				align-items: center;
+				min-height: 0;
+				padding: 12px 14px;
+			}
+
+			.card-icon {
+				grid-row: span 2;
+				margin-bottom: 0;
+			}
 		}
 	}
 
