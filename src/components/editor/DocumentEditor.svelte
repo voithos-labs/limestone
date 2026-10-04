@@ -308,12 +308,6 @@
 					headline: 'this note is in use',
 					detail: 'Another app is holding its file. Close it there, then try again.'
 				};
-			case 'offline':
-				return {
-					headline: "this note isn't downloaded",
-					detail:
-						"Your sync app hasn't downloaded its file yet. Check that it's running and online, then try again."
-				};
 			case 'invalid_data':
 				return {
 					headline: "this note isn't readable",

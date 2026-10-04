@@ -99,7 +99,6 @@ export type ReadErrorKind =
 	| 'not_found'
 	| 'permission'
 	| 'locked'
-	| 'offline'
 	| 'invalid_data'
 	| 'other';
 
@@ -109,7 +108,6 @@ const READ_ERROR_KINDS: ReadErrorKind[] = [
 	'not_found',
 	'permission',
 	'locked',
-	'offline',
 	'invalid_data'
 ];
 

@@ -63,9 +63,6 @@ pub struct ReadError {
 }
 
 fn read_kind(e: &std::io::Error) -> &'static str {
-    if cfg!(windows) && matches!(e.raw_os_error(), Some(358..=404)) {
-        return "offline";
-    }
     match crate::services::bulk_ops::classify_io(e).as_str() {
         "not_found" => "not_found",
         "permission" => "permission",
