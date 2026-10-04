@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { FolderPlus } from '@lucide/svelte';
+	import { nameGuard } from '$lib/util/paths';
 
 	let {
 		open = $bindable(false),
@@ -59,7 +60,7 @@
 				<span class="label">Name</span>
 				<span class="input">
 					<FolderPlus size={14} strokeWidth={1.75} />
-					<input type="text" bind:value={name} use:focus spellcheck="false" />
+					<input type="text" bind:value={name} use:focus use:nameGuard spellcheck="false" />
 				</span>
 			</label>
 

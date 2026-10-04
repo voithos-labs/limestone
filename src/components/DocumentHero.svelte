@@ -8,7 +8,7 @@
 	import { formatDateFriendly } from '$lib/views/dateFormat';
 	import { folderDir, fileName } from '$lib/views/fieldValue';
 	import { folderPath } from '$lib/views/createDefaults';
-	import { isValidSegment } from '$lib/util/paths';
+	import { isValidSegment, nameGuard } from '$lib/util/paths';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import Menu from './views/Menu.svelte';
 	import TagMenu from './views/TagMenu.svelte';
@@ -549,6 +549,7 @@
 							class:invalid={titleTaken || titleIllegal || titleFailed}
 							bind:this={titleInput}
 							bind:value={title}
+							use:nameGuard
 							oninput={() => (titleFailed = false)}
 							onblur={commitTitle}
 							onkeydown={onTitleKeydown}
@@ -790,7 +791,9 @@
 		position: relative;
 		display: inline-flex;
 		min-width: 0;
-		max-width: 100%;
+		max-width: calc(100% + 18px);
+		padding-right: 18px;
+		margin-right: -18px;
 		overflow: hidden;
 	}
 

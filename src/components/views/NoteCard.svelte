@@ -9,6 +9,8 @@
 	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
 	import RowChips from './RowChips.svelte';
 	import type RowEditors from './RowEditors.svelte';
+	import { nameGuard } from '$lib/util/paths';
+	import { selectionIn, restoreSelection } from '$lib/util/selection';
 
 	// A note as a card: the list row folded onto three lines. Same lanes, same chips, same two
 	// modes, so a grid and a board read like the list they sit next to
@@ -46,10 +48,12 @@
 	// ── Rename in place ────────────────────────────────────────────────────────
 	let renaming = $state(false);
 	let draft = $state('');
+	let renameRange: [number, number] | null = null;
 
 	function startRename(e: MouseEvent) {
 		if (!editMode) return;
 		e.stopPropagation();
+		renameRange = selectionIn(e.currentTarget as HTMLElement, row.title);
 		renaming = true;
 		draft = row.title;
 	}
@@ -68,8 +72,7 @@
 	}
 
 	function renameFocus(node: HTMLInputElement) {
-		node.focus();
-		node.select();
+		restoreSelection(node, renameRange);
 	}
 
 	let imgOk = $state(true);
@@ -127,6 +130,7 @@
 					class="rename"
 					bind:value={draft}
 					use:renameFocus
+					use:nameGuard
 					onblur={commitRename}
 					onkeydown={onRenameKey}
 					spellcheck="false"

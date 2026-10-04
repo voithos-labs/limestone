@@ -23,7 +23,7 @@
 	import { toasts } from '$lib/toasts.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { folderPath } from '$lib/views/createDefaults';
-	import { isValidSegment } from '$lib/util/paths';
+	import { isValidSegment, nameGuard } from '$lib/util/paths';
 
 	type FolderNode = {
 		id: string;
@@ -1169,6 +1169,7 @@
 										type="text"
 										bind:value={newName}
 										bind:this={newFolderEl}
+										use:nameGuard
 										placeholder="Folder name…"
 										onkeydown={onNewFolderKey}
 									/>
@@ -1199,6 +1200,7 @@
 											type="text"
 											bind:value={renameDraft}
 											bind:this={renameEl}
+											use:nameGuard
 											onkeydown={(e) => onRenameKey(e, folder)}
 											onblur={() => commitRename(folder)}
 										/>

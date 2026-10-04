@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack, type Component } from 'svelte';
+	import { nameGuard, type NameKind } from '$lib/util/paths';
 
 	let {
 		open = $bindable(false),
@@ -8,6 +9,7 @@
 		inputType = 'text',
 		placeholder = '',
 		icon: Icon,
+		guard = null,
 		onChange
 	}: {
 		open: boolean;
@@ -16,6 +18,7 @@
 		inputType?: 'text' | 'number' | 'date';
 		placeholder?: string;
 		icon?: Component;
+		guard?: NameKind | null;
 		onChange: (value: string) => void;
 	} = $props();
 
@@ -93,7 +96,14 @@
 	<div class="pop" bind:this={popEl} style:top="{pos.top}px" style:left="{pos.left}px">
 		<div class="field" class:date={inputType === 'date'}>
 			{#if Icon}<span class="lead"><Icon size={14} strokeWidth={1.75} /></span>{/if}
-			<input bind:this={inputEl} bind:value={draft} type={inputType} {placeholder} class="input" />
+			<input
+				bind:this={inputEl}
+				bind:value={draft}
+				use:nameGuard={guard}
+				type={inputType}
+				{placeholder}
+				class="input"
+			/>
 		</div>
 	</div>
 {/if}

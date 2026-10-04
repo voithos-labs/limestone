@@ -21,7 +21,7 @@
 	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import { metaDialog } from '$lib/metaDialog.svelte';
 	import { toasts } from '$lib/toasts.svelte';
-	import { isValidSegment } from '$lib/util/paths';
+	import { isValidSegment, nameGuard } from '$lib/util/paths';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import {
 		startMove,
@@ -249,6 +249,7 @@
 					type="text"
 					bind:value={draft}
 					bind:this={renameEl}
+					use:nameGuard
 					onkeydown={(e) => onRenameKey(e, f)}
 					onblur={() => commitRename(f)}
 					onclick={(e) => e.stopPropagation()}

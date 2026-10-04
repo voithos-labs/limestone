@@ -14,6 +14,7 @@
 	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import Tag, { tagId } from '$lib/models/Tag';
 	import { isBuiltinUnit } from '$lib/models/View.svelte';
+	import { nameGuard } from '$lib/util/paths';
 
 	let {
 		open = $bindable(false),
@@ -308,6 +309,7 @@
 				type="text"
 				bind:value={query}
 				bind:this={searchEl}
+				use:nameGuard={onCreate ? 'tag' : null}
 				placeholder={onCreate ? 'Search or create a tag' : 'Search tags'}
 			/>
 		</div>
@@ -348,6 +350,7 @@
 								class:invalid={renameInvalid(t)}
 								bind:value={renameDraft}
 								use:renameFocus
+								use:nameGuard={'tag'}
 								onblur={() => commitRename(t)}
 								onkeydown={(e) => onRenameKey(e, t)}
 								spellcheck="false"

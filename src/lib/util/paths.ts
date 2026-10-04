@@ -25,3 +25,39 @@ export function sanitizeSegment(name: string): string {
 	while (s.endsWith('.') || s.endsWith(' ')) s = s.slice(0, -1).trimEnd();
 	return s;
 }
+
+export type NameKind = 'file' | 'project' | 'tag' | 'ident';
+
+const BLOCKED: Record<NameKind, RegExp> = {
+	file: ILLEGAL_CHARS_ALL,
+	project: /[<>:"'|?*\\/\[\]#^]|\p{Cc}/gu,
+	tag: /[\s#"'\\]|\p{Cc}/gu,
+	ident: /["'\\]|\p{Cc}/gu
+};
+
+const SHAKE = [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` }));
+
+export function nameGuard(node: HTMLInputElement, kind: NameKind | null = 'file') {
+	function onBeforeInput(e: InputEvent) {
+		if (!kind || e.isComposing) return;
+		const text = e.data ?? e.dataTransfer?.getData('text/plain');
+		if (!text) return;
+		const clean = text.replace(BLOCKED[kind], '');
+		if (clean === text) return;
+		e.preventDefault();
+		if (clean) {
+			node.setRangeText(clean, node.selectionStart ?? 0, node.selectionEnd ?? 0, 'end');
+			node.dispatchEvent(new Event('input', { bubbles: true }));
+		}
+		node.animate(SHAKE, { duration: 240 });
+	}
+	node.addEventListener('beforeinput', onBeforeInput);
+	return {
+		update(next: NameKind | null = 'file') {
+			kind = next;
+		},
+		destroy() {
+			node.removeEventListener('beforeinput', onBeforeInput);
+		}
+	};
+}

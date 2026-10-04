@@ -689,6 +689,7 @@
 	value={crumbs.at(-1)?.slug ?? ''}
 	placeholder="Folder name"
 	icon={FolderIcon}
+	guard="file"
 	onChange={(v) => commitName(String(v ?? ''))}
 />
 <NewFolderDialog bind:open={newFolderOpen} onCreate={createFolder} />

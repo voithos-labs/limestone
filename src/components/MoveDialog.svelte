@@ -14,7 +14,7 @@
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import FolderChips from './views/FolderChips.svelte';
 	import { isMove, readMove, movingNow, canMoveInto, moveInto } from '$lib/views/dragMove';
-	import { isValidSegment } from '$lib/util/paths';
+	import { isValidSegment, nameGuard } from '$lib/util/paths';
 	import { toasts } from '$lib/toasts.svelte';
 
 	type Place = { id: string; slug: string; repo?: boolean };
@@ -317,6 +317,7 @@
 										placeholder="Name"
 										bind:value={draft}
 										bind:this={draftEl}
+										use:nameGuard
 										onkeydown={onDraftKey}
 										onblur={commitNaming}
 									/>

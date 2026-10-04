@@ -25,6 +25,7 @@
 	import Menu from '../views/Menu.svelte';
 	import EmojiPicker from '../views/EmojiPicker.svelte';
 	import { dashboardSections } from '$lib/views/dashboard';
+	import { nameGuard } from '$lib/util/paths';
 
 	let { tab, editor }: { tab: TabState; editor: EditorState } = $props();
 
@@ -285,6 +286,7 @@
 					class="name"
 					bind:this={nameEl}
 					bind:value={name}
+					use:nameGuard={'project'}
 					onkeydown={onKey}
 					class:invalid={taken}
 					placeholder="Project name"

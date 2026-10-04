@@ -31,6 +31,7 @@
 		Globe
 	} from '@lucide/svelte';
 	import { untrack } from 'svelte';
+	import { nameGuard, type NameKind } from '$lib/util/paths';
 
 	let {
 		view,
@@ -199,6 +200,9 @@
 		titleEl?.select();
 	}
 	const slugEmpty = $derived(!sanitizeName(slugDraft));
+	const titleKind = $derived<NameKind>(
+		view.unit?.startsWith('folder:') ? 'project' : view.unit?.startsWith('tag:') ? 'tag' : 'ident'
+	);
 
 	$effect(() => {
 		if (view.temporary && !view.unit) {
@@ -275,6 +279,7 @@
 			class:invalid={slugEmpty}
 			bind:this={titleEl}
 			bind:value={slugDraft}
+			use:nameGuard={titleKind}
 			onblur={commitSlug}
 			onkeydown={slugKey}
 			spellcheck="false"
