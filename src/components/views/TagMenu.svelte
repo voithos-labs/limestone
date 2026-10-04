@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import { untrack } from 'svelte';
 	import {
 		Hash,
@@ -134,7 +135,7 @@
 		try {
 			await onCreate(slug);
 		} catch (e) {
-			console.error('create tag failed', e);
+			reportError(e, "That tag couldn't be created.", () => onCreate(slug));
 		}
 		await reload();
 	}
@@ -168,7 +169,7 @@
 			await reload();
 			onMutated?.();
 		} catch (e) {
-			console.error('rename tag failed', e);
+			reportError(e, "That tag couldn't be renamed.", () => Tag.rename(t, s));
 		} finally {
 			busy = false;
 		}
@@ -189,7 +190,7 @@
 			await reload();
 			onMutated?.();
 		} catch (e) {
-			console.error('delete tag failed', e);
+			reportError(e, "That tag couldn't be deleted.", () => confirmDelete(t));
 		} finally {
 			busy = false;
 		}

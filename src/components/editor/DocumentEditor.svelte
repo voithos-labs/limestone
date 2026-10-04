@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { Editor } from '@voithos-labs/aragonite';
 	import type {
@@ -23,7 +24,8 @@
 	import { onDocChanged, onSourceReconciled, sourceName } from '$lib/models/Source';
 	import DocHandle, { readErrorKind, type ReadErrorKind } from '$lib/models/DocHandle';
 	import { historyCheckpoints, historyTextAt } from '$lib/services/history';
-	import cat from '$lib/cat.txt?raw';
+	import GonePage from '../GonePage.svelte';
+	import GoneActions, { type GoneAction } from '../GoneActions.svelte';
 	import DocHistory, { type HistoryVersion } from '$lib/models/DocHistory.svelte';
 	import View from '$lib/models/View.svelte';
 	import { tagId } from '$lib/models/Tag';
@@ -232,6 +234,25 @@
 			restoring = false;
 		}
 	}
+
+	const goneActions = $derived.by(() => {
+		const out: GoneAction[] = [];
+		if (canRestore)
+			out.push({
+				label: restoring ? 'Restoring…' : 'Restore',
+				run: restoreFile,
+				strong: true,
+				disabled: restoring
+			});
+		if (unavailable && unavailable.kind !== 'not_found')
+			out.push({ label: 'Try again', run: () => handle && retry(handle) });
+		if (editor) out.push({ label: 'Close', run: () => editor.closeTab(tab.id, false) });
+		return out;
+	});
+
+	const restoreNote = $derived(
+		restoreFailed ? "That didn't work. Check that the source is connected, then try again." : null
+	);
 
 	const sourceLabel = $derived(handle ? sourceName(handle.source) : '');
 
@@ -934,6 +955,7 @@
 			// The editor reports this on the same `clipboard` error channel as a failed insertion,
 			// and the paste's other images still land, so the error handler must not delete on it.
 			pasteImports.markOwnFailure(e);
+			reportError(e, "That image couldn't be added.");
 			throw e;
 		}
 		pasteImports.record(relPath);
@@ -968,7 +990,7 @@
 			editor?.closeTab(tab.id, false);
 		} catch (e) {
 			deleted = false;
-			console.error('delete failed', e);
+			reportError(e, "That note couldn't be deleted.", deleteDoc);
 		}
 	}
 
@@ -1004,28 +1026,6 @@
 	{/if}
 {/snippet}
 
-{#snippet actions()}
-	<div class="unavailable-actions">
-		{#if canRestore}
-			<button class="ua-btn strong" type="button" disabled={restoring} onclick={restoreFile}>
-				{restoring ? 'Restoring…' : 'Restore'}
-			</button>
-		{/if}
-		{#if unavailable && unavailable.kind !== 'not_found'}
-			<button class="ua-btn" type="button" onclick={() => handle && retry(handle)}>Try again</button
-			>
-		{/if}
-		{#if editor}
-			<button class="ua-btn" type="button" onclick={() => editor!.closeTab(tab.id, false)}
-				>Close</button
-			>
-		{/if}
-	</div>
-	{#if restoreFailed}
-		<p class="ua-failed">That didn't work. Check that the source is connected, then try again.</p>
-	{/if}
-{/snippet}
-
 {#snippet heldNotice()}
 	{#if notice}
 		<div class="held-notice">
@@ -1033,7 +1033,7 @@
 				<p class="ua-headline">{notice.headline}</p>
 				<p class="ua-detail">{notice.detail}</p>
 			</div>
-			{@render actions()}
+			<GoneActions actions={goneActions} note={restoreNote} />
 		</div>
 	{/if}
 {/snippet}
@@ -1076,12 +1076,12 @@
 		<div class="unavailable" class:flow>
 			{#if !flow}{@render documentHeader()}{/if}
 			{#if notice}
-				<div class="nothing">
-					<pre class="cat">{cat}</pre>
-					<p class="ua-headline">{notice.headline}</p>
-					<p class="ua-detail">{notice.detail}</p>
-					{@render actions()}
-				</div>
+				<GonePage
+					headline={notice.headline}
+					detail={notice.detail}
+					actions={goneActions}
+					note={restoreNote}
+				/>
 			{/if}
 		</div>
 	{:else if loaded}
@@ -1124,29 +1124,6 @@
 		min-height: 320px;
 	}
 
-	.nothing {
-		display: flex;
-		flex: 1;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 10px;
-		margin: 0 24px;
-		padding-bottom: 48px;
-		text-align: center;
-		color: var(--color-ui-dulled);
-	}
-
-	.cat {
-		margin: 0 0 18px;
-		font-family: var(--font-mono);
-		font-size: 11px;
-		line-height: 1.2;
-		white-space: pre;
-		text-align: left;
-		user-select: none;
-	}
-
 	.ua-headline {
 		margin: 0;
 		font-family: var(--font-mono);
@@ -1161,46 +1138,6 @@
 		font-size: 12px;
 		line-height: 1.45;
 		color: var(--color-ui-dulled);
-	}
-
-	.unavailable-actions {
-		display: flex;
-		gap: 6px;
-		margin-top: 6px;
-	}
-
-	.ua-btn {
-		height: 26px;
-		padding: 0 10px;
-		border: none;
-		border-radius: 6px;
-		background: var(--chip-bg);
-		color: var(--color-text-secondary);
-		font-family: var(--font-ui);
-		font-size: 12.5px;
-		cursor: pointer;
-	}
-
-	.ua-btn:hover:not(:disabled) {
-		background: var(--chip-bg-hover);
-		color: var(--color-text-primary);
-	}
-
-	.ua-btn.strong {
-		color: var(--color-text-primary);
-		font-weight: 600;
-	}
-
-	.ua-btn:disabled {
-		cursor: default;
-		opacity: 0.6;
-	}
-
-	.ua-failed {
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: 12px;
-		color: var(--error-fg);
 	}
 
 	.held-notice {
@@ -1223,8 +1160,8 @@
 		gap: 3px;
 	}
 
-	.held-notice .unavailable-actions {
-		margin-top: 0;
+	.held-notice :global(.gone-actions) {
+		justify-content: flex-start;
 	}
 
 	.held-notice .ua-detail {

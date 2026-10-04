@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import type View from '$lib/models/View.svelte';
 	import type {
 		FilterNode,
@@ -111,7 +112,7 @@
 					.catch(() => {});
 			}
 		} catch (e) {
-			if (token === loadToken) error = String(e);
+			if (token === loadToken) error = "This view couldn't be loaded. Try reopening it.";
 		} finally {
 			if (token === loadToken) loading = false;
 		}
@@ -377,7 +378,7 @@
 			load(true);
 			onOpenRow?.(doc.id);
 		} catch (e) {
-			error = String(e);
+			reportError(e, "That note couldn't be created.");
 		} finally {
 			creating = false;
 		}

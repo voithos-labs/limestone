@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import { Check, X, Calendar, CalendarClock } from '@lucide/svelte';
 	import View from '$lib/models/View.svelte';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
@@ -60,8 +61,8 @@
 			const result = await view.writeFieldValue(handle.source.id, field, value, [before.id]);
 			if (result.failed > 0) toasts.push(describeBulkFailure(result));
 		} catch (e) {
-			console.error('todo write failed', e);
 			row = before;
+			reportError(e, "That couldn't be saved.", () => write(field, value));
 		}
 	}
 

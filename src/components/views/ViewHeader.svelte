@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
 	import { sanitizeName } from '$lib/models/View.svelte';
@@ -79,7 +80,7 @@
 		if (!f) return;
 		const newName = sanitizeName(raw);
 		if (!newName || newName === f.name) return;
-		view.renameField(f, newName).catch((e) => console.error('rename field failed', e));
+		view.renameField(f, newName).catch((e) => reportError(e, "That field couldn't be renamed."));
 	}
 
 	// A doc face draws one document, so its search picks which one, a dropdown under this bar

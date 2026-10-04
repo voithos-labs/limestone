@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import type DocHandle from '$lib/models/DocHandle';
 	import View from '$lib/models/View.svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
@@ -121,8 +122,8 @@
 				});
 			}
 		} catch (e) {
-			console.error('write property failed', e);
 			row = current;
+			reportError(e, "That couldn't be saved.", () => writeCell(view, field, value));
 		}
 	}
 
@@ -197,7 +198,9 @@
 			}}
 			onRenameOption={(oldV, newV) => {
 				if (editingEntry && editingField)
-					editingEntry.view.renameOption(editingField, oldV, newV).catch(console.error);
+					editingEntry.view
+						.renameOption(editingField, oldV, newV)
+						.catch((e) => reportError(e, "That option couldn't be renamed."));
 			}}
 		/>
 	{/if}

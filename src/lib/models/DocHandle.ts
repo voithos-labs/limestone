@@ -525,7 +525,8 @@ class DocHandle {
 		} catch (e) {
 			console.error('link rewrite failed', e);
 			toasts.push(
-				`"${this.title}" was moved, but links to it could not be updated. Search for [[${oldRelPath.replace(/\.md$/i, '')}]] to fix them by hand.`
+				`"${this.title}" was moved, but links to it could not be updated. Search for [[${oldRelPath.replace(/\.md$/i, '')}]] to fix them by hand.`,
+				{ sticky: true }
 			);
 		}
 	}

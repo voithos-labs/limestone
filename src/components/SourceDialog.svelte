@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { describeError } from '$lib/errors';
 	import {
 		containsGitRepo,
 		createSource,
@@ -96,7 +97,10 @@
 			folderPath = sel;
 			onSaved();
 		} catch (e) {
-			error = String(e);
+			error = describeError(
+				e,
+				"That folder couldn't be used. Check that it exists and Limestone can open it."
+			);
 		}
 		busy = false;
 	}
@@ -155,7 +159,10 @@
 			onSaved();
 			open = false;
 		} catch (e) {
-			error = String(e);
+			error = describeError(
+				e,
+				"The source couldn't be saved. Check that the folder exists and Limestone can open it."
+			);
 		}
 		busy = false;
 	}

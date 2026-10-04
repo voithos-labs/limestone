@@ -715,7 +715,7 @@
 				ready = true;
 			})
 			.catch((e) => {
-				loadError = String(e);
+				loadError = "Folders couldn't be loaded. Try reopening this.";
 				ready = true;
 			});
 	}

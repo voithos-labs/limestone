@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import Folder, { folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
 	import Tag from '$lib/models/Tag';
 	import { isBuiltinUnit } from '$lib/models/View.svelte';
@@ -15,7 +16,11 @@
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { listSources, removeSource, type Source } from '$lib/models/Source';
+	import { listSources, removeSource, onSourceReconciled, type Source } from '$lib/models/Source';
+	import { folderPresence, type FolderPresence } from '$lib/views/presence';
+	import GonePage from '../GonePage.svelte';
+	import type { GoneAction } from '../GoneActions.svelte';
+	import catBox from '$lib/cat-box.txt?raw';
 	import SourceDialog from '../SourceDialog.svelte';
 	import DocHandle from '$lib/models/DocHandle';
 	import ViewHeader from '../views/ViewHeader.svelte';
@@ -248,6 +253,105 @@
 	});
 
 	let sourceRemoved = $state(false);
+	let presence = $state<FolderPresence>({ state: 'ok' });
+	let confirmRemove = $state(false);
+
+	async function checkPresence() {
+		const unit = view.unit;
+		if (!unit?.startsWith('folder:')) {
+			presence = { state: 'ok' };
+			return;
+		}
+		const next = await folderPresence(unit);
+		if (view.unit === unit) presence = next;
+	}
+
+	$effect(() => {
+		void view.unit;
+		void checkPresence();
+	});
+	$effect(() => onSourceReconciled(() => void checkPresence()));
+
+	function goneFor(
+		p: FolderPresence,
+		kind: 'project' | 'folder'
+	): { headline: string; detail: string; actions: GoneAction[] } | null {
+		const close = { label: 'Close', run: () => editor.closeTab(view.id, false) };
+		switch (p.state) {
+			case 'removed':
+				return {
+					headline: 'this source was removed from limestone',
+					detail:
+						"The folder on disk wasn't touched. Add it again from settings to bring this back.",
+					actions: [close]
+				};
+			case 'source_missing':
+				return {
+					headline: `the ${p.source} source isn't available`,
+					detail:
+						"Check that the drive or folder is connected. This opens by itself when it's back.",
+					actions: [close]
+				};
+			case 'gone':
+				return {
+					headline: `couldn't find the ${kind} ${p.path.split('/').pop()}`,
+					detail: `It was at \`${p.source}/${p.path}\`. It may have been moved, renamed or deleted outside Limestone.`,
+					actions: [close]
+				};
+			default:
+				return null;
+		}
+	}
+
+	let restoringProject = $state(false);
+
+	async function restoreProject() {
+		const unit = view.unit;
+		if (!unit || restoringProject) return;
+		restoringProject = true;
+		try {
+			await Folder.create(folderIdPath(unit), folderIdSource(unit));
+			await checkPresence();
+		} catch (e) {
+			toasts.push(Folder.describeOpError(e, "That project couldn't be restored."));
+		} finally {
+			restoringProject = false;
+		}
+	}
+
+	async function removeProject() {
+		if (!confirmRemove) {
+			confirmRemove = true;
+			return;
+		}
+		try {
+			await view.unsave();
+			editor.closeTab(view.id, false);
+		} catch (e) {
+			reportError(e, "That project couldn't be removed.");
+		}
+	}
+
+	const gone = $derived.by(() => {
+		const g = goneFor(sourceRemoved ? { state: 'removed' } : presence, 'project');
+		if (g && presence.state === 'gone' && !view.temporary) {
+			g.actions = [
+				{
+					label: restoringProject ? 'Restoring…' : 'Restore empty',
+					run: restoreProject,
+					strong: true,
+					disabled: restoringProject
+				},
+				{
+					label: confirmRemove ? 'Are you sure?' : 'Remove project',
+					run: removeProject,
+					danger: confirmRemove
+				},
+				...g.actions
+			];
+		}
+		return g;
+	});
 
 	// The tab holds this view in memory, so field edits made elsewhere (a document's
 	// properties panel adding a select option) aren't reflected here. The tab remounts
@@ -377,8 +481,7 @@
 			if (id) onOpenRow(id);
 			else toasts.push('Add a source before creating a document.');
 		} catch (e) {
-			console.error('create failed', e);
-			toasts.push("That document couldn't be created.");
+			reportError(e, "That note couldn't be created.", () => newDoc(todo));
 		}
 	}
 
@@ -507,7 +610,7 @@
 				await removeSource(folderIdSource(view.unit));
 				editor.closeTab(view.id, false);
 			} catch (e) {
-				toasts.push(String(e));
+				reportError(e, "That source couldn't be removed.");
 			}
 			return;
 		}
@@ -516,7 +619,7 @@
 				await Tag.delete(await Tag.fromID(view.unit));
 				editor.closeTab(view.id, false);
 			} catch (e) {
-				console.error('delete tag failed', e);
+				reportError(e, "That tag couldn't be deleted.");
 			}
 		} else {
 			try {
@@ -598,17 +701,8 @@
 </script>
 
 <div class="view-page">
-	{#if sourceRemoved}
-		<div class="source-removed">
-			<p class="source-removed-msg">Source <strong>{view.slug}</strong> was removed.</p>
-			<button
-				class="source-removed-close"
-				type="button"
-				onclick={() => editor.closeTab(view.id, false)}
-			>
-				Close tab
-			</button>
-		</div>
+	{#if gone}
+		<GonePage art={catBox} headline={gone.headline} detail={gone.detail} actions={gone.actions} />
 	{:else}
 		<div
 			class="view-body"
@@ -761,42 +855,6 @@
 		height: 100%;
 		width: 100%;
 		overflow: hidden;
-	}
-
-	.source-removed {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 14px;
-		height: 100%;
-		font-family: var(--font-ui);
-		color: var(--color-ui-muted);
-	}
-
-	.source-removed-msg {
-		margin: 0;
-		font-size: 14px;
-	}
-
-	.source-removed-msg strong {
-		color: var(--color-text-primary);
-		font-weight: 600;
-	}
-
-	.source-removed-close {
-		padding: 6px 14px;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		background: transparent;
-		color: var(--color-text-primary);
-		font-family: var(--font-ui);
-		font-size: 13px;
-		cursor: pointer;
-	}
-
-	.source-removed-close:hover {
-		background: var(--menu-item-hover);
 	}
 
 	.view-body {

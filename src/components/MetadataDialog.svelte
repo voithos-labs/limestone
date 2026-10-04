@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { describeError, reportError } from '$lib/errors';
 	import { untrack } from 'svelte';
 	import {
 		ArrowRight,
@@ -18,7 +19,6 @@
 	} from '$lib/models/Folder';
 	import { getSource, sourceName } from '$lib/models/Source';
 	import { metaDialog } from '$lib/metaDialog.svelte';
-	import { toasts } from '$lib/toasts.svelte';
 
 	// Where a folder's tags and fields live: written into the top of each file, or kept by
 	// Limestone alone. The diagram shows the difference; the choice below sets it
@@ -75,7 +75,7 @@
 			if (mode !== opened) await Folder.setMetaMode(metaDialog.folderId, mode);
 			metaDialog.close();
 		} catch (e) {
-			toasts.push(`That setting couldn't be changed: ${String(e)}`);
+			reportError(e, "That setting couldn't be changed.", save);
 		} finally {
 			saving = false;
 		}
@@ -115,7 +115,7 @@
 			const next = await Folder.meta(id);
 			meta = { ...next, mode };
 		} catch (e) {
-			stripNote = `That didn't work: ${String(e)}`;
+			stripNote = describeError(e, "That didn't work. Try again in a moment.");
 		}
 		strip = 'done';
 	}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { describeError } from '$lib/errors';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
 	import { importGlobalAsset, importGlobalAssetBytes } from '$lib/services/assets';
 	import { ImageUp, FolderOpen } from '@lucide/svelte';
@@ -37,7 +38,7 @@
 			const ext = name?.split('.').pop()?.toLowerCase() || extOfMime(blob.type);
 			finish(await importGlobalAssetBytes(buf, ext));
 		} catch (e) {
-			error = String(e);
+			error = describeError(e, "That image couldn't be added.");
 			busy = false;
 		}
 	}
@@ -48,7 +49,7 @@
 		try {
 			finish(await importGlobalAsset(path));
 		} catch (e) {
-			error = String(e);
+			error = describeError(e, "That image couldn't be added.");
 			busy = false;
 		}
 	}

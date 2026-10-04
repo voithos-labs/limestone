@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { invoke } from '@tauri-apps/api/core';
+	import { reportError } from '$lib/errors';
 	import DocHandle from '$lib/models/DocHandle';
 	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
@@ -38,7 +40,6 @@
 		Bookmark
 	} from '@lucide/svelte';
 	import { onMount, untrack, type Component } from 'svelte';
-	import { readTextFile } from '@tauri-apps/plugin-fs';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { flushAll } from '$lib/util/flush';
 
@@ -127,7 +128,7 @@
 			tagList = handle.tags;
 			tagsSaved++;
 		} catch (e) {
-			console.error('create tag failed', e);
+			reportError(e, "That tag couldn't be added.", () => createTag(q));
 		}
 	}
 
@@ -138,7 +139,7 @@
 			try {
 				await onRemoveTextTag?.(tag.slug);
 			} catch (e) {
-				console.error('remove text tag failed', e);
+				reportError(e, "That tag couldn't be removed from the text.");
 			}
 			if (!has) return;
 		}
@@ -149,8 +150,8 @@
 			tagList = handle.tags;
 			tagsSaved++;
 		} catch (e) {
-			console.error('set tags failed', e);
 			tagList = handle.tags;
+			reportError(e, "Tags couldn't be saved.", () => toggleTag(tag));
 		}
 	}
 
@@ -230,7 +231,6 @@
 	let titleInput: HTMLInputElement | null = $state(null);
 	let titleTaken = $state(false);
 	// catch & display os-level errors, etc.
-	let titleFailed = $state(false);
 	let titleCheckToken = 0;
 	const titleIllegal = $derived(title.trim() !== '' && !isValidSegment(`${title.trim()}${ext}`));
 
@@ -270,9 +270,8 @@
 			await handle.rename(next);
 			relPath = handle.relPath;
 		} catch (e) {
-			console.error('rename failed', e);
 			title = handle.title;
-			titleFailed = true;
+			reportError(e, "That note couldn't be renamed.");
 		}
 	}
 
@@ -310,7 +309,7 @@
 			syncMeta();
 			folderList = await Folder.list();
 		} catch (e) {
-			console.error('move failed', e);
+			reportError(e, "That note couldn't be moved.", () => onPickFolder(groupId, path));
 		}
 	}
 
@@ -438,7 +437,7 @@
 	async function duplicateDoc() {
 		try {
 			await flushAll();
-			const raw = await readTextFile(`${source.path}/${relPath}`).catch(() => '');
+			const raw = await invoke<string>('read_document', { sourceId: source.id, relPath });
 			const { body } = DocHandle.deserialize(raw);
 			const dir = folderDir(relPath);
 			const newRel = await DocHandle.uniqueRelPath(source, dir, `${handle.title} copy`);
@@ -453,7 +452,7 @@
 			await copy.saveContent(body);
 			onDuplicated?.(copy);
 		} catch (e) {
-			console.error('duplicate failed', e);
+			reportError(e, "That note couldn't be duplicated.", duplicateDoc);
 		}
 	}
 
@@ -546,11 +545,10 @@
 						<span class="title-ghost" bind:offsetWidth={titleWidth}>{title || ' '}</span>
 						<input
 							class="title-input"
-							class:invalid={titleTaken || titleIllegal || titleFailed}
+							class:invalid={titleTaken || titleIllegal}
 							bind:this={titleInput}
 							bind:value={title}
 							use:nameGuard
-							oninput={() => (titleFailed = false)}
 							onblur={commitTitle}
 							onkeydown={onTitleKeydown}
 							spellcheck="false"

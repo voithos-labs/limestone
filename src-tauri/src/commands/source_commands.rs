@@ -416,32 +416,7 @@ fn collect_dirs(root: &Path, dir: &Path, depth: usize, out: &mut Vec<String>) {
     }
 }
 
-#[derive(serde::Serialize)]
-pub struct FolderOpError {
-    kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-}
-
-impl FolderOpError {
-    fn new(kind: &str) -> Self {
-        Self {
-            kind: kind.to_string(),
-            name: None,
-        }
-    }
-
-    fn named(kind: &str, name: &str) -> Self {
-        Self {
-            kind: kind.to_string(),
-            name: Some(name.to_string()),
-        }
-    }
-
-    fn io(e: &std::io::Error) -> Self {
-        Self::new(&crate::services::bulk_ops::classify_io(e))
-    }
-}
+pub(crate) use super::OpError as FolderOpError;
 
 fn folder_leaf(rel_dir: &str) -> &str {
     rel_dir.rsplit('/').next().unwrap_or(rel_dir)

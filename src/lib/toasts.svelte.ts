@@ -18,14 +18,16 @@ class ToastController {
 
 	push(
 		message: string,
-		opts: { action?: ToastAction; timeout?: number; variant?: ToastVariant } = {}
+		opts: { action?: ToastAction; timeout?: number; variant?: ToastVariant; sticky?: boolean } = {}
 	): number {
+		const shown = this.items.find((t) => t.message === message);
+		if (shown) return shown.id;
 		const id = ++this.seq;
 		this.items = [
 			...this.items,
 			{ id, message, action: opts.action, variant: opts.variant ?? 'error' }
 		];
-		const timeout = opts.timeout ?? (opts.action ? 0 : 5000);
+		const timeout = opts.sticky ? 0 : (opts.timeout ?? (opts.action ? 0 : 5000));
 		if (timeout > 0) setTimeout(() => this.dismiss(id), timeout);
 		return id;
 	}

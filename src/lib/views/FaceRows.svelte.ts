@@ -1,3 +1,4 @@
+import { reportError } from '$lib/errors';
 import type View from '$lib/models/View.svelte';
 import type { FilterNode, MemberRow, SortKey, ViewField } from '$lib/models/View.svelte';
 import {
@@ -161,7 +162,7 @@ export class FaceRows {
 					.catch(() => {});
 			}
 		} catch (e) {
-			if (token === this.token) this.error = String(e);
+			if (token === this.token) this.error = "This list couldn't be loaded. Try reopening it.";
 		} finally {
 			if (token === this.token) this.loading = false;
 		}
@@ -184,7 +185,7 @@ export class FaceRows {
 			this.rows = [...this.rows, ...more];
 			this.rowTags = { ...this.rowTags, ...tags };
 		} catch (e) {
-			if (token === this.token) this.error = String(e);
+			if (token === this.token) this.error = "More notes couldn't be loaded. Try scrolling again.";
 		} finally {
 			this.loadingMore = false;
 		}
@@ -312,7 +313,7 @@ export class FaceRows {
 			}
 		} catch (e) {
 			this.patchRow(row.id, { properties: before });
-			this.error = String(e);
+			reportError(e, "That couldn't be saved.", () => this.writeCell(row, field, value));
 		}
 	}
 
@@ -362,7 +363,7 @@ export class FaceRows {
 			if (fid && this.fieldAffectsView(fid)) this.load(true);
 			return tags;
 		} catch (e) {
-			this.error = String(e);
+			reportError(e, "Tags couldn't be saved.");
 			return null;
 		}
 	}
@@ -378,7 +379,7 @@ export class FaceRows {
 			this.patchRow(rowId, { title: doc.title });
 		} catch (e) {
 			this.patchRow(rowId, { title: prev });
-			this.error = String(e);
+			reportError(e, "That note couldn't be renamed.");
 		}
 	}
 
@@ -389,7 +390,7 @@ export class FaceRows {
 			this.rows = this.rows.filter((r) => r.id !== rowId);
 			this.total = Math.max(0, this.total - 1);
 		} catch (e) {
-			this.error = String(e);
+			reportError(e, "That note couldn't be deleted.", () => this.delete(rowId));
 		}
 	}
 
@@ -415,7 +416,7 @@ export class FaceRows {
 	async create(title = ''): Promise<string | null> {
 		const source = this.creationSource();
 		if (!source) {
-			this.error = 'No source available to create in';
+			toasts.push('Add a source before creating a note.');
 			return null;
 		}
 		try {
@@ -423,7 +424,7 @@ export class FaceRows {
 			await this.load(true);
 			return doc.id;
 		} catch (e) {
-			this.error = String(e);
+			reportError(e, "That note couldn't be created.", () => this.create(title));
 			return null;
 		}
 	}

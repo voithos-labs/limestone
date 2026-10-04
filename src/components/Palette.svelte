@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import { tick, untrack } from 'svelte';
 	import {
 		Search,
@@ -343,7 +344,7 @@
 		try {
 			await item.run(newTab);
 		} catch (e) {
-			console.error('palette action failed', e);
+			reportError(e, "That couldn't be done.");
 		}
 	}
 

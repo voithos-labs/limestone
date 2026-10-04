@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import { FilePlus, LayoutPanelTop, FolderInput, Bookmark, TextAlignStart } from '@lucide/svelte';
 	import type { Component } from 'svelte';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
@@ -81,7 +82,7 @@
 		try {
 			editor.openDoc(await DocHandle.fromID(id));
 		} catch (e) {
-			console.error('open note failed', e);
+			reportError(e, "That note couldn't be opened.");
 		}
 	}
 </script>
