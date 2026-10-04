@@ -22,6 +22,8 @@
 
 // External
 import { v4 as uuidv4 } from 'uuid';
+import { untrack } from 'svelte';
+import { SvelteMap } from 'svelte/reactivity';
 import { exists, readTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import * as yaml from 'js-yaml';
@@ -116,15 +118,36 @@ export function readErrorKind(e: unknown): ReadErrorKind {
 	return READ_ERROR_KINDS.find((k) => k === kind) ?? 'other';
 }
 
+type Place = { sourceId: string; relPath: string; title: string };
+
+const places = new SvelteMap<string, Place>();
+
 class DocHandle {
 	// db fields *not all, just what is needed
 	readonly id: string; // primary id
-	private _relPath: string; // path relative to source root
 	readonly source: Source; // source instance, for data and UI
 	private hasFile = true;
 	private static unopened = new Set<string>();
 
-	title: string;
+	get title(): string {
+		return places.get(this.id)!.title;
+	}
+
+	get relPath(): string {
+		return places.get(this.id)!.relPath;
+	}
+
+	private get _relPath(): string {
+		return untrack(() => places.get(this.id)!.relPath);
+	}
+
+	private place(relPath: string, title: string): void {
+		places.set(this.id, { sourceId: this.source.id, relPath, title });
+	}
+
+	private get _title(): string {
+		return untrack(() => places.get(this.id)!.title);
+	}
 	tags: Tag[];
 	properties: Record<string, unknown>;
 	createdAt: Date;
@@ -138,9 +161,8 @@ class DocHandle {
 
 	private constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;
-		this._relPath = row.rel_path;
 		this.source = source;
-		this.title = row.title;
+		this.place(row.rel_path, row.title);
 		this.tags = [];
 		this.properties =
 			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
@@ -227,11 +249,7 @@ class DocHandle {
 
 	static async pathTaken(source: Source, relPath: string): Promise<boolean> {
 		if (await DocHandle.pathExists(source.id, relPath)) return true;
-		try {
-			return await exists(`${source.path}/${relPath}`);
-		} catch {
-			return false;
-		}
+		return exists(`${source.path}/${relPath}`);
 	}
 
 	static async uniqueRelPath(source: Source, dir: string, base: string): Promise<string> {
@@ -494,15 +512,30 @@ class DocHandle {
 	 *
 	 * @param newRelPath Path, relative to source, to move the document to
 	 */
+	static async syncSource(sourceId: string): Promise<void> {
+		const ids = [...places].filter(([, p]) => p.sourceId === sourceId).map(([id]) => id);
+		if (ids.length === 0) return;
+		const rows = await select<{ id: string; rel_path: string; title: string }>(
+			`SELECT id, rel_path, title FROM documents WHERE id IN (${ids.map(() => '?').join(', ')})`,
+			ids
+		);
+		for (const row of rows) {
+			const p = places.get(row.id);
+			if (p && (p.relPath !== row.rel_path || p.title !== row.title)) {
+				places.set(row.id, { ...p, relPath: row.rel_path, title: row.title });
+			}
+		}
+	}
+
 	async refreshPath(): Promise<boolean> {
-		const [row] = await select<{ rel_path: string }>(
-			`SELECT rel_path
+		const [row] = await select<{ rel_path: string; title: string }>(
+			`SELECT rel_path, title
              FROM documents
              WHERE id = ?1`,
 			[this.id]
 		);
-		if (!row || row.rel_path === this._relPath) return false;
-		this._relPath = row.rel_path;
+		if (!row || (row.rel_path === this._relPath && row.title === this._title)) return false;
+		this.place(row.rel_path, row.title);
 		return true;
 	}
 
@@ -514,7 +547,7 @@ class DocHandle {
 			relPath: oldRelPath,
 			newRelPath
 		});
-		this._relPath = newRelPath;
+		this.place(newRelPath, this._title);
 		await this.refreshMeta();
 		await this.updateLinks(oldRelPath);
 	}
@@ -524,10 +557,9 @@ class DocHandle {
 			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this._relPath);
 		} catch (e) {
 			console.error('link rewrite failed', e);
-			toasts.push(
-				`"${this.title}" was moved, but links to it could not be updated. Search for [[${oldRelPath.replace(/\.md$/i, '')}]] to fix them by hand.`,
-				{ sticky: true }
-			);
+			toasts.push(`Links to "${this.title}" still use its old name.`, {
+				action: { label: 'Retry', run: () => this.updateLinks(oldRelPath) }
+			});
 		}
 	}
 
@@ -542,8 +574,8 @@ class DocHandle {
 			newRelPath,
 			newSourceId: newSource.id
 		});
-		this._relPath = newRelPath;
 		(this as { source: Source }).source = newSource;
+		this.place(newRelPath, this._title);
 		await this.refreshMeta();
 	}
 
@@ -577,16 +609,11 @@ class DocHandle {
 			relPath: oldRelPath,
 			newName: title + ext
 		});
-		this._relPath = newRel;
-		this.title = title;
+		this.place(newRel, title);
 		await this.updateLinks(oldRelPath);
 	}
 
 	// ── Util ─────────────────────────────────────────────────────────────────────────
-
-	get relPath() {
-		return this._relPath;
-	}
 
 	get isDraft(): boolean {
 		return !this.hasFile;

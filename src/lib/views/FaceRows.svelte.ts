@@ -26,6 +26,7 @@ import {
 } from '$lib/models/Source';
 import Folder, { folderIdPath } from '$lib/models/Folder';
 import DocHandle from '$lib/models/DocHandle';
+import { sanitizeSegment } from '$lib/util/paths';
 import { tagId } from '$lib/models/Tag';
 import { invoke } from '@tauri-apps/api/core';
 import { toasts } from '$lib/toasts.svelte';
@@ -409,8 +410,19 @@ export class FaceRows {
 		if (!source || !title.trim()) return false;
 		const ctx = this.createCtx;
 		const dir = ctx.folderGroupId ? folderPath(ctx.folderGroupId) : '';
-		const base = title.trim().replace(/[\\/]/g, '-');
-		return DocHandle.pathTaken(source, dir ? `${dir}/${base}.md` : `${base}.md`);
+		const base = sanitizeSegment(title);
+		if (!base) return false;
+		return DocHandle.pathTaken(source, dir ? `${dir}/${base}.md` : `${base}.md`).catch(() => false);
+	}
+
+	async renameTaken(row: MemberRow, title: string): Promise<boolean> {
+		const source = this.sources.find((s) => s.id === row.source_id);
+		const base = sanitizeSegment(title);
+		if (!source || !base) return false;
+		const cut = row.rel_path.lastIndexOf('/');
+		const rel = cut === -1 ? `${base}.md` : `${row.rel_path.slice(0, cut)}/${base}.md`;
+		if (rel.toLowerCase() === row.rel_path.toLowerCase()) return false;
+		return DocHandle.pathTaken(source, rel).catch(() => false);
 	}
 
 	async create(title = ''): Promise<string | null> {

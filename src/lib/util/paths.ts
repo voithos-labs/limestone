@@ -16,6 +16,21 @@ export function isValidSegment(name: string): boolean {
 	return byteLength(s) <= MAX_NAME_BYTES;
 }
 
+export function segmentProblem(name: string): string | null {
+	const s = name.trim();
+	if (s === '') return "A name can't be empty.";
+	if (s === '.' || s === '..') return 'That name is reserved by your system.';
+	if (s.endsWith('.') || s.endsWith(' ')) return "A name can't end with a dot or a space.";
+	const bad = [...new Set([...s].filter((c) => ILLEGAL_CHARS.test(c)))];
+	if (bad.length) {
+		const shown = bad.map((c) => (/\p{Cc}/u.test(c) ? 'control characters' : c)).join(' ');
+		return `A name can't contain ${shown}`;
+	}
+	if (RESERVED.test(s.split('.')[0])) return 'That name is reserved by Windows.';
+	if (byteLength(s) > MAX_NAME_BYTES) return 'That name is too long.';
+	return null;
+}
+
 export function sanitizeSegment(name: string): string {
 	let s = name.replace(ILLEGAL_CHARS_ALL, '-').trim();
 	const dot = s.indexOf('.');

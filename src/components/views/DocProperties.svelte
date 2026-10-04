@@ -93,7 +93,7 @@
 	function saveEditedView(): Promise<void> | void {
 		const entry = untrack(() => editingEntry);
 		if (!entry || entry.view.temporary) return;
-		return entry.view.save().catch((e) => console.error('save view failed', e));
+		return entry.view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
 	}
 
 	$effect(() => {

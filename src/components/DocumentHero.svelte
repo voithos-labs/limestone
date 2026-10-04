@@ -10,7 +10,7 @@
 	import { formatDateFriendly } from '$lib/views/dateFormat';
 	import { folderDir, fileName } from '$lib/views/fieldValue';
 	import { folderPath } from '$lib/views/createDefaults';
-	import { isValidSegment, nameGuard } from '$lib/util/paths';
+	import { isValidSegment, nameGuard, segmentProblem } from '$lib/util/paths';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import Menu from './views/Menu.svelte';
 	import TagMenu from './views/TagMenu.svelte';
@@ -100,9 +100,17 @@
 	}
 
 	let title = $state(untrack(() => handle.title));
+	let syncedTitle = untrack(() => handle.title);
+	$effect(() => {
+		const current = handle.title;
+		untrack(() => {
+			if (title === syncedTitle) title = current;
+			syncedTitle = current;
+		});
+	});
 	const wasNew = untrack(() => handle.isNew);
 	const draftTitle = untrack(() => handle.title);
-	let relPath = $state(untrack(() => handle.relPath));
+	const relPath = $derived(handle.relPath);
 	let source = $state<Source>(untrack(() => handle.source));
 	let meta = $state(untrack(() => ({ writes: handle.writesMeta, repo: handle.inRepo })));
 	const syncMeta = () => (meta = { writes: handle.writesMeta, repo: handle.inRepo });
@@ -183,7 +191,6 @@
 	$effect(() =>
 		onSourceReconciled(async (sourceId) => {
 			if (sourceId !== source.id) return;
-			if (await handle.refreshPath()) relPath = handle.relPath;
 			await handle.refreshMeta();
 			syncMeta();
 		})
@@ -250,9 +257,11 @@
 			titleTaken = false;
 			return;
 		}
-		DocHandle.pathTaken(source, titleCandidate(next)).then((taken) => {
-			if (token === titleCheckToken) titleTaken = taken;
-		});
+		DocHandle.pathTaken(source, titleCandidate(next))
+			.then((taken) => {
+				if (token === titleCheckToken) titleTaken = taken;
+			})
+			.catch(() => {});
 	});
 
 	async function commitTitle() {
@@ -268,7 +277,6 @@
 				return;
 			}
 			await handle.rename(next);
-			relPath = handle.relPath;
 		} catch (e) {
 			title = handle.title;
 			reportError(e, "That note couldn't be renamed.");
@@ -305,7 +313,6 @@
 				await handle.moveToSource(target, newRel);
 				source = target;
 			}
-			relPath = newRel;
 			syncMeta();
 			folderList = await Folder.list();
 		} catch (e) {
@@ -546,6 +553,11 @@
 						<input
 							class="title-input"
 							class:invalid={titleTaken || titleIllegal}
+							title={titleIllegal
+								? (segmentProblem(`${title.trim()}${ext}`) ?? undefined)
+								: titleTaken
+									? 'A note with this name is already in this folder.'
+									: undefined}
 							bind:this={titleInput}
 							bind:value={title}
 							use:nameGuard

@@ -75,8 +75,13 @@ export async function linkTargets(
 	return targets;
 }
 
+const UNLINKABLE = /[[\]|#^]|\p{Cc}/u;
+
 async function rewrite(sourceId: string, replacements: [string, string][]): Promise<void> {
-	const live = replacements.filter(([a, b]) => normalizeTarget(a) !== normalizeTarget(b));
+	const live = replacements.filter(
+		([a, b]) =>
+			!UNLINKABLE.test(a) && !UNLINKABLE.test(b) && normalizeTarget(a) !== normalizeTarget(b)
+	);
 	if (live.length === 0) return;
 	const result = await invoke<BulkResult>('bulk_rewrite_links', {
 		sourceId,

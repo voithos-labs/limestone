@@ -293,7 +293,8 @@
 		<button
 			class="save-view"
 			type="button"
-			onclick={() => view.save().catch((e) => console.error('save view failed', e))}
+			onclick={() =>
+				view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."))}
 		>
 			<span>Save as view</span>
 		</button>

@@ -22,9 +22,9 @@
 							toasts.dismiss(t.id);
 						}}
 					>
-						<span class="toast-icon"><ArrowUp size={16} strokeWidth={2.25} /></span>
+						<span class="toast-icon"><ArrowUp size={14} strokeWidth={2.25} /></span>
 						<div class="toast-body">
-							<span class="toast-head">{head}</span>
+							<span class="toast-head" class:solo={!detail}>{head}</span>
 							{#if detail}<span class="toast-detail">{detail}</span>{/if}
 						</div>
 					</button>
@@ -32,13 +32,13 @@
 					<div class="toast-main">
 						<span class="toast-icon">
 							{#if t.variant === 'info'}
-								<Check size={16} strokeWidth={2.25} />
+								<Check size={14} strokeWidth={2.25} />
 							{:else}
-								<CircleAlert size={16} strokeWidth={2.25} />
+								<CircleAlert size={14} strokeWidth={2.25} />
 							{/if}
 						</span>
 						<div class="toast-body">
-							<span class="toast-head">{head}</span>
+							<span class="toast-head" class:solo={!detail}>{head}</span>
 							{#if detail}<span class="toast-detail">{detail}</span>{/if}
 						</div>
 					</div>
@@ -84,7 +84,7 @@
 		border: 1px solid var(--color-border);
 		box-shadow: var(--menu-shadow);
 		font-family: var(--font-ui);
-		font-size: 13px;
+		font-size: 12px;
 		line-height: 1.4;
 		color: var(--color-text-primary);
 		animation: toast-pop 0.16s ease-out;
@@ -148,8 +148,12 @@
 		color: var(--color-text-primary);
 	}
 
+	.toast-head.solo {
+		font-weight: 450;
+	}
+
 	.toast-detail {
-		font-size: 12px;
+		font-size: 11.5px;
 		color: var(--color-text-secondary);
 	}
 

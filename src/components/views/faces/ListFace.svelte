@@ -219,10 +219,25 @@
 		beginRename(row, e.currentTarget as HTMLElement);
 	}
 
+	let renameTaken = $state(false);
+	let renameToken = 0;
+	$effect(() => {
+		const draftNow = renameDraft;
+		const target = rows.rows.find((r) => r.id === renamingId);
+		const token = ++renameToken;
+		renameTaken = false;
+		if (!target || !draftNow.trim()) return;
+		const timer = setTimeout(async () => {
+			const taken = await rows.renameTaken(target, draftNow);
+			if (token === renameToken) renameTaken = taken;
+		}, 150);
+		return () => clearTimeout(timer);
+	});
+
 	function commitRename() {
 		const id = renamingId;
 		renamingId = null;
-		if (id) rows.rename(id, renameDraft);
+		if (id && !renameTaken) rows.rename(id, renameDraft);
 	}
 
 	function onRenameKey(e: KeyboardEvent) {
@@ -879,6 +894,10 @@
 								<span class="rename-ghost">{renameDraft || ' '}</span>
 								<input
 									class="rename"
+									class:invalid={renameTaken}
+									title={renameTaken
+										? 'A note with this name is already in this folder.'
+										: undefined}
 									bind:value={renameDraft}
 									use:renameFocus
 									use:nameGuard
@@ -1368,6 +1387,7 @@
 		color: var(--color-ui-muted);
 	}
 
+	.rename.invalid,
 	.new-input.taken {
 		text-decoration: underline;
 		text-decoration-color: var(--error-fg);

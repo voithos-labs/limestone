@@ -147,7 +147,7 @@
 			const fromHistory = canRestoreKind(kind) && (await lastKnownText(h)) !== null;
 			if (h !== handle) return;
 			if (kind !== 'not_found' || fromHistory) {
-				unavailable = { kind, held: null, fromHistory };
+				unavailable = { kind, held: null, fromHistory, settled: true };
 				return;
 			}
 			h.adoptAsDraft();
@@ -160,7 +160,12 @@
 
 	// ── Unavailable: the source or the file can't be read ───────────────────────────────
 
-	type Unavailable = { kind: ReadErrorKind; held: string | null; fromHistory: boolean };
+	type Unavailable = {
+		kind: ReadErrorKind;
+		held: string | null;
+		fromHistory: boolean;
+		settled: boolean;
+	};
 	let unavailable = $state<Unavailable | null>(null);
 	let restoring = $state(false);
 	let restoreFailed = $state(false);
@@ -185,17 +190,25 @@
 		}
 	}
 
-	async function retry(h: DocHandle) {
+	async function retry(h: DocHandle, settle = false) {
 		if (!unavailable || restoring) return;
 		await h.refreshPath().catch(() => false);
 		let c: string;
 		try {
 			c = await h.loadContent();
 		} catch (e) {
-			if (h === handle && unavailable) unavailable = { ...unavailable, kind: readErrorKind(e) };
+			if (h !== handle || !unavailable) return;
+			const settling = settle && !unavailable.settled && unavailable.held !== null;
+			unavailable = {
+				...unavailable,
+				kind: readErrorKind(e),
+				held: settling ? (instance?.getSource() ?? unavailable.held) : unavailable.held,
+				settled: unavailable.settled || settle
+			};
 			return;
 		}
 		if (h !== handle || !unavailable) return;
+		const held = unavailable.held;
 		unavailable = null;
 		frontmatterError = h.frontmatterError;
 		if (!instance) {
@@ -204,7 +217,9 @@
 			return;
 		}
 		savedBody = c;
-		if (c !== instance.getSource()) swapContent(c, null);
+		const live = instance.getSource();
+		if (held !== null && live !== held) void flushSave({ body: live });
+		else if (c !== live) swapContent(c, null);
 	}
 
 	async function restoreFile() {
@@ -318,7 +333,7 @@
 		const h = handle;
 		if (!h) return;
 		return onSourceReconciled((id) => {
-			if (id === h.source.id && unavailable) void retry(h);
+			if (id === h.source.id && unavailable) void retry(h, true);
 		});
 	});
 
@@ -407,7 +422,8 @@
 			fromDisk = await h.loadContent();
 		} catch (e) {
 			if (deleted || h !== handle || !instance) return;
-			unavailable = { kind: readErrorKind(e), held: instance.getSource(), fromHistory: false };
+			const held = instance.getSource();
+			unavailable = { kind: readErrorKind(e), held, fromHistory: false, settled: false };
 			return;
 		}
 		if (deleted || h !== handle || !instance || liveBody !== null || hasUnsavedEdits()) return;
@@ -633,7 +649,7 @@
 	// The mode and font are global, not the tab's: every open document follows the setting as it
 	// changes.
 	let mode = $derived<PresentationMode>(
-		readOnly || previewing || unavailable
+		readOnly || previewing || unavailable?.settled
 			? 'reading'
 			: settings.get('editor.mode') === 'source'
 				? 'source'
@@ -1022,7 +1038,7 @@
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
 		/>
-		{#if unavailable?.held != null}{@render heldNotice()}{/if}
+		{#if unavailable?.held != null && unavailable.settled}{@render heldNotice()}{/if}
 	{/if}
 {/snippet}
 
@@ -1070,7 +1086,7 @@
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
 		/>
-		{#if unavailable?.held != null}{@render heldNotice()}{/if}
+		{#if unavailable?.held != null && unavailable.settled}{@render heldNotice()}{/if}
 	{/if}
 	{#if unavailable && unavailable.held === null}
 		<div class="unavailable" class:flow>

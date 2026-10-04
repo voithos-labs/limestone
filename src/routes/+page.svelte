@@ -14,7 +14,8 @@
 	import { editorTakesKey } from '$lib/editor-chords';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
 	import { toasts } from '$lib/toasts.svelte';
-	import { startWatching } from '$lib/models/Source';
+	import { startWatching, onSourceReconciled } from '$lib/models/Source';
+	import DocHandle from '$lib/models/DocHandle';
 
 	let session = $state<Session>();
 	let addSourceSignal = $state(0);
@@ -26,14 +27,26 @@
 		session?.editors[0].focusTab({ kind: 'settings' });
 	}
 
+	$effect(() => onSourceReconciled((id) => void DocHandle.syncSource(id)));
+
 	// watching for external changes
 	let unlistenWatch: Promise<UnlistenFn> | undefined;
 	$effect(() => {
 		if (!session || unlistenWatch) return;
-		unlistenWatch = startWatching(session.missingSources).catch((err) => {
-			console.error('file watching failed to start', err);
-			return () => {};
-		});
+		const watch = () =>
+			startWatching(session!.missingSources).catch((err) => {
+				console.error('file watching failed to start', err);
+				toasts.push("Limestone can't watch your notes for changes made in other apps.", {
+					action: {
+						label: 'Retry',
+						run: () => {
+							unlistenWatch = watch();
+						}
+					}
+				});
+				return () => {};
+			});
+		unlistenWatch = watch();
 	});
 
 	let updateChecked = false;
@@ -68,7 +81,14 @@
 		if (!session) return;
 		$state.snapshot(session.toJSON());
 		if (persistTimer) clearTimeout(persistTimer);
-		persistTimer = setTimeout(() => session!.persist(), 200);
+		persistTimer = setTimeout(
+			() =>
+				session!.persist().catch((e) => {
+					console.error('persist failed', e);
+					toasts.push("Your open tabs couldn't be saved, so they may not reopen next time.");
+				}),
+			200
+		);
 	});
 
 	// todo: start collecting launch actionables here

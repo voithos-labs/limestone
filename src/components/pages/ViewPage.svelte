@@ -243,13 +243,14 @@
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => {
 			saveTimer = null;
-			view.save().catch((e) => console.error('save view failed', e));
+			view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
 		}, 250);
 	});
 
 	onDestroy(() => {
 		endScrollRestore();
-		if (saveTimer && !view.temporary) view.save().catch(() => {});
+		if (saveTimer && !view.temporary)
+			view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
 	});
 
 	let sourceRemoved = $state(false);
