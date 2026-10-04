@@ -91,6 +91,31 @@ export interface DocumentFrontmatter {
  * while maintaining data sync between the disk, db, and delta history.
  *
  */
+export type ReadErrorKind =
+	| 'source_missing'
+	| 'source_permission'
+	| 'not_found'
+	| 'permission'
+	| 'locked'
+	| 'offline'
+	| 'invalid_data'
+	| 'other';
+
+const READ_ERROR_KINDS: ReadErrorKind[] = [
+	'source_missing',
+	'source_permission',
+	'not_found',
+	'permission',
+	'locked',
+	'offline',
+	'invalid_data'
+];
+
+export function readErrorKind(e: unknown): ReadErrorKind {
+	const kind = (e as { kind?: string } | null)?.kind;
+	return READ_ERROR_KINDS.find((k) => k === kind) ?? 'other';
+}
+
 class DocHandle {
 	// db fields *not all, just what is needed
 	readonly id: string; // primary id
@@ -351,11 +376,15 @@ class DocHandle {
 
 		let raw: string;
 		try {
-			raw = await readTextFile(`${this.source.path}/${this._relPath}`);
-		} catch {
-			this.hasFile = false;
-			return '';
+			raw = await invoke<string>('read_document', {
+				sourceId: this.source.id,
+				relPath: this._relPath
+			});
+		} catch (e) {
+			if (!this.hasFile && readErrorKind(e) === 'not_found') return '';
+			throw e;
 		}
+		this.hasFile = true;
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 		this.fence = raw.slice(0, raw.length - body.length);
@@ -434,6 +463,15 @@ class DocHandle {
 
 	async refreshMeta(): Promise<void> {
 		this.applyMeta(await Folder.metaAt(this.source.id, dirOf(this._relPath)));
+	}
+
+	async restore(body: string, overwrite: boolean): Promise<void> {
+		this.hasFile = overwrite;
+		await this.saveContent(body, { rebuildFrontmatter: true });
+	}
+
+	adoptAsDraft(): void {
+		this.hasFile = false;
 	}
 
 	private async ensureFile(): Promise<void> {

@@ -20,8 +20,10 @@
 	import { currentThemeType } from '$lib/services/theme.svelte';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
-	import { onDocChanged } from '$lib/models/Source';
-	import DocHandle from '$lib/models/DocHandle';
+	import { onDocChanged, onSourceReconciled, sourceName } from '$lib/models/Source';
+	import DocHandle, { readErrorKind, type ReadErrorKind } from '$lib/models/DocHandle';
+	import { historyCheckpoints, historyTextAt } from '$lib/services/history';
+	import cat from '$lib/cat.txt?raw';
 	import DocHistory, { type HistoryVersion } from '$lib/models/DocHistory.svelte';
 	import View from '$lib/models/View.svelte';
 	import { tagId } from '$lib/models/Tag';
@@ -130,11 +132,172 @@
 	$effect(() => {
 		const h = handle;
 		loaded = false;
-		h?.loadContent().then((c) => {
+		unavailable = null;
+		if (h) void open(h);
+	});
+
+	async function open(h: DocHandle) {
+		let c = '';
+		try {
+			c = await h.loadContent();
+		} catch (e) {
+			const kind = readErrorKind(e);
+			const fromHistory = canRestoreKind(kind) && (await lastKnownText(h)) !== null;
 			if (h !== handle) return;
+			if (kind !== 'not_found' || fromHistory) {
+				unavailable = { kind, held: null, fromHistory };
+				return;
+			}
+			h.adoptAsDraft();
+		}
+		if (h !== handle) return;
+		content = c;
+		loaded = true;
+		frontmatterError = h.frontmatterError;
+	}
+
+	// ── Unavailable: the source or the file can't be read ───────────────────────────────
+
+	type Unavailable = { kind: ReadErrorKind; held: string | null; fromHistory: boolean };
+	let unavailable = $state<Unavailable | null>(null);
+	let restoring = $state(false);
+	let restoreFailed = $state(false);
+
+	function canRestoreKind(kind: ReadErrorKind): boolean {
+		return kind === 'not_found' || kind === 'invalid_data';
+	}
+
+	const canRestore = $derived(
+		!!unavailable &&
+			canRestoreKind(unavailable.kind) &&
+			(unavailable.held !== null || unavailable.fromHistory)
+	);
+
+	async function lastKnownText(h: DocHandle): Promise<string | null> {
+		try {
+			const last = (await historyCheckpoints(h.id)).at(-1);
+			const text = last ? await historyTextAt(h.id, last) : '';
+			return text.trim() ? text : null;
+		} catch {
+			return null;
+		}
+	}
+
+	async function retry(h: DocHandle) {
+		if (!unavailable || restoring) return;
+		await h.refreshPath().catch(() => false);
+		let c: string;
+		try {
+			c = await h.loadContent();
+		} catch (e) {
+			if (h === handle && unavailable) unavailable = { ...unavailable, kind: readErrorKind(e) };
+			return;
+		}
+		if (h !== handle || !unavailable) return;
+		unavailable = null;
+		frontmatterError = h.frontmatterError;
+		if (!instance) {
 			content = c;
 			loaded = true;
-			frontmatterError = h.frontmatterError;
+			return;
+		}
+		savedBody = c;
+		if (c !== instance.getSource()) swapContent(c, null);
+	}
+
+	async function restoreFile() {
+		const h = handle;
+		const u = unavailable;
+		if (!h || !u || restoring) return;
+		restoring = true;
+		restoreFailed = false;
+		try {
+			const text = u.held ?? (await lastKnownText(h));
+			if (text === null) throw new Error('nothing to restore');
+			await h.restore(text, u.kind === 'invalid_data');
+			if (h !== handle) return;
+			unavailable = null;
+			frontmatterError = null;
+			if (instance) {
+				savedBody = text;
+				if (text !== instance.getSource()) swapContent(text, null);
+			} else {
+				content = text;
+				loaded = true;
+			}
+		} catch (e) {
+			console.error('restore failed', e);
+			restoreFailed = true;
+		} finally {
+			restoring = false;
+		}
+	}
+
+	const sourceLabel = $derived(handle ? sourceName(handle.source) : '');
+
+	const notice = $derived.by(() => {
+		const u = unavailable;
+		if (!u) return null;
+		switch (u.kind) {
+			case 'source_missing':
+				return {
+					headline: `the ${sourceLabel} source isn't available`,
+					detail:
+						"Check that the drive or folder is connected. This note opens by itself when it's back."
+				};
+			case 'source_permission':
+				return {
+					headline: `limestone can't open the ${sourceLabel} source`,
+					detail: 'Check that the folder lets Limestone read it, then try again.'
+				};
+			case 'not_found':
+				return u.held !== null
+					? {
+							headline: 'this note was deleted',
+							detail:
+								'Its file was deleted or moved outside Limestone. Restore puts it back as you see it.'
+						}
+					: {
+							headline: "this note's file is gone",
+							detail: 'It was deleted or moved outside Limestone.'
+						};
+			case 'permission':
+				return {
+					headline: "this note can't be opened",
+					detail:
+						"You don't have permission to read its file. Check its permissions, then try again."
+				};
+			case 'locked':
+				return {
+					headline: 'this note is in use',
+					detail: 'Another app is holding its file. Close it there, then try again.'
+				};
+			case 'offline':
+				return {
+					headline: "this note isn't downloaded",
+					detail:
+						"Your sync app hasn't downloaded its file yet. Check that it's running and online, then try again."
+				};
+			case 'invalid_data':
+				return {
+					headline: "this note isn't readable",
+					detail: canRestore
+						? "Its file isn't text anymore and may be damaged. Restore replaces it with the last version Limestone saw."
+						: "Its file isn't text anymore and may be damaged."
+				};
+			default:
+				return {
+					headline: "this note couldn't be opened",
+					detail: 'Something went wrong reading its file. Try again in a moment.'
+				};
+		}
+	});
+
+	$effect(() => {
+		const h = handle;
+		if (!h) return;
+		return onSourceReconciled((id) => {
+			if (id === h.source.id && unavailable) void retry(h);
 		});
 	});
 
@@ -161,7 +324,10 @@
 		}
 		// Ask the editor now: its `edit` event is debounced, so the last thing it handed us can be a
 		// whole typing burst behind. `pendingSource` is the fallback when the editor is already gone.
-		const body = deleted ? null : (opts.body ?? liveBody ?? instance?.getSource() ?? pendingSource);
+		const body =
+			deleted || unavailable
+				? null
+				: (opts.body ?? liveBody ?? instance?.getSource() ?? pendingSource);
 		pendingSource = null;
 		// A frontmatter rebuild writes even an unchanged body: the repair is in the part of the file
 		// the editor never holds.
@@ -210,12 +376,19 @@
 	$effect(() => {
 		const h = handle;
 		if (!h) return;
-		return onDocChanged(h, () => void reloadFromDisk(h));
+		return onDocChanged(h, () => void (unavailable ? retry(h) : reloadFromDisk(h)));
 	});
 
 	async function reloadFromDisk(h: DocHandle) {
 		if (deleted || liveBody !== null || hasUnsavedEdits()) return;
-		const fromDisk = await h.loadContent();
+		let fromDisk: string;
+		try {
+			fromDisk = await h.loadContent();
+		} catch (e) {
+			if (deleted || h !== handle || !instance) return;
+			unavailable = { kind: readErrorKind(e), held: instance.getSource(), fromHistory: false };
+			return;
+		}
 		if (deleted || h !== handle || !instance || liveBody !== null || hasUnsavedEdits()) return;
 		frontmatterError = h.frontmatterError;
 		if (fromDisk === instance.getSource()) return;
@@ -439,7 +612,7 @@
 	// The mode and font are global, not the tab's: every open document follows the setting as it
 	// changes.
 	let mode = $derived<PresentationMode>(
-		readOnly || previewing
+		readOnly || previewing || unavailable
 			? 'reading'
 			: settings.get('editor.mode') === 'source'
 				? 'source'
@@ -827,6 +1000,41 @@
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
 		/>
+		{#if unavailable?.held != null}{@render heldNotice()}{/if}
+	{/if}
+{/snippet}
+
+{#snippet actions()}
+	<div class="unavailable-actions">
+		{#if canRestore}
+			<button class="ua-btn strong" type="button" disabled={restoring} onclick={restoreFile}>
+				{restoring ? 'Restoring…' : 'Restore'}
+			</button>
+		{/if}
+		{#if unavailable && unavailable.kind !== 'not_found'}
+			<button class="ua-btn" type="button" onclick={() => handle && retry(handle)}>Try again</button
+			>
+		{/if}
+		{#if editor}
+			<button class="ua-btn" type="button" onclick={() => editor!.closeTab(tab.id, false)}
+				>Close</button
+			>
+		{/if}
+	</div>
+	{#if restoreFailed}
+		<p class="ua-failed">That didn't work. Check that the source is connected, then try again.</p>
+	{/if}
+{/snippet}
+
+{#snippet heldNotice()}
+	{#if notice}
+		<div class="held-notice">
+			<div class="held-text">
+				<p class="ua-headline">{notice.headline}</p>
+				<p class="ua-detail">{notice.detail}</p>
+			</div>
+			{@render actions()}
+		</div>
 	{/if}
 {/snippet}
 
@@ -862,8 +1070,21 @@
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
 		/>
+		{#if unavailable?.held != null}{@render heldNotice()}{/if}
 	{/if}
-	{#if loaded}
+	{#if unavailable && unavailable.held === null}
+		<div class="unavailable" class:flow>
+			{#if !flow}{@render documentHeader()}{/if}
+			{#if notice}
+				<div class="nothing">
+					<pre class="cat">{cat}</pre>
+					<p class="ua-headline">{notice.headline}</p>
+					<p class="ua-detail">{notice.detail}</p>
+					{@render actions()}
+				</div>
+			{/if}
+		</div>
+	{:else if loaded}
 		<Editor
 			bind:this={instance}
 			source={content}
@@ -891,6 +1112,125 @@
 </div>
 
 <style>
+	.unavailable {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.unavailable.flow {
+		min-height: 320px;
+	}
+
+	.nothing {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		margin: 0 24px;
+		padding-bottom: 48px;
+		text-align: center;
+		color: var(--color-ui-dulled);
+	}
+
+	.cat {
+		margin: 0 0 18px;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		line-height: 1.2;
+		white-space: pre;
+		text-align: left;
+		user-select: none;
+	}
+
+	.ua-headline {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 12px;
+		color: var(--color-ui-muted);
+	}
+
+	.ua-detail {
+		max-width: 360px;
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--color-ui-dulled);
+	}
+
+	.unavailable-actions {
+		display: flex;
+		gap: 6px;
+		margin-top: 6px;
+	}
+
+	.ua-btn {
+		height: 26px;
+		padding: 0 10px;
+		border: none;
+		border-radius: 6px;
+		background: var(--chip-bg);
+		color: var(--color-text-secondary);
+		font-family: var(--font-ui);
+		font-size: 12.5px;
+		cursor: pointer;
+	}
+
+	.ua-btn:hover:not(:disabled) {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.ua-btn.strong {
+		color: var(--color-text-primary);
+		font-weight: 600;
+	}
+
+	.ua-btn:disabled {
+		cursor: default;
+		opacity: 0.6;
+	}
+
+	.ua-failed {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 12px;
+		color: var(--error-fg);
+	}
+
+	.held-notice {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 10px 16px;
+		max-width: calc(var(--page-max-width, 1200px) - 48px);
+		margin: -16px auto 16px;
+		width: calc(100% - 48px);
+		padding: 12px 14px;
+		border-radius: 8px;
+		background: var(--chip-bg);
+	}
+
+	.held-text {
+		display: flex;
+		flex: 1 1 240px;
+		flex-direction: column;
+		gap: 3px;
+	}
+
+	.held-notice .unavailable-actions {
+		margin-top: 0;
+	}
+
+	.held-notice .ua-detail {
+		max-width: none;
+	}
+
 	.doc-editor {
 		position: relative;
 		display: flex;

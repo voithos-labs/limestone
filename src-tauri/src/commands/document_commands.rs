@@ -51,6 +51,42 @@ async fn sync_file_tags(
     tx.commit().await.map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Serialize)]
+pub struct ReadError {
+    kind: &'static str,
+}
+
+fn read_kind(e: &std::io::Error) -> &'static str {
+    if cfg!(windows) && matches!(e.raw_os_error(), Some(358..=404)) {
+        return "offline";
+    }
+    match crate::services::bulk_ops::classify_io(e).as_str() {
+        "not_found" => "not_found",
+        "permission" => "permission",
+        "locked" => "locked",
+        "invalid_data" => "invalid_data",
+        _ => "other",
+    }
+}
+
+#[tauri::command]
+pub fn read_document(
+    app: AppHandle,
+    source_id: String,
+    rel_path: String,
+) -> Result<String, ReadError> {
+    let fail = |kind| ReadError { kind };
+    let root = source_root(&app, &source_id).map_err(|_| fail("source_missing"))?;
+    if !root.is_dir() {
+        return Err(fail("source_missing"));
+    }
+    let path = resolve_in_source(&root, &rel_path).map_err(|_| fail("not_found"))?;
+    std::fs::read_to_string(&path).map_err(|e| match read_kind(&e) {
+        "permission" if std::fs::read_dir(&root).is_err() => fail("source_permission"),
+        kind => fail(kind),
+    })
+}
+
 #[tauri::command]
 pub async fn write_document(
     app_data: State<'_, AppData>,
