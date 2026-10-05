@@ -8,7 +8,7 @@
 	import { rawStatefulValue, withStatefulValue } from '$lib/views/fieldValue';
 	import { formatDateCompact } from '$lib/views/dateFormat';
 	import { dueState } from '$lib/views/due';
-	import { toasts } from '$lib/toasts.svelte';
+	import { toasts, mark } from '$lib/toasts.svelte';
 	import CellEditor from './views/CellEditor.svelte';
 
 	// A note that is a todo wears its todo-ness as one card in the meta row: the checkbox,
@@ -62,7 +62,7 @@
 			if (result.failed > 0) toasts.push(describeBulkFailure(result));
 		} catch (e) {
 			row = before;
-			reportError(e, "That couldn't be saved.", () => write(field, value));
+			reportError(e, `${mark('note', handle.title)} couldn't be saved.`, () => write(field, value));
 		}
 	}
 

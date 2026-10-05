@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
-	import { reportError } from '$lib/errors';
+	import { reportError, type ReportError } from '$lib/errors';
 	import DocHandle from '$lib/models/DocHandle';
 	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
@@ -61,7 +61,8 @@
 		onFolderMeta,
 		textTags = [],
 		onTextTag,
-		onRemoveTextTag
+		onRemoveTextTag,
+		onError = reportError
 	}: {
 		handle: DocHandle;
 		onDelete?: () => void;
@@ -81,6 +82,7 @@
 		textTags?: { slug: string; places: unknown[] }[];
 		onTextTag?: (slug: string) => void;
 		onRemoveTextTag?: (slug: string) => Promise<void>;
+		onError?: ReportError;
 	} = $props();
 
 	let fmMenuOpen = $state(false);
@@ -136,7 +138,7 @@
 			tagList = handle.tags;
 			tagsSaved++;
 		} catch (e) {
-			reportError(e, "That tag couldn't be added.", () => createTag(q));
+			onError(e, "The tag couldn't be added.", () => createTag(q));
 		}
 	}
 
@@ -147,7 +149,7 @@
 			try {
 				await onRemoveTextTag?.(tag.slug);
 			} catch (e) {
-				reportError(e, "That tag couldn't be removed from the text.");
+				onError(e, "The tag couldn't be removed from the text.");
 			}
 			if (!has) return;
 		}
@@ -159,7 +161,7 @@
 			tagsSaved++;
 		} catch (e) {
 			tagList = handle.tags;
-			reportError(e, "Tags couldn't be saved.", () => toggleTag(tag));
+			onError(e, "Tags couldn't be saved.", () => toggleTag(tag));
 		}
 	}
 
@@ -279,7 +281,7 @@
 			await handle.rename(next);
 		} catch (e) {
 			title = handle.title;
-			reportError(e, "That note couldn't be renamed.");
+			onError(e, "This note couldn't be renamed.");
 		}
 	}
 
@@ -316,7 +318,7 @@
 			syncMeta();
 			folderList = await Folder.list();
 		} catch (e) {
-			reportError(e, "That note couldn't be moved.", () => onPickFolder(groupId, path));
+			onError(e, "This note couldn't be moved.", () => onPickFolder(groupId, path));
 		}
 	}
 
@@ -459,7 +461,7 @@
 			await copy.saveContent(body);
 			onDuplicated?.(copy);
 		} catch (e) {
-			reportError(e, "That note couldn't be duplicated.", duplicateDoc);
+			onError(e, "This note couldn't be duplicated.", duplicateDoc);
 		}
 	}
 
@@ -713,7 +715,13 @@
 					<TodoCard {handle} version={tagsSaved} onRemove={removeTodo} />
 				{/if}
 				{#if meta.writes}
-					<DocProperties {handle} open={propsOpen} inline onCount={(n) => (propCount = n)} />
+					<DocProperties
+						{handle}
+						open={propsOpen}
+						inline
+						onCount={(n) => (propCount = n)}
+						{onError}
+					/>
 				{/if}
 			</div>
 		</div>

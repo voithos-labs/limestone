@@ -7,7 +7,7 @@
 	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { metaDialog } from '$lib/metaDialog.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { toasts } from '$lib/toasts.svelte';
+	import { toasts, mark } from '$lib/toasts.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
 	import View from '$lib/models/View.svelte';
@@ -314,7 +314,7 @@
 			await Folder.create(folderIdPath(unit), folderIdSource(unit));
 			await checkPresence();
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That project couldn't be restored."));
+			Folder.reportOpError(e, `${subject} couldn't be restored.`, restoreProject);
 		} finally {
 			restoringProject = false;
 		}
@@ -329,7 +329,7 @@
 			await view.unsave();
 			editor.closeTab(view.id, false);
 		} catch (e) {
-			reportError(e, "That project couldn't be removed.");
+			reportError(e, `${subject} couldn't be removed.`);
 		}
 	}
 
@@ -452,6 +452,7 @@
 		view.unit?.startsWith('folder:') ? 'folder' : view.unit?.startsWith('tag:') ? 'tag' : null
 	);
 	const unitIsRoot = $derived(unitKind === 'folder' && isSourceRoot(view.unit!));
+	const subject = $derived(mark(unitKind === 'tag' ? 'tag' : 'project', view.slug));
 	let header: ViewHeader | null = $state(null);
 
 	// the folder under a folder project, for its per-folder metadata switch (the folder page's
@@ -482,7 +483,7 @@
 			if (id) onOpenRow(id);
 			else toasts.push('Add a source before creating a document.');
 		} catch (e) {
-			reportError(e, "That note couldn't be created.", () => newDoc(todo));
+			reportError(e, `A note couldn't be created in ${subject}.`, () => newDoc(todo));
 		}
 	}
 
@@ -584,7 +585,9 @@
 			if (tab) editor.showViewInTab(tab, next);
 			else editor.openView(next);
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That folder couldn't be created."));
+			Folder.reportOpError(e, `${mark('folder', name)} couldn't be created.`, () =>
+				createFolder(name)
+			);
 		}
 	}
 
@@ -611,7 +614,7 @@
 				await removeSource(folderIdSource(view.unit));
 				editor.closeTab(view.id, false);
 			} catch (e) {
-				reportError(e, "That source couldn't be removed.");
+				reportError(e, `${mark('source', view.slug)} couldn't be removed.`);
 			}
 			return;
 		}
@@ -620,14 +623,14 @@
 				await Tag.delete(await Tag.fromID(view.unit));
 				editor.closeTab(view.id, false);
 			} catch (e) {
-				reportError(e, "That tag couldn't be deleted.");
+				reportError(e, `${mark('tag', view.slug)} couldn't be deleted.`);
 			}
 		} else {
 			try {
 				await Folder.delete(folderIdSource(view.unit), folderIdPath(view.unit));
 				editor.closeTab(view.id, false);
 			} catch (e) {
-				toasts.push(Folder.describeOpError(e, "That folder couldn't be deleted."));
+				Folder.reportOpError(e, `${mark('folder', view.slug)} couldn't be deleted.`, deleteUnit);
 			}
 		}
 	}

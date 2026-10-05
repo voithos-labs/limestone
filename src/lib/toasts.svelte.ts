@@ -12,6 +12,25 @@ export interface Toast {
 	variant: ToastVariant;
 }
 
+export type MarkKind = 'source' | 'project' | 'folder' | 'tag' | 'note';
+
+const MARK = /<(source|project|folder|tag|note):([^<>]+)>/;
+
+export function mark(kind: MarkKind, name: string): string {
+	const clean = name.replace(/[<>]/g, '');
+	return clean ? `<${kind}:${clean}>` : `this ${kind}`;
+}
+
+export function toastParts(text: string): { text: string; kind: MarkKind | null }[] {
+	const pieces = text.split(MARK);
+	const out: { text: string; kind: MarkKind | null }[] = [];
+	for (let i = 0; i < pieces.length; i += 3) {
+		if (pieces[i]) out.push({ text: pieces[i], kind: null });
+		if (i + 2 < pieces.length) out.push({ text: pieces[i + 2], kind: pieces[i + 1] as MarkKind });
+	}
+	return out;
+}
+
 class ToastController {
 	items = $state<Toast[]>([]);
 	private seq = 0;

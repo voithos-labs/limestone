@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { reportError } from '$lib/errors';
+	import { mark } from '$lib/toasts.svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
 	import { sanitizeName } from '$lib/models/View.svelte';
 	import Folder, { folderIdSource, folderIdPath } from '$lib/models/Folder';
 	import Tag, { tagSlug } from '$lib/models/Tag';
-	import { toasts } from '$lib/toasts.svelte';
 	import FaceSwitcher from './FaceSwitcher.svelte';
 	import ViewManageMenu from './ViewManageMenu.svelte';
 	import ArrangeFields from './ArrangeFields.svelte';
@@ -80,7 +80,9 @@
 		if (!f) return;
 		const newName = sanitizeName(raw);
 		if (!newName || newName === f.name) return;
-		view.renameField(f, newName).catch((e) => reportError(e, "That field couldn't be renamed."));
+		view
+			.renameField(f, newName)
+			.catch((e) => reportError(e, `The field "${f.name}" couldn't be renamed.`));
 	}
 
 	// A doc face draws one document, so its search picks which one, a dropdown under this bar
@@ -238,7 +240,9 @@
 				view.slug = tagSlug(name);
 			}
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That couldn't be renamed."));
+			const report = unit.startsWith('tag:') ? reportError : Folder.reportOpError;
+			const kind = unit.startsWith('tag:') ? 'tag' : 'folder';
+			report(e, `${mark(kind, view.slug)} couldn't be renamed.`, () => renameUnit(unit, name));
 		}
 		slugDraft = view.slug;
 	}

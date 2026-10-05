@@ -20,7 +20,7 @@
 		type Source
 	} from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
-	import { toasts } from '$lib/toasts.svelte';
+	import { toasts, mark } from '$lib/toasts.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import Menu from '../views/Menu.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
@@ -78,6 +78,7 @@
 	let folders: Folder[] = $state([]);
 	let root: Folder | null = $state(null);
 	const here = $derived(isRoot ? root : (folders.find((f) => f.id === unitId) ?? null));
+	const subject = $derived(mark(isRoot ? 'source' : 'folder', view.slug));
 	// folders that are projects: they have a saved view of their own, and its emoji
 	let projects: Map<string, { emoji: string }> = $state(new Map());
 	const query = $derived(((view.state.search as string | undefined) ?? '').trim());
@@ -361,7 +362,7 @@
 			if (id) onOpenRow(id);
 			else toasts.push('Add a source before creating a document.');
 		} catch (e) {
-			reportError(e, "That note couldn't be created.", () => newDoc(todo));
+			reportError(e, `A note couldn't be created in ${subject}.`, () => newDoc(todo));
 		}
 	}
 
@@ -432,7 +433,7 @@
 			await removeSource(sourceId);
 			editor.closeTab(view.id, false);
 		} catch (e) {
-			reportError(e, "That source couldn't be removed.");
+			reportError(e, `${subject} couldn't be removed.`);
 		}
 	}
 
@@ -444,7 +445,7 @@
 			if (parent) openCrumb(parent);
 			else openRoot();
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That folder couldn't be deleted."));
+			Folder.reportOpError(e, `${subject} couldn't be deleted.`, deleteFolder);
 		}
 	}
 
@@ -486,7 +487,9 @@
 			await loadFolders();
 			show(created.id, created.slug);
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That folder couldn't be created."));
+			Folder.reportOpError(e, `${mark('folder', name)} couldn't be created.`, () =>
+				createFolder(name)
+			);
 		}
 	}
 
@@ -500,7 +503,7 @@
 			const f = await Folder.fromID(newId);
 			show(newId, f.slug);
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That couldn't be done."));
+			Folder.reportOpError(e, `${subject} couldn't be renamed.`, () => commitName(raw));
 		}
 	}
 

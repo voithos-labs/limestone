@@ -32,7 +32,7 @@ import * as yaml from 'js-yaml';
 import { select, execute } from '$lib/services/db';
 import { addChangeHistory, removeHistory } from '$lib/services/history';
 import { rewriteLinksForMove } from '$lib/services/links.svelte';
-import { toasts } from '$lib/toasts.svelte';
+import { toasts, mark } from '$lib/toasts.svelte';
 import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
 import Tag, { tagSlug, type TagRow } from './Tag';
@@ -555,7 +555,7 @@ class DocHandle {
 			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this._relPath);
 		} catch (e) {
 			console.error('link rewrite failed', e);
-			toasts.push(`Links to "${this.title}" still use its old name.`, {
+			toasts.push(`Links to ${mark('note', this.title)} still use its old name.`, {
 				action: { label: 'Retry', run: () => this.updateLinks(oldRelPath) }
 			});
 		}

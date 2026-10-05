@@ -20,10 +20,10 @@
 	import { listSources, sourceName } from '$lib/models/Source';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
-	import { toasts } from '$lib/toasts.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { folderPath } from '$lib/views/createDefaults';
-	import { isValidSegment, nameGuard } from '$lib/util/paths';
+	import { folderNameProblem, isValidSegment, nameGuard } from '$lib/util/paths';
+	import { mark } from '$lib/toasts.svelte';
 
 	type FolderNode = {
 		id: string;
@@ -343,6 +343,7 @@
 
 	let newFolderOpen = $state(false);
 	let newName = $state('');
+	const newNameProblem = $derived(folderNameProblem(newName, siblingExists(newName)));
 	let newFolderEl: HTMLInputElement | null = $state(null);
 
 	function openNewFolder() {
@@ -392,9 +393,9 @@
 			await loadData();
 			return newId;
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "The folder couldn't be moved."), {
-				action: { label: 'Retry', run: () => performMove(f, destKey) }
-			});
+			Folder.reportOpError(e, `${mark('folder', f.slug)} couldn't be moved.`, () =>
+				performMove(f, destKey)
+			);
 			return null;
 		} finally {
 			movingBusy = false;
@@ -432,20 +433,22 @@
 		});
 	}
 
-	function renameInvalid(f: FolderNode): boolean {
+	function renameProblem(f: FolderNode): string | null {
 		const s = renameDraft.trim();
-		if (s === f.slug || s === '') return false;
-		if (!validFolderName(s)) return true;
+		if (s === f.slug) return null;
 		const sibs = childrenByParent.get(parentKey(f)) ?? [];
-		return sibs.some((o) => o.id !== f.id && o.slug.toLowerCase() === s.toLowerCase());
+		return folderNameProblem(
+			s,
+			sibs.some((o) => o.id !== f.id && o.slug.toLowerCase() === s.toLowerCase())
+		);
 	}
 
 	function commitRename(f: FolderNode) {
 		if (renamingId !== f.id) return;
 		const s = renameDraft.trim();
-		const invalid = renameInvalid(f);
+		const problem = renameProblem(f);
 		renamingId = null;
-		if (!f.sourceId || s === f.slug || s === '' || invalid || !validFolderName(s)) return;
+		if (!f.sourceId || s === f.slug || s === '' || problem) return;
 		const oldPath = folderPath(f.id);
 		const dir = oldPath.split('/').slice(0, -1).join('/');
 		doRename(f.sourceId, oldPath, dir ? `${dir}/${s}` : s);
@@ -456,9 +459,10 @@
 			await Folder.move(src, oldPath, newPath);
 			await loadData();
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "The folder couldn't be renamed."), {
-				action: { label: 'Retry', run: () => doRename(src, oldPath, newPath) }
-			});
+			const name = oldPath.split('/').pop() ?? oldPath;
+			Folder.reportOpError(e, `${mark('folder', name)} couldn't be renamed.`, () =>
+				doRename(src, oldPath, newPath)
+			);
 		}
 	}
 
@@ -1164,8 +1168,8 @@
 									<FolderPlus size={13} strokeWidth={1.75} />
 									<input
 										class="new-input"
-										class:invalid={newName.trim() !== '' &&
-											(!validFolderName(newName) || siblingExists(newName))}
+										class:invalid={newNameProblem}
+										title={newNameProblem ?? undefined}
 										type="text"
 										bind:value={newName}
 										bind:this={newFolderEl}
@@ -1196,7 +1200,8 @@
 										{@render nodeIcon(folder, 13)}
 										<input
 											class="new-input"
-											class:invalid={renameInvalid(folder)}
+											class:invalid={renameProblem(folder)}
+											title={renameProblem(folder) ?? undefined}
 											type="text"
 											bind:value={renameDraft}
 											bind:this={renameEl}

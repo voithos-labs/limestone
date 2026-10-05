@@ -92,11 +92,16 @@
 	});
 
 	// todo: start collecting launch actionables here
-	function reportScanSkips(count: number) {
+	const reportedSkips = new Map<string, number>();
+	function reportScanSkips(sourceId: string, count: number) {
+		if (count === (reportedSkips.get(sourceId) ?? 0)) return;
+		reportedSkips.set(sourceId, count);
 		if (count === 0) return;
 		toasts.push(
-			`${count} ${count === 1 ? 'note' : 'notes'} couldn't be indexed: unsupported title encoding`,
-			{ timeout: 5000 }
+			count === 1
+				? "1 file isn't showing: its name has characters Limestone can't read. Rename it in your file manager to bring it back."
+				: `${count} files aren't showing: their names have characters Limestone can't read. Rename them in your file manager to bring them back.`,
+			{ timeout: 10000 }
 		);
 	}
 
@@ -114,7 +119,7 @@
 		});
 		// startup scan
 		const unlistenScan = listen<{ source_id: string; skipped: number }>('source-reconciled', (e) =>
-			reportScanSkips(e.payload.skipped)
+			reportScanSkips(e.payload.source_id, e.payload.skipped)
 		);
 		return () => {
 			unlisten.then((f) => f());

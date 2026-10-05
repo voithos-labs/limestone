@@ -4,7 +4,7 @@
 // until the drop, and targets want to judge it while hovering
 import DocHandle from '$lib/models/DocHandle';
 import Folder, { folderIdPath, folderIdSource } from '$lib/models/Folder';
-import { toasts } from '$lib/toasts.svelte';
+import { toasts, mark } from '$lib/toasts.svelte';
 
 export const MOVE_MIME = 'application/x-limestone-move';
 
@@ -55,9 +55,12 @@ export function canMoveInto(targetId: string, p: MovePayload | null): boolean {
 export async function moveInto(targetId: string, p: MovePayload): Promise<boolean> {
 	const sourceId = folderIdSource(targetId);
 	const targetPath = folderIdPath(targetId);
+	let subject =
+		p.kind === 'doc' ? 'This note' : mark('folder', folderIdPath(p.id).split('/').pop() ?? '');
 	try {
 		if (p.kind === 'doc') {
 			const d = await DocHandle.fromID(p.id);
+			subject = mark('note', d.title);
 			if (d.source.id !== sourceId) {
 				toasts.push('Drag between sources is not supported yet. Use Move from the document.');
 				return false;
@@ -74,7 +77,7 @@ export async function moveInto(targetId: string, p: MovePayload): Promise<boolea
 		await Folder.move(sourceId, fp, targetPath ? `${targetPath}/${name}` : name);
 		return true;
 	} catch (e) {
-		toasts.push(Folder.describeOpError(e, "That couldn't be moved."));
+		Folder.reportOpError(e, `${subject} couldn't be moved.`);
 		return false;
 	}
 }

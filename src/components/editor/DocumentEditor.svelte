@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { reportError } from '$lib/errors';
+	import { describeError, isRetryable, splitMessage } from '$lib/errors';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { Editor } from '@voithos-labs/aragonite';
 	import type {
@@ -135,6 +135,7 @@
 		const h = handle;
 		loaded = false;
 		unavailable = null;
+		problem = null;
 		if (h) void open(h);
 	});
 
@@ -266,10 +267,46 @@
 	});
 
 	const restoreNote = $derived(
-		restoreFailed ? "That didn't work. Check that the source is connected, then try again." : null
+		restoreFailed
+			? "Restore didn't work. Check that the source is connected, then try again."
+			: null
 	);
 
 	const sourceLabel = $derived(handle ? sourceName(handle.source) : '');
+
+	const BANG = '<!>';
+	const CAT_FACE = ' /\\_/\\\n( o.o )';
+
+	type Problem = { title: string; detail: string | null; retry: (() => unknown) | null };
+	let problem = $state.raw<Problem | null>(null);
+	let saveProblem: Problem | null = null;
+
+	function reportProblem(e: unknown, fallback: string, retry?: () => unknown): Problem {
+		console.error(fallback, e);
+		const [title, detail] = splitMessage(fallback);
+		problem = {
+			title: title.replace(/\.$/, ''),
+			detail: [detail, describeError(e, '')].filter(Boolean).join(' ') || null,
+			retry: retry && isRetryable(e) ? retry : null
+		};
+		return problem;
+	}
+
+	const problemActions = $derived.by(() => {
+		const out: GoneAction[] = [];
+		const retry = problem?.retry;
+		if (retry)
+			out.push({
+				label: 'Retry',
+				strong: true,
+				run: () => {
+					problem = null;
+					return retry();
+				}
+			});
+		out.push({ label: 'Dismiss', run: () => (problem = null) });
+		return out;
+	});
 
 	const notice = $derived.by(() => {
 		const u = unavailable;
@@ -368,9 +405,13 @@
 			.saveContent(body, opts)
 			.then(() => {
 				savedBody = body;
+				if (saveProblem && problem === saveProblem) problem = null;
+				saveProblem = null;
 				if (historyOpen && history?.atPresent) void history.load();
 			})
-			.catch((e) => console.error('saveContent failed', e))
+			.catch((e) => {
+				saveProblem = reportProblem(e, "This note couldn't be saved.", () => flushSave());
+			})
 			.finally(() => {
 				if (saving === write) saving = null;
 			});
@@ -965,7 +1006,7 @@
 			// The editor reports this on the same `clipboard` error channel as a failed insertion,
 			// and the paste's other images still land, so the error handler must not delete on it.
 			pasteImports.markOwnFailure(e);
-			reportError(e, "That image couldn't be added.");
+			reportProblem(e, "The image couldn't be added.");
 			throw e;
 		}
 		pasteImports.record(relPath);
@@ -1000,7 +1041,7 @@
 			editor?.closeTab(tab.id, false);
 		} catch (e) {
 			deleted = false;
-			reportError(e, "That note couldn't be deleted.", deleteDoc);
+			reportProblem(e, "This note couldn't be deleted.", deleteDoc);
 		}
 	}
 
@@ -1031,19 +1072,31 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onError={reportProblem}
 		/>
-		{#if unavailable?.held != null && unavailable.settled}{@render heldNotice()}{/if}
+		{@render docNotices()}
 	{/if}
 {/snippet}
 
-{#snippet heldNotice()}
-	{#if notice}
+{#snippet docNotices()}
+	{#if notice && unavailable?.held != null && unavailable.settled}
 		<div class="held-notice">
+			<pre class="held-cat" aria-hidden="true">{CAT_FACE}</pre>
 			<div class="held-text">
-				<p class="ua-headline">{notice.headline}</p>
+				<p class="ua-headline">{notice.headline} {BANG}</p>
 				<p class="ua-detail">{notice.detail}</p>
 			</div>
 			<GoneActions actions={goneActions} note={restoreNote} />
+		</div>
+	{/if}
+	{#if problem}
+		<div class="held-notice">
+			<pre class="held-cat" aria-hidden="true">{CAT_FACE}</pre>
+			<div class="held-text">
+				<p class="ua-headline">{problem.title} {BANG}</p>
+				{#if problem.detail}<p class="ua-detail">{problem.detail}</p>{/if}
+			</div>
+			<GoneActions actions={problemActions} />
 		</div>
 	{/if}
 {/snippet}
@@ -1079,8 +1132,9 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onError={reportProblem}
 		/>
-		{#if unavailable?.held != null && unavailable.settled}{@render heldNotice()}{/if}
+		{@render docNotices()}
 	{/if}
 	{#if unavailable && unavailable.held === null}
 		<div class="unavailable" class:flow>
@@ -1161,6 +1215,20 @@
 		padding: 12px 14px;
 		border-radius: 8px;
 		background: var(--chip-bg);
+	}
+
+	.held-cat {
+		flex-shrink: 0;
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		line-height: 1.2;
+		color: var(--color-ui-dulled);
+		user-select: none;
+	}
+
+	.held-notice + .held-notice {
+		margin-top: -8px;
 	}
 
 	.held-text {

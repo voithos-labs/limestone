@@ -286,7 +286,7 @@
 			picker?.pick(doc.id);
 			onCreated?.(doc.id);
 		} catch (e) {
-			reportError(e, "That note couldn't be created.");
+			reportError(e, "The new note couldn't be created.");
 		} finally {
 			creating = false;
 		}

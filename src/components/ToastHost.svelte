@@ -1,64 +1,91 @@
 <script lang="ts">
-	import { toasts } from '$lib/toasts.svelte';
-	import { X, CircleAlert, ArrowUp, RotateCw, Check } from '@lucide/svelte';
+	import { toasts, toastParts, type Toast, type ToastVariant } from '$lib/toasts.svelte';
+	import { splitMessage } from '$lib/errors';
+	import {
+		X,
+		CircleX,
+		CircleCheck,
+		CircleArrowUp,
+		FolderInput,
+		Folder,
+		Box,
+		Hash,
+		TextAlignStart
+	} from '@lucide/svelte';
 
-	function splitColon(message: string): [string, string | null] {
-		const i = message.indexOf(':');
-		if (i === -1) return [message, null];
-		return [message.slice(0, i + 1), message.slice(i + 1).trim()];
+	const MARK_ICONS = {
+		source: FolderInput,
+		project: Box,
+		folder: Folder,
+		tag: Hash,
+		note: TextAlignStart
+	};
+
+	function act(t: Toast) {
+		t.action?.run();
+		toasts.dismiss(t.id);
 	}
 </script>
+
+{#snippet rich(text: string)}
+	{#each toastParts(text) as part, i (i)}
+		{#if part.kind}
+			{@const Icon = MARK_ICONS[part.kind]}
+			<span class="toast-chip"
+				><Icon size={11} strokeWidth={2} /><span class="chip-text">{part.text}</span></span
+			>
+		{:else}
+			{part.text}
+		{/if}
+	{/each}
+{/snippet}
+
+{#snippet icon(variant: ToastVariant)}
+	<span class="toast-icon">
+		{#if variant === 'update'}
+			<CircleArrowUp size={15} strokeWidth={2} />
+		{:else if variant === 'info'}
+			<CircleCheck size={15} strokeWidth={2} />
+		{:else}
+			<CircleX size={15} strokeWidth={2} />
+		{/if}
+	</span>
+{/snippet}
+
+{#snippet close(t: Toast)}
+	<button class="toast-close" aria-label="Dismiss" onclick={() => toasts.dismiss(t.id)}>
+		<X size={13} strokeWidth={2.25} />
+	</button>
+{/snippet}
 
 {#if toasts.items.length}
 	<div class="toast-host">
 		{#each toasts.items as t (t.id)}
-			{@const [head, detail] = splitColon(t.message)}
-			<div class="toast toast-{t.variant}">
-				{#if t.variant === 'update'}
-					<button
-						class="toast-main clickable"
-						onclick={() => {
-							t.action?.run();
-							toasts.dismiss(t.id);
-						}}
-					>
-						<span class="toast-icon"><ArrowUp size={14} strokeWidth={2.25} /></span>
-						<div class="toast-body">
-							<span class="toast-head" class:solo={!detail}>{head}</span>
-							{#if detail}<span class="toast-detail">{detail}</span>{/if}
-						</div>
-					</button>
-				{:else}
-					<div class="toast-main">
-						<span class="toast-icon">
-							{#if t.variant === 'info'}
-								<Check size={14} strokeWidth={2.25} />
-							{:else}
-								<CircleAlert size={14} strokeWidth={2.25} />
-							{/if}
-						</span>
-						<div class="toast-body">
-							<span class="toast-head" class:solo={!detail}>{head}</span>
-							{#if detail}<span class="toast-detail">{detail}</span>{/if}
-						</div>
+			{@const [title, detail] = splitMessage(t.message)}
+			{#if detail}
+				<div class="toast card toast-{t.variant}">
+					{@render icon(t.variant)}
+					<div class="card-body">
+						<span class="card-title">{@render rich(title)}</span>
+						<span class="card-detail">{@render rich(detail)}</span>
+						{#if t.action}
+							<div class="card-actions">
+								<button class="toast-action" onclick={() => act(t)}>{t.action.label}</button>
+							</div>
+						{/if}
 					</div>
+					{@render close(t)}
+				</div>
+			{:else}
+				<div class="toast line toast-{t.variant}">
+					{@render icon(t.variant)}
+					<span class="line-text">{@render rich(title)}</span>
 					{#if t.action}
-						<button
-							class="toast-region"
-							onclick={() => {
-								t.action?.run();
-								toasts.dismiss(t.id);
-							}}
-						>
-							<RotateCw size={13} strokeWidth={2.25} />
-							{t.action.label}
-						</button>
+						<button class="toast-action" onclick={() => act(t)}>{t.action.label}</button>
 					{/if}
-				{/if}
-				<button class="toast-region" aria-label="Dismiss" onclick={() => toasts.dismiss(t.id)}>
-					<X size={13} strokeWidth={2.25} />
-				</button>
-			</div>
+					{@render close(t)}
+				</div>
+			{/if}
 		{/each}
 	</div>
 {/if}
@@ -71,21 +98,18 @@
 		z-index: 3000;
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
-		max-width: 500px;
+		align-items: flex-end;
+		gap: 8px;
+		max-width: calc(100vw - 40px);
 	}
 
 	.toast {
 		display: flex;
-		align-items: stretch;
-		border-radius: 8px;
-		overflow: hidden;
+		border-radius: 10px;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		box-shadow: var(--menu-shadow);
 		font-family: var(--font-ui);
-		font-size: 12px;
-		line-height: 1.4;
 		color: var(--color-text-primary);
 		animation: toast-pop 0.16s ease-out;
 	}
@@ -101,33 +125,68 @@
 		}
 	}
 
-	.toast-main {
-		display: flex;
+	.line {
 		align-items: center;
-		gap: 10px;
+		gap: 9px;
+		max-width: min(560px, 100%);
+		height: 36px;
+		padding: 0 6px 0 12px;
+		font-size: 12.5px;
+	}
+
+	.line-text {
 		flex: 1;
 		min-width: 0;
-		padding: 9px 12px;
-		border: none;
-		background: transparent;
-		font: inherit;
-		color: inherit;
-		text-align: left;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.toast-main.clickable {
-		cursor: pointer;
+	.card {
+		position: relative;
+		align-items: flex-start;
+		gap: 10px;
+		width: fit-content;
+		min-width: min(300px, 100%);
+		max-width: min(440px, 100%);
+		padding: 11px 14px 12px 13px;
 	}
 
-	.toast-main.clickable:hover {
-		background: var(--menu-item-hover);
+	.card-body {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		gap: 3px;
+		min-width: 0;
+	}
+
+	.card-title {
+		padding-right: 22px;
+		font-size: 13px;
+		font-weight: 550;
+		line-height: 18px;
+	}
+
+	.card-detail {
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--color-text-secondary);
+	}
+
+	.card-actions {
+		display: flex;
+		gap: 4px;
+		margin: 5px 0 -3px -7px;
 	}
 
 	.toast-icon {
 		display: flex;
 		flex-shrink: 0;
-		align-self: center;
 		color: var(--error-fg);
+	}
+
+	.card .toast-icon {
+		margin-top: 1.5px;
 	}
 
 	.toast-update .toast-icon,
@@ -135,44 +194,66 @@
 		color: var(--color-accent);
 	}
 
-	.toast-body {
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		flex: 1;
-		min-width: 0;
-	}
-
-	.toast-head {
-		font-weight: 560;
-		color: var(--color-text-primary);
-	}
-
-	.toast-head.solo {
-		font-weight: 450;
-	}
-
-	.toast-detail {
-		font-size: 11.5px;
-		color: var(--color-text-secondary);
-	}
-
-	.toast-region {
-		flex-shrink: 0;
+	.toast-chip {
 		display: inline-flex;
 		align-items: center;
-		gap: 5px;
-		padding: 0 12px;
+		gap: 4px;
+		max-width: 220px;
+		padding: 0 6px;
+		border-radius: 5px;
+		background: var(--chip-bg);
+		vertical-align: bottom;
+		font-weight: 500;
+		white-space: nowrap;
+	}
+
+	.toast-chip :global(svg) {
+		flex-shrink: 0;
+		color: var(--color-ui-muted);
+	}
+
+	.chip-text {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.toast-action {
+		flex-shrink: 0;
+		height: 24px;
+		padding: 0 7px;
 		border: none;
+		border-radius: 5px;
 		background: transparent;
-		color: var(--color-text-secondary);
+		color: var(--color-text-primary);
 		font-family: var(--font-ui);
 		font-size: 12px;
-		line-height: 1;
+		font-weight: 560;
 		cursor: pointer;
 	}
 
-	.toast-region:hover {
+	.toast-close {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-ui-muted, var(--color-text-secondary));
+		cursor: pointer;
+	}
+
+	.card .toast-close {
+		position: absolute;
+		top: 7px;
+		right: 7px;
+	}
+
+	.toast-action:hover,
+	.toast-close:hover {
 		background: var(--menu-item-hover);
 		color: var(--color-text-primary);
 	}

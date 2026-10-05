@@ -29,7 +29,7 @@ import DocHandle from '$lib/models/DocHandle';
 import { sanitizeSegment } from '$lib/util/paths';
 import { tagId } from '$lib/models/Tag';
 import { invoke } from '@tauri-apps/api/core';
-import { toasts } from '$lib/toasts.svelte';
+import { toasts, mark } from '$lib/toasts.svelte';
 
 export type RowTag = { id: string; slug: string };
 
@@ -314,7 +314,9 @@ export class FaceRows {
 			}
 		} catch (e) {
 			this.patchRow(row.id, { properties: before });
-			reportError(e, "That couldn't be saved.", () => this.writeCell(row, field, value));
+			reportError(e, `${mark('note', row.title)} couldn't be saved.`, () =>
+				this.writeCell(row, field, value)
+			);
 		}
 	}
 
@@ -364,7 +366,7 @@ export class FaceRows {
 			if (fid && this.fieldAffectsView(fid)) this.load(true);
 			return tags;
 		} catch (e) {
-			reportError(e, "Tags couldn't be saved.");
+			reportError(e, `Tags on ${mark('note', row.title)} couldn't be saved.`);
 			return null;
 		}
 	}
@@ -380,18 +382,19 @@ export class FaceRows {
 			this.patchRow(rowId, { title: doc.title });
 		} catch (e) {
 			this.patchRow(rowId, { title: prev });
-			reportError(e, "That note couldn't be renamed.");
+			reportError(e, `${mark('note', prev)} couldn't be renamed.`);
 		}
 	}
 
 	async delete(rowId: string): Promise<void> {
+		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		try {
 			const doc = await DocHandle.fromID(rowId);
 			await doc.delete();
 			this.rows = this.rows.filter((r) => r.id !== rowId);
 			this.total = Math.max(0, this.total - 1);
 		} catch (e) {
-			reportError(e, "That note couldn't be deleted.", () => this.delete(rowId));
+			reportError(e, `${mark('note', title)} couldn't be deleted.`, () => this.delete(rowId));
 		}
 	}
 
@@ -436,7 +439,11 @@ export class FaceRows {
 			await this.load(true);
 			return doc.id;
 		} catch (e) {
-			reportError(e, "That note couldn't be created.", () => this.create(title));
+			reportError(
+				e,
+				title ? `${mark('note', title)} couldn't be created.` : "The new note couldn't be created.",
+				() => this.create(title)
+			);
 			return null;
 		}
 	}

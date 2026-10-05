@@ -20,7 +20,7 @@
 	import type { ViewFieldType } from '$lib/models/View.svelte';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { listSources, getDefaultSourceId, sourceName, type Source } from '$lib/models/Source';
-	import { toasts } from '$lib/toasts.svelte';
+	import { toasts, mark } from '$lib/toasts.svelte';
 	import { palette } from '$lib/palette.svelte';
 	import Menu from '../views/Menu.svelte';
 	import EmojiPicker from '../views/EmojiPicker.svelte';
@@ -202,7 +202,9 @@
 			await view.save();
 			editor.replaceTab(tab.id, TabState.forView(view));
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That project couldn't be created."));
+			Folder.reportOpError(e, `${mark('project', slug)} couldn't be created.`, () =>
+				create(template)
+			);
 		} finally {
 			busy = false;
 		}

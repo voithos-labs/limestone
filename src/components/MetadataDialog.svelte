@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { describeError, reportError } from '$lib/errors';
+	import { mark } from '$lib/toasts.svelte';
 	import { untrack } from 'svelte';
 	import {
 		ArrowRight,
@@ -75,7 +76,7 @@
 			if (mode !== opened) await Folder.setMetaMode(metaDialog.folderId, mode);
 			metaDialog.close();
 		} catch (e) {
-			reportError(e, "That setting couldn't be changed.", save);
+			reportError(e, `The metadata setting for ${mark('folder', name)} couldn't be changed.`, save);
 		} finally {
 			saving = false;
 		}

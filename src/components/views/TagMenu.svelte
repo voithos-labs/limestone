@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { reportError } from '$lib/errors';
+	import { mark } from '$lib/toasts.svelte';
 	import { untrack } from 'svelte';
 	import {
 		Hash,
@@ -135,7 +136,7 @@
 		try {
 			await onCreate(slug);
 		} catch (e) {
-			reportError(e, "That tag couldn't be created.", () => onCreate(slug));
+			reportError(e, `${mark('tag', slug)} couldn't be created.`, () => onCreate(slug));
 		}
 		await reload();
 	}
@@ -169,7 +170,7 @@
 			await reload();
 			onMutated?.();
 		} catch (e) {
-			reportError(e, "That tag couldn't be renamed.", () => Tag.rename(t, s));
+			reportError(e, `${mark('tag', t.slug)} couldn't be renamed.`, () => Tag.rename(t, s));
 		} finally {
 			busy = false;
 		}
@@ -190,7 +191,7 @@
 			await reload();
 			onMutated?.();
 		} catch (e) {
-			reportError(e, "That tag couldn't be deleted.", () => confirmDelete(t));
+			reportError(e, `${mark('tag', t.slug)} couldn't be deleted.`, () => confirmDelete(t));
 		} finally {
 			busy = false;
 		}
@@ -349,6 +350,7 @@
 							<input
 								class="name-input"
 								class:invalid={renameInvalid(t)}
+								title={renameInvalid(t) ? 'A tag with this name already exists.' : undefined}
 								bind:value={renameDraft}
 								use:renameFocus
 								use:nameGuard={'tag'}

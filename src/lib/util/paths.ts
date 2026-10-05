@@ -31,6 +31,13 @@ export function segmentProblem(name: string): string | null {
 	return null;
 }
 
+export function folderNameProblem(name: string, taken: boolean): string | null {
+	const s = name.trim();
+	if (s === '') return null;
+	if (s.startsWith('.')) return "A folder name can't start with a dot.";
+	return segmentProblem(s) ?? (taken ? 'A folder with this name is already here.' : null);
+}
+
 export function sanitizeSegment(name: string): string {
 	let s = name.replace(ILLEGAL_CHARS_ALL, '-').trim();
 	const dot = s.indexOf('.');
