@@ -21,7 +21,7 @@
 	import { searchDocuments } from '$lib/services/search';
 	import { select } from '$lib/services/db';
 	import { listSources, sourceName, getSource, touchSource, type Source } from '$lib/models/Source';
-	import DocHandle from '$lib/models/DocHandle';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 	import Tag from '$lib/models/Tag';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
@@ -77,7 +77,7 @@
 	}
 
 	async function newDoc(newTab: boolean) {
-		const doc = await DocHandle.createDraft();
+		const doc = await MarkdownHandle.createDraft();
 		if (doc) openContent(TabState.forDoc(doc), newTab);
 	}
 
@@ -196,7 +196,7 @@
 			icon: TextAlignStart,
 			kind: 'doc',
 			match: r.match_indices,
-			run: async (newTab) => openContent(TabState.forDoc(await DocHandle.fromID(r.id)), newTab)
+			run: async (newTab) => openContent(TabState.forDoc(await MarkdownHandle.fromID(r.id)), newTab)
 		};
 	}
 
@@ -221,7 +221,7 @@
 						icon: TextAlignStart,
 						kind: 'doc' as const,
 						run: async (newTab) =>
-							openContent(TabState.forDoc(await DocHandle.fromID(d.id)), newTab)
+							openContent(TabState.forDoc(await MarkdownHandle.fromID(d.id)), newTab)
 					}))
 				});
 			}

@@ -3,7 +3,7 @@
 	import type { ViewFace, FilterNode, MemberRow } from '$lib/models/View.svelte';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import DocHandle from '$lib/models/DocHandle';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 	import { getDefaultSourceId, listSources, pickCreationSource } from '$lib/models/Source';
 	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/createDefaults';
 	import { seedProperties } from '$lib/views/fieldValue';
@@ -200,10 +200,10 @@
 		return bag;
 	}
 
-	let guess: { id: string; handle: Promise<DocHandle> } | null = null;
+	let guess: { id: string; handle: Promise<MarkdownHandle> } | null = null;
 	const lastId = untrack(() => tab?.state.doc_active);
 	if (typeof lastId === 'string') {
-		const handle = DocHandle.fromID(lastId);
+		const handle = MarkdownHandle.fromID(lastId);
 		handle.catch(() => {});
 		guess = { id: lastId, handle };
 	}
@@ -215,7 +215,7 @@
 			return;
 		}
 		if (untrack(() => docTab)?.handle?.id === id) return;
-		const opening = guess?.id === id ? guess.handle : DocHandle.fromID(id);
+		const opening = guess?.id === id ? guess.handle : MarkdownHandle.fromID(id);
 		guess = null;
 		let cancelled = false;
 		opening
@@ -260,7 +260,7 @@
 			const groupIds = [...ctx.tagGroupIds];
 			const properties = seedProperties(view.fields, ctx.fieldValues);
 
-			const doc = await DocHandle.createFromTitle(source, {
+			const doc = await MarkdownHandle.createFromTitle(source, {
 				title: title?.trim() || labels.newTitle || 'Untitled',
 				dir,
 				groupIds,

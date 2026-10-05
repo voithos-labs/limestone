@@ -1,7 +1,7 @@
 import type Session from '$lib/models/Session.svelte.js';
 import { palette } from '$lib/palette.svelte';
 import type { SettingsState } from '$lib/models/Settings.svelte';
-import DocHandle from '$lib/models/DocHandle';
+import MarkdownHandle from '$lib/models/MarkdownHandle';
 
 export interface Action {
 	id: string;
@@ -183,7 +183,7 @@ export const actions: Action[] = [
 		category: 'documents',
 		defaultKeys: ['mod+n'],
 		run: async (session) => {
-			const doc = await DocHandle.createDraft();
+			const doc = await MarkdownHandle.createDraft();
 			if (doc) session.active.openDoc(doc);
 		}
 	},

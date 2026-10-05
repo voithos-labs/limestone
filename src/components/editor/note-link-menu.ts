@@ -6,7 +6,7 @@
 
 import type { InlineMenuItem, InlineMenuSource } from '@voithos-labs/aragonite';
 import { readTextFile } from '@tauri-apps/plugin-fs';
-import DocHandle from '$lib/models/DocHandle';
+import MarkdownHandle from '$lib/models/MarkdownHandle';
 import { linkTargets, resolveWikiLink } from '$lib/services/links.svelte';
 import { searchTitles } from '$lib/services/search';
 import { noteHeadings } from './note-headings';
@@ -111,7 +111,7 @@ async function otherNote(
 	try {
 		const raw = await readTextFile(`${vault.path}/${hit.rel_path}`);
 		const target = (await linkTargets(vault.id, [hit])).get(hit.id) ?? note;
-		return { target, text: DocHandle.stripFence(raw) };
+		return { target, text: MarkdownHandle.stripFence(raw) };
 	} catch {
 		return null;
 	}

@@ -2,7 +2,7 @@ import { readTextFile } from '@tauri-apps/plugin-fs';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { MemberRow } from '$lib/models/View.svelte';
 import type { Source } from '$lib/models/Source';
-import DocHandle from '$lib/models/DocHandle';
+import MarkdownHandle from '$lib/models/MarkdownHandle';
 
 // Cheap previews for cards until there are real thumbnails: the first image embedded in the
 // body if there is one, else the first few hundred characters of prose with the markdown
@@ -60,7 +60,7 @@ export class PreviewCache {
 					if (!src) return;
 					try {
 						const raw = await readTextFile(`${src.path}/${r.rel_path}`);
-						const body = DocHandle.deserialize(raw).body;
+						const body = MarkdownHandle.deserialize(raw).body;
 						hit = { text: stripMd(body).slice(0, PREVIEW_MAX), image: firstImage(body, src) };
 					} catch {
 						hit = { text: '', image: '' };

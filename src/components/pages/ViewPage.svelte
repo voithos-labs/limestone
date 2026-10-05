@@ -17,7 +17,7 @@
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { listSources, removeSource, type Source } from '$lib/models/Source';
 	import SourceDialog from '../SourceDialog.svelte';
-	import DocHandle from '$lib/models/DocHandle';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 	import ViewHeader from '../views/ViewHeader.svelte';
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
@@ -585,7 +585,7 @@
 	}
 
 	function onOpenRow(rowId: string, newTab: boolean | 'side' = false) {
-		DocHandle.fromID(rowId)
+		MarkdownHandle.fromID(rowId)
 			.then((d) => {
 				const content = { type: 'markdown', handle: d } as const;
 				if (newTab === 'side') editor.beside().openDetail(content, view.slug);

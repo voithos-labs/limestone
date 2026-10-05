@@ -1,5 +1,5 @@
 <script lang="ts">
-	import DocHandle from '$lib/models/DocHandle';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
@@ -62,9 +62,9 @@
 		onTextTag,
 		onRemoveTextTag
 	}: {
-		handle: DocHandle;
+		handle: MarkdownHandle;
 		onDelete?: () => void;
-		onDuplicated?: (copy: DocHandle) => void;
+		onDuplicated?: (copy: MarkdownHandle) => void;
 		loaded?: boolean;
 		frontmatterError?: string | null;
 		onFrontmatterFix?: (mode: 'keep' | 'rebuild') => void;
@@ -250,7 +250,7 @@
 			titleTaken = false;
 			return;
 		}
-		DocHandle.pathTaken(source, titleCandidate(next)).then((taken) => {
+		MarkdownHandle.pathTaken(source, titleCandidate(next)).then((taken) => {
 			if (token === titleCheckToken) titleTaken = taken;
 		});
 	});
@@ -263,7 +263,7 @@
 		}
 		try {
 			const caseOnly = titleCandidate(next).toLowerCase() === relPath.toLowerCase();
-			if (!caseOnly && (await DocHandle.pathTaken(source, titleCandidate(next)))) {
+			if (!caseOnly && (await MarkdownHandle.pathTaken(source, titleCandidate(next)))) {
 				title = handle.title;
 				return;
 			}
@@ -439,11 +439,11 @@
 		try {
 			await flushAll();
 			const raw = await readTextFile(`${source.path}/${relPath}`).catch(() => '');
-			const { body } = DocHandle.deserialize(raw);
+			const { body } = MarkdownHandle.deserialize(raw);
 			const dir = folderDir(relPath);
-			const newRel = await DocHandle.uniqueRelPath(source, dir, `${handle.title} copy`);
+			const newRel = await MarkdownHandle.uniqueRelPath(source, dir, `${handle.title} copy`);
 			const newTitle = newRel.split('/').pop()!.replace(/\.md$/i, '');
-			const copy = await DocHandle.create(
+			const copy = await MarkdownHandle.create(
 				source,
 				newTitle,
 				newRel,

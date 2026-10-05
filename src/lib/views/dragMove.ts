@@ -2,7 +2,7 @@
 // on a folder chip or a breadcrumb. Native drag and drop (the window's Tauri drag-drop is off
 // so the DOM gets the events); the payload also sits here because `dataTransfer` is sealed
 // until the drop, and targets want to judge it while hovering
-import DocHandle from '$lib/models/DocHandle';
+import MarkdownHandle from '$lib/models/MarkdownHandle';
 import Folder, { folderIdPath, folderIdSource } from '$lib/models/Folder';
 import { toasts } from '$lib/toasts.svelte';
 
@@ -57,7 +57,7 @@ export async function moveInto(targetId: string, p: MovePayload): Promise<boolea
 	const targetPath = folderIdPath(targetId);
 	try {
 		if (p.kind === 'doc') {
-			const d = await DocHandle.fromID(p.id);
+			const d = await MarkdownHandle.fromID(p.id);
 			if (d.source.id !== sourceId) {
 				toasts.push('Drag between sources is not supported yet. Use Move from the document.');
 				return false;

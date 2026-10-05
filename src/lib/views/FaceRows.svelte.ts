@@ -24,7 +24,7 @@ import {
 	type Source
 } from '$lib/models/Source';
 import Folder, { folderIdPath } from '$lib/models/Folder';
-import DocHandle from '$lib/models/DocHandle';
+import MarkdownHandle from '$lib/models/MarkdownHandle';
 import { tagId } from '$lib/models/Tag';
 import { invoke } from '@tauri-apps/api/core';
 import { toasts } from '$lib/toasts.svelte';
@@ -353,7 +353,7 @@ export class FaceRows {
 				});
 			}
 			if (on || kept.length !== frontmatter.length) {
-				const doc = await DocHandle.fromID(rowId);
+				const doc = await MarkdownHandle.fromID(rowId);
 				await doc.setTags(on ? [...kept, slug] : kept);
 			}
 			const tags = (await this.fetchTags([row]))[rowId] ?? [];
@@ -373,7 +373,7 @@ export class FaceRows {
 		const prev = row.title;
 		this.patchRow(rowId, { title: title.trim() });
 		try {
-			const doc = await DocHandle.fromID(rowId);
+			const doc = await MarkdownHandle.fromID(rowId);
 			await doc.rename(title.trim());
 			this.patchRow(rowId, { title: doc.title });
 		} catch (e) {
@@ -384,7 +384,7 @@ export class FaceRows {
 
 	async delete(rowId: string): Promise<void> {
 		try {
-			const doc = await DocHandle.fromID(rowId);
+			const doc = await MarkdownHandle.fromID(rowId);
 			await doc.delete();
 			this.rows = this.rows.filter((r) => r.id !== rowId);
 			this.total = Math.max(0, this.total - 1);
@@ -409,7 +409,7 @@ export class FaceRows {
 		const ctx = this.createCtx;
 		const dir = ctx.folderGroupId ? folderPath(ctx.folderGroupId) : '';
 		const base = title.trim().replace(/[\\/]/g, '-');
-		return DocHandle.pathTaken(source, dir ? `${dir}/${base}.md` : `${base}.md`);
+		return MarkdownHandle.pathTaken(source, dir ? `${dir}/${base}.md` : `${base}.md`);
 	}
 
 	async create(title = ''): Promise<string | null> {
@@ -449,8 +449,8 @@ async function createFromContext(
 	ctx: CreateContext,
 	source: Source,
 	title: string
-): Promise<DocHandle> {
-	const doc = await DocHandle.createFromTitle(source, {
+): Promise<MarkdownHandle> {
+	const doc = await MarkdownHandle.createFromTitle(source, {
 		title: title.trim() || 'Untitled',
 		dir: ctx.folderGroupId ? folderPath(ctx.folderGroupId) : '',
 		groupIds: [...ctx.tagGroupIds],

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type DocHandle from '$lib/models/DocHandle';
+	import type MarkdownHandle from '$lib/models/MarkdownHandle';
 	import View from '$lib/models/View.svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
 	import {
@@ -26,7 +26,7 @@
 		inline = false,
 		onCount
 	}: {
-		handle: DocHandle;
+		handle: MarkdownHandle;
 		open?: boolean;
 		inline?: boolean;
 		onCount?: (n: number) => void;

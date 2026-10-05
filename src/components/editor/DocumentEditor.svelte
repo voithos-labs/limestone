@@ -21,7 +21,7 @@
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { registerFlush } from '$lib/util/flush';
 	import { onDocChanged } from '$lib/models/Source';
-	import DocHandle from '$lib/models/DocHandle';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 	import DocHistory, { type HistoryVersion } from '$lib/models/DocHistory.svelte';
 	import View from '$lib/models/View.svelte';
 	import { tagId } from '$lib/models/Tag';
@@ -120,7 +120,7 @@
 	// The thumb track starts level with the document title rather than at the scroller's top.
 	const THUMB_TOP_PX = 34;
 
-	// ── Load: the body only; frontmatter stays DocHandle-owned ──────────────────────────
+	// ── Load: the body only; frontmatter stays MarkdownHandle-owned ──────────────────────────
 
 	let content = $state('');
 	let loaded = $state(false);
@@ -213,7 +213,7 @@
 		return onDocChanged(h, () => void reloadFromDisk(h));
 	});
 
-	async function reloadFromDisk(h: DocHandle) {
+	async function reloadFromDisk(h: MarkdownHandle) {
 		if (deleted || liveBody !== null || hasUnsavedEdits()) return;
 		const fromDisk = await h.loadContent();
 		if (deleted || h !== handle || !instance || liveBody !== null || hasUnsavedEdits()) return;
@@ -233,7 +233,7 @@
 		const h = handle;
 		if (!h || !instance) return;
 		const live = instance.getSource();
-		const body = mode === 'rebuild' ? DocHandle.stripFence(live) : live;
+		const body = mode === 'rebuild' ? MarkdownHandle.stripFence(live) : live;
 		// The save takes the body directly rather than waiting on the re-seed to reach the editor.
 		if (body !== live) content = body;
 		await flushSave({ body, rebuildFrontmatter: true });
@@ -684,12 +684,12 @@
 			if (heading) void jumpToHeading(heading);
 			return;
 		}
-		let doc: DocHandle;
+		let doc: MarkdownHandle;
 		if (hit) {
-			doc = await DocHandle.fromID(hit.id);
+			doc = await MarkdownHandle.fromID(hit.id);
 		} else {
 			const slash = target.lastIndexOf('/');
-			doc = await DocHandle.createFromTitle(h.source, {
+			doc = await MarkdownHandle.createFromTitle(h.source, {
 				title: targetStem(target),
 				...(slash > 0 ? { dir: target.slice(0, slash) } : {})
 			});

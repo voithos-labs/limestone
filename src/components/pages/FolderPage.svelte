@@ -14,7 +14,7 @@
 		sourceName,
 		type Source
 	} from '$lib/models/Source';
-	import DocHandle from '$lib/models/DocHandle';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 	import { toasts } from '$lib/toasts.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import Menu from '../views/Menu.svelte';
@@ -229,7 +229,7 @@
 	}
 
 	function onOpenRow(rowId: string, newTab: boolean | 'side' = false) {
-		DocHandle.fromID(rowId)
+		MarkdownHandle.fromID(rowId)
 			.then((d) => {
 				const content = { type: 'markdown', handle: d } as const;
 				if (newTab === 'side') editor.beside().openDetail(content, view.slug);

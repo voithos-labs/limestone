@@ -126,6 +126,9 @@ kinda nasty
 - video files
 - other file-shaped things you reasonably may want to open in limestone
 
+--- 2026-10-04 --- [daniel]
+can i discard your rambling - they are in git history anyways
+
  */
 
 import type { Source } from '$lib/models/Source';
@@ -134,6 +137,7 @@ import type Tag from '$lib/models/Tag';
 /**
  * Yes I am using snakecase here, this is what they are in the db
  * Fuck you
+ * No u
  */
 export interface DocumentRow {
 	id: string;
@@ -149,11 +153,16 @@ export interface DocumentRow {
 	properties: string;
 }
 
-abstract class Doc {
+// shared document state
+// protected (not public) such that outside code cannot call it
+// its honestly just the convention of giving things the needed minimum scope
+export default abstract class Doc {
 	readonly id: string; // primary id
+	readonly documentType: string;
+	// imma write the prefix _ as its the convention for private backing fields
+	// private backing fields, btw, is a stupid ass name
+	private _source: Source; // source instance, for data and ui
 	private _relPath: string; // path relative to source root
-	readonly source: Source; // source instance, for data and UI
-	private hasFile = true;
 
 	title: string;
 	tags: Tag[];
@@ -161,12 +170,13 @@ abstract class Doc {
 	createdAt: Date;
 	updatedAt: Date;
 	accessedAt: Date;
-	deletedAt?: Date;
+	deletedAt?: Date; // todo[finn]: handle deleted cases, e.g. load from id, where you return a stub
 
-	private constructor(row: DocumentRow, source: Source) {
+	protected constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;
+		this.documentType = row.document_type;
+		this._source = source;
 		this._relPath = row.rel_path;
-		this.source = source;
 		this.title = row.title;
 		this.tags = [];
 		this.properties =
@@ -175,5 +185,21 @@ abstract class Doc {
 		this.updatedAt = new Date(row.updated_at);
 		this.accessedAt = new Date(row.accessed_at);
 		this.deletedAt = row.deleted_at ? new Date(row.deleted_at) : undefined;
+	}
+
+	// again, the idea of giving things min needed scope.
+	// now source and relPath read only for outside code
+	get source(): Source {
+		return this._source;
+	}
+
+	get relPath(): string {
+		return this._relPath;
+	}
+
+	// such that subclass can still write
+	protected updateLocation(source: Source, relPath: string): void {
+		this._source = source;
+		this._relPath = relPath;
 	}
 }

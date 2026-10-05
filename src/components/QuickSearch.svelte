@@ -3,7 +3,7 @@
 	import { TabState } from '$lib/models/EditorState.svelte.js';
 	import type { SearchResult } from '$lib/types/SearchResult';
 	import { getSource, touchSource, listSources, sourceName, type Source } from '$lib/models/Source';
-	import DocHandle from '$lib/models/DocHandle';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 	import Tag from '$lib/models/Tag';
 	import Folder, { folderId, folderIdSource } from '$lib/models/Folder';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
@@ -144,7 +144,7 @@
 			editor.focusTab({ kind: 'tab', id: existing.id });
 			return;
 		}
-		const doc = await DocHandle.fromID(result.id);
+		const doc = await MarkdownHandle.fromID(result.id);
 		openInTab(TabState.forDoc(doc));
 	}
 

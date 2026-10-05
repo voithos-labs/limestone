@@ -2,7 +2,7 @@
 	import { FilePlus, LayoutPanelTop, FolderInput, Bookmark, TextAlignStart } from '@lucide/svelte';
 	import type { Component } from 'svelte';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import DocHandle from '$lib/models/DocHandle';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 	import View from '$lib/models/View.svelte';
 	import { listSources, sourceName, type Source } from '$lib/models/Source';
 	import { folderIdSource } from '$lib/models/Folder';
@@ -51,7 +51,7 @@
 	}
 
 	async function newNote() {
-		const doc = await DocHandle.createDraft();
+		const doc = await MarkdownHandle.createDraft();
 		if (doc) editor.openDoc(doc);
 		else toasts.push('Add a source before creating a document.');
 	}
@@ -79,7 +79,7 @@
 
 	async function openNote(id: string) {
 		try {
-			editor.openDoc(await DocHandle.fromID(id));
+			editor.openDoc(await MarkdownHandle.fromID(id));
 		} catch (e) {
 			console.error('open note failed', e);
 		}

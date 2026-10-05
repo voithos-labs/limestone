@@ -23,7 +23,7 @@
  * Orphaned data you say when you move a doc out of a group or delete a view etc.? Yep, harmless
  * (it's scoped!) orphaned data that we can safely clean (easy to check view membership)
  *
- * In DocHandle, it's clear where this lives
+ * In MarkdownHandle, it's clear where this lives
  * In an actual .md document file it lives in the frontmatter -- this does mean you can't use
  * certain view features without yaml frontmatter enabled though )-(
  *
@@ -45,7 +45,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
-import type DocHandle from '$lib/models/DocHandle';
+import type MarkdownHandle from '$lib/models/MarkdownHandle';
 import type Tag from '$lib/models/Tag';
 import Folder, { folderId, folderIdPath, isSourceRoot } from '$lib/models/Folder';
 import { listSources, sourceName, type Source } from '$lib/models/Source';

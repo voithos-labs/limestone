@@ -36,7 +36,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import DocHandle from '$lib/models/DocHandle';
+import MarkdownHandle from '$lib/models/MarkdownHandle';
 import View, { listSavedViewJSON } from '$lib/models/View.svelte.js';
 import type Session from '$lib/models/Session.svelte.js';
 
@@ -48,7 +48,7 @@ export type FocusTarget =
 // ── Tabs ─────────────────────────────────────────────────────────────────────────────
 
 export type TabContent =
-	| { type: 'markdown'; handle: DocHandle }
+	| { type: 'markdown'; handle: MarkdownHandle }
 	| { type: 'view'; view: View }
 	| { type: 'new'; id: string }
 	| { type: 'home'; id: string }
@@ -145,7 +145,7 @@ export class TabState {
 	}
 
 	// dep
-	get handle(): DocHandle | undefined {
+	get handle(): MarkdownHandle | undefined {
 		return this.content.type === 'markdown' ? this.content.handle : undefined;
 	}
 
@@ -176,7 +176,7 @@ export class TabState {
 		return { type: 'view', view: content.view.toJSON(), state, pinned };
 	}
 
-	static forDoc(doc: DocHandle): TabState {
+	static forDoc(doc: MarkdownHandle): TabState {
 		return new TabState({ type: 'markdown', handle: doc });
 	}
 
@@ -225,7 +225,7 @@ export class TabState {
 
 	private static async contentFromJSON(json: TabJSONBase): Promise<TabState> {
 		if (json.type === 'markdown') {
-			const handle = await DocHandle.fromID(json.handleId);
+			const handle = await MarkdownHandle.fromID(json.handleId);
 			return new TabState({ type: 'markdown', handle }, json.state ?? {}, json.pinned ?? false);
 		}
 		if (json.type === 'view') {
@@ -323,7 +323,7 @@ class EditorState {
 		return this.tabs.find((v) => v.id === id);
 	}
 
-	get focusedDocument(): DocHandle | undefined {
+	get focusedDocument(): MarkdownHandle | undefined {
 		const tab = this.focusedTab;
 		return tab?.content.type === 'markdown' ? tab.content.handle : undefined;
 	}
@@ -421,7 +421,7 @@ class EditorState {
 	}
 
 	// `state` is merged into the tab's own, e.g. a heading for the editor to jump to once it opens
-	openDoc(doc: DocHandle, state: Record<string, any> = {}) {
+	openDoc(doc: MarkdownHandle, state: Record<string, any> = {}) {
 		const existing = this.tabs.find(
 			(t) => t.content.type === 'markdown' && t.content.handle.id === doc.id
 		);
@@ -442,7 +442,7 @@ class EditorState {
 		this.showInTab(tab, { type: 'view', view });
 	}
 
-	showDocInTab(tab: TabState, doc: DocHandle, state: Record<string, any> = {}) {
+	showDocInTab(tab: TabState, doc: MarkdownHandle, state: Record<string, any> = {}) {
 		this.showInTab(tab, { type: 'markdown', handle: doc }, state);
 	}
 

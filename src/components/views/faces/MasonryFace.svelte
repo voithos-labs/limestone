@@ -20,7 +20,7 @@
 		type Source
 	} from '$lib/models/Source';
 	import Folder from '$lib/models/Folder';
-	import DocHandle from '$lib/models/DocHandle';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 	import FaceCard from '../FaceCard.svelte';
 	import { Plus } from '@lucide/svelte';
 	import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -262,7 +262,7 @@
 					if (!src) return;
 					try {
 						const raw = await readTextFile(`${src.path}/${r.rel_path}`);
-						const body = DocHandle.deserialize(raw).body;
+						const body = MarkdownHandle.deserialize(raw).body;
 						hit = {
 							text: stripMd(body).slice(0, PREVIEW_MAX),
 							image: firstImage(body, src)
@@ -359,7 +359,7 @@
 			if (!source) throw new Error('No source available to create in');
 			const dir = createCtx.folderGroupId ? folderPath(createCtx.folderGroupId) : '';
 			const groupIds = [...createCtx.tagGroupIds];
-			const doc = await DocHandle.createFromTitle(source, {
+			const doc = await MarkdownHandle.createFromTitle(source, {
 				title: 'Untitled',
 				dir,
 				groupIds,

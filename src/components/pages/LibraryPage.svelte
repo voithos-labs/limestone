@@ -7,7 +7,7 @@
 		getDefaultSourceId,
 		type Source
 	} from '$lib/models/Source';
-	import DocHandle from '$lib/models/DocHandle';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 	import View from '$lib/models/View.svelte';
 	import { openPath } from '@tauri-apps/plugin-opener';
 	import type { MenuEntry } from '$lib/views/menuTypes';
@@ -204,7 +204,7 @@
 	}
 
 	async function newDocument() {
-		const doc = await DocHandle.createDraft();
+		const doc = await MarkdownHandle.createDraft();
 		if (doc) editor.openDoc(doc);
 		else newSource();
 	}
@@ -230,7 +230,7 @@
 			editor.focusTab({ kind: 'tab', id: existing.id });
 			return;
 		}
-		const doc = await DocHandle.fromID(id);
+		const doc = await MarkdownHandle.fromID(id);
 		editor.openDoc(doc);
 	}
 
