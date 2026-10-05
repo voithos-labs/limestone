@@ -7,7 +7,7 @@
 
 Note taking, tasks, projects, etc. all local, all markdown `.md`, no account needed.
 
-Live collab and cloud sync, when they're out in about 4 months (to 50 years, upper limit), will need an account. The local app will never require one, and will always be free.
+(all featured art is made by humans, let bots write code)
 
 ## Monthly major updates, see the new project overhaul:
 
