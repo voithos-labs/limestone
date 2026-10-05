@@ -1,44 +1,14 @@
 <script lang="ts">
-	import { toasts, toastParts, type Toast, type ToastVariant } from '$lib/toasts.svelte';
+	import { toasts, type Toast, type ToastVariant } from '$lib/toasts.svelte';
 	import { splitMessage } from '$lib/errors';
-	import {
-		X,
-		CircleX,
-		CircleCheck,
-		CircleArrowUp,
-		FolderInput,
-		Folder,
-		Box,
-		Hash,
-		TextAlignStart
-	} from '@lucide/svelte';
-
-	const MARK_ICONS = {
-		source: FolderInput,
-		project: Box,
-		folder: Folder,
-		tag: Hash,
-		note: TextAlignStart
-	};
+	import { X, CircleX, CircleCheck, CircleArrowUp } from '@lucide/svelte';
+	import MarkText from './MarkText.svelte';
 
 	function act(t: Toast) {
 		t.action?.run();
 		toasts.dismiss(t.id);
 	}
 </script>
-
-{#snippet rich(text: string)}
-	{#each toastParts(text) as part, i (i)}
-		{#if part.kind}
-			{@const Icon = MARK_ICONS[part.kind]}
-			<span class="toast-chip"
-				><Icon size={11} strokeWidth={2} /><span class="chip-text">{part.text}</span></span
-			>
-		{:else}
-			{part.text}
-		{/if}
-	{/each}
-{/snippet}
 
 {#snippet icon(variant: ToastVariant)}
 	<span class="toast-icon">
@@ -66,8 +36,8 @@
 				<div class="toast card toast-{t.variant}">
 					{@render icon(t.variant)}
 					<div class="card-body">
-						<span class="card-title">{@render rich(title)}</span>
-						<span class="card-detail">{@render rich(detail)}</span>
+						<span class="card-title"><MarkText text={title} /></span>
+						<span class="card-detail"><MarkText text={detail} /></span>
 						{#if t.action}
 							<div class="card-actions">
 								<button class="toast-action" onclick={() => act(t)}>{t.action.label}</button>
@@ -79,7 +49,7 @@
 			{:else}
 				<div class="toast line toast-{t.variant}">
 					{@render icon(t.variant)}
-					<span class="line-text">{@render rich(title)}</span>
+					<span class="line-text"><MarkText text={title} /></span>
 					{#if t.action}
 						<button class="toast-action" onclick={() => act(t)}>{t.action.label}</button>
 					{/if}
@@ -164,7 +134,7 @@
 		padding-right: 22px;
 		font-size: 13px;
 		font-weight: 550;
-		line-height: 18px;
+		line-height: 20px;
 	}
 
 	.card-detail {
@@ -192,30 +162,6 @@
 	.toast-update .toast-icon,
 	.toast-info .toast-icon {
 		color: var(--color-accent);
-	}
-
-	.toast-chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		max-width: 220px;
-		padding: 0 6px;
-		border-radius: 5px;
-		background: var(--chip-bg);
-		vertical-align: bottom;
-		font-weight: 500;
-		white-space: nowrap;
-	}
-
-	.toast-chip :global(svg) {
-		flex-shrink: 0;
-		color: var(--color-ui-muted);
-	}
-
-	.chip-text {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 
 	.toast-action {

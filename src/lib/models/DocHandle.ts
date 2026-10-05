@@ -67,6 +67,10 @@ function yamlErrorText(e: unknown): string {
 	return typeof line === 'number' ? `${reason} (line ${line + 2})` : reason;
 }
 
+function stemOf(relPath: string): string {
+	return relPath.slice(relPath.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '');
+}
+
 function dirOf(relPath: string): string {
 	return relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : '';
 }
@@ -504,6 +508,16 @@ class DocHandle {
 		removeHistory(this.id).catch((e) => console.error('history remove failed', e));
 	}
 
+	static async trashAt(source: Source, relPath: string): Promise<string | null> {
+		const [row] = await select<{ id: string }>(
+			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2`,
+			[source.id, relPath]
+		);
+		await invoke('delete_document', { id: row?.id ?? null, sourceId: source.id, relPath });
+		if (row) removeHistory(row.id).catch((e) => console.error('history remove failed', e));
+		return row?.id ?? null;
+	}
+
 	/**
 	 * Move a document file
 	 * TODO: has to trigger rescan of path => folder group update
@@ -545,7 +559,7 @@ class DocHandle {
 			relPath: oldRelPath,
 			newRelPath
 		});
-		this.place(newRelPath, this._title);
+		this.place(newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
 		await this.updateLinks(oldRelPath);
 	}
@@ -573,7 +587,7 @@ class DocHandle {
 			newSourceId: newSource.id
 		});
 		(this as { source: Source }).source = newSource;
-		this.place(newRelPath, this._title);
+		this.place(newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
 	}
 

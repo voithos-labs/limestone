@@ -1,7 +1,9 @@
 use crate::commands::source_commands::{doc_writes_meta, source_root};
 use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
-use crate::services::fs::{atomic_write, move_file, resolve_in_source, validate_file_name};
+use crate::services::fs::{
+    atomic_write, is_taken, move_file, resolve_in_source, validate_file_name,
+};
 use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
 use crate::AppData;
 use serde::Serialize;
@@ -289,9 +291,7 @@ pub async fn rename_document(
         .replace('\\', "/");
     let new_full = resolve_in_source(&root, &new_rel).map_err(OpError::from)?;
 
-    let same_entry = new_full.exists() // check different against actual fs
-        && std::fs::canonicalize(&old_full).ok() == std::fs::canonicalize(&new_full).ok();
-    if new_full.exists() && !same_entry {
+    if is_taken(&old_full, &new_full) {
         return Err(OpError::named("already_exists", &new_name));
     }
     std::fs::rename(&old_full, &new_full).map_err(OpError::from)?;
@@ -391,7 +391,13 @@ pub async fn move_document(
     let old_full = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
     let new_full = resolve_in_source(&dest_source, &new_rel_path).map_err(OpError::from)?;
 
-    move_file(&old_full, &new_full).map_err(OpError::from)?;
+    move_file(&old_full, &new_full).map_err(|e| match e.kind() {
+        std::io::ErrorKind::AlreadyExists => {
+            let leaf = new_rel_path.rsplit('/').next().unwrap_or(&new_rel_path);
+            OpError::named("already_exists", leaf)
+        }
+        _ => OpError::from(e),
+    })?;
 
     let doc_id: Option<String> =
         sqlx::query_scalar("SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2")
@@ -429,19 +435,19 @@ pub async fn move_document(
 pub async fn delete_document(
     app_data: State<'_, AppData>,
     app: AppHandle,
-    id: String,
+    id: Option<String>,
     source_id: String,
     rel_path: String,
 ) -> Result<(), OpError> {
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
 
-    // Remove the file (ignore a missing file so the DB row is still cleaned up)
-    match std::fs::remove_file(&full_path) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(OpError::io(&e)),
+    if full_path.exists() {
+        super::to_trash(&full_path)?;
     }
+    let Some(id) = id else {
+        return Ok(());
+    };
 
     let tag_ids: Vec<String> =
         sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")

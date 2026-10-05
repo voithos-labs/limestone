@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
 	import { reportError, type ReportError } from '$lib/errors';
+	import { moveNote } from '$lib/views/moveConflict.svelte';
 	import DocHandle from '$lib/models/DocHandle';
 	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
@@ -309,12 +310,8 @@
 		const newRel = dir ? `${dir}/${file}` : file;
 		if (target.id === source.id && newRel === relPath) return;
 		try {
-			if (target.id === source.id) {
-				await handle.moveToPath(newRel);
-			} else {
-				await handle.moveToSource(target, newRel);
-				source = target;
-			}
+			if (!(await moveNote(handle, target, newRel))) return;
+			source = target;
 			syncMeta();
 			folderList = await Folder.list();
 		} catch (e) {

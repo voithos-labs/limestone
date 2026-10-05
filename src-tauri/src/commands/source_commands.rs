@@ -555,11 +555,7 @@ pub async fn delete_folder(
     if !full.is_dir() {
         return Err(FolderOpError::named("not_found", folder_leaf(&rel_dir)));
     }
-    trash::delete(&full).map_err(|e| match e {
-        trash::Error::CouldNotAccess { .. } => FolderOpError::new("permission"),
-        trash::Error::Os { code, .. } if code == 32 => FolderOpError::new("locked"),
-        _ => FolderOpError::new("io"),
-    })?;
+    super::to_trash(&full)?;
 
     let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
     let source = find_source(&app, uuid).map_err(|_| FolderOpError::new("source_missing"))?;

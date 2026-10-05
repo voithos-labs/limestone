@@ -36,6 +36,14 @@ impl OpError {
     }
 }
 
+pub(crate) fn to_trash(path: &std::path::Path) -> Result<(), OpError> {
+    trash::delete(path).map_err(|e| match e {
+        trash::Error::CouldNotAccess { .. } => OpError::new("permission"),
+        trash::Error::Os { code, .. } if code == 32 => OpError::new("locked"),
+        _ => OpError::new("other"),
+    })
+}
+
 impl From<std::io::Error> for OpError {
     fn from(e: std::io::Error) -> Self {
         Self::io(&e)

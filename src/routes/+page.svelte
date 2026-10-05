@@ -9,6 +9,7 @@
 	import Pane from '../components/Pane.svelte';
 	import Palette from '../components/Palette.svelte';
 	import MetadataDialog from '../components/MetadataDialog.svelte';
+	import MoveConflictDialog from '../components/MoveConflictDialog.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import { actionForKey, keyCapture } from '$lib/actions';
 	import { editorTakesKey } from '$lib/editor-chords';
@@ -252,6 +253,7 @@
 	<ContextMenu />
 	<Palette {session} onAddSource={addSource} />
 	<MetadataDialog />
+	<MoveConflictDialog {session} />
 {/if}
 
 <style>
