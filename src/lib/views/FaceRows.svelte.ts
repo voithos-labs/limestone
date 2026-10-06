@@ -430,21 +430,23 @@ export class FaceRows {
 		return DocHandle.pathTaken(source, rel).catch(() => false);
 	}
 
-	async create(title = ''): Promise<string | null> {
+	async create(title = '', values: Record<string, unknown> = {}): Promise<string | null> {
 		const source = this.creationSource();
 		if (!source) {
 			addSourceRequest.open();
 			return null;
 		}
 		try {
-			const doc = await createFromContext(this.view(), this.createCtx, source, title);
+			const ctx = this.createCtx;
+			ctx.fieldValues = { ...ctx.fieldValues, ...values };
+			const doc = await createFromContext(this.view(), ctx, source, title);
 			await this.load(true);
 			return doc.id;
 		} catch (e) {
 			reportError(
 				e,
 				title ? `${mark('note', title)} couldn't be created.` : "The new note couldn't be created.",
-				() => this.create(title)
+				() => this.create(title, values)
 			);
 			return null;
 		}
