@@ -282,7 +282,9 @@ fn looks_numeric(s: &str) -> bool {
     };
     let mantissa_ok = mantissa.chars().any(|c| c.is_ascii_digit())
         && mantissa.chars().filter(|c| *c == '.').count() <= 1
-        && mantissa.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '_');
+        && mantissa
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == '_');
     let exponent_ok = exponent.is_none_or(|e| {
         let digits = e.strip_prefix(['+', '-']).unwrap_or(e);
         !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())

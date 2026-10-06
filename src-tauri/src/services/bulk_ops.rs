@@ -2,7 +2,7 @@
 //! e.g.:
 //!
 //! - um view prop renames and deletion, non-present assumes default val so not needed often on
-//! creation
+//!   creation
 //! - eventually renames to fix wikilinks between docs (todo)
 //!
 //! Basically:
@@ -708,7 +708,7 @@ async fn write_files(
             match written {
                 Ok(()) => {
                     let n = done.fetch_add(1, Ordering::Relaxed) + 1;
-                    if n % step == 0 || n == total {
+                    if n.is_multiple_of(step) || n == total {
                         let _ = app.emit("bulk-progress", BulkProgress { done: n, total });
                     }
                 }
