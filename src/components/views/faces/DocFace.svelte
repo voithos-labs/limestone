@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, FilterNode, MemberRow } from '$lib/models/View.svelte';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
@@ -285,7 +286,7 @@
 			picker?.pick(doc.id);
 			onCreated?.(doc.id);
 		} catch (e) {
-			console.error('create doc failed', e);
+			reportError(e, "The new note couldn't be created.");
 		} finally {
 			creating = false;
 		}

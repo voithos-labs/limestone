@@ -14,6 +14,7 @@
 	import { listInlineByDefault, listPrefixed } from '$lib/views/listLayout';
 	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import Menu from './Menu.svelte';
+	import { nameGuard } from '$lib/util/paths';
 
 	// Arranging and managing a list's fields in one place: drag chips between the lanes of a
 	// schematic row (or card), right-click one to rename or delete it, add a new one below
@@ -327,6 +328,7 @@
 						class="rename-input"
 						bind:value={renameDraft}
 						use:focusSelect
+						use:nameGuard={'ident'}
 						onblur={commitRename}
 						onkeydown={renameKey}
 						onpointerdown={(e) => e.stopPropagation()}

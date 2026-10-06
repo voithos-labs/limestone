@@ -14,6 +14,8 @@
 	import { openHow } from '$lib/views/rowOpen';
 	import { onMount, tick } from 'svelte';
 	import { startMove, endMove } from '$lib/views/dragMove';
+	import { nameGuard } from '$lib/util/paths';
+	import { selectionIn, restoreSelection } from '$lib/util/selection';
 
 	let {
 		view,
@@ -202,21 +204,40 @@
 	// ── Rename in place ────────────────────────────────────────────────────────
 	let renamingId: string | null = $state(null);
 	let renameDraft = $state('');
-	let renameAtEnd = false;
-	const TAIL = 12;
+	let renameRange: [number, number] | null = null;
 
-	function startRename(e: MouseEvent, row: MemberRow) {
-		if (!editMode) return;
-		e.stopPropagation();
-		renameAtEnd = e.clientX > (e.currentTarget as HTMLElement).getBoundingClientRect().right - TAIL;
+	function beginRename(row: MemberRow, span: HTMLElement) {
+		renameRange = selectionIn(span, row.title);
+		window.getSelection()?.removeAllRanges();
 		renamingId = row.id;
 		renameDraft = row.title;
 	}
 
+	function startRename(e: MouseEvent, row: MemberRow) {
+		if (!editMode) return;
+		e.stopPropagation();
+		beginRename(row, e.currentTarget as HTMLElement);
+	}
+
+	let renameTaken = $state(false);
+	let renameToken = 0;
+	$effect(() => {
+		const draftNow = renameDraft;
+		const target = rows.rows.find((r) => r.id === renamingId);
+		const token = ++renameToken;
+		renameTaken = false;
+		if (!target || !draftNow.trim()) return;
+		const timer = setTimeout(async () => {
+			const taken = await rows.renameTaken(target, draftNow);
+			if (token === renameToken) renameTaken = taken;
+		}, 150);
+		return () => clearTimeout(timer);
+	});
+
 	function commitRename() {
 		const id = renamingId;
 		renamingId = null;
-		if (id) rows.rename(id, renameDraft);
+		if (id && !renameTaken) rows.rename(id, renameDraft);
 	}
 
 	function onRenameKey(e: KeyboardEvent) {
@@ -239,9 +260,7 @@
 	}
 
 	function renameFocus(node: HTMLInputElement) {
-		node.focus();
-		if (renameAtEnd) node.setSelectionRange(node.value.length, node.value.length);
-		else node.select();
+		restoreSelection(node, renameRange);
 	}
 
 	// ── Keyboard ───────────────────────────────────────────────────────────────
@@ -271,7 +290,7 @@
 
 	// ── Reorder: drag a row (no handle) and the others make room; the row's own click is
 	// swallowed once a drag happened so a drop never opens the note ────────────────────
-	const DRAG_PX = 4;
+	const DRAG_PX = 6;
 	const EDGE_PX = 48;
 	const SETTLE_MS = 180;
 
@@ -299,15 +318,34 @@
 		frame: number;
 	};
 
-	let press: { row: MemberRow; el: HTMLElement; x: number; y: number } | null = null;
+	let press: {
+		row: MemberRow;
+		el: HTMLElement;
+		x: number;
+		y: number;
+		title: HTMLElement | null;
+		side: boolean;
+	} | null = null;
 	let drag: Drag | null = null;
 	let dragId: string | null = $state(null);
 	let swallowClick = false;
+	let downAt: { x: number; y: number } | null = null;
 
 	function armReorder(e: PointerEvent, row: MemberRow) {
 		if (moveable || dragId || e.button !== 0 || layout === 'grid') return;
 		if ((e.target as HTMLElement).closest('button, input, a, .value, .rename-wrap')) return;
-		press = { row, el: e.currentTarget as HTMLElement, x: e.clientX, y: e.clientY };
+		press = {
+			row,
+			el: e.currentTarget as HTMLElement,
+			x: e.clientX,
+			y: e.clientY,
+			title: (e.target as HTMLElement).closest<HTMLElement>('.name.editable'),
+			side: false
+		};
+		if (press.title) {
+			press.title.dataset.selecting = '';
+			document.body.classList.add('title-selecting');
+		}
 		window.addEventListener('pointermove', onReorderMove);
 		window.addEventListener('pointerup', onReorderUp);
 		window.addEventListener('pointercancel', onReorderCancel);
@@ -315,6 +353,10 @@
 	}
 
 	function stopListening() {
+		if (press?.title) {
+			delete press.title.dataset.selecting;
+			document.body.classList.remove('title-selecting');
+		}
 		press = null;
 		window.removeEventListener('pointermove', onReorderMove);
 		window.removeEventListener('pointerup', onReorderUp);
@@ -375,7 +417,12 @@
 			return;
 		}
 		const p = press;
-		if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) >= DRAG_PX) startDrag(p, e.clientY);
+		if (!p || p.side) return;
+		const dx = Math.abs(e.clientX - p.x);
+		const dy = Math.abs(e.clientY - p.y);
+		if (Math.max(dx, dy) < DRAG_PX) return;
+		if (dy > dx) startDrag(p, e.clientY);
+		else p.side = true;
 	}
 
 	function dragFrame() {
@@ -481,7 +528,14 @@
 		}, SETTLE_MS);
 	}
 
-	const onReorderUp = () => finishDrag(true);
+	function onReorderUp() {
+		const p = press;
+		if (!drag && p?.side) {
+			swallowClick = true;
+			if (p.title) beginRename(p.row, p.title);
+		}
+		finishDrag(true);
+	}
 	const onReorderCancel = () => finishDrag(false);
 
 	function onReorderKey(e: KeyboardEvent) {
@@ -491,8 +545,18 @@
 		finishDrag(false);
 	}
 
+	function onListPointerDown(e: PointerEvent) {
+		swallowClick = false;
+		downAt = { x: e.clientX, y: e.clientY };
+	}
+
 	function onListClickCapture(e: MouseEvent) {
-		if (!swallowClick) return;
+		const dragged =
+			e.detail > 0 &&
+			!!downAt &&
+			Math.max(Math.abs(e.clientX - downAt.x), Math.abs(e.clientY - downAt.y)) >= DRAG_PX;
+		downAt = null;
+		if (!swallowClick && !dragged) return;
 		swallowClick = false;
 		e.stopPropagation();
 		e.preventDefault();
@@ -682,6 +746,7 @@
 					placeholder={checkField ? 'New todo' : 'New note'}
 					bind:value={newTitle}
 					bind:this={newEl}
+					use:nameGuard
 					onkeydown={onNewKey}
 				/>
 			</span>
@@ -759,7 +824,7 @@
 		onkeydown={onListKey}
 		onpointermove={onListPointerMove}
 		onclickcapture={onListClickCapture}
-		onpointerdowncapture={() => (swallowClick = false)}
+		onpointerdowncapture={onListPointerDown}
 	>
 		{#each groups as g (g.key)}
 			{#if groupField}
@@ -829,8 +894,13 @@
 								<span class="rename-ghost">{renameDraft || ' '}</span>
 								<input
 									class="rename"
+									class:invalid={renameTaken}
+									title={renameTaken
+										? 'A note with this name is already in this folder.'
+										: undefined}
 									bind:value={renameDraft}
 									use:renameFocus
+									use:nameGuard
 									onblur={commitRename}
 									onkeydown={onRenameKey}
 									spellcheck="false"
@@ -1126,11 +1196,19 @@
 	}
 
 	.name.editable {
-		align-self: stretch;
-		line-height: 36px;
-		padding-right: 12px;
-		margin-right: -12px;
+		line-height: 20px;
+		padding: 8px 12px 8px 0;
+		margin: -8px -12px -8px 0;
 		cursor: text;
+	}
+
+	:global(body.title-selecting *) {
+		user-select: none;
+	}
+
+	:global(body.title-selecting [data-selecting]),
+	:global(body.title-selecting [data-selecting] *) {
+		user-select: text;
 	}
 
 	.name.rename-wrap {
@@ -1162,6 +1240,7 @@
 	.rename {
 		grid-area: 1 / 1;
 		font: inherit;
+		line-height: 20px;
 		letter-spacing: -0.005em;
 		white-space: pre;
 	}
@@ -1308,6 +1387,7 @@
 		color: var(--color-ui-muted);
 	}
 
+	.rename.invalid,
 	.new-input.taken {
 		text-decoration: underline;
 		text-decoration-color: var(--error-fg);

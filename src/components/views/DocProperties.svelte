@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError, type ReportError } from '$lib/errors';
 	import type DocHandle from '$lib/models/DocHandle';
 	import View from '$lib/models/View.svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
@@ -8,7 +9,6 @@
 		isDerived,
 		describeBulkFailure
 	} from '$lib/models/View.svelte';
-	import { toasts } from '$lib/toasts.svelte';
 	import { fieldLabel, withStatefulValue, rawStatefulValue } from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import CellValue from './CellValue.svelte';
@@ -24,12 +24,14 @@
 		handle,
 		open = false,
 		inline = false,
-		onCount
+		onCount,
+		onError = reportError
 	}: {
 		handle: DocHandle;
 		open?: boolean;
 		inline?: boolean;
 		onCount?: (n: number) => void;
+		onError?: ReportError;
 	} = $props();
 
 	type Entry = { view: View; fields: ViewField[] };
@@ -92,7 +94,7 @@
 	function saveEditedView(): Promise<void> | void {
 		const entry = untrack(() => editingEntry);
 		if (!entry || entry.view.temporary) return;
-		return entry.view.save().catch((e) => console.error('save view failed', e));
+		return entry.view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
 	}
 
 	$effect(() => {
@@ -115,14 +117,11 @@
 				properties: withStatefulValue(current.properties, field, value)
 			};
 			const result = await view.writeFieldValue(handle.source.id, field, value, [current.id]);
-			if (result.failed > 0) {
-				toasts.push(describeBulkFailure(result), {
-					action: { label: 'Retry', run: () => writeCell(view, field, value) }
-				});
-			}
+			if (result.failed > 0)
+				onError(null, describeBulkFailure(result), () => writeCell(view, field, value));
 		} catch (e) {
-			console.error('write property failed', e);
 			row = current;
+			onError(e, "The property couldn't be saved.", () => writeCell(view, field, value));
 		}
 	}
 
@@ -197,7 +196,9 @@
 			}}
 			onRenameOption={(oldV, newV) => {
 				if (editingEntry && editingField)
-					editingEntry.view.renameOption(editingField, oldV, newV).catch(console.error);
+					editingEntry.view
+						.renameOption(editingField, oldV, newV)
+						.catch((e) => reportError(e, `The option "${oldV}" couldn't be renamed.`));
 			}}
 		/>
 	{/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack, type Component } from 'svelte';
+	import { nameGuard, type NameKind } from '$lib/util/paths';
 
 	let {
 		open = $bindable(false),
@@ -8,6 +9,8 @@
 		inputType = 'text',
 		placeholder = '',
 		icon: Icon,
+		guard = null,
+		problem = () => null,
 		onChange
 	}: {
 		open: boolean;
@@ -16,6 +19,8 @@
 		inputType?: 'text' | 'number' | 'date';
 		placeholder?: string;
 		icon?: Component;
+		guard?: NameKind | null;
+		problem?: (value: string) => string | null;
 		onChange: (value: string) => void;
 	} = $props();
 
@@ -23,6 +28,7 @@
 	let inputEl: HTMLInputElement | null = $state(null);
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
 	let draft = $state(untrack(() => value));
+	const trouble = $derived(problem(draft));
 
 	function position() {
 		if (!anchor || !popEl) return;
@@ -41,7 +47,7 @@
 	}
 
 	function commit() {
-		if (draft !== value) onChange(draft);
+		if (draft !== value && !trouble) onChange(draft);
 		open = false;
 	}
 
@@ -93,7 +99,16 @@
 	<div class="pop" bind:this={popEl} style:top="{pos.top}px" style:left="{pos.left}px">
 		<div class="field" class:date={inputType === 'date'}>
 			{#if Icon}<span class="lead"><Icon size={14} strokeWidth={1.75} /></span>{/if}
-			<input bind:this={inputEl} bind:value={draft} type={inputType} {placeholder} class="input" />
+			<input
+				bind:this={inputEl}
+				bind:value={draft}
+				use:nameGuard={guard}
+				type={inputType}
+				{placeholder}
+				class="input"
+				class:invalid={trouble}
+				title={trouble ?? undefined}
+			/>
 		</div>
 	</div>
 {/if}
@@ -133,6 +148,12 @@
 		display: inline-flex;
 		flex-shrink: 0;
 		color: var(--color-ui-muted);
+	}
+
+	.input.invalid {
+		text-decoration: underline;
+		text-decoration-color: var(--error-fg);
+		text-underline-offset: 3px;
 	}
 
 	.input {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import { FilePlus, LayoutPanelTop, FolderInput, Bookmark, TextAlignStart } from '@lucide/svelte';
 	import type { Component } from 'svelte';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
@@ -10,7 +11,8 @@
 	import { getViewIcon } from '$lib/views/filterDisplay';
 	import { formatDateFriendly } from '$lib/views/dateFormat';
 	import { openProjectSetup } from '$lib/views/projectSetup';
-	import { toasts } from '$lib/toasts.svelte';
+	import { mark } from '$lib/toasts.svelte';
+	import { addSourceRequest } from '$lib/addSource.svelte';
 
 	// Where the app lands when no tab is open: what you can start, and what you were in
 	let { editor, onAddSource }: { editor: EditorState; onAddSource?: () => void } = $props();
@@ -53,7 +55,7 @@
 	async function newNote() {
 		const doc = await DocHandle.createDraft();
 		if (doc) editor.openDoc(doc);
-		else toasts.push('Add a source before creating a document.');
+		else addSourceRequest.open();
 	}
 
 	const actions: { label: string; hint: string; icon: Component; run: () => void }[] = [
@@ -77,11 +79,11 @@
 		}
 	];
 
-	async function openNote(id: string) {
+	async function openNote(id: string, title: string) {
 		try {
 			editor.openDoc(await DocHandle.fromID(id));
 		} catch (e) {
-			console.error('open note failed', e);
+			reportError(e, `${mark('note', title)} couldn't be opened.`);
 		}
 	}
 </script>
@@ -126,7 +128,7 @@
 			<p class="sec">Recent</p>
 			<div class="rows">
 				{#each recent as r (r.id)}
-					<button class="row" type="button" onclick={() => openNote(r.id)}>
+					<button class="row" type="button" onclick={() => openNote(r.id, r.title)}>
 						<TextAlignStart size={14} strokeWidth={1.75} />
 						<span class="row-title">{r.title}</span>
 						<span class="row-where">{where(r)}</span>

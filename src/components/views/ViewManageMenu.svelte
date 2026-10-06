@@ -23,6 +23,7 @@
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import Menu from './Menu.svelte';
+	import { nameGuard } from '$lib/util/paths';
 
 	let {
 		open = $bindable(false),
@@ -270,6 +271,7 @@
 								class="name-input"
 								bind:value={editDraft}
 								use:editFocus
+								use:nameGuard={'ident'}
 								onblur={commitEdit}
 								onkeydown={editKey}
 								spellcheck="false"

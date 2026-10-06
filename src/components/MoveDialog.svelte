@@ -14,8 +14,8 @@
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import FolderChips from './views/FolderChips.svelte';
 	import { isMove, readMove, movingNow, canMoveInto, moveInto } from '$lib/views/dragMove';
-	import { isValidSegment } from '$lib/util/paths';
-	import { toasts } from '$lib/toasts.svelte';
+	import { folderNameProblem, nameGuard } from '$lib/util/paths';
+	import { mark } from '$lib/toasts.svelte';
 
 	type Place = { id: string; slug: string; repo?: boolean };
 
@@ -77,12 +77,12 @@
 	let creating = false;
 	let draftEl: HTMLInputElement | null = $state(null);
 
-	const draftInvalid = $derived.by(() => {
-		const name = draft.trim();
-		if (!name) return false;
-		if (!isValidSegment(name) || name.startsWith('.')) return true;
-		const lower = name.toLowerCase();
-		return folders.some((f) => f.parentId === at && f.slug.toLowerCase() === lower);
+	const draftProblem = $derived.by(() => {
+		const lower = draft.trim().toLowerCase();
+		return folderNameProblem(
+			draft,
+			folders.some((f) => f.parentId === at && f.slug.toLowerCase() === lower)
+		);
 	});
 
 	function startNaming() {
@@ -95,10 +95,14 @@
 		if (!naming || creating) return;
 		const name = draft.trim();
 		const parent = at;
-		if (!name || draftInvalid || parent === null) {
+		if (!name || draftProblem || parent === null) {
 			naming = false;
 			return;
 		}
+		await createFolder(name, parent);
+	}
+
+	async function createFolder(name: string, parent: string) {
 		creating = true;
 		try {
 			const path = folderIdPath(parent);
@@ -112,7 +116,9 @@
 			go(made.id);
 		} catch (e) {
 			naming = false;
-			toasts.push(Folder.describeOpError(e, "The folder couldn't be created."));
+			Folder.reportOpError(e, `${mark('folder', name)} couldn't be created.`, () =>
+				createFolder(name, parent)
+			);
 		} finally {
 			creating = false;
 		}
@@ -311,12 +317,14 @@
 								<span class="grow" data-value={draft || 'Name'}>
 									<input
 										class="new-input"
-										class:invalid={draftInvalid}
+										class:invalid={draftProblem}
+										title={draftProblem ?? undefined}
 										type="text"
 										size="1"
 										placeholder="Name"
 										bind:value={draft}
 										bind:this={draftEl}
+										use:nameGuard
 										onkeydown={onDraftKey}
 										onblur={commitNaming}
 									/>

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { invoke } from '@tauri-apps/api/core';
+	import { reportError, type ReportError } from '$lib/errors';
+	import { moveNote } from '$lib/views/moveConflict.svelte';
 	import DocHandle from '$lib/models/DocHandle';
 	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
@@ -8,7 +11,7 @@
 	import { formatDateFriendly } from '$lib/views/dateFormat';
 	import { folderDir, fileName } from '$lib/views/fieldValue';
 	import { folderPath } from '$lib/views/createDefaults';
-	import { isValidSegment } from '$lib/util/paths';
+	import { isValidSegment, nameGuard, segmentProblem } from '$lib/util/paths';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import Menu from './views/Menu.svelte';
 	import TagMenu from './views/TagMenu.svelte';
@@ -38,7 +41,6 @@
 		Bookmark
 	} from '@lucide/svelte';
 	import { onMount, untrack, type Component } from 'svelte';
-	import { readTextFile } from '@tauri-apps/plugin-fs';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { flushAll } from '$lib/util/flush';
 
@@ -60,7 +62,8 @@
 		onFolderMeta,
 		textTags = [],
 		onTextTag,
-		onRemoveTextTag
+		onRemoveTextTag,
+		onError = reportError
 	}: {
 		handle: DocHandle;
 		onDelete?: () => void;
@@ -80,6 +83,7 @@
 		textTags?: { slug: string; places: unknown[] }[];
 		onTextTag?: (slug: string) => void;
 		onRemoveTextTag?: (slug: string) => Promise<void>;
+		onError?: ReportError;
 	} = $props();
 
 	let fmMenuOpen = $state(false);
@@ -99,9 +103,17 @@
 	}
 
 	let title = $state(untrack(() => handle.title));
+	let syncedTitle = untrack(() => handle.title);
+	$effect(() => {
+		const current = handle.title;
+		untrack(() => {
+			if (title === syncedTitle) title = current;
+			syncedTitle = current;
+		});
+	});
 	const wasNew = untrack(() => handle.isNew);
 	const draftTitle = untrack(() => handle.title);
-	let relPath = $state(untrack(() => handle.relPath));
+	const relPath = $derived(handle.relPath);
 	let source = $state<Source>(untrack(() => handle.source));
 	let meta = $state(untrack(() => ({ writes: handle.writesMeta, repo: handle.inRepo })));
 	const syncMeta = () => (meta = { writes: handle.writesMeta, repo: handle.inRepo });
@@ -127,7 +139,7 @@
 			tagList = handle.tags;
 			tagsSaved++;
 		} catch (e) {
-			console.error('create tag failed', e);
+			onError(e, "The tag couldn't be added.", () => createTag(q));
 		}
 	}
 
@@ -138,7 +150,7 @@
 			try {
 				await onRemoveTextTag?.(tag.slug);
 			} catch (e) {
-				console.error('remove text tag failed', e);
+				onError(e, "The tag couldn't be removed from the text.");
 			}
 			if (!has) return;
 		}
@@ -149,8 +161,8 @@
 			tagList = handle.tags;
 			tagsSaved++;
 		} catch (e) {
-			console.error('set tags failed', e);
 			tagList = handle.tags;
+			onError(e, "Tags couldn't be saved.", () => toggleTag(tag));
 		}
 	}
 
@@ -182,7 +194,6 @@
 	$effect(() =>
 		onSourceReconciled(async (sourceId) => {
 			if (sourceId !== source.id) return;
-			if (await handle.refreshPath()) relPath = handle.relPath;
 			await handle.refreshMeta();
 			syncMeta();
 		})
@@ -230,7 +241,6 @@
 	let titleInput: HTMLInputElement | null = $state(null);
 	let titleTaken = $state(false);
 	// catch & display os-level errors, etc.
-	let titleFailed = $state(false);
 	let titleCheckToken = 0;
 	const titleIllegal = $derived(title.trim() !== '' && !isValidSegment(`${title.trim()}${ext}`));
 
@@ -250,9 +260,11 @@
 			titleTaken = false;
 			return;
 		}
-		DocHandle.pathTaken(source, titleCandidate(next)).then((taken) => {
-			if (token === titleCheckToken) titleTaken = taken;
-		});
+		DocHandle.pathTaken(source, titleCandidate(next))
+			.then((taken) => {
+				if (token === titleCheckToken) titleTaken = taken;
+			})
+			.catch(() => {});
 	});
 
 	async function commitTitle() {
@@ -268,11 +280,9 @@
 				return;
 			}
 			await handle.rename(next);
-			relPath = handle.relPath;
 		} catch (e) {
-			console.error('rename failed', e);
 			title = handle.title;
-			titleFailed = true;
+			onError(e, "This note couldn't be renamed.");
 		}
 	}
 
@@ -300,17 +310,12 @@
 		const newRel = dir ? `${dir}/${file}` : file;
 		if (target.id === source.id && newRel === relPath) return;
 		try {
-			if (target.id === source.id) {
-				await handle.moveToPath(newRel);
-			} else {
-				await handle.moveToSource(target, newRel);
-				source = target;
-			}
-			relPath = newRel;
+			if (!(await moveNote(handle, target, newRel))) return;
+			source = target;
 			syncMeta();
 			folderList = await Folder.list();
 		} catch (e) {
-			console.error('move failed', e);
+			onError(e, "This note couldn't be moved.", () => onPickFolder(groupId, path));
 		}
 	}
 
@@ -438,7 +443,7 @@
 	async function duplicateDoc() {
 		try {
 			await flushAll();
-			const raw = await readTextFile(`${source.path}/${relPath}`).catch(() => '');
+			const raw = await invoke<string>('read_document', { sourceId: source.id, relPath });
 			const { body } = DocHandle.deserialize(raw);
 			const dir = folderDir(relPath);
 			const newRel = await DocHandle.uniqueRelPath(source, dir, `${handle.title} copy`);
@@ -453,7 +458,7 @@
 			await copy.saveContent(body);
 			onDuplicated?.(copy);
 		} catch (e) {
-			console.error('duplicate failed', e);
+			onError(e, "This note couldn't be duplicated.", duplicateDoc);
 		}
 	}
 
@@ -546,10 +551,15 @@
 						<span class="title-ghost" bind:offsetWidth={titleWidth}>{title || ' '}</span>
 						<input
 							class="title-input"
-							class:invalid={titleTaken || titleIllegal || titleFailed}
+							class:invalid={titleTaken || titleIllegal}
+							title={titleIllegal
+								? (segmentProblem(`${title.trim()}${ext}`) ?? undefined)
+								: titleTaken
+									? 'A note with this name is already in this folder.'
+									: undefined}
 							bind:this={titleInput}
 							bind:value={title}
-							oninput={() => (titleFailed = false)}
+							use:nameGuard
 							onblur={commitTitle}
 							onkeydown={onTitleKeydown}
 							spellcheck="false"
@@ -702,7 +712,13 @@
 					<TodoCard {handle} version={tagsSaved} onRemove={removeTodo} />
 				{/if}
 				{#if meta.writes}
-					<DocProperties {handle} open={propsOpen} inline onCount={(n) => (propCount = n)} />
+					<DocProperties
+						{handle}
+						open={propsOpen}
+						inline
+						onCount={(n) => (propCount = n)}
+						{onError}
+					/>
 				{/if}
 			</div>
 		</div>
@@ -790,7 +806,9 @@
 		position: relative;
 		display: inline-flex;
 		min-width: 0;
-		max-width: 100%;
+		max-width: calc(100% + 18px);
+		padding-right: 18px;
+		margin-right: -18px;
 		overflow: hidden;
 	}
 

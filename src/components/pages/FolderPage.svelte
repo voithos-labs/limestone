@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { folderPresence, type FolderPresence } from '$lib/views/presence';
+	import GonePage from '../GonePage.svelte';
+	import type { GoneAction } from '../GoneActions.svelte';
+	import catBox from '$lib/cat-box.txt?raw';
+	import { reportError } from '$lib/errors';
 	import { onDestroy, onMount } from 'svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
@@ -15,7 +20,9 @@
 		type Source
 	} from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
-	import { toasts } from '$lib/toasts.svelte';
+	import { mark } from '$lib/toasts.svelte';
+	import { addSourceRequest } from '$lib/addSource.svelte';
+	import { folderNameProblem } from '$lib/util/paths';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import Menu from '../views/Menu.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
@@ -73,6 +80,17 @@
 	let folders: Folder[] = $state([]);
 	let root: Folder | null = $state(null);
 	const here = $derived(isRoot ? root : (folders.find((f) => f.id === unitId) ?? null));
+	const subject = $derived(mark(isRoot ? 'source' : 'folder', view.slug));
+
+	function siblingProblem(name: string, parentId: string | undefined, selfId: string | null) {
+		const lower = name.trim().toLowerCase();
+		return folderNameProblem(
+			name,
+			folders.some(
+				(f) => f.id !== selfId && f.parentId === parentId && f.slug.toLowerCase() === lower
+			)
+		);
+	}
 	// folders that are projects: they have a saved view of their own, and its emoji
 	let projects: Map<string, { emoji: string }> = $state(new Map());
 	const query = $derived(((view.state.search as string | undefined) ?? '').trim());
@@ -128,6 +146,59 @@
 	});
 
 	$effect(() => onSourceReconciled(() => loadFolders()));
+
+	let presence = $state<FolderPresence>({ state: 'ok' });
+
+	async function checkPresence() {
+		const unit = unitId;
+		const next = await folderPresence(unit);
+		if (unitId === unit) presence = next;
+	}
+
+	$effect(() => {
+		void unitId;
+		void checkPresence();
+	});
+	$effect(() => onSourceReconciled(() => void checkPresence()));
+
+	function goneFor(
+		p: FolderPresence,
+		kind: 'project' | 'folder'
+	): { headline: string; detail: string; actions: GoneAction[] } | null {
+		const close = { label: 'Close', run: () => editor.closeTab(view.id, false) };
+		switch (p.state) {
+			case 'removed':
+				return {
+					headline: 'this source was removed from limestone',
+					detail:
+						"The folder on disk wasn't touched. Add it again from settings to bring this back.",
+					actions: [close]
+				};
+			case 'source_missing':
+				return {
+					headline: `the ${p.source} source isn't available`,
+					detail:
+						"Check that the drive or folder is connected. This opens by itself when it's back.",
+					actions: [close]
+				};
+			case 'gone':
+				return {
+					headline: `couldn't find the ${kind} ${p.path.split('/').pop()}`,
+					detail: `It was at \`${p.source}/${p.path}\`. It may have been moved, renamed or deleted outside Limestone.`,
+					actions: [close]
+				};
+			default:
+				return null;
+		}
+	}
+
+	const gone = $derived.by(() => {
+		const g = goneFor(presence, 'folder');
+		if (g && presence.state === 'gone' && source) {
+			g.actions = [{ label: `Go to ${sourceName(source)}`, run: openRoot }, ...g.actions];
+		}
+		return g;
+	});
 
 	// ── The face: this unit's own list, direct children only unless searching ──
 	const face = $derived(view.faces.find((f) => f.type === 'list') ?? view.faces[0]);
@@ -202,11 +273,12 @@
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => {
 			saveTimer = null;
-			view.save().catch((e) => console.error('save view failed', e));
+			view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
 		}, 250);
 	});
 	onDestroy(() => {
-		if (saveTimer && !view.temporary) view.save().catch(() => {});
+		if (saveTimer && !view.temporary)
+			view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
 	});
 
 	// ── Navigation: a place moves within its own tab, like a folder window ──────
@@ -300,10 +372,9 @@
 		try {
 			const id = await createInView(view, todo);
 			if (id) onOpenRow(id);
-			else toasts.push('Add a source before creating a document.');
+			else addSourceRequest.open();
 		} catch (e) {
-			console.error('create failed', e);
-			toasts.push("That document couldn't be created.");
+			reportError(e, `A note couldn't be created in ${subject}.`, () => newDoc(todo));
 		}
 	}
 
@@ -374,7 +445,7 @@
 			await removeSource(sourceId);
 			editor.closeTab(view.id, false);
 		} catch (e) {
-			toasts.push(String(e));
+			reportError(e, `${subject} couldn't be removed.`);
 		}
 	}
 
@@ -386,7 +457,7 @@
 			if (parent) openCrumb(parent);
 			else openRoot();
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That folder couldn't be deleted."));
+			Folder.reportOpError(e, `${subject} couldn't be deleted.`, deleteFolder);
 		}
 	}
 
@@ -428,7 +499,9 @@
 			await loadFolders();
 			show(created.id, created.slug);
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That folder couldn't be created."));
+			Folder.reportOpError(e, `${mark('folder', name)} couldn't be created.`, () =>
+				createFolder(name)
+			);
 		}
 	}
 
@@ -442,7 +515,7 @@
 			const f = await Folder.fromID(newId);
 			show(newId, f.slug);
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That couldn't be done."));
+			Folder.reportOpError(e, `${subject} couldn't be renamed.`, () => commitName(raw));
 		}
 	}
 
@@ -461,202 +534,206 @@
 {/snippet}
 
 <div class="folder-page">
-	<div
-		class="body"
-		class:bare
-		bind:this={bodyEl}
-		oncontextmenu={onBodyContextMenu}
-		role="presentation"
-	>
-		<div class="inner" class:bare>
-			<header class="head">
-				<span class="place-icon">
-					{#if isRoot}<FolderInput size={18} strokeWidth={1.75} />{:else}<FolderIcon
-							size={18}
-							strokeWidth={1.75}
-						/>{/if}
-				</span>
-				<nav class="crumbs" aria-label="Location">
-					<button
-						class="crumb"
-						class:current={isRoot}
-						class:over={overCrumb === ''}
-						type="button"
-						onclick={openRoot}
-						ondragover={(e) => onCrumbDragOver(e, '')}
-						ondragleave={() => overCrumb === '' && (overCrumb = null)}
-						ondrop={(e) => onCrumbDrop(e, '')}
-					>
-						{#if root?.repo}
-							<GitBranch size={13} strokeWidth={1.75} />
-						{/if}
-						{source ? sourceName(source) : ''}
-					</button>
-					{#each crumbs as c, i (c.path)}
-						<ChevronRight size={14} strokeWidth={2} class="sep" />
+	{#if gone}
+		<GonePage art={catBox} headline={gone.headline} detail={gone.detail} actions={gone.actions} />
+	{:else}
+		<div
+			class="body"
+			class:bare
+			bind:this={bodyEl}
+			oncontextmenu={onBodyContextMenu}
+			role="presentation"
+		>
+			<div class="inner" class:bare>
+				<header class="head">
+					<span class="place-icon">
+						{#if isRoot}<FolderInput size={18} strokeWidth={1.75} />{:else}<FolderIcon
+								size={18}
+								strokeWidth={1.75}
+							/>{/if}
+					</span>
+					<nav class="crumbs" aria-label="Location">
 						<button
 							class="crumb"
-							class:current={i === crumbs.length - 1}
-							class:over={overCrumb === c.path}
+							class:current={isRoot}
+							class:over={overCrumb === ''}
 							type="button"
-							onclick={() => openCrumb(c.path)}
-							ondragover={(e) => onCrumbDragOver(e, c.path)}
-							ondragleave={() => overCrumb === c.path && (overCrumb = null)}
-							ondrop={(e) => onCrumbDrop(e, c.path)}
+							onclick={openRoot}
+							ondragover={(e) => onCrumbDragOver(e, '')}
+							ondragleave={() => overCrumb === '' && (overCrumb = null)}
+							ondrop={(e) => onCrumbDrop(e, '')}
 						>
-							{#if folders.find((f) => f.id === `folder:${sourceId}:${c.path}`)?.repo}
+							{#if root?.repo}
 								<GitBranch size={13} strokeWidth={1.75} />
 							{/if}
-							{c.slug}
+							{source ? sourceName(source) : ''}
 						</button>
-					{/each}
-					<button
-						class="crumb-menu"
-						type="button"
-						aria-label="Folder menu"
-						bind:this={menuEl}
-						onclick={() => (menuOpen = !menuOpen)}
-					>
-						<ChevronDown size={14} strokeWidth={2} />
-					</button>
-				</nav>
-
-				<label class="search">
-					<Search size={14} strokeWidth={1.75} />
-					<input
-						type="text"
-						placeholder="Search in {isRoot && source
-							? sourceName(source)
-							: (crumbs.at(-1)?.slug ?? '')}"
-						value={view.state.search ?? ''}
-						oninput={(e) => (view.state.search = (e.currentTarget as HTMLInputElement).value)}
-					/>
-					{#if view.state.search}
+						{#each crumbs as c, i (c.path)}
+							<ChevronRight size={14} strokeWidth={2} class="sep" />
+							<button
+								class="crumb"
+								class:current={i === crumbs.length - 1}
+								class:over={overCrumb === c.path}
+								type="button"
+								onclick={() => openCrumb(c.path)}
+								ondragover={(e) => onCrumbDragOver(e, c.path)}
+								ondragleave={() => overCrumb === c.path && (overCrumb = null)}
+								ondrop={(e) => onCrumbDrop(e, c.path)}
+							>
+								{#if folders.find((f) => f.id === `folder:${sourceId}:${c.path}`)?.repo}
+									<GitBranch size={13} strokeWidth={1.75} />
+								{/if}
+								{c.slug}
+							</button>
+						{/each}
 						<button
-							class="clear"
+							class="crumb-menu"
 							type="button"
-							aria-label="Clear"
-							onclick={() => (view.state.search = '')}
+							aria-label="Folder menu"
+							bind:this={menuEl}
+							onclick={() => (menuOpen = !menuOpen)}
 						>
-							<X size={12} strokeWidth={2} />
+							<ChevronDown size={14} strokeWidth={2} />
 						</button>
-					{/if}
-				</label>
-			</header>
+					</nav>
 
-			{#if projectChildren.length > 0}
-				<div class="section-label">
-					{@render fold('projects', 'Projects')}
-				</div>
-				{#if !folded.projects}
-					<div class="strip">
-						<FolderChips
-							folders={projectChildren}
-							{projects}
-							whereOf={(f) => (query ? relDir(f) : '')}
-							onOpen={openFolder}
-							onChanged={loadFolders}
-							bind:selected={selectedFolder}
+					<label class="search">
+						<Search size={14} strokeWidth={1.75} />
+						<input
+							type="text"
+							placeholder="Search in {isRoot && source
+								? sourceName(source)
+								: (crumbs.at(-1)?.slug ?? '')}"
+							value={view.state.search ?? ''}
+							oninput={(e) => (view.state.search = (e.currentTarget as HTMLInputElement).value)}
 						/>
-					</div>
-				{/if}
-			{/if}
+						{#if view.state.search}
+							<button
+								class="clear"
+								type="button"
+								aria-label="Clear"
+								onclick={() => (view.state.search = '')}
+							>
+								<X size={12} strokeWidth={2} />
+							</button>
+						{/if}
+					</label>
+				</header>
 
-			{#if plainChildren.length > 0}
-				<div class="section-label">
-					{@render fold('folders', 'Folders')}
-					{#if !folded.folders && (foldersHidden > 0 || foldersShowAll)}
-						<button
-							class="more-btn"
-							type="button"
-							onclick={() => (foldersShowAll = !foldersShowAll)}
-						>
-							{#if foldersShowAll}
-								<ChevronUp size={13} strokeWidth={1.75} />
-							{:else}
-								<ChevronDown size={13} strokeWidth={1.75} />
-							{/if}
-							<span>{foldersShowAll ? 'fewer' : `${foldersHidden} more`}</span>
-						</button>
+				{#if projectChildren.length > 0}
+					<div class="section-label">
+						{@render fold('projects', 'Projects')}
+					</div>
+					{#if !folded.projects}
+						<div class="strip">
+							<FolderChips
+								folders={projectChildren}
+								{projects}
+								whereOf={(f) => (query ? relDir(f) : '')}
+								onOpen={openFolder}
+								onChanged={loadFolders}
+								bind:selected={selectedFolder}
+							/>
+						</div>
 					{/if}
-				</div>
-				{#if !folded.folders}
-					<div class="strip">
-						<FolderChips
-							folders={plainChildren}
-							rows={query ? 99 : 3}
-							whereOf={(f) => (query ? relDir(f) : '')}
-							onOpen={openFolder}
-							onChanged={loadFolders}
-							bind:selected={selectedFolder}
-							bind:showAll={foldersShowAll}
-							onHidden={(n) => (foldersHidden = n)}
-						/>
-					</div>
 				{/if}
-			{/if}
 
-			<div class="section-label files">
-				{@render fold('files', 'Files')}
-				<span class="controls">
-					<button
-						class="chip-btn"
-						class:set={modified !== 'any'}
-						type="button"
-						bind:this={modifiedEl}
-						onclick={() => (modifiedOpen = !modifiedOpen)}
-					>
-						<CalendarClock size={13} strokeWidth={1.75} />
-						<span>{modified === 'any' ? 'Modified' : modifiedLabel}</span>
-						<ChevronDown size={12} strokeWidth={2} />
-					</button>
-					<span class="layout" role="group" aria-label="Layout">
+				{#if plainChildren.length > 0}
+					<div class="section-label">
+						{@render fold('folders', 'Folders')}
+						{#if !folded.folders && (foldersHidden > 0 || foldersShowAll)}
+							<button
+								class="more-btn"
+								type="button"
+								onclick={() => (foldersShowAll = !foldersShowAll)}
+							>
+								{#if foldersShowAll}
+									<ChevronUp size={13} strokeWidth={1.75} />
+								{:else}
+									<ChevronDown size={13} strokeWidth={1.75} />
+								{/if}
+								<span>{foldersShowAll ? 'fewer' : `${foldersHidden} more`}</span>
+							</button>
+						{/if}
+					</div>
+					{#if !folded.folders}
+						<div class="strip">
+							<FolderChips
+								folders={plainChildren}
+								rows={query ? 99 : 3}
+								whereOf={(f) => (query ? relDir(f) : '')}
+								onOpen={openFolder}
+								onChanged={loadFolders}
+								bind:selected={selectedFolder}
+								bind:showAll={foldersShowAll}
+								onHidden={(n) => (foldersHidden = n)}
+							/>
+						</div>
+					{/if}
+				{/if}
+
+				<div class="section-label files">
+					{@render fold('files', 'Files')}
+					<span class="controls">
 						<button
-							class="lay"
-							class:on={layout === 'list'}
+							class="chip-btn"
+							class:set={modified !== 'any'}
 							type="button"
-							title="List"
-							aria-pressed={layout === 'list'}
-							onclick={() => setLayout('list')}
+							bind:this={modifiedEl}
+							onclick={() => (modifiedOpen = !modifiedOpen)}
 						>
-							<List size={14} strokeWidth={1.75} />
+							<CalendarClock size={13} strokeWidth={1.75} />
+							<span>{modified === 'any' ? 'Modified' : modifiedLabel}</span>
+							<ChevronDown size={12} strokeWidth={2} />
 						</button>
-						<button
-							class="lay"
-							class:on={layout === 'grid'}
-							type="button"
-							title="Grid"
-							aria-pressed={layout === 'grid'}
-							onclick={() => setLayout('grid')}
-						>
-							<LayoutGrid size={14} strokeWidth={1.75} />
-						</button>
+						<span class="layout" role="group" aria-label="Layout">
+							<button
+								class="lay"
+								class:on={layout === 'list'}
+								type="button"
+								title="List"
+								aria-pressed={layout === 'list'}
+								onclick={() => setLayout('list')}
+							>
+								<List size={14} strokeWidth={1.75} />
+							</button>
+							<button
+								class="lay"
+								class:on={layout === 'grid'}
+								type="button"
+								title="Grid"
+								aria-pressed={layout === 'grid'}
+								onclick={() => setLayout('grid')}
+							>
+								<LayoutGrid size={14} strokeWidth={1.75} />
+							</button>
+						</span>
 					</span>
-				</span>
-			</div>
-			{#if face && !folded.files}
-				<ListFace
-					{view}
-					{face}
-					{onOpenRow}
-					{scope}
-					moveable
-					editable={false}
-					onTotal={(n) => (fileTotal = n)}
-				/>
-			{/if}
-			{#if bare}
-				<div class="nothing">
-					<pre class="frog">{frog}</pre>
-					<p class="bare-text">pretty empty...</p>
 				</div>
-			{/if}
+				{#if face && !folded.files}
+					<ListFace
+						{view}
+						{face}
+						{onOpenRow}
+						{scope}
+						moveable
+						editable={false}
+						onTotal={(n) => (fileTotal = n)}
+					/>
+				{/if}
+				{#if bare}
+					<div class="nothing">
+						<pre class="frog">{frog}</pre>
+						<p class="bare-text">pretty empty...</p>
+					</div>
+				{/if}
+			</div>
 		</div>
-	</div>
 
-	<ScrollThumb scroller={bodyEl} top={20} />
+		<ScrollThumb scroller={bodyEl} top={20} />
 
-	<NewFab items={fabItems} onSelect={onFabSelect} bind:el={fabEl} />
+		<NewFab items={fabItems} onSelect={onFabSelect} bind:el={fabEl} />
+	{/if}
 </div>
 
 <Menu
@@ -689,9 +766,15 @@
 	value={crumbs.at(-1)?.slug ?? ''}
 	placeholder="Folder name"
 	icon={FolderIcon}
+	guard="file"
+	problem={(v) => (v.trim() === here?.slug ? null : siblingProblem(v, here?.parentId, unitId))}
 	onChange={(v) => commitName(String(v ?? ''))}
 />
-<NewFolderDialog bind:open={newFolderOpen} onCreate={createFolder} />
+<NewFolderDialog
+	bind:open={newFolderOpen}
+	onCreate={createFolder}
+	problem={(v) => siblingProblem(v, unitId, null)}
+/>
 
 <style>
 	.folder-page {

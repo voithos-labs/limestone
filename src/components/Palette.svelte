@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
+	import { mark } from '$lib/toasts.svelte';
 	import { tick, untrack } from 'svelte';
 	import {
 		Search,
@@ -343,7 +345,13 @@
 		try {
 			await item.run(newTab);
 		} catch (e) {
-			console.error('palette action failed', e);
+			const kind = item.kind === 'doc' ? 'note' : item.kind === 'view' ? 'project' : item.kind;
+			reportError(
+				e,
+				kind === 'command'
+					? `The command "${item.label}" couldn't be run.`
+					: `${mark(kind, item.label)} couldn't be opened.`
+			);
 		}
 	}
 

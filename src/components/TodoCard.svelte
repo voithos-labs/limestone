@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
 	import { Check, X, Calendar, CalendarClock } from '@lucide/svelte';
 	import View from '$lib/models/View.svelte';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
@@ -7,7 +8,7 @@
 	import { rawStatefulValue, withStatefulValue } from '$lib/views/fieldValue';
 	import { formatDateCompact } from '$lib/views/dateFormat';
 	import { dueState } from '$lib/views/due';
-	import { toasts } from '$lib/toasts.svelte';
+	import { toasts, mark } from '$lib/toasts.svelte';
 	import CellEditor from './views/CellEditor.svelte';
 
 	// A note that is a todo wears its todo-ness as one card in the meta row: the checkbox,
@@ -60,8 +61,8 @@
 			const result = await view.writeFieldValue(handle.source.id, field, value, [before.id]);
 			if (result.failed > 0) toasts.push(describeBulkFailure(result));
 		} catch (e) {
-			console.error('todo write failed', e);
 			row = before;
+			reportError(e, `${mark('note', handle.title)} couldn't be saved.`, () => write(field, value));
 		}
 	}
 

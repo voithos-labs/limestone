@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
+	import { mark } from '$lib/toasts.svelte';
 	import { untrack } from 'svelte';
 	import {
 		Hash,
@@ -14,6 +16,7 @@
 	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import Tag, { tagId } from '$lib/models/Tag';
 	import { isBuiltinUnit } from '$lib/models/View.svelte';
+	import { nameGuard } from '$lib/util/paths';
 
 	let {
 		open = $bindable(false),
@@ -133,7 +136,7 @@
 		try {
 			await onCreate(slug);
 		} catch (e) {
-			console.error('create tag failed', e);
+			reportError(e, `${mark('tag', slug)} couldn't be created.`, () => onCreate(slug));
 		}
 		await reload();
 	}
@@ -167,7 +170,7 @@
 			await reload();
 			onMutated?.();
 		} catch (e) {
-			console.error('rename tag failed', e);
+			reportError(e, `${mark('tag', t.slug)} couldn't be renamed.`, () => Tag.rename(t, s));
 		} finally {
 			busy = false;
 		}
@@ -188,7 +191,7 @@
 			await reload();
 			onMutated?.();
 		} catch (e) {
-			console.error('delete tag failed', e);
+			reportError(e, `${mark('tag', t.slug)} couldn't be deleted.`, () => confirmDelete(t));
 		} finally {
 			busy = false;
 		}
@@ -308,6 +311,7 @@
 				type="text"
 				bind:value={query}
 				bind:this={searchEl}
+				use:nameGuard={onCreate ? 'tag' : null}
 				placeholder={onCreate ? 'Search or create a tag' : 'Search tags'}
 			/>
 		</div>
@@ -346,8 +350,10 @@
 							<input
 								class="name-input"
 								class:invalid={renameInvalid(t)}
+								title={renameInvalid(t) ? 'A tag with this name already exists.' : undefined}
 								bind:value={renameDraft}
 								use:renameFocus
+								use:nameGuard={'tag'}
 								onblur={() => commitRename(t)}
 								onkeydown={(e) => onRenameKey(e, t)}
 								spellcheck="false"

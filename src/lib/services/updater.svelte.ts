@@ -36,8 +36,8 @@ class UpdaterController {
 			this.version = found.version;
 			this.phase = 'available';
 			return true;
-		} catch (e) {
-			this.error = String(e);
+		} catch {
+			this.error = "Couldn't check for updates. Check your connection, then try again.";
 			this.phase = 'error';
 			return false;
 		}
@@ -67,8 +67,8 @@ class UpdaterController {
 				}
 			});
 			await relaunch();
-		} catch (e) {
-			this.error = String(e);
+		} catch {
+			this.error = "The update couldn't be installed. Try again in a moment.";
 			this.phase = 'error';
 		}
 	}

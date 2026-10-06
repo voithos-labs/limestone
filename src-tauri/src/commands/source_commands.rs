@@ -416,32 +416,7 @@ fn collect_dirs(root: &Path, dir: &Path, depth: usize, out: &mut Vec<String>) {
     }
 }
 
-#[derive(serde::Serialize)]
-pub struct FolderOpError {
-    kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-}
-
-impl FolderOpError {
-    fn new(kind: &str) -> Self {
-        Self {
-            kind: kind.to_string(),
-            name: None,
-        }
-    }
-
-    fn named(kind: &str, name: &str) -> Self {
-        Self {
-            kind: kind.to_string(),
-            name: Some(name.to_string()),
-        }
-    }
-
-    fn io(e: &std::io::Error) -> Self {
-        Self::new(&crate::services::bulk_ops::classify_io(e))
-    }
-}
+pub(crate) use super::OpError as FolderOpError;
 
 fn folder_leaf(rel_dir: &str) -> &str {
     rel_dir.rsplit('/').next().unwrap_or(rel_dir)
@@ -580,11 +555,7 @@ pub async fn delete_folder(
     if !full.is_dir() {
         return Err(FolderOpError::named("not_found", folder_leaf(&rel_dir)));
     }
-    trash::delete(&full).map_err(|e| match e {
-        trash::Error::CouldNotAccess { .. } => FolderOpError::new("permission"),
-        trash::Error::Os { code, .. } if code == 32 => FolderOpError::new("locked"),
-        _ => FolderOpError::new("io"),
-    })?;
+    super::to_trash(&full)?;
 
     let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
     let source = find_source(&app, uuid).map_err(|_| FolderOpError::new("source_missing"))?;

@@ -1,12 +1,15 @@
 <script lang="ts">
-	import Folder, { folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
-	import Tag from '$lib/models/Tag';
+	import { reportError } from '$lib/errors';
+	import Folder, { folderId, folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
+	import Tag, { tagId } from '$lib/models/Tag';
 	import { isBuiltinUnit } from '$lib/models/View.svelte';
 	import NewFolderDialog from '../NewFolderDialog.svelte';
 	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { metaDialog } from '$lib/metaDialog.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { toasts } from '$lib/toasts.svelte';
+	import { mark } from '$lib/toasts.svelte';
+	import { addSourceRequest } from '$lib/addSource.svelte';
+	import { folderNameProblem } from '$lib/util/paths';
 	import { onMount, onDestroy } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
 	import View from '$lib/models/View.svelte';
@@ -15,7 +18,11 @@
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { listSources, removeSource, type Source } from '$lib/models/Source';
+	import { listSources, removeSource, onSourceReconciled, type Source } from '$lib/models/Source';
+	import { folderPresence, type FolderPresence } from '$lib/views/presence';
+	import GonePage from '../GonePage.svelte';
+	import type { GoneAction } from '../GoneActions.svelte';
+	import catBox from '$lib/cat-box.txt?raw';
 	import SourceDialog from '../SourceDialog.svelte';
 	import DocHandle from '$lib/models/DocHandle';
 	import ViewHeader from '../views/ViewHeader.svelte';
@@ -238,16 +245,116 @@
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => {
 			saveTimer = null;
-			view.save().catch((e) => console.error('save view failed', e));
+			view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
 		}, 250);
 	});
 
 	onDestroy(() => {
 		endScrollRestore();
-		if (saveTimer && !view.temporary) view.save().catch(() => {});
+		if (saveTimer && !view.temporary)
+			view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
 	});
 
 	let sourceRemoved = $state(false);
+	let presence = $state<FolderPresence>({ state: 'ok' });
+	let confirmRemove = $state(false);
+
+	async function checkPresence() {
+		const unit = view.unit;
+		if (!unit?.startsWith('folder:')) {
+			presence = { state: 'ok' };
+			return;
+		}
+		const next = await folderPresence(unit);
+		if (view.unit === unit) presence = next;
+	}
+
+	$effect(() => {
+		void view.unit;
+		void checkPresence();
+	});
+	$effect(() => onSourceReconciled(() => void checkPresence()));
+
+	function goneFor(
+		p: FolderPresence,
+		kind: 'project' | 'folder'
+	): { headline: string; detail: string; actions: GoneAction[] } | null {
+		const close = { label: 'Close', run: () => editor.closeTab(view.id, false) };
+		switch (p.state) {
+			case 'removed':
+				return {
+					headline: 'this source was removed from limestone',
+					detail:
+						"The folder on disk wasn't touched. Add it again from settings to bring this back.",
+					actions: [close]
+				};
+			case 'source_missing':
+				return {
+					headline: `the ${p.source} source isn't available`,
+					detail:
+						"Check that the drive or folder is connected. This opens by itself when it's back.",
+					actions: [close]
+				};
+			case 'gone':
+				return {
+					headline: `couldn't find the ${kind} ${p.path.split('/').pop()}`,
+					detail: `It was at \`${p.source}/${p.path}\`. It may have been moved, renamed or deleted outside Limestone.`,
+					actions: [close]
+				};
+			default:
+				return null;
+		}
+	}
+
+	let restoringProject = $state(false);
+
+	async function restoreProject() {
+		const unit = view.unit;
+		if (!unit || restoringProject) return;
+		restoringProject = true;
+		try {
+			await Folder.create(folderIdPath(unit), folderIdSource(unit));
+			await checkPresence();
+		} catch (e) {
+			Folder.reportOpError(e, `${subject} couldn't be restored.`, restoreProject);
+		} finally {
+			restoringProject = false;
+		}
+	}
+
+	async function removeProject() {
+		if (!confirmRemove) {
+			confirmRemove = true;
+			return;
+		}
+		try {
+			await view.unsave();
+			editor.closeTab(view.id, false);
+		} catch (e) {
+			reportError(e, `${subject} couldn't be removed.`);
+		}
+	}
+
+	const gone = $derived.by(() => {
+		const g = goneFor(sourceRemoved ? { state: 'removed' } : presence, 'project');
+		if (g && presence.state === 'gone' && !view.temporary) {
+			g.actions = [
+				{
+					label: restoringProject ? 'Restoring…' : 'Restore empty',
+					run: restoreProject,
+					strong: true,
+					disabled: restoringProject
+				},
+				{
+					label: confirmRemove ? 'Are you sure?' : 'Remove project',
+					run: removeProject,
+					danger: confirmRemove
+				},
+				...g.actions
+			];
+		}
+		return g;
+	});
 
 	// The tab holds this view in memory, so field edits made elsewhere (a document's
 	// properties panel adding a select option) aren't reflected here. The tab remounts
@@ -347,6 +454,40 @@
 		view.unit?.startsWith('folder:') ? 'folder' : view.unit?.startsWith('tag:') ? 'tag' : null
 	);
 	const unitIsRoot = $derived(unitKind === 'folder' && isSourceRoot(view.unit!));
+	const subject = $derived(mark(unitKind === 'tag' ? 'tag' : 'project', view.slug));
+
+	let unitSiblings = $state<Set<string>>(new Set());
+	let unitChildren = $state<Set<string>>(new Set());
+	async function loadNeighbours() {
+		const unit = view.unit;
+		if (!unit) return;
+		if (unitKind === 'tag') {
+			unitSiblings = new Set((await Tag.list()).filter((t) => t.id !== unit).map((t) => t.id));
+			return;
+		}
+		const path = folderIdPath(unit);
+		const parent = folderId(
+			folderIdSource(unit),
+			path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+		);
+		const all = await Folder.list();
+		const slugs = (f: Folder) => f.slug.toLowerCase();
+		unitSiblings = new Set(all.filter((f) => f.parentId === parent && f.id !== unit).map(slugs));
+		unitChildren = new Set(all.filter((f) => f.parentId === unit).map(slugs));
+	}
+	$effect(() => {
+		void view.unit;
+		void loadNeighbours();
+	});
+	$effect(() => onSourceReconciled(() => void loadNeighbours()));
+
+	function titleProblem(name: string): string | null {
+		if (unitKind === 'tag')
+			return unitSiblings.has(tagId(name)) ? 'A tag with this name already exists.' : null;
+		if (unitKind === 'folder')
+			return folderNameProblem(name, unitSiblings.has(name.trim().toLowerCase()));
+		return null;
+	}
 	let header: ViewHeader | null = $state(null);
 
 	// the folder under a folder project, for its per-folder metadata switch (the folder page's
@@ -375,10 +516,9 @@
 		try {
 			const id = await createInView(view, todo);
 			if (id) onOpenRow(id);
-			else toasts.push('Add a source before creating a document.');
+			else addSourceRequest.open();
 		} catch (e) {
-			console.error('create failed', e);
-			toasts.push("That document couldn't be created.");
+			reportError(e, `A note couldn't be created in ${subject}.`, () => newDoc(todo));
 		}
 	}
 
@@ -480,7 +620,9 @@
 			if (tab) editor.showViewInTab(tab, next);
 			else editor.openView(next);
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That folder couldn't be created."));
+			Folder.reportOpError(e, `${mark('folder', name)} couldn't be created.`, () =>
+				createFolder(name)
+			);
 		}
 	}
 
@@ -507,7 +649,7 @@
 				await removeSource(folderIdSource(view.unit));
 				editor.closeTab(view.id, false);
 			} catch (e) {
-				toasts.push(String(e));
+				reportError(e, `${mark('source', view.slug)} couldn't be removed.`);
 			}
 			return;
 		}
@@ -516,14 +658,14 @@
 				await Tag.delete(await Tag.fromID(view.unit));
 				editor.closeTab(view.id, false);
 			} catch (e) {
-				console.error('delete tag failed', e);
+				reportError(e, `${mark('tag', view.slug)} couldn't be deleted.`);
 			}
 		} else {
 			try {
 				await Folder.delete(folderIdSource(view.unit), folderIdPath(view.unit));
 				editor.closeTab(view.id, false);
 			} catch (e) {
-				toasts.push(Folder.describeOpError(e, "That folder couldn't be deleted."));
+				Folder.reportOpError(e, `${mark('folder', view.slug)} couldn't be deleted.`, deleteUnit);
 			}
 		}
 	}
@@ -598,17 +740,8 @@
 </script>
 
 <div class="view-page">
-	{#if sourceRemoved}
-		<div class="source-removed">
-			<p class="source-removed-msg">Source <strong>{view.slug}</strong> was removed.</p>
-			<button
-				class="source-removed-close"
-				type="button"
-				onclick={() => editor.closeTab(view.id, false)}
-			>
-				Close tab
-			</button>
-		</div>
+	{#if gone}
+		<GonePage art={catBox} headline={gone.headline} detail={gone.detail} actions={gone.actions} />
 	{:else}
 		<div
 			class="view-body"
@@ -674,6 +807,7 @@
 					<ViewHeader
 						bind:this={header}
 						{view}
+						{titleProblem}
 						hasCover={!!view.cover}
 						{docPicker}
 						onMore={(anchor) => {
@@ -742,7 +876,11 @@
 	onSelect={onMoreSelect}
 	minWidth={170}
 />
-<NewFolderDialog bind:open={newFolderOpen} onCreate={createFolder} />
+<NewFolderDialog
+	bind:open={newFolderOpen}
+	onCreate={createFolder}
+	problem={(v) => folderNameProblem(v, unitChildren.has(v.trim().toLowerCase()))}
+/>
 <SourceDialog bind:open={sourceDialogOpen} mode="edit" source={dialogSource} onSaved={() => {}} />
 <CoverSourceDialog
 	bind:open={coverDialogOpen}
@@ -761,42 +899,6 @@
 		height: 100%;
 		width: 100%;
 		overflow: hidden;
-	}
-
-	.source-removed {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 14px;
-		height: 100%;
-		font-family: var(--font-ui);
-		color: var(--color-ui-muted);
-	}
-
-	.source-removed-msg {
-		margin: 0;
-		font-size: 14px;
-	}
-
-	.source-removed-msg strong {
-		color: var(--color-text-primary);
-		font-weight: 600;
-	}
-
-	.source-removed-close {
-		padding: 6px 14px;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		background: transparent;
-		color: var(--color-text-primary);
-		font-family: var(--font-ui);
-		font-size: 13px;
-		cursor: pointer;
-	}
-
-	.source-removed-close:hover {
-		background: var(--menu-item-hover);
 	}
 
 	.view-body {

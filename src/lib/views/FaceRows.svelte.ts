@@ -1,3 +1,5 @@
+import { reportError } from '$lib/errors';
+import { addSourceRequest } from '$lib/addSource.svelte';
 import type View from '$lib/models/View.svelte';
 import type { FilterNode, MemberRow, SortKey, ViewField } from '$lib/models/View.svelte';
 import {
@@ -25,9 +27,10 @@ import {
 } from '$lib/models/Source';
 import Folder, { folderIdPath } from '$lib/models/Folder';
 import DocHandle from '$lib/models/DocHandle';
+import { sanitizeSegment } from '$lib/util/paths';
 import { tagId } from '$lib/models/Tag';
 import { invoke } from '@tauri-apps/api/core';
-import { toasts } from '$lib/toasts.svelte';
+import { toasts, mark } from '$lib/toasts.svelte';
 
 export type RowTag = { id: string; slug: string };
 
@@ -161,7 +164,7 @@ export class FaceRows {
 					.catch(() => {});
 			}
 		} catch (e) {
-			if (token === this.token) this.error = String(e);
+			if (token === this.token) this.error = "This list couldn't be loaded. Try reopening it.";
 		} finally {
 			if (token === this.token) this.loading = false;
 		}
@@ -184,7 +187,7 @@ export class FaceRows {
 			this.rows = [...this.rows, ...more];
 			this.rowTags = { ...this.rowTags, ...tags };
 		} catch (e) {
-			if (token === this.token) this.error = String(e);
+			if (token === this.token) this.error = "More notes couldn't be loaded. Try scrolling again.";
 		} finally {
 			this.loadingMore = false;
 		}
@@ -312,7 +315,9 @@ export class FaceRows {
 			}
 		} catch (e) {
 			this.patchRow(row.id, { properties: before });
-			this.error = String(e);
+			reportError(e, `${mark('note', row.title)} couldn't be saved.`, () =>
+				this.writeCell(row, field, value)
+			);
 		}
 	}
 
@@ -362,7 +367,7 @@ export class FaceRows {
 			if (fid && this.fieldAffectsView(fid)) this.load(true);
 			return tags;
 		} catch (e) {
-			this.error = String(e);
+			reportError(e, `Tags on ${mark('note', row.title)} couldn't be saved.`);
 			return null;
 		}
 	}
@@ -378,18 +383,19 @@ export class FaceRows {
 			this.patchRow(rowId, { title: doc.title });
 		} catch (e) {
 			this.patchRow(rowId, { title: prev });
-			this.error = String(e);
+			reportError(e, `${mark('note', prev)} couldn't be renamed.`);
 		}
 	}
 
 	async delete(rowId: string): Promise<void> {
+		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		try {
 			const doc = await DocHandle.fromID(rowId);
 			await doc.delete();
 			this.rows = this.rows.filter((r) => r.id !== rowId);
 			this.total = Math.max(0, this.total - 1);
 		} catch (e) {
-			this.error = String(e);
+			reportError(e, `${mark('note', title)} couldn't be deleted.`, () => this.delete(rowId));
 		}
 	}
 
@@ -408,14 +414,25 @@ export class FaceRows {
 		if (!source || !title.trim()) return false;
 		const ctx = this.createCtx;
 		const dir = ctx.folderGroupId ? folderPath(ctx.folderGroupId) : '';
-		const base = title.trim().replace(/[\\/]/g, '-');
-		return DocHandle.pathTaken(source, dir ? `${dir}/${base}.md` : `${base}.md`);
+		const base = sanitizeSegment(title);
+		if (!base) return false;
+		return DocHandle.pathTaken(source, dir ? `${dir}/${base}.md` : `${base}.md`).catch(() => false);
+	}
+
+	async renameTaken(row: MemberRow, title: string): Promise<boolean> {
+		const source = this.sources.find((s) => s.id === row.source_id);
+		const base = sanitizeSegment(title);
+		if (!source || !base) return false;
+		const cut = row.rel_path.lastIndexOf('/');
+		const rel = cut === -1 ? `${base}.md` : `${row.rel_path.slice(0, cut)}/${base}.md`;
+		if (rel.toLowerCase() === row.rel_path.toLowerCase()) return false;
+		return DocHandle.pathTaken(source, rel).catch(() => false);
 	}
 
 	async create(title = ''): Promise<string | null> {
 		const source = this.creationSource();
 		if (!source) {
-			this.error = 'No source available to create in';
+			addSourceRequest.open();
 			return null;
 		}
 		try {
@@ -423,7 +440,11 @@ export class FaceRows {
 			await this.load(true);
 			return doc.id;
 		} catch (e) {
-			this.error = String(e);
+			reportError(
+				e,
+				title ? `${mark('note', title)} couldn't be created.` : "The new note couldn't be created.",
+				() => this.create(title)
+			);
 			return null;
 		}
 	}

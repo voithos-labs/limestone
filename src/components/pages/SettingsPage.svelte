@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { describeError, reportError } from '$lib/errors';
 	import {
 		resetAllSettings,
 		getAppInfo,
@@ -228,7 +229,7 @@
 			await setDefaultSource(s.id === defaultSourceId ? null : s.id);
 			defaultSourceId = await getDefaultSourceId();
 		} catch (e) {
-			sourceError = String(e);
+			sourceError = describeError(e, "The default source couldn't be changed.");
 		}
 	}
 
@@ -266,7 +267,7 @@
 			await removeSource(s.id);
 			await loadSources();
 		} catch (e) {
-			sourceError = String(e);
+			sourceError = describeError(e, "That source couldn't be removed.");
 		}
 	}
 
@@ -504,7 +505,7 @@
 			customKeys = [];
 			resetDialogOpen = false;
 		} catch (e) {
-			console.error('reset settings failed', e);
+			reportError(e, "Settings couldn't be reset.", confirmResetAll);
 		}
 		resetBusy = false;
 	}

@@ -64,7 +64,17 @@ pub fn fast_write(path: &Path, content: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
+pub fn is_taken(src: &Path, dest: &Path) -> bool {
+    dest.exists() && fs::canonicalize(src).ok() != fs::canonicalize(dest).ok()
+}
+
 pub fn move_file(src: &Path, dest: &Path) -> io::Result<()> {
+    if is_taken(src, dest) {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "destination exists",
+        ));
+    }
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -80,6 +90,29 @@ pub fn move_file(src: &Path, dest: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn move_never_overwrites() {
+        let dir = std::env::temp_dir().join(format!("ls-move-{}", std::process::id()));
+        fs::create_dir_all(dir.join("a")).unwrap();
+        fs::create_dir_all(dir.join("b")).unwrap();
+        let moving = dir.join("a/ideas.md");
+        let resident = dir.join("b/ideas.md");
+        fs::write(&moving, "moving").unwrap();
+        fs::write(&resident, "resident").unwrap();
+
+        let err = move_file(&moving, &resident).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read_to_string(&moving).unwrap(), "moving");
+        assert_eq!(fs::read_to_string(&resident).unwrap(), "resident");
+
+        let free = dir.join("b/new/ideas 2.md");
+        move_file(&moving, &free).unwrap();
+        assert!(!moving.exists());
+        assert_eq!(fs::read_to_string(&free).unwrap(), "moving");
+        assert_eq!(fs::read_to_string(&resident).unwrap(), "resident");
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn accepts_plain_names() {

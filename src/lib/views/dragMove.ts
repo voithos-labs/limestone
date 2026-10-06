@@ -4,7 +4,9 @@
 // until the drop, and targets want to judge it while hovering
 import DocHandle from '$lib/models/DocHandle';
 import Folder, { folderIdPath, folderIdSource } from '$lib/models/Folder';
-import { toasts } from '$lib/toasts.svelte';
+import { MoveBatch, moveFolder, moveNote } from '$lib/views/moveConflict.svelte';
+import { mark } from '$lib/toasts.svelte';
+import { getSource } from '$lib/models/Source';
 
 export const MOVE_MIME = 'application/x-limestone-move';
 
@@ -52,29 +54,42 @@ export function canMoveInto(targetId: string, p: MovePayload | null): boolean {
 	return to !== from && !to.startsWith(from + '/') && to !== parent;
 }
 
-export async function moveInto(targetId: string, p: MovePayload): Promise<boolean> {
+export async function moveAllInto(targetId: string, items: MovePayload[]): Promise<boolean> {
+	const batch = new MoveBatch(items.length);
+	let moved = false;
+	for (const p of items) {
+		batch.remaining--;
+		if (await moveInto(targetId, p, batch)) moved = true;
+	}
+	return moved;
+}
+
+export async function moveInto(
+	targetId: string,
+	p: MovePayload,
+	batch = new MoveBatch()
+): Promise<boolean> {
 	const sourceId = folderIdSource(targetId);
 	const targetPath = folderIdPath(targetId);
+	let subject =
+		p.kind === 'doc' ? 'This note' : mark('folder', folderIdPath(p.id).split('/').pop() ?? '');
 	try {
 		if (p.kind === 'doc') {
 			const d = await DocHandle.fromID(p.id);
-			if (d.source.id !== sourceId) {
-				toasts.push('Drag between sources is not supported yet. Use Move from the document.');
-				return false;
-			}
+			subject = mark('note', d.title);
 			const file = d.relPath.split('/').pop() ?? d.relPath;
 			const newRel = targetPath ? `${targetPath}/${file}` : file;
-			if (newRel === d.relPath) return false;
-			await d.moveToPath(newRel);
-			return true;
+			if (d.source.id === sourceId && newRel === d.relPath) return false;
+			const target = d.source.id === sourceId ? d.source : await getSource(sourceId);
+			return await moveNote(d, target, newRel, batch);
 		}
 		if (!canMoveInto(targetId, p)) return false;
 		const fp = folderIdPath(p.id);
 		const name = fp.split('/').pop() ?? fp;
-		await Folder.move(sourceId, fp, targetPath ? `${targetPath}/${name}` : name);
-		return true;
+		const dest = targetPath ? `${targetPath}/${name}` : name;
+		return (await moveFolder(sourceId, fp, dest, batch)) !== null;
 	} catch (e) {
-		toasts.push(Folder.describeOpError(e, "That couldn't be moved."));
+		Folder.reportOpError(e, `${subject} couldn't be moved.`);
 		return false;
 	}
 }

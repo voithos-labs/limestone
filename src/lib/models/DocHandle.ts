@@ -22,6 +22,8 @@
 
 // External
 import { v4 as uuidv4 } from 'uuid';
+import { untrack } from 'svelte';
+import { SvelteMap } from 'svelte/reactivity';
 import { exists, readTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import * as yaml from 'js-yaml';
@@ -29,8 +31,9 @@ import * as yaml from 'js-yaml';
 // Internal
 import { select, execute } from '$lib/services/db';
 import { addChangeHistory, removeHistory } from '$lib/services/history';
-import { rewriteLinksForMove } from '$lib/services/links.svelte';
-import { toasts } from '$lib/toasts.svelte';
+import { LinkRewriteFailure, rewriteLinksForMove } from '$lib/services/links.svelte';
+import { isRetryable } from '$lib/errors';
+import { toasts, mark } from '$lib/toasts.svelte';
 import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
 import Tag, { tagSlug, type TagRow } from './Tag';
@@ -65,6 +68,10 @@ function yamlErrorText(e: unknown): string {
 	return typeof line === 'number' ? `${reason} (line ${line + 2})` : reason;
 }
 
+function stemOf(relPath: string): string {
+	return relPath.slice(relPath.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '');
+}
+
 function dirOf(relPath: string): string {
 	return relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : '';
 }
@@ -91,15 +98,59 @@ export interface DocumentFrontmatter {
  * while maintaining data sync between the disk, db, and delta history.
  *
  */
+export type ReadErrorKind =
+	| 'source_missing'
+	| 'source_permission'
+	| 'not_found'
+	| 'permission'
+	| 'locked'
+	| 'invalid_data'
+	| 'other';
+
+const READ_ERROR_KINDS: ReadErrorKind[] = [
+	'source_missing',
+	'source_permission',
+	'not_found',
+	'permission',
+	'locked',
+	'invalid_data'
+];
+
+export function readErrorKind(e: unknown): ReadErrorKind {
+	const kind = (e as { kind?: string } | null)?.kind;
+	return READ_ERROR_KINDS.find((k) => k === kind) ?? 'other';
+}
+
+type Place = { sourceId: string; relPath: string; title: string };
+
+const places = new SvelteMap<string, Place>();
+
 class DocHandle {
 	// db fields *not all, just what is needed
 	readonly id: string; // primary id
-	private _relPath: string; // path relative to source root
 	readonly source: Source; // source instance, for data and UI
 	private hasFile = true;
 	private static unopened = new Set<string>();
 
-	title: string;
+	get title(): string {
+		return places.get(this.id)!.title;
+	}
+
+	get relPath(): string {
+		return places.get(this.id)!.relPath;
+	}
+
+	private get _relPath(): string {
+		return untrack(() => places.get(this.id)!.relPath);
+	}
+
+	private place(relPath: string, title: string): void {
+		places.set(this.id, { sourceId: this.source.id, relPath, title });
+	}
+
+	private get _title(): string {
+		return untrack(() => places.get(this.id)!.title);
+	}
 	tags: Tag[];
 	properties: Record<string, unknown>;
 	createdAt: Date;
@@ -113,9 +164,8 @@ class DocHandle {
 
 	private constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;
-		this._relPath = row.rel_path;
 		this.source = source;
-		this.title = row.title;
+		this.place(row.rel_path, row.title);
 		this.tags = [];
 		this.properties =
 			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
@@ -202,11 +252,7 @@ class DocHandle {
 
 	static async pathTaken(source: Source, relPath: string): Promise<boolean> {
 		if (await DocHandle.pathExists(source.id, relPath)) return true;
-		try {
-			return await exists(`${source.path}/${relPath}`);
-		} catch {
-			return false;
-		}
+		return exists(`${source.path}/${relPath}`);
 	}
 
 	static async uniqueRelPath(source: Source, dir: string, base: string): Promise<string> {
@@ -351,11 +397,15 @@ class DocHandle {
 
 		let raw: string;
 		try {
-			raw = await readTextFile(`${this.source.path}/${this._relPath}`);
-		} catch {
-			this.hasFile = false;
-			return '';
+			raw = await invoke<string>('read_document', {
+				sourceId: this.source.id,
+				relPath: this._relPath
+			});
+		} catch (e) {
+			if (!this.hasFile && readErrorKind(e) === 'not_found') return '';
+			throw e;
 		}
+		this.hasFile = true;
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 		this.fence = raw.slice(0, raw.length - body.length);
@@ -436,6 +486,15 @@ class DocHandle {
 		this.applyMeta(await Folder.metaAt(this.source.id, dirOf(this._relPath)));
 	}
 
+	async restore(body: string, overwrite: boolean): Promise<void> {
+		this.hasFile = overwrite;
+		await this.saveContent(body, { rebuildFrontmatter: true });
+	}
+
+	adoptAsDraft(): void {
+		this.hasFile = false;
+	}
+
 	private async ensureFile(): Promise<void> {
 		if (!this.hasFile) await this.saveContent('');
 	}
@@ -450,21 +509,46 @@ class DocHandle {
 		removeHistory(this.id).catch((e) => console.error('history remove failed', e));
 	}
 
+	static async trashAt(source: Source, relPath: string): Promise<string | null> {
+		const [row] = await select<{ id: string }>(
+			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2`,
+			[source.id, relPath]
+		);
+		await invoke('delete_document', { id: row?.id ?? null, sourceId: source.id, relPath });
+		if (row) removeHistory(row.id).catch((e) => console.error('history remove failed', e));
+		return row?.id ?? null;
+	}
+
 	/**
 	 * Move a document file
 	 * TODO: has to trigger rescan of path => folder group update
 	 *
 	 * @param newRelPath Path, relative to source, to move the document to
 	 */
+	static async syncSource(sourceId: string): Promise<void> {
+		const ids = [...places].filter(([, p]) => p.sourceId === sourceId).map(([id]) => id);
+		if (ids.length === 0) return;
+		const rows = await select<{ id: string; rel_path: string; title: string }>(
+			`SELECT id, rel_path, title FROM documents WHERE id IN (${ids.map(() => '?').join(', ')})`,
+			ids
+		);
+		for (const row of rows) {
+			const p = places.get(row.id);
+			if (p && (p.relPath !== row.rel_path || p.title !== row.title)) {
+				places.set(row.id, { ...p, relPath: row.rel_path, title: row.title });
+			}
+		}
+	}
+
 	async refreshPath(): Promise<boolean> {
-		const [row] = await select<{ rel_path: string }>(
-			`SELECT rel_path
+		const [row] = await select<{ rel_path: string; title: string }>(
+			`SELECT rel_path, title
              FROM documents
              WHERE id = ?1`,
 			[this.id]
 		);
-		if (!row || row.rel_path === this._relPath) return false;
-		this._relPath = row.rel_path;
+		if (!row || (row.rel_path === this._relPath && row.title === this._title)) return false;
+		this.place(row.rel_path, row.title);
 		return true;
 	}
 
@@ -476,7 +560,7 @@ class DocHandle {
 			relPath: oldRelPath,
 			newRelPath
 		});
-		this._relPath = newRelPath;
+		this.place(newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
 		await this.updateLinks(oldRelPath);
 	}
@@ -486,9 +570,13 @@ class DocHandle {
 			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this._relPath);
 		} catch (e) {
 			console.error('link rewrite failed', e);
-			toasts.push(
-				`"${this.title}" was moved, but links to it could not be updated. Search for [[${oldRelPath.replace(/\.md$/i, '')}]] to fix them by hand.`
-			);
+			let message = `Links to ${mark('note', this.title)} still use its old name`;
+			if (e instanceof LinkRewriteFailure && e.failed > 0)
+				message += ` in ${e.failed} ${e.failed === 1 ? 'note' : 'notes'}`;
+			if (e instanceof LinkRewriteFailure && e.reason) message += `: ${e.reason}`;
+			else message += '.';
+			const retry = { label: 'Retry', run: () => void this.updateLinks(oldRelPath) };
+			toasts.push(message, { action: isRetryable(e) ? retry : undefined });
 		}
 	}
 
@@ -503,8 +591,8 @@ class DocHandle {
 			newRelPath,
 			newSourceId: newSource.id
 		});
-		this._relPath = newRelPath;
 		(this as { source: Source }).source = newSource;
+		this.place(newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
 	}
 
@@ -538,16 +626,11 @@ class DocHandle {
 			relPath: oldRelPath,
 			newName: title + ext
 		});
-		this._relPath = newRel;
-		this.title = title;
+		this.place(newRel, title);
 		await this.updateLinks(oldRelPath);
 	}
 
 	// ── Util ─────────────────────────────────────────────────────────────────────────
-
-	get relPath() {
-		return this._relPath;
-	}
 
 	get isDraft(): boolean {
 		return !this.hasFile;

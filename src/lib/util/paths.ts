@@ -16,6 +16,28 @@ export function isValidSegment(name: string): boolean {
 	return byteLength(s) <= MAX_NAME_BYTES;
 }
 
+export function segmentProblem(name: string): string | null {
+	const s = name.trim();
+	if (s === '') return "A name can't be empty.";
+	if (s === '.' || s === '..') return 'That name is reserved by your system.';
+	if (s.endsWith('.') || s.endsWith(' ')) return "A name can't end with a dot or a space.";
+	const bad = [...new Set([...s].filter((c) => ILLEGAL_CHARS.test(c)))];
+	if (bad.length) {
+		const shown = bad.map((c) => (/\p{Cc}/u.test(c) ? 'control characters' : c)).join(' ');
+		return `A name can't contain ${shown}`;
+	}
+	if (RESERVED.test(s.split('.')[0])) return 'That name is reserved by Windows.';
+	if (byteLength(s) > MAX_NAME_BYTES) return 'That name is too long.';
+	return null;
+}
+
+export function folderNameProblem(name: string, taken: boolean): string | null {
+	const s = name.trim();
+	if (s === '') return null;
+	if (s.startsWith('.')) return "A folder name can't start with a dot.";
+	return segmentProblem(s) ?? (taken ? 'A folder with this name is already here.' : null);
+}
+
 export function sanitizeSegment(name: string): string {
 	let s = name.replace(ILLEGAL_CHARS_ALL, '-').trim();
 	const dot = s.indexOf('.');
@@ -24,4 +46,40 @@ export function sanitizeSegment(name: string): string {
 	while (byteLength(s) > MAX_NAME_BYTES) s = [...s].slice(0, -1).join('');
 	while (s.endsWith('.') || s.endsWith(' ')) s = s.slice(0, -1).trimEnd();
 	return s;
+}
+
+export type NameKind = 'file' | 'project' | 'tag' | 'ident';
+
+const BLOCKED: Record<NameKind, RegExp> = {
+	file: ILLEGAL_CHARS_ALL,
+	project: /[<>:"'|?*\\/\[\]#^]|\p{Cc}/gu,
+	tag: /[^\p{Alphabetic}\p{N}_\-/]/gu,
+	ident: /["'\\]|\p{Cc}/gu
+};
+
+const SHAKE = [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` }));
+
+export function nameGuard(node: HTMLInputElement, kind: NameKind | null = 'file') {
+	function onBeforeInput(e: InputEvent) {
+		if (!kind || e.isComposing) return;
+		const text = e.data ?? e.dataTransfer?.getData('text/plain');
+		if (!text) return;
+		const clean = text.replace(BLOCKED[kind], '');
+		if (clean === text) return;
+		e.preventDefault();
+		if (clean) {
+			node.setRangeText(clean, node.selectionStart ?? 0, node.selectionEnd ?? 0, 'end');
+			node.dispatchEvent(new Event('input', { bubbles: true }));
+		}
+		node.animate(SHAKE, { duration: 240 });
+	}
+	node.addEventListener('beforeinput', onBeforeInput);
+	return {
+		update(next: NameKind | null = 'file') {
+			kind = next;
+		},
+		destroy() {
+			node.removeEventListener('beforeinput', onBeforeInput);
+		}
+	};
 }

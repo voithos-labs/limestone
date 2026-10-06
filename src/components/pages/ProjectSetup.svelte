@@ -20,11 +20,13 @@
 	import type { ViewFieldType } from '$lib/models/View.svelte';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { listSources, getDefaultSourceId, sourceName, type Source } from '$lib/models/Source';
-	import { toasts } from '$lib/toasts.svelte';
+	import { mark } from '$lib/toasts.svelte';
+	import { addSourceRequest } from '$lib/addSource.svelte';
 	import { palette } from '$lib/palette.svelte';
 	import Menu from '../views/Menu.svelte';
 	import EmojiPicker from '../views/EmojiPicker.svelte';
 	import { dashboardSections } from '$lib/views/dashboard';
+	import { nameGuard } from '$lib/util/paths';
 
 	let { tab, editor }: { tab: TabState; editor: EditorState } = $props();
 
@@ -182,7 +184,7 @@
 			let label = unitName;
 			if (!id) {
 				if (!sourceId) {
-					toasts.push('Add a source before creating a project.');
+					addSourceRequest.open();
 					return;
 				}
 				const folder = await Folder.create(slug, sourceId);
@@ -201,7 +203,9 @@
 			await view.save();
 			editor.replaceTab(tab.id, TabState.forView(view));
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That project couldn't be created."));
+			Folder.reportOpError(e, `${mark('project', slug)} couldn't be created.`, () =>
+				create(template)
+			);
 		} finally {
 			busy = false;
 		}
@@ -285,6 +289,7 @@
 					class="name"
 					bind:this={nameEl}
 					bind:value={name}
+					use:nameGuard={'project'}
 					onkeydown={onKey}
 					class:invalid={taken}
 					placeholder="Project name"

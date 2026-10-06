@@ -282,6 +282,7 @@ pub fn run() {
             commands::settings_commands::set_setting_global,
             commands::settings_commands::reset_setting_global,
             commands::settings_commands::reset_all_settings,
+            commands::document_commands::read_document,
             commands::document_commands::write_document,
             commands::document_commands::rename_document,
             commands::document_commands::move_document,

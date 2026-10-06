@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { reportError } from '$lib/errors';
+	import { mark } from '$lib/toasts.svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
 	import { sanitizeName } from '$lib/models/View.svelte';
 	import Folder, { folderIdSource, folderIdPath } from '$lib/models/Folder';
 	import Tag, { tagSlug } from '$lib/models/Tag';
-	import { toasts } from '$lib/toasts.svelte';
 	import FaceSwitcher from './FaceSwitcher.svelte';
 	import ViewManageMenu from './ViewManageMenu.svelte';
 	import ArrangeFields from './ArrangeFields.svelte';
@@ -31,17 +32,20 @@
 		Globe
 	} from '@lucide/svelte';
 	import { untrack } from 'svelte';
+	import { nameGuard, type NameKind } from '$lib/util/paths';
 
 	let {
 		view,
 		hasCover = false,
 		docPicker,
-		onMore
+		onMore,
+		titleProblem = () => null
 	}: {
 		view: View;
 		hasCover?: boolean;
 		docPicker?: DocPicker;
 		onMore?: (anchor: HTMLElement) => void;
+		titleProblem?: (name: string) => string | null;
 	} = $props();
 
 	const activeFace = $derived(
@@ -78,7 +82,9 @@
 		if (!f) return;
 		const newName = sanitizeName(raw);
 		if (!newName || newName === f.name) return;
-		view.renameField(f, newName).catch((e) => console.error('rename field failed', e));
+		view
+			.renameField(f, newName)
+			.catch((e) => reportError(e, `The field "${f.name}" couldn't be renamed.`));
 	}
 
 	// A doc face draws one document, so its search picks which one, a dropdown under this bar
@@ -199,6 +205,12 @@
 		titleEl?.select();
 	}
 	const slugEmpty = $derived(!sanitizeName(slugDraft));
+	const slugTrouble = $derived(
+		slugDraft.trim() === view.slug ? null : titleProblem(sanitizeName(slugDraft))
+	);
+	const titleKind = $derived<NameKind>(
+		view.unit?.startsWith('folder:') ? 'project' : view.unit?.startsWith('tag:') ? 'tag' : 'ident'
+	);
 
 	$effect(() => {
 		if (view.temporary && !view.unit) {
@@ -209,8 +221,10 @@
 
 	function commitSlug() {
 		const next = sanitizeName(slugDraft);
-		if (next && view.unit) void renameUnit(view.unit, next);
-		else if (next) view.renameSlug(next);
+		if (next && !slugTrouble) {
+			if (view.unit) void renameUnit(view.unit, next);
+			else view.renameSlug(next);
+		}
 		slugDraft = view.slug;
 	}
 
@@ -233,7 +247,9 @@
 				view.slug = tagSlug(name);
 			}
 		} catch (e) {
-			toasts.push(Folder.describeOpError(e, "That couldn't be renamed."));
+			const report = unit.startsWith('tag:') ? reportError : Folder.reportOpError;
+			const kind = unit.startsWith('tag:') ? 'tag' : 'folder';
+			report(e, `${mark(kind, view.slug)} couldn't be renamed.`, () => renameUnit(unit, name));
 		}
 		slugDraft = view.slug;
 	}
@@ -272,9 +288,11 @@
 		<span class="title-ghost">{slugDraft || ' '}</span>
 		<input
 			class="title-input"
-			class:invalid={slugEmpty}
+			class:invalid={slugEmpty || slugTrouble}
+			title={slugTrouble ?? undefined}
 			bind:this={titleEl}
 			bind:value={slugDraft}
+			use:nameGuard={titleKind}
 			onblur={commitSlug}
 			onkeydown={slugKey}
 			spellcheck="false"
@@ -287,7 +305,8 @@
 		<button
 			class="save-view"
 			type="button"
-			onclick={() => view.save().catch((e) => console.error('save view failed', e))}
+			onclick={() =>
+				view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."))}
 		>
 			<span>Save as view</span>
 		</button>
