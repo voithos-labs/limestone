@@ -158,11 +158,11 @@ fn dot_delete(value: &mut Value, segments: &[&str]) {
         return;
     };
     if rest.is_empty() {
-        obj.remove(*head);
+        obj.shift_remove(*head);
     } else if let Some(child) = obj.get_mut(*head) {
         dot_delete(child, rest);
         if child.as_object().is_some_and(|o| o.is_empty()) {
-            obj.remove(*head);
+            obj.shift_remove(*head);
         }
     }
 }
