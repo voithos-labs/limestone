@@ -720,9 +720,9 @@
 		if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));
 	}
 
-	async function onOpenUnit(id: string, name: string) {
+	async function onOpenUnit(id: string, name: string, newTab = false) {
 		const next = await View.forUnit(id, name);
-		if (tab) editor.showViewInTab(tab, next);
+		if (tab && !newTab) editor.showViewInTab(tab, next);
 		else editor.openView(next);
 	}
 

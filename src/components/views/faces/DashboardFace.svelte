@@ -40,7 +40,7 @@
 		view: View;
 		face: ViewFace;
 		onOpenRow?: (rowId: string, newTab?: boolean | 'side') => void;
-		onOpenUnit?: (id: string, name: string) => void;
+		onOpenUnit?: (id: string, name: string, newTab?: boolean) => void;
 	} = $props();
 
 	const TODO = 'tag:todo';
@@ -621,7 +621,7 @@
 							{projects}
 							rows={query ? 99 : 1}
 							whereOf={(f) => (query ? relDir(f) : '')}
-							onOpen={(f) => onOpenUnit?.(f.id, f.slug)}
+							onOpen={(f) => onOpenUnit?.(f.id, f.slug, projects.has(f.id))}
 							onChanged={loadFolders}
 							bind:showAll={foldersShowAll}
 							onHidden={(n) => (foldersHidden = n)}
