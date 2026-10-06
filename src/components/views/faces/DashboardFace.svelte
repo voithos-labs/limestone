@@ -585,9 +585,7 @@
 							rows={query ? 99 : 1}
 							whereOf={(f) => (query ? relDir(f) : '')}
 							onOpen={(f) =>
-								projects.has(f.id)
-									? onOpenUnit?.(f.id, f.slug, true)
-									: (view.state.folder = f.id)}
+								projects.has(f.id) ? onOpenUnit?.(f.id, f.slug, true) : (view.state.folder = f.id)}
 							onOpenNewTab={(f) => onOpenUnit?.(f.id, f.slug, true)}
 							onChanged={loadFolders}
 							bind:showAll={foldersShowAll}
