@@ -1,0 +1,32 @@
+name: Bug
+description: Something isn't working
+type: Bug
+body:
+  - type: checkboxes
+    id: data-loss
+    attributes:
+      label: Data loss
+      options:
+        - label: This bug lost or corrupted my notes or files
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Screenshots are encouraged. Drag them straight into this box.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: If you can't reproduce it, that's fine. Tick the box below and submit anyway.
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: checkboxes
+    id: no-idea
+    attributes:
+      label: Can't reproduce?
+      options:
+        - label: I have no idea how this happened
