@@ -5,7 +5,7 @@
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import type { FilterNode, ViewField } from '$lib/models/View.svelte';
 	import { onSourceReconciled } from '$lib/models/Source';
-	import { folderId as makeFolderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
+	import { folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import { select } from '$lib/services/db';
 	import ListFace from './ListFace.svelte';
 	import SectionHead from '../SectionHead.svelte';
@@ -13,7 +13,6 @@
 		ArrowDown,
 		ArrowUp,
 		Hash,
-		Folder as FolderIcon,
 		ChevronDown,
 		ChevronUp,
 		ChevronRight,
@@ -52,8 +51,8 @@
 	const doneId = `${TODO}/done`;
 	const dueId = `${TODO}/due`;
 
-	// ── Chips: what this project's notes are tagged, and which subfolders hold them ──
-	type Chip = { id: string; slug: string; n: number; kind: 'tag' | 'folder' };
+	// ── Chips: what this project's notes are tagged ──
+	type Chip = { id: string; slug: string; n: number };
 	let chips: Chip[] = $state([]);
 	const selectedTag = $derived(
 		face.config.hide_chips ? null : ((view.state.dash_tag as string | undefined) ?? null)
@@ -73,55 +72,22 @@
                  ORDER BY n DESC, t.slug ASC`,
 				scope.params
 			);
-			// notes roll up to the direct subfolder they sit under, however deep
-			const folders: Chip[] = [];
-			const unit = view.unit;
-			if (unit && !unit.startsWith('tag:')) {
-				const base = folderIdPath(unit);
-				const src = folderIdSource(unit);
-				const rows = await select<{ folder_id: string | null; n: number }>(
-					`SELECT d.folder_id, COUNT(*) AS n FROM documents d WHERE ${where} GROUP BY d.folder_id`,
-					scope.params
-				);
-				const byChild = new Map<string, number>();
-				for (const r of rows) {
-					if (!r.folder_id) continue;
-					const p = folderIdPath(r.folder_id);
-					const rel = base ? (p.startsWith(base + '/') ? p.slice(base.length + 1) : '') : p;
-					if (!rel) continue;
-					const first = rel.split('/')[0];
-					byChild.set(first, (byChild.get(first) ?? 0) + r.n);
-				}
-				for (const [slug, n] of byChild) {
-					folders.push({
-						id: makeFolderId(src, base ? `${base}/${slug}` : slug),
-						slug,
-						n,
-						kind: 'folder'
-					});
-				}
-				folders.sort((a, b) => b.n - a.n || a.slug.localeCompare(b.slug));
-			}
-			chips = [
-				...folders,
-				...tags.filter((r) => r.id !== TODO).map((r) => ({ ...r, kind: 'tag' as const }))
-			];
+			chips = tags.filter((r) => r.id !== TODO);
 			if (selectedTag && !chips.some((c) => c.id === selectedTag)) view.state.dash_tag = null;
 		} catch (e) {
 			console.error('load project chips failed', e);
 		}
 	}
 
-	onMount(loadChips);
+	$effect(() => {
+		void view.subfolder;
+		untrack(loadChips);
+	});
 	$effect(() => onSourceReconciled(loadChips));
 
-	// the chosen chip narrows both sections: a tag by membership, a folder by subtree
-	const tagScope: FilterNode | null = $derived.by(() => {
-		if (!selectedTag) return null;
-		if (selectedTag.startsWith('folder:'))
-			return folderId ? { field_id: folderId, op: 'in', value: selectedTag } : null;
-		return tagsId ? { field_id: tagsId, op: 'has_any', value: [selectedTag] } : null;
-	});
+	const tagScope: FilterNode | null = $derived.by(() =>
+		selectedTag && tagsId ? { field_id: tagsId, op: 'has_any', value: [selectedTag] } : null
+	);
 
 	// the row stays one line; vertical wheel scrolls it sideways, no bar drawn
 	function onChipsWheel(e: WheelEvent) {
@@ -320,7 +286,7 @@
 	$effect(() => onSourceReconciled(loadFolders));
 
 	const query = $derived(((view.state.search as string | undefined) ?? '').trim().toLowerCase());
-	const folderBase = $derived(selectedTag?.startsWith('folder:') ? selectedTag : view.unit);
+	const folderBase = $derived(view.subfolder ?? view.unit);
 	const underBase = (f: Folder) => {
 		if (!folderBase?.startsWith('folder:')) return false;
 		const base = folderIdPath(folderBase);
@@ -345,7 +311,7 @@
 			return allFolders
 				.filter((f) => underBase(f) && f.slug.toLowerCase().includes(query))
 				.sort((a, b) => a.slug.localeCompare(b.slug));
-		if (selectedTag && selectedTag !== folderBase) return [];
+		if (selectedTag) return [];
 		return allFolders.filter((f) => f.parentId === folderBase);
 	});
 	const relDir = (f: Folder) => {
@@ -515,10 +481,7 @@
 					type="button"
 					onclick={() => (view.state.dash_tag = selectedTag === c.id ? null : c.id)}
 				>
-					{#if c.kind === 'folder'}<FolderIcon size={11} strokeWidth={1.75} />{:else}<Hash
-							size={11}
-							strokeWidth={2}
-						/>{/if}{c.slug}
+					<Hash size={11} strokeWidth={2} />{c.slug}
 					<span class="n">{c.n}</span>
 				</button>
 			{/each}
@@ -621,7 +584,9 @@
 							{projects}
 							rows={query ? 99 : 1}
 							whereOf={(f) => (query ? relDir(f) : '')}
-							onOpen={(f) => onOpenUnit?.(f.id, f.slug, projects.has(f.id))}
+							onOpen={(f) =>
+								projects.has(f.id) ? onOpenUnit?.(f.id, f.slug, true) : (view.state.folder = f.id)}
+							onOpenNewTab={(f) => onOpenUnit?.(f.id, f.slug, true)}
 							onChanged={loadFolders}
 							bind:showAll={foldersShowAll}
 							onHidden={(n) => (foldersHidden = n)}

@@ -13,7 +13,8 @@
 		ExternalLink,
 		FilePen,
 		FileLock,
-		Trash2
+		Trash2,
+		SquareArrowOutUpRight
 	} from '@lucide/svelte';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { getSource } from '$lib/models/Source';
@@ -41,6 +42,7 @@
 		rows = 3,
 		whereOf,
 		onOpen,
+		onOpenNewTab,
 		onChanged,
 		showAll = $bindable(false),
 		onHidden,
@@ -51,6 +53,7 @@
 		rows?: number;
 		whereOf?: (f: F) => string; // a location hint under search
 		onOpen: (f: F) => void;
+		onOpenNewTab?: (f: F) => void;
 		onChanged?: () => void;
 		showAll?: boolean; // past the row cap; the page owns the toggle
 		onHidden?: (n: number) => void; // how many chips the cap is hiding
@@ -166,6 +169,16 @@
 		const isProject = projects.has(f.id);
 		return [
 			{ label: 'Open', icon: ChevronRight, action: () => onOpen(f) },
+			...(onOpenNewTab
+				? [
+						{
+							label: 'Open in new tab',
+							icon: SquareArrowOutUpRight,
+							action: () => onOpenNewTab(f)
+						}
+					]
+				: []),
+			{ divider: true },
 			{ label: 'Rename', icon: Pencil, action: () => startRename(f) },
 			{ label: 'Reveal in file manager', icon: ExternalLink, action: () => reveal(f) },
 			{

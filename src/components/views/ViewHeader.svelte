@@ -4,7 +4,7 @@
 	import type View from '$lib/models/View.svelte';
 	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
 	import { sanitizeName } from '$lib/models/View.svelte';
-	import Folder, { folderIdSource, folderIdPath } from '$lib/models/Folder';
+	import Folder, { folderId, folderIdSource, folderIdPath } from '$lib/models/Folder';
 	import Tag, { tagSlug } from '$lib/models/Tag';
 	import FaceSwitcher from './FaceSwitcher.svelte';
 	import ViewManageMenu from './ViewManageMenu.svelte';
@@ -29,9 +29,12 @@
 		ArrowUpAZ,
 		ArrowDownAZ,
 		RotateCcw,
-		Globe
+		Globe,
+		ChevronRight,
+		SquareArrowOutUpRight
 	} from '@lucide/svelte';
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
+	import { ctxMenu } from '$lib/contextMenu.svelte';
 	import { nameGuard, type NameKind } from '$lib/util/paths';
 
 	let {
@@ -39,12 +42,14 @@
 		hasCover = false,
 		docPicker,
 		onMore,
+		onOpenNewTab,
 		titleProblem = () => null
 	}: {
 		view: View;
 		hasCover?: boolean;
 		docPicker?: DocPicker;
 		onMore?: (anchor: HTMLElement) => void;
+		onOpenNewTab?: (id: string, name: string) => void;
 		titleProblem?: (name: string) => string | null;
 	} = $props();
 
@@ -200,10 +205,39 @@
 	let slugDraft = $state(untrack(() => view.slug));
 	let titleEl: HTMLInputElement | null = $state(null);
 
-	export function focusTitle() {
+	export async function focusTitle() {
+		if (view.subfolder) {
+			view.state.folder = undefined;
+			await tick();
+		}
 		titleEl?.focus();
 		titleEl?.select();
 	}
+
+	const crumbs = $derived.by(() => {
+		const sub = view.subfolder;
+		const unit = view.unit;
+		if (!sub || !unit) return [];
+		const base = folderIdPath(unit);
+		const parts = folderIdPath(sub)
+			.slice(base ? base.length + 1 : 0)
+			.split('/');
+		return parts.map((slug, i) => ({
+			slug,
+			id: folderId(folderIdSource(unit), [base, ...parts.slice(0, i + 1)].filter(Boolean).join('/'))
+		}));
+	});
+
+	const crumbMenu = (id: string, name: string) => () =>
+		onOpenNewTab
+			? [
+					{
+						label: 'Open in new tab',
+						icon: SquareArrowOutUpRight,
+						action: () => onOpenNewTab(id, name)
+					}
+				]
+			: [];
 	const slugEmpty = $derived(!sanitizeName(slugDraft));
 	const slugTrouble = $derived(
 		slugDraft.trim() === view.slug ? null : titleProblem(sanitizeName(slugDraft))
@@ -284,20 +318,47 @@
 			{#if view.emoji}{view.emoji}{:else}<Globe size={16} strokeWidth={1.75} />{/if}
 		</button>
 	{/if}
-	<span class="title-field">
-		<span class="title-ghost">{slugDraft || ' '}</span>
-		<input
-			class="title-input"
-			class:invalid={slugEmpty || slugTrouble}
-			title={slugTrouble ?? undefined}
-			bind:this={titleEl}
-			bind:value={slugDraft}
-			use:nameGuard={titleKind}
-			onblur={commitSlug}
-			onkeydown={slugKey}
-			spellcheck="false"
-		/>
-	</span>
+	{#if crumbs.length > 0}
+		<span class="title-field">
+			<span class="title-ghost">{view.slug}</span>
+			<button
+				class="title-input title-root"
+				type="button"
+				onclick={() => (view.state.folder = undefined)}
+				use:ctxMenu={crumbMenu(view.unit ?? '', view.slug)}>{view.slug}</button
+			>
+		</span>
+		<span class="crumbs">
+			{#each crumbs as c, i (c.id)}
+				<ChevronRight size={15} strokeWidth={2} class="crumb-sep" />
+				{#if i === crumbs.length - 1}
+					<span class="crumb current" use:ctxMenu={crumbMenu(c.id, c.slug)}>{c.slug}</span>
+				{:else}
+					<button
+						class="crumb"
+						type="button"
+						onclick={() => (view.state.folder = c.id)}
+						use:ctxMenu={crumbMenu(c.id, c.slug)}>{c.slug}</button
+					>
+				{/if}
+			{/each}
+		</span>
+	{:else}
+		<span class="title-field">
+			<span class="title-ghost">{slugDraft || ' '}</span>
+			<input
+				class="title-input"
+				class:invalid={slugEmpty || slugTrouble}
+				title={slugTrouble ?? undefined}
+				bind:this={titleEl}
+				bind:value={slugDraft}
+				use:nameGuard={titleKind}
+				onblur={commitSlug}
+				onkeydown={slugKey}
+				spellcheck="false"
+			/>
+		</span>
+	{/if}
 {/snippet}
 
 {#snippet saveButton()}
@@ -658,6 +719,61 @@
 		text-decoration: underline;
 		text-decoration-color: var(--error-fg);
 		text-underline-offset: 3px;
+	}
+
+	.title-root {
+		text-align: left;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+	}
+
+	.title-root:hover {
+		color: var(--color-text-primary);
+	}
+
+	.crumbs {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		transform: translateY(-1px);
+	}
+
+	.title-inline .crumbs {
+		transform: none;
+	}
+
+	.crumb {
+		padding: 0 3px;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		font-family: var(--font-ui);
+		font-size: 18px;
+		font-weight: 600;
+		line-height: 1.2;
+		letter-spacing: -0.01em;
+		color: var(--color-ui-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		cursor: pointer;
+	}
+
+	button.crumb:hover {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
+	}
+
+	.crumb.current {
+		color: var(--color-text-primary);
+		cursor: default;
+	}
+
+	.crumbs :global(.crumb-sep) {
+		flex-shrink: 0;
+		color: var(--color-ui-dulled);
 	}
 
 	.filter-bar {
