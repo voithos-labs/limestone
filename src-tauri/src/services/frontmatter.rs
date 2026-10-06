@@ -145,14 +145,151 @@ pub(crate) fn find_closing_fence(after_open: &str) -> Option<usize> {
 }
 
 pub fn format_content(fm: &Value, body: &str) -> io::Result<String> {
-    let yaml =
-        serde_yml::to_string(fm).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let mut out = String::with_capacity(yaml.len() + body.len() + 8);
+    let mut out = String::with_capacity(body.len() + 256);
     out.push_str("---\n");
-    out.push_str(yaml.trim_end_matches('\n'));
-    out.push_str("\n---\n");
+    match fm {
+        Value::Object(map) if !map.is_empty() => emit_map(&mut out, map, 0, false),
+        _ => out.push_str("{}\n"),
+    }
+    out.push_str("---\n");
     out.push_str(body);
     Ok(out)
+}
+
+fn emit_map(out: &mut String, map: &Map<String, Value>, indent: usize, inline_first: bool) {
+    for (i, (key, value)) in map.iter().enumerate() {
+        if !(inline_first && i == 0) {
+            push_indent(out, indent);
+        }
+        emit_string(out, key);
+        out.push(':');
+        match value {
+            Value::Object(m) if !m.is_empty() => {
+                out.push('\n');
+                emit_map(out, m, indent + 2, false);
+            }
+            Value::Array(a) if !a.is_empty() => {
+                out.push('\n');
+                emit_seq(out, a, indent + 2, false);
+            }
+            _ => {
+                out.push(' ');
+                emit_scalar(out, value);
+                out.push('\n');
+            }
+        }
+    }
+}
+
+fn emit_seq(out: &mut String, seq: &[Value], indent: usize, inline_first: bool) {
+    for (i, value) in seq.iter().enumerate() {
+        if !(inline_first && i == 0) {
+            push_indent(out, indent);
+        }
+        out.push_str("- ");
+        match value {
+            Value::Object(m) if !m.is_empty() => emit_map(out, m, indent + 2, true),
+            Value::Array(a) if !a.is_empty() => emit_seq(out, a, indent + 2, true),
+            _ => {
+                emit_scalar(out, value);
+                out.push('\n');
+            }
+        }
+    }
+}
+
+fn push_indent(out: &mut String, n: usize) {
+    out.extend(std::iter::repeat_n(' ', n));
+}
+
+fn emit_scalar(out: &mut String, value: &Value) {
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Number(n) => out.push_str(&n.to_string()),
+        Value::String(s) => emit_string(out, s),
+        Value::Array(_) => out.push_str("[]"),
+        Value::Object(_) => out.push_str("{}"),
+    }
+}
+
+fn emit_string(out: &mut String, s: &str) {
+    if s.chars().any(|c| c.is_control() && c != '\t') {
+        out.push('"');
+        for c in s.chars() {
+            match c {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+    } else if plain_safe(s) {
+        out.push_str(s);
+    } else {
+        out.push('\'');
+        out.push_str(&s.replace('\'', "''"));
+        out.push('\'');
+    }
+}
+
+fn plain_safe(s: &str) -> bool {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if first.is_whitespace() || "-?:,[]{}#&*!|=>'\"%@`".contains(first) {
+        return false;
+    }
+    let mut prev = first;
+    for c in chars {
+        if (c == '#' && prev.is_whitespace()) || (prev == ':' && c.is_whitespace()) {
+            return false;
+        }
+        prev = c;
+    }
+    if prev.is_whitespace() || prev == ':' {
+        return false;
+    }
+    !matches!(
+        s,
+        "~" | "null" | "Null" | "NULL" | "true" | "True" | "TRUE" | "false" | "False" | "FALSE"
+    ) && !looks_numeric(s)
+}
+
+fn looks_numeric(s: &str) -> bool {
+    let body = s.strip_prefix(['+', '-']).unwrap_or(s);
+    let lower = body.to_ascii_lowercase();
+    if lower == ".inf" || lower == ".nan" {
+        return true;
+    }
+    if let Some(hex) = lower.strip_prefix("0x") {
+        return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit() || c == '_');
+    }
+    if let Some(oct) = lower.strip_prefix("0o") {
+        return !oct.is_empty() && oct.chars().all(|c| ('0'..='7').contains(&c) || c == '_');
+    }
+    if let Some(bin) = lower.strip_prefix("0b") {
+        return !bin.is_empty() && bin.chars().all(|c| c == '0' || c == '1' || c == '_');
+    }
+    let (mantissa, exponent) = match lower.split_once('e') {
+        Some((m, e)) => (m, Some(e)),
+        None => (lower.as_str(), None),
+    };
+    let mantissa_ok = mantissa.chars().any(|c| c.is_ascii_digit())
+        && mantissa.chars().filter(|c| *c == '.').count() <= 1
+        && mantissa
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == '_');
+    let exponent_ok = exponent.is_none_or(|e| {
+        let digits = e.strip_prefix(['+', '-']).unwrap_or(e);
+        !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
+    });
+    mantissa_ok && exponent_ok
 }
 
 /// Navigate to a nested object by key path
@@ -180,8 +317,8 @@ pub fn set_view_field(fm: &mut Value, slug: &str, field: &str, value: Value) {
 
 pub fn rename_view_field(fm: &mut Value, slug: &str, from: &str, to: &str) {
     let obj = object_at(fm, &["views", slug]);
-    if let Some(v) = obj.remove(from) {
-        obj.insert(to.to_string(), v);
+    if obj.contains_key(from) {
+        rename_keys(obj, |k| (k == from).then(|| to.to_string()));
     }
 }
 
@@ -194,30 +331,29 @@ pub fn rename_unit_key(fm: &mut Value, from: &str, to: &str) {
     else {
         return;
     };
-    if let Some(val) = views.remove(from) {
-        views.insert(to.to_string(), val);
-    }
+    rename_keys(views, |k| (k == from).then(|| to.to_string()));
 }
 
 /// Rename every `views.<key>` whose key starts with `from`, swapping that prefix for `to`
 pub fn rename_view_prefix(fm: &mut Value, from: &str, to: &str) {
-    let Some(views) = fm.as_object_mut().and_then(|r| r.get_mut("views")) else {
+    let Some(views) = fm
+        .as_object_mut()
+        .and_then(|r| r.get_mut("views"))
+        .and_then(Value::as_object_mut)
+    else {
         return;
     };
-    let Some(views) = views.as_object_mut() else {
-        return;
-    };
-    let hits: Vec<String> = views
-        .keys()
-        .filter(|k| k.starts_with(from))
-        .cloned()
+    rename_keys(views, |k| {
+        k.strip_prefix(from).map(|rest| format!("{to}{rest}"))
+    });
+}
+
+fn rename_keys(map: &mut Map<String, Value>, rename: impl Fn(&str) -> Option<String>) {
+    let renamed: Map<String, Value> = std::mem::take(map)
+        .into_iter()
+        .map(|(k, v)| (rename(&k).unwrap_or(k), v))
         .collect();
-    for key in hits {
-        let Some(val) = views.remove(&key) else {
-            continue;
-        };
-        views.insert(format!("{to}{}", &key[from.len()..]), val);
-    }
+    *map = renamed;
 }
 
 /// Rename a select/multiselect option value in-place within `views.<slug>.<field>`
@@ -263,13 +399,13 @@ pub fn remove_view_field(fm: &mut Value, slug: &str, field: &str) {
         return;
     };
     if let Some(obj) = views.get_mut(slug).and_then(Value::as_object_mut) {
-        obj.remove(field);
+        obj.shift_remove(field);
         if obj.is_empty() {
-            views.remove(slug);
+            views.shift_remove(slug);
         }
     }
     if views.is_empty() {
-        root.remove("views");
+        root.shift_remove("views");
     }
 }
 
@@ -303,7 +439,7 @@ pub fn remove_tag(fm: &mut Value, slug: &str) {
     };
     arr.retain(|v| !v.as_str().is_some_and(|s| same_tag(s, slug)));
     if arr.is_empty() {
-        root.remove("tags");
+        root.shift_remove("tags");
     }
 }
 
@@ -374,6 +510,67 @@ mod tests {
         let (fm2, body2) = split_content(&out);
         assert_eq!(fm2.unwrap(), json!({ "title": "x" }));
         assert_eq!(body2, "body");
+    }
+
+    #[test]
+    fn obsidian_written_file_is_left_byte_identical() {
+        let raw = "---\nid: d134b0e5-63b1-4e26-9372-79930568a04a\ntags:\n  - todo\n  - ideas\ncreated_at: 2026-10-02T13:08:20.000Z\nupdated_at: 2026-10-03T12:41:14.349Z\nviews:\n  /limestone-project/:\n    Type:\n      - uiux\n  todo:\n    done: true\n    due: null\n---\nbody\n";
+        let (fm, body) = split_content(raw);
+        assert_eq!(format_content(&fm.unwrap(), body).unwrap(), raw);
+    }
+
+    #[test]
+    fn digit_led_ids_and_dates_stay_plain() {
+        let v = json!({ "id": "92f25201-f34a-444d-b1ff-222b33f78932", "due": "2026-01-01" });
+        let out = format_content(&v, "").unwrap();
+        assert_eq!(
+            out,
+            "---\nid: 92f25201-f34a-444d-b1ff-222b33f78932\ndue: 2026-01-01\n---\n"
+        );
+        assert_eq!(split_content(&out).0.unwrap(), v);
+    }
+
+    #[test]
+    fn ambiguous_strings_are_quoted_and_round_trip() {
+        let v = json!({
+            "a": "true", "b": "null", "c": "1.5", "d": "007", "e": "1e3", "f": "0x1f",
+            "g": "-dash", "h": "a: b", "i": "a #b", "j": " pad", "k": "", "l": "'tis",
+            "m": "line\nbreak", "n": "@at", "o": "trail:", "p": "a#b", "q": "a:b", "r": "x, [y]"
+        });
+        let out = format_content(&v, "").unwrap();
+        assert_eq!(split_content(&out).0.unwrap(), v);
+        assert!(out.contains("\na: 'true'\n"));
+        assert!(out.contains("\nd: '007'\n"));
+        assert!(out.contains("\ng: '-dash'\n"));
+        assert!(out.contains("\nl: '''tis'\n"));
+        assert!(out.contains("\nk: ''\n"));
+        assert!(out.contains("\nm: \"line\\nbreak\"\n"));
+        assert!(out.contains("\np: a#b\n"));
+        assert!(out.contains("\nq: a:b\n"));
+        assert!(out.contains("\nr: x, [y]\n"));
+    }
+
+    #[test]
+    fn nested_sequences_and_empty_collections() {
+        let v = json!({ "a": [], "b": {}, "c": [[1, 2], { "k": "v", "k2": "v2" }], "d": 1.5 });
+        let out = format_content(&v, "").unwrap();
+        assert_eq!(
+            out,
+            "---\na: []\nb: {}\nc:\n  - - 1\n    - 2\n  - k: v\n    k2: v2\nd: 1.5\n---\n"
+        );
+        assert_eq!(split_content(&out).0.unwrap(), v);
+    }
+
+    #[test]
+    fn mutations_keep_key_positions() {
+        let mut v = json!({ "id": "x", "tags": ["a"], "views": { "v": { "p": 1, "q": 2, "r": 3 } }, "z": 1 });
+        rename_view_field(&mut v, "v", "q", "qq");
+        remove_view_field(&mut v, "v", "p");
+        let out = format_content(&v, "").unwrap();
+        assert_eq!(
+            out,
+            "---\nid: x\ntags:\n  - a\nviews:\n  v:\n    qq: 2\n    r: 3\nz: 1\n---\n"
+        );
     }
 
     #[test]

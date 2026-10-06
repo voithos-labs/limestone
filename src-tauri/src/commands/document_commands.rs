@@ -212,7 +212,7 @@ pub async fn set_document_tags(
     frontmatter::rewrite_frontmatter(&full_path, move |fm| {
         if let Some(obj) = fm.as_object_mut() {
             if fm_tags.is_empty() {
-                obj.remove("tags");
+                obj.shift_remove("tags");
             } else {
                 obj.insert(
                     "tags".to_string(),
