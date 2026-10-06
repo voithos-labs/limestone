@@ -29,6 +29,7 @@
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import MasonryFace from '../views/faces/MasonryFace.svelte';
+	import KanbanFace from '../views/faces/KanbanFace.svelte';
 	import DashboardFace from '../views/faces/DashboardFace.svelte';
 	import DocFace from '../views/faces/DocFace.svelte';
 	import { DocPicker } from '$lib/views/docPicker.svelte';
@@ -754,7 +755,7 @@
 			bind:this={bodyEl}
 			onscroll={bodyScroll}
 		>
-			<div class="view-inner">
+			<div class="view-top">
 				{#if view.cover}
 					<div
 						class="view-cover"
@@ -821,7 +822,9 @@
 						}}
 					/>
 				</div>
+			</div>
 
+			<div class="view-inner">
 				{#if activeFace?.type === 'journal'}
 					<JournalFace
 						{view}
@@ -852,6 +855,8 @@
 					<ListFace {view} face={activeFace} {onOpenRow} />
 				{:else if activeFace?.type === 'masonry'}
 					<MasonryFace {view} face={activeFace} {onOpenRow} />
+				{:else if activeFace?.type === 'kanban'}
+					<KanbanFace {view} face={activeFace} {onOpenRow} />
 				{:else if activeFace?.type === 'dashboard'}
 					<DashboardFace {view} face={activeFace} {onOpenRow} {onOpenUnit} />
 				{:else if activeFace}
@@ -935,10 +940,18 @@
 		display: none;
 	}
 
-	.view-inner {
-		max-width: var(--page-max-width, none);
+	/* a project page's column: the cover, header and faces share it; a document inside keeps
+	   its own reading width */
+	.view-top {
+		max-width: var(--view-max-width, 1200px);
 		margin: 0 auto;
 		padding: 16px 24px 0;
+	}
+
+	.view-inner {
+		max-width: var(--view-max-width, 1200px);
+		margin: 0 auto;
+		padding: 0 24px;
 	}
 
 	/* No size of its own: the bar hangs off this corner, and an empty box would otherwise sit

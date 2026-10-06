@@ -23,6 +23,7 @@
 		meta = [],
 		editMode = false,
 		preview,
+		body = 'fixed',
 		onOpen,
 		moveable = false,
 		onFocus
@@ -35,6 +36,7 @@
 		meta?: ViewField[];
 		editMode?: boolean;
 		preview?: Preview;
+		body?: 'fixed' | 'flow' | 'none'; // grid: a fixed window; masonry: as tall as it is; board: none
 		onOpen?: (rowId: string, newTab?: boolean | 'side') => void;
 		moveable?: boolean;
 		onFocus?: () => void;
@@ -173,17 +175,19 @@
 		</button>
 	</div>
 
-	<div class="body">
-		{#if preview?.image && imgOk}
-			<img class="image" src={preview.image} alt="" onerror={() => (imgOk = false)} />
-		{:else if snippet}
-			<p class="text">{@html snippet}</p>
-		{:else if preview?.text}
-			<p class="text">{preview.text}</p>
-		{:else}
-			<p class="text empty">Empty note</p>
-		{/if}
-	</div>
+	{#if body === 'fixed' || (body === 'flow' && (snippet || preview?.text || (preview?.image && imgOk)))}
+		<div class="body" class:flow={body === 'flow'}>
+			{#if preview?.image && imgOk}
+				<img class="image" src={preview.image} alt="" onerror={() => (imgOk = false)} />
+			{:else if snippet}
+				<p class="text">{@html snippet}</p>
+			{:else if preview?.text}
+				<p class="text">{preview.text}</p>
+			{:else}
+				<p class="text empty">Empty note</p>
+			{/if}
+		</div>
+	{/if}
 
 	{#if inline.length || meta.length}
 		<div class="foot">
@@ -396,6 +400,21 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+
+	/* masonry: the window opens up to what the note has, an image at its own shape */
+	.body.flow {
+		height: auto;
+	}
+
+	.body.flow .image {
+		height: auto;
+		max-height: 240px;
+	}
+
+	.body.flow .text {
+		-webkit-line-clamp: 6;
+		line-clamp: 6;
 	}
 
 	.text {

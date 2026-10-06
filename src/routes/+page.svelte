@@ -81,6 +81,13 @@
 		}
 	});
 
+	$effect(() => {
+		const maxWidth = session?.settings.get<number>('appearance.max_view_width');
+		if (maxWidth && maxWidth > 0) {
+			document.documentElement.style.setProperty('--view-max-width', maxWidth + 'px');
+		}
+	});
+
 	let persistTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
 		if (!session) return;

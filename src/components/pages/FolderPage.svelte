@@ -981,9 +981,9 @@
 		display: none;
 	}
 
-	/* the same reading column every page uses */
+	/* a folder is a project page, so it takes the project column */
 	.inner {
-		max-width: var(--page-max-width, none);
+		max-width: var(--view-max-width, 1200px);
 		margin: 0 auto;
 		padding: 16px 16px 0 24px;
 	}

@@ -917,9 +917,9 @@
 		margin: 0 -24px;
 	}
 
-	/* a document body reads as the day itself, so it sits tight under the strip */
+	/* a document body is narrower than the strip, so it needs room to read as its own thing */
 	.body-face.doc {
-		margin-top: 8px;
+		margin-top: 40px;
 	}
 
 	.controls {

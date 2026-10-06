@@ -3,6 +3,7 @@
 	import { flip } from 'svelte/animate';
 	import {
 		ChevronDown,
+		Columns3,
 		List,
 		Layers,
 		Rows3,
@@ -136,14 +137,15 @@
 		return f ? fieldLabel(f) : 'None';
 	});
 
-	const groupItems = $derived([
-		{ value: '', label: 'None' },
-		...groupable.map((f: ViewField) => ({
-			value: f.id,
-			label: fieldLabel(f),
-			icon: getFieldIcon(f.type)
-		}))
-	]);
+	// a board's columns come from a select or a boolean; a list groups by anything, or nothing
+	const groupItems = $derived.by(() => {
+		const fields = (
+			target.type === 'kanban'
+				? groupable.filter((f: ViewField) => f.type === 'select' || f.type === 'boolean')
+				: groupable
+		).map((f: ViewField) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }));
+		return target.type === 'kanban' ? fields : [{ value: '', label: 'None' }, ...fields];
+	});
 
 	let closeOnSwapLeave = false;
 
@@ -168,15 +170,23 @@
 		{ value: 'list', label: 'List', icon: List },
 		{ value: 'grid', label: 'Grid', icon: LayoutGrid },
 		{ value: 'masonry', label: 'Masonry', icon: LayoutDashboard },
+		{ value: 'kanban', label: 'Board', icon: Columns3 },
 		{ value: 'doc', label: 'Document', icon: FileText },
 		{ value: 'journal', label: 'Journal', icon: NotebookText }
 	];
 
-	// a grid is a list face that starts in cards
+	// a grid is a list face that starts in cards; a board starts on the first select field,
+	// else the done checkbox
 	function addFaceOfType(type: string) {
 		addFaceOpen = false;
 		const f = view.addFace((type === 'grid' ? 'list' : type) as ViewFaceType);
 		if (type === 'grid') f.config.layout = 'grid';
+		if (type === 'kanban') {
+			const col =
+				view.fields.find((ff: ViewField) => ff.type === 'select') ??
+				view.fields.find((ff: ViewField) => ff.type === 'boolean');
+			f.config.group_by = col?.id ?? null;
+		}
 		view.state.active_face_id = f.id;
 		startRename(f);
 	}
@@ -562,7 +572,7 @@
 			</button>
 		{/if}
 
-		{#if target.type === 'list'}
+		{#if target.type === 'list' || target.type === 'kanban'}
 			<button
 				class="action group-toggle"
 				type="button"
@@ -571,8 +581,13 @@
 				bind:this={groupEl}
 				onclick={() => (groupOpen = !groupOpen)}
 			>
-				<Layers size={14} strokeWidth={1.75} />
-				<span>Group by</span>
+				{#if target.type === 'kanban'}
+					<Columns3 size={14} strokeWidth={1.75} />
+					<span>Columns</span>
+				{:else}
+					<Layers size={14} strokeWidth={1.75} />
+					<span>Group by</span>
+				{/if}
 				<span class="trailing">{groupLabel}</span>
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
@@ -642,7 +657,7 @@
 		/>
 	{/if}
 
-	{#if target.type === 'list'}
+	{#if target.type === 'list' || target.type === 'kanban'}
 		<Menu
 			bind:open={groupOpen}
 			anchor={groupEl}
