@@ -53,7 +53,7 @@ export type NameKind = 'file' | 'project' | 'tag' | 'ident';
 const BLOCKED: Record<NameKind, RegExp> = {
 	file: ILLEGAL_CHARS_ALL,
 	project: /[<>:"'|?*\\/\[\]#^]|\p{Cc}/gu,
-	tag: /[\s#"'\\]|\p{Cc}/gu,
+	tag: /[^\p{Alphabetic}\p{N}_\-/]/gu,
 	ident: /["'\\]|\p{Cc}/gu
 };
 

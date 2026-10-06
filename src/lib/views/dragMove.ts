@@ -5,7 +5,8 @@
 import DocHandle from '$lib/models/DocHandle';
 import Folder, { folderIdPath, folderIdSource } from '$lib/models/Folder';
 import { MoveBatch, moveFolder, moveNote } from '$lib/views/moveConflict.svelte';
-import { toasts, mark } from '$lib/toasts.svelte';
+import { mark } from '$lib/toasts.svelte';
+import { getSource } from '$lib/models/Source';
 
 export const MOVE_MIME = 'application/x-limestone-move';
 
@@ -76,14 +77,11 @@ export async function moveInto(
 		if (p.kind === 'doc') {
 			const d = await DocHandle.fromID(p.id);
 			subject = mark('note', d.title);
-			if (d.source.id !== sourceId) {
-				toasts.push('Drag between sources is not supported yet. Use Move from the document.');
-				return false;
-			}
 			const file = d.relPath.split('/').pop() ?? d.relPath;
 			const newRel = targetPath ? `${targetPath}/${file}` : file;
-			if (newRel === d.relPath) return false;
-			return await moveNote(d, d.source, newRel, batch);
+			if (d.source.id === sourceId && newRel === d.relPath) return false;
+			const target = d.source.id === sourceId ? d.source : await getSource(sourceId);
+			return await moveNote(d, target, newRel, batch);
 		}
 		if (!canMoveInto(targetId, p)) return false;
 		const fp = folderIdPath(p.id);

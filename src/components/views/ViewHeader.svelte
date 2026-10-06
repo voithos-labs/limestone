@@ -38,12 +38,14 @@
 		view,
 		hasCover = false,
 		docPicker,
-		onMore
+		onMore,
+		titleProblem = () => null
 	}: {
 		view: View;
 		hasCover?: boolean;
 		docPicker?: DocPicker;
 		onMore?: (anchor: HTMLElement) => void;
+		titleProblem?: (name: string) => string | null;
 	} = $props();
 
 	const activeFace = $derived(
@@ -203,6 +205,9 @@
 		titleEl?.select();
 	}
 	const slugEmpty = $derived(!sanitizeName(slugDraft));
+	const slugTrouble = $derived(
+		slugDraft.trim() === view.slug ? null : titleProblem(sanitizeName(slugDraft))
+	);
 	const titleKind = $derived<NameKind>(
 		view.unit?.startsWith('folder:') ? 'project' : view.unit?.startsWith('tag:') ? 'tag' : 'ident'
 	);
@@ -216,8 +221,10 @@
 
 	function commitSlug() {
 		const next = sanitizeName(slugDraft);
-		if (next && view.unit) void renameUnit(view.unit, next);
-		else if (next) view.renameSlug(next);
+		if (next && !slugTrouble) {
+			if (view.unit) void renameUnit(view.unit, next);
+			else view.renameSlug(next);
+		}
 		slugDraft = view.slug;
 	}
 
@@ -281,7 +288,8 @@
 		<span class="title-ghost">{slugDraft || ' '}</span>
 		<input
 			class="title-input"
-			class:invalid={slugEmpty}
+			class:invalid={slugEmpty || slugTrouble}
+			title={slugTrouble ?? undefined}
 			bind:this={titleEl}
 			bind:value={slugDraft}
 			use:nameGuard={titleKind}

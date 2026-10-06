@@ -11,7 +11,8 @@
 	import { getViewIcon } from '$lib/views/filterDisplay';
 	import { formatDateFriendly } from '$lib/views/dateFormat';
 	import { openProjectSetup } from '$lib/views/projectSetup';
-	import { toasts, mark } from '$lib/toasts.svelte';
+	import { mark } from '$lib/toasts.svelte';
+	import { addSourceRequest } from '$lib/addSource.svelte';
 
 	// Where the app lands when no tab is open: what you can start, and what you were in
 	let { editor, onAddSource }: { editor: EditorState; onAddSource?: () => void } = $props();
@@ -54,7 +55,7 @@
 	async function newNote() {
 		const doc = await DocHandle.createDraft();
 		if (doc) editor.openDoc(doc);
-		else toasts.push('Add a source before creating a document.');
+		else addSourceRequest.open();
 	}
 
 	const actions: { label: string; hint: string; icon: Component; run: () => void }[] = [

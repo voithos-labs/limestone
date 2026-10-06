@@ -20,7 +20,9 @@
 		type Source
 	} from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
-	import { toasts, mark } from '$lib/toasts.svelte';
+	import { mark } from '$lib/toasts.svelte';
+	import { addSourceRequest } from '$lib/addSource.svelte';
+	import { folderNameProblem } from '$lib/util/paths';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import Menu from '../views/Menu.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
@@ -79,6 +81,16 @@
 	let root: Folder | null = $state(null);
 	const here = $derived(isRoot ? root : (folders.find((f) => f.id === unitId) ?? null));
 	const subject = $derived(mark(isRoot ? 'source' : 'folder', view.slug));
+
+	function siblingProblem(name: string, parentId: string | undefined, selfId: string | null) {
+		const lower = name.trim().toLowerCase();
+		return folderNameProblem(
+			name,
+			folders.some(
+				(f) => f.id !== selfId && f.parentId === parentId && f.slug.toLowerCase() === lower
+			)
+		);
+	}
 	// folders that are projects: they have a saved view of their own, and its emoji
 	let projects: Map<string, { emoji: string }> = $state(new Map());
 	const query = $derived(((view.state.search as string | undefined) ?? '').trim());
@@ -360,7 +372,7 @@
 		try {
 			const id = await createInView(view, todo);
 			if (id) onOpenRow(id);
-			else toasts.push('Add a source before creating a document.');
+			else addSourceRequest.open();
 		} catch (e) {
 			reportError(e, `A note couldn't be created in ${subject}.`, () => newDoc(todo));
 		}
@@ -755,9 +767,14 @@
 	placeholder="Folder name"
 	icon={FolderIcon}
 	guard="file"
+	problem={(v) => (v.trim() === here?.slug ? null : siblingProblem(v, here?.parentId, unitId))}
 	onChange={(v) => commitName(String(v ?? ''))}
 />
-<NewFolderDialog bind:open={newFolderOpen} onCreate={createFolder} />
+<NewFolderDialog
+	bind:open={newFolderOpen}
+	onCreate={createFolder}
+	problem={(v) => siblingProblem(v, unitId, null)}
+/>
 
 <style>
 	.folder-page {

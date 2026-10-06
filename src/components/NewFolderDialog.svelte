@@ -4,15 +4,18 @@
 
 	let {
 		open = $bindable(false),
-		onCreate
+		onCreate,
+		problem = () => null
 	}: {
 		open: boolean;
 		onCreate: (name: string) => void | Promise<void>;
+		problem?: (name: string) => string | null;
 	} = $props();
 
 	let name = $state('');
 	let busy = $state(false);
-	const ready = $derived(name.trim() !== '');
+	const trouble = $derived(problem(name));
+	const ready = $derived(name.trim() !== '' && !trouble);
 
 	function focus(node: HTMLInputElement) {
 		node.focus();
@@ -60,7 +63,15 @@
 				<span class="label">Name</span>
 				<span class="input">
 					<FolderPlus size={14} strokeWidth={1.75} />
-					<input type="text" bind:value={name} use:focus use:nameGuard spellcheck="false" />
+					<input
+						type="text"
+						class:invalid={trouble}
+						title={trouble ?? undefined}
+						bind:value={name}
+						use:focus
+						use:nameGuard
+						spellcheck="false"
+					/>
 				</span>
 			</label>
 
@@ -130,6 +141,12 @@
 
 	.input:focus-within {
 		border-color: var(--focus-border);
+	}
+
+	.input input.invalid {
+		text-decoration: underline;
+		text-decoration-color: var(--error-fg);
+		text-underline-offset: 3px;
 	}
 
 	.input input {

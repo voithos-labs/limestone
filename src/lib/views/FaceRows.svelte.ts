@@ -1,4 +1,5 @@
 import { reportError } from '$lib/errors';
+import { addSourceRequest } from '$lib/addSource.svelte';
 import type View from '$lib/models/View.svelte';
 import type { FilterNode, MemberRow, SortKey, ViewField } from '$lib/models/View.svelte';
 import {
@@ -431,7 +432,7 @@ export class FaceRows {
 	async create(title = ''): Promise<string | null> {
 		const source = this.creationSource();
 		if (!source) {
-			toasts.push('Add a source before creating a note.');
+			addSourceRequest.open();
 			return null;
 		}
 		try {

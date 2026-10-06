@@ -10,6 +10,7 @@
 	import Palette from '../components/Palette.svelte';
 	import MetadataDialog from '../components/MetadataDialog.svelte';
 	import MoveConflictDialog from '../components/MoveConflictDialog.svelte';
+	import { addSourceRequest } from '$lib/addSource.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
 	import { actionForKey, keyCapture } from '$lib/actions';
 	import { editorTakesKey } from '$lib/editor-chords';
@@ -19,14 +20,17 @@
 	import DocHandle from '$lib/models/DocHandle';
 
 	let session = $state<Session>();
-	let addSourceSignal = $state(0);
+	const addSourceSignal = $derived(addSourceRequest.signal);
 
 	Session.init().then((s) => (session = s));
 
 	function addSource() {
-		addSourceSignal++;
-		session?.editors[0].focusTab({ kind: 'settings' });
+		addSourceRequest.open();
 	}
+
+	$effect(() => {
+		if (addSourceSignal) session?.editors[0].focusTab({ kind: 'settings' });
+	});
 
 	$effect(() => onSourceReconciled((id) => void DocHandle.syncSource(id)));
 

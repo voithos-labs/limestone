@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { reportError } from '$lib/errors';
-	import Folder, { folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
-	import Tag from '$lib/models/Tag';
+	import Folder, { folderId, folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
+	import Tag, { tagId } from '$lib/models/Tag';
 	import { isBuiltinUnit } from '$lib/models/View.svelte';
 	import NewFolderDialog from '../NewFolderDialog.svelte';
 	import { openProjectSetup } from '$lib/views/projectSetup';
 	import { metaDialog } from '$lib/metaDialog.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { toasts, mark } from '$lib/toasts.svelte';
+	import { mark } from '$lib/toasts.svelte';
+	import { addSourceRequest } from '$lib/addSource.svelte';
+	import { folderNameProblem } from '$lib/util/paths';
 	import { onMount, onDestroy } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
 	import View from '$lib/models/View.svelte';
@@ -453,6 +455,39 @@
 	);
 	const unitIsRoot = $derived(unitKind === 'folder' && isSourceRoot(view.unit!));
 	const subject = $derived(mark(unitKind === 'tag' ? 'tag' : 'project', view.slug));
+
+	let unitSiblings = $state<Set<string>>(new Set());
+	let unitChildren = $state<Set<string>>(new Set());
+	async function loadNeighbours() {
+		const unit = view.unit;
+		if (!unit) return;
+		if (unitKind === 'tag') {
+			unitSiblings = new Set((await Tag.list()).filter((t) => t.id !== unit).map((t) => t.id));
+			return;
+		}
+		const path = folderIdPath(unit);
+		const parent = folderId(
+			folderIdSource(unit),
+			path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+		);
+		const all = await Folder.list();
+		const slugs = (f: Folder) => f.slug.toLowerCase();
+		unitSiblings = new Set(all.filter((f) => f.parentId === parent && f.id !== unit).map(slugs));
+		unitChildren = new Set(all.filter((f) => f.parentId === unit).map(slugs));
+	}
+	$effect(() => {
+		void view.unit;
+		void loadNeighbours();
+	});
+	$effect(() => onSourceReconciled(() => void loadNeighbours()));
+
+	function titleProblem(name: string): string | null {
+		if (unitKind === 'tag')
+			return unitSiblings.has(tagId(name)) ? 'A tag with this name already exists.' : null;
+		if (unitKind === 'folder')
+			return folderNameProblem(name, unitSiblings.has(name.trim().toLowerCase()));
+		return null;
+	}
 	let header: ViewHeader | null = $state(null);
 
 	// the folder under a folder project, for its per-folder metadata switch (the folder page's
@@ -481,7 +516,7 @@
 		try {
 			const id = await createInView(view, todo);
 			if (id) onOpenRow(id);
-			else toasts.push('Add a source before creating a document.');
+			else addSourceRequest.open();
 		} catch (e) {
 			reportError(e, `A note couldn't be created in ${subject}.`, () => newDoc(todo));
 		}
@@ -772,6 +807,7 @@
 					<ViewHeader
 						bind:this={header}
 						{view}
+						{titleProblem}
 						hasCover={!!view.cover}
 						{docPicker}
 						onMore={(anchor) => {
@@ -840,7 +876,11 @@
 	onSelect={onMoreSelect}
 	minWidth={170}
 />
-<NewFolderDialog bind:open={newFolderOpen} onCreate={createFolder} />
+<NewFolderDialog
+	bind:open={newFolderOpen}
+	onCreate={createFolder}
+	problem={(v) => folderNameProblem(v, unitChildren.has(v.trim().toLowerCase()))}
+/>
 <SourceDialog bind:open={sourceDialogOpen} mode="edit" source={dialogSource} onSaved={() => {}} />
 <CoverSourceDialog
 	bind:open={coverDialogOpen}

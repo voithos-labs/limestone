@@ -20,7 +20,8 @@
 	import type { ViewFieldType } from '$lib/models/View.svelte';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { listSources, getDefaultSourceId, sourceName, type Source } from '$lib/models/Source';
-	import { toasts, mark } from '$lib/toasts.svelte';
+	import { mark } from '$lib/toasts.svelte';
+	import { addSourceRequest } from '$lib/addSource.svelte';
 	import { palette } from '$lib/palette.svelte';
 	import Menu from '../views/Menu.svelte';
 	import EmojiPicker from '../views/EmojiPicker.svelte';
@@ -183,7 +184,7 @@
 			let label = unitName;
 			if (!id) {
 				if (!sourceId) {
-					toasts.push('Add a source before creating a project.');
+					addSourceRequest.open();
 					return;
 				}
 				const folder = await Folder.create(slug, sourceId);
