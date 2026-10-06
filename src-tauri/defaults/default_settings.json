@@ -24,5 +24,12 @@
 	"updates": {
 		"auto_install": false
 	},
+	"todo": {
+		"statuses": [
+			{ "value": "todo", "color": 0, "done": false },
+			{ "value": "doing", "color": 4, "done": false },
+			{ "value": "done", "color": 12, "done": true }
+		]
+	},
 	"shortcuts": {}
 }

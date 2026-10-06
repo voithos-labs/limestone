@@ -15,10 +15,14 @@
 	} from '@lucide/svelte';
 	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
 	import type { ViewField } from '$lib/models/View.svelte';
+	import { isStatusField, saveStatuses } from '$lib/models/View.svelte';
+	import { statusKind } from '$lib/views/todoStatus';
+	import StatusIcon from './StatusIcon.svelte';
 
 	interface TagOption {
 		value: string;
 		color: number;
+		done?: boolean;
 	}
 
 	interface Props {
@@ -63,6 +67,17 @@
 					colorEditFor = opt.value;
 				}
 			},
+			...(status
+				? [
+						{
+							label: 'Counts as done',
+							icon: Check,
+							checked: !!opt.done,
+							keepOpen: true,
+							action: () => toggleDone(opt)
+						}
+					]
+				: []),
 			{
 				label: 'Delete option',
 				icon: Trash2,
@@ -102,6 +117,7 @@
 			vf.config.options = vf.config.options.map((o: TagOption) =>
 				o.value === oldValue ? { ...o, value: next } : o
 			);
+			persist();
 		}
 		// Update the live selection so the cell reflects the new label immediately
 		if (selectedValues.includes(oldValue)) {
@@ -112,6 +128,21 @@
 
 	const vf = $derived(field as ViewField);
 	const options = $derived((vf.config.options ?? []) as TagOption[]);
+
+	// the todo status list lives in settings, and each side of done keeps at least one option
+	const status = $derived(isStatusField(vf));
+	function persist() {
+		if (status)
+			saveStatuses(
+				((vf.config.options ?? []) as TagOption[]).map((o) => ({ ...o, done: !!o.done }))
+			);
+	}
+
+	function toggleDone(opt: TagOption) {
+		if (options.filter((o) => !!o.done === !!opt.done).length <= 1) return;
+		vf.config.options = options.map((o) => (o.value === opt.value ? { ...o, done: !o.done } : o));
+		persist();
+	}
 
 	const selectedValues = $derived(
 		multiple
@@ -170,7 +201,11 @@
 		if (!v) return;
 		const existing = Array.isArray(vf.config.options) ? vf.config.options : [];
 		if (!existing.some((o: TagOption) => o.value === v)) {
-			vf.config.options = [...existing, { value: v, color: nextColor() }];
+			vf.config.options = [
+				...existing,
+				{ value: v, color: nextColor(), ...(status ? { done: false } : {}) }
+			];
+			persist();
 		}
 		pick(v);
 	}
@@ -182,12 +217,21 @@
 		vf.config.options = vf.config.options.map((o: TagOption) =>
 			o.value === optValue ? { ...o, color } : o
 		);
+		persist();
 		colorEditFor = null;
 	}
 
 	function removeOption(optValue: string) {
 		if (!Array.isArray(vf.config.options)) return;
+		if (status) {
+			// its notes move to the first option on the same side, so nothing flips done
+			const opt = options.find((o) => o.value === optValue);
+			const peers = options.filter((o) => o.value !== optValue && !!o.done === !!opt?.done);
+			if (peers.length === 0) return;
+			onRenameOption?.(optValue, peers[0].value);
+		}
 		vf.config.options = vf.config.options.filter((o: TagOption) => o.value !== optValue);
+		persist();
 		colorEditFor = null;
 		confirmDeleteFor = null;
 		// Drop the value from the current selection if present
@@ -343,7 +387,14 @@
 						</span>
 					{:else}
 						<button class="opt" type="button" tabindex="-1" onclick={() => pick(opt.value)}>
-							<span class="pill tag-c{opt.color}">{opt.value}</span>
+							{#if status}
+								<span class="status-opt">
+									<StatusIcon kind={statusKind(vf, opt.value)} color={opt.color} size={14} />
+									<span>{opt.value}</span>
+								</span>
+							{:else}
+								<span class="pill tag-c{opt.color}">{opt.value}</span>
+							{/if}
 							<span class="opt-check" class:shown={isSelected(opt.value)}>
 								<Check size={13} strokeWidth={2} />
 							</span>
@@ -537,6 +588,12 @@
 		font: inherit;
 		color: inherit;
 		outline: none;
+	}
+
+	.status-opt {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
 	}
 
 	.opt {

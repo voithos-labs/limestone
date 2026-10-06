@@ -53,6 +53,7 @@ import { select } from '$lib/services/db';
 import { load, type Store } from '@tauri-apps/plugin-store';
 import { toasts } from '$lib/toasts.svelte';
 import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
+import { appSettings } from '$lib/models/Settings.svelte';
 
 export type ViewFaceType =
 	'list' | 'masonry' | 'dashboard' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
@@ -231,6 +232,28 @@ function builtinField(unit: string, name: string, type: ViewFieldType): ViewFiel
 }
 
 const TODO = 'tag:todo';
+export const TODO_DONE = `${TODO}/done`;
+export const TODO_STATUS = `${TODO}/status`;
+
+// a todo's progression: each option sits on one side of the done checkbox. The list is one
+// per app, kept in settings, so every view agrees on the workflow
+export type StatusOption = { value: string; color: number; done: boolean };
+export const DEFAULT_STATUSES: StatusOption[] = [
+	{ value: 'todo', color: 0, done: false },
+	{ value: 'doing', color: 4, done: false },
+	{ value: 'done', color: 12, done: true }
+];
+
+export function isStatusField(field: Pick<ViewField, 'id'>): boolean {
+	return field.id === TODO_STATUS;
+}
+
+export function saveStatuses(options: StatusOption[]): void {
+	void appSettings?.set(
+		'todo.statuses',
+		options.map((o) => ({ value: o.value, color: o.color, done: !!o.done }))
+	);
+}
 
 export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
 	[TODO]: {
@@ -238,6 +261,7 @@ export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
 		emoji: '',
 		fields: [
 			builtinField(TODO, 'done', 'boolean'),
+			builtinField(TODO, 'status', 'select'),
 			builtinField(TODO, 'due', 'date'),
 			builtinField(TODO, 'scheduled', 'date')
 		],
@@ -251,8 +275,12 @@ const BUILTIN_FIELD_IDS = new Set(
 
 // fresh copies: views hold their fields in $state and write config in place
 function builtinFields(): ViewField[] {
+	const statuses = appSettings?.get<StatusOption[]>('todo.statuses') ?? DEFAULT_STATUSES;
 	return Object.values(BUILTIN_UNITS).flatMap((u) =>
-		u.fields.map((f) => ({ ...f, config: { ...f.config } }))
+		u.fields.map((f) => ({
+			...f,
+			config: isStatusField(f) ? { options: statuses.map((o) => ({ ...o })) } : { ...f.config }
+		}))
 	);
 }
 
@@ -1270,7 +1298,7 @@ class View {
 
 	/** Rename a select/multiselect option value across all stored documents */
 	async renameOption(field: ViewField, oldValue: string, newValue: string): Promise<void> {
-		if (isBuiltinField(field)) return;
+		if (isBuiltinField(field) && !isStatusField(field)) return;
 		await bulkPerSource('bulk_rename_view_option', {
 			viewSlug: fieldKey(field),
 			fieldName: field.name,

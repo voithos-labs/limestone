@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { Square, Hash } from '@lucide/svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
-	import { isBuiltinUnit } from '$lib/models/View.svelte';
+	import { isBuiltinUnit, isStatusField } from '$lib/models/View.svelte';
+	import { statusOf } from '$lib/views/todoStatus';
 	import type { Source } from '$lib/models/Source';
 	import {
 		rawStatefulValue,
@@ -36,7 +37,7 @@
 			/>{/if}
 	</span>
 {:else if field.type === 'select'}
-	{@const v = statefulValue(row, field)}
+	{@const v = isStatusField(field) ? statusOf(row, field) : statefulValue(row, field)}
 	{#if v}<Pill {field} value={v} />{:else}<span class="muted">—</span>{/if}
 {:else if field.type === 'multiselect'}
 	{@const arr = rawArrayValue(row, field)}

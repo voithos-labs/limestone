@@ -5,6 +5,9 @@
 	import { FaceRows } from '$lib/views/FaceRows.svelte';
 	import { PreviewCache, type Preview } from '$lib/views/previews';
 	import { rawStatefulValue, valueFor, fieldLabel } from '$lib/views/fieldValue';
+	import { isStatusField } from '$lib/models/View.svelte';
+	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/todoStatus';
+	import StatusIcon from '../StatusIcon.svelte';
 	import { highlightTitle } from '$lib/util/highlight';
 	import RowChips from '../RowChips.svelte';
 	import SectionHead from '../SectionHead.svelte';
@@ -71,7 +74,7 @@
 	function groupOf(row: MemberRow): { key: string; label: string } {
 		const f = groupField!;
 		if (f.type === 'boolean') return boolGroup(f, rawStatefulValue(row, f) === true);
-		const v = valueFor(f, row);
+		const v = isStatusField(f) ? statusOf(row, f) : valueFor(f, row);
 		return v ? { key: v, label: v } : { key: '', label: `No ${fieldLabel(f).toLowerCase()}` };
 	}
 
@@ -892,7 +895,7 @@
 				{/if}
 				{#each g.items as row (row.id)}
 					{@const member = checkField ? rows.memberOf(row, checkField) : false}
-					{@const done = member && checkField ? rawStatefulValue(row, checkField) === true : false}
+					{@const done = member && checkField ? checkDone(row, checkField) : false}
 					<div
 						class="row"
 						class:done
@@ -913,7 +916,27 @@
 						onfocus={(e) => (focusIdx = items().indexOf(e.currentTarget))}
 						oncontextmenu={(e) => editors.menu(e, row.id)}
 					>
-						{#if checkField && member && rows.writable(row)}
+						{#if checkField && isStatusField(checkField)}
+							{@const sv = statusOf(row, checkField)}
+							<button
+								class="check status"
+								type="button"
+								tabindex="-1"
+								aria-label="Change status"
+								title={sv}
+								onclick={(e) => {
+									e.stopPropagation();
+									if (rows.writable(row))
+										editors.edit(row, checkField, e.currentTarget as HTMLElement);
+								}}
+							>
+								<StatusIcon
+									kind={statusKind(checkField, sv)}
+									color={statusColor(checkField, sv)}
+									size={18}
+								/>
+							</button>
+						{:else if checkField && member && rows.writable(row)}
 							<button
 								class="check"
 								class:done
@@ -1248,6 +1271,10 @@
 	/* a note outside the checkbox's unit keeps the slot, but the box is only a trace */
 	.check.inert {
 		cursor: default;
+	}
+
+	.check.status {
+		cursor: pointer;
 	}
 
 	.check.inert .box {

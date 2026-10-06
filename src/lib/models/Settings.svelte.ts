@@ -311,3 +311,9 @@ export class SettingsState {
 		}
 	}
 }
+
+// the live settings, for code outside the session tree (built-in field config reads them)
+export let appSettings: SettingsState | null = null;
+export function registerSettings(s: SettingsState): void {
+	appSettings = s;
+}

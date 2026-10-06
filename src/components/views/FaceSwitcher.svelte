@@ -26,6 +26,7 @@
 	} from '@lucide/svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '$lib/models/View.svelte';
+	import { isStatusField } from '$lib/models/View.svelte';
 	import type { MenuEntry } from '$lib/views/menuTypes';
 	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
@@ -183,7 +184,8 @@
 		if (type === 'grid') f.config.layout = 'grid';
 		if (type === 'kanban') {
 			const col =
-				view.fields.find((ff: ViewField) => ff.type === 'select') ??
+				view.ownFields.find((ff: ViewField) => ff.type === 'select') ??
+				view.fields.find((ff: ViewField) => isStatusField(ff)) ??
 				view.fields.find((ff: ViewField) => ff.type === 'boolean');
 			f.config.group_by = col?.id ?? null;
 		}

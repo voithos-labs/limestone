@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type View from '$lib/models/View.svelte';
 	import type { FilterNode, MemberRow, ViewFace } from '$lib/models/View.svelte';
+	import { isStatusField } from '$lib/models/View.svelte';
+	import { statusOf } from '$lib/views/todoStatus';
 	import { onSourceReconciled } from '$lib/models/Source';
 	import { FaceRows } from '$lib/views/FaceRows.svelte';
 	import { rawStatefulValue, statefulValue, fieldLabel } from '$lib/views/fieldValue';
@@ -49,7 +51,7 @@
 	function colOf(row: MemberRow): string {
 		const f = colField!;
 		if (f.type === 'boolean') return rawStatefulValue(row, f) === true ? '1' : '0';
-		return statefulValue(row, f);
+		return isStatusField(f) ? statusOf(row, f) : statefulValue(row, f);
 	}
 
 	const columns = $derived.by((): Col[] => {
@@ -987,9 +989,13 @@
 		writing-mode: vertical-rl;
 	}
 
-	/* the ghost column that grows the field */
+	/* the ghost column that grows the field: just its button, a column's width while typing */
 	.col.ghost {
-		width: 200px;
+		width: auto;
+	}
+
+	.col.ghost .col-head.adding {
+		width: 240px;
 	}
 
 	.add-col {

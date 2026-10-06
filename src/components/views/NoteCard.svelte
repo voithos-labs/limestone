@@ -5,7 +5,9 @@
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
 	import type { FaceRows } from '$lib/views/FaceRows.svelte';
 	import type { Preview } from '$lib/views/previews';
-	import { rawStatefulValue } from '$lib/views/fieldValue';
+	import { isStatusField } from '$lib/models/View.svelte';
+	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/todoStatus';
+	import StatusIcon from './StatusIcon.svelte';
 	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
 	import RowChips from './RowChips.svelte';
 	import type RowEditors from './RowEditors.svelte';
@@ -43,7 +45,7 @@
 	} = $props();
 
 	const member = $derived(checkField ? rows.memberOf(row, checkField) : false);
-	const done = $derived(member && checkField ? rawStatefulValue(row, checkField) === true : false);
+	const done = $derived(member && checkField ? checkDone(row, checkField) : false);
 	const hit = $derived(rows.searchHits[row.id]);
 	const snippet = $derived(hit?.snippet?.trim() ? highlightSnippet(hit.snippet) : '');
 
@@ -117,7 +119,26 @@
 	onfocus={onFocus}
 >
 	<div class="head">
-		{#if checkField && member && rows.writable(row)}
+		{#if checkField && isStatusField(checkField)}
+			{@const sv = statusOf(row, checkField)}
+			<button
+				class="check status"
+				type="button"
+				tabindex="-1"
+				aria-label="Change status"
+				title={sv}
+				onclick={(e) => {
+					e.stopPropagation();
+					if (rows.writable(row)) editors.edit(row, checkField, e.currentTarget as HTMLElement);
+				}}
+			>
+				<StatusIcon
+					kind={statusKind(checkField, sv)}
+					color={statusColor(checkField, sv)}
+					size={16}
+				/>
+			</button>
+		{:else if checkField && member && rows.writable(row)}
 			<button
 				class="check"
 				class:done
@@ -281,6 +302,10 @@
 
 	.check.inert {
 		cursor: default;
+	}
+
+	.check.status {
+		cursor: pointer;
 	}
 
 	.check.inert .box {

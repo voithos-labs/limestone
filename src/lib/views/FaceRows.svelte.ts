@@ -6,6 +6,8 @@ import {
 	describeBulkFailure,
 	isBuiltinUnit,
 	isLeafActive,
+	isStatusField,
+	TODO_DONE,
 	ViewFace
 } from '$lib/models/View.svelte';
 import {
@@ -15,6 +17,7 @@ import {
 	type CreateContext
 } from '$lib/views/createDefaults';
 import { rawStatefulValue, seedProperties, withStatefulValue } from '$lib/views/fieldValue';
+import { firstStatus, statusIsDone, statusOf } from '$lib/views/todoStatus';
 import { listInlineByDefault } from '$lib/views/listLayout';
 import { select } from '$lib/services/db';
 import { searchDocuments } from '$lib/services/search';
@@ -268,7 +271,7 @@ export class FaceRows {
 
 	get checkField(): ViewField | null {
 		const first = this.shown[0];
-		return first?.type === 'boolean' ? first : null;
+		return first && (first.type === 'boolean' || isStatusField(first)) ? first : null;
 	}
 
 	get lanes(): { inline: ViewField[]; meta: ViewField[] } {
@@ -300,18 +303,54 @@ export class FaceRows {
 		this.rows = this.rows.map((r) => (r.id === id ? { ...r, ...patch } : r));
 	}
 
+	// the todo's status and checkbox say the same thing: setting one may move the other. A
+	// status is only ever written once it's been set; until then it follows the checkbox
+	private companion(
+		row: MemberRow,
+		field: ViewField,
+		value: unknown
+	): { field: ViewField; value: unknown } | null {
+		const fields = this.view().fields;
+		if (isStatusField(field)) {
+			const done = fields.find((f) => f.id === TODO_DONE);
+			if (!done || value === null || value === '') return null;
+			const want = statusIsDone(field, String(value));
+			if ((rawStatefulValue(row, done) === true) === want) return null;
+			return { field: done, value: want };
+		}
+		if (field.id === TODO_DONE) {
+			const status = fields.find((f) => isStatusField(f));
+			const raw = status ? rawStatefulValue(row, status) : null;
+			if (!status || typeof raw !== 'string' || !raw) return null;
+			const want = value === true;
+			if (statusIsDone(status, raw) === want) return null;
+			return { field: status, value: firstStatus(status, want) };
+		}
+		return null;
+	}
+
 	async writeCell(row: MemberRow, field: ViewField, value: unknown): Promise<void> {
 		if (!this.writable(row)) return;
 		const before = row.properties;
-		this.patchRow(row.id, { properties: withStatefulValue(before, field, value) });
+		const extra = this.companion(row, field, value);
+		let props = withStatefulValue(before, field, value);
+		if (extra) props = withStatefulValue(props, extra.field, extra.value);
+		this.patchRow(row.id, { properties: props });
 		try {
-			const result = await this.view().writeFieldValue(row.source_id, field, value, [row.id]);
+			const view = this.view();
+			let result = await view.writeFieldValue(row.source_id, field, value, [row.id]);
+			if (result.failed === 0 && extra) {
+				result = await view.writeFieldValue(row.source_id, extra.field, extra.value, [row.id]);
+			}
 			if (result.failed > 0) {
 				this.patchRow(row.id, { properties: before });
 				toasts.push(describeBulkFailure(result), {
 					action: { label: 'Retry', run: () => this.writeCell(row, field, value) }
 				});
-			} else if (this.fieldAffectsView(field.id)) {
+			} else if (
+				this.fieldAffectsView(field.id) ||
+				(extra && this.fieldAffectsView(extra.field.id))
+			) {
 				this.load(true);
 			}
 		} catch (e) {
@@ -324,6 +363,11 @@ export class FaceRows {
 
 	toggle(row: MemberRow, field: ViewField): void {
 		if (!this.writable(row)) return;
+		if (isStatusField(field)) {
+			const done = statusIsDone(field, statusOf(row, field));
+			this.writeCell(row, field, firstStatus(field, !done));
+			return;
+		}
 		this.writeCell(row, field, rawStatefulValue(row, field) !== true);
 	}
 
@@ -438,6 +482,9 @@ export class FaceRows {
 		}
 		try {
 			const ctx = this.createCtx;
+			const status = this.view().fields.find((f) => isStatusField(f));
+			if (status && status.name in values && statusIsDone(status, String(values[status.name])))
+				values = { ...values, done: true };
 			ctx.fieldValues = { ...ctx.fieldValues, ...values };
 			const doc = await createFromContext(this.view(), ctx, source, title);
 			await this.load(true);
