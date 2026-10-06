@@ -85,6 +85,7 @@ export class FaceRows {
 		const scope = this.scope();
 		return [
 			view.unit ?? '',
+			view.subfolder ?? '',
 			nodeSig(view.filter),
 			nodeSig(face.additive_filter),
 			scope ? nodeSig(scope) : '',

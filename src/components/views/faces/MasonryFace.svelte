@@ -134,6 +134,7 @@
 	$effect(() => {
 		const sig = [
 			view.unit ?? '',
+			view.subfolder ?? '',
 			nodeSig(view.filter),
 			nodeSig(face.additive_filter),
 			scope ? nodeSig(scope) : '',

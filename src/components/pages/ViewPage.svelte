@@ -232,7 +232,11 @@
 
 	$effect(() => {
 		const sig = JSON.stringify(view.toJSON(), (k, v) =>
-			k === 'active_cell' || k === 'search' || k === 'temporary' || k === 'accessed_at'
+			k === 'active_cell' ||
+			k === 'search' ||
+			k === 'folder' ||
+			k === 'temporary' ||
+			k === 'accessed_at'
 				? undefined
 				: v
 		);
@@ -810,6 +814,7 @@
 						{titleProblem}
 						hasCover={!!view.cover}
 						{docPicker}
+						onOpenNewTab={(id, name) => onOpenUnit(id, name, true)}
 						onMore={(anchor) => {
 							moreAnchor = anchor;
 							moreOpen = true;

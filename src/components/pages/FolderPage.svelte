@@ -289,7 +289,7 @@
 	}
 
 	const openFolder = (f: Folder) => show(f.id, f.slug);
-	const openProject = async (f: Folder) => editor.openView(await View.forUnit(f.id, f.slug));
+	const openInNewTab = async (f: Folder) => editor.openView(await View.forUnit(f.id, f.slug));
 
 	function openCrumb(p: string) {
 		const id = `folder:${sourceId}:${p}`;
@@ -631,7 +631,7 @@
 								folders={projectChildren}
 								{projects}
 								whereOf={(f) => (query ? relDir(f) : '')}
-								onOpen={openProject}
+								onOpen={openInNewTab}
 								onChanged={loadFolders}
 								bind:selected={selectedFolder}
 							/>
@@ -664,6 +664,7 @@
 								rows={query ? 99 : 3}
 								whereOf={(f) => (query ? relDir(f) : '')}
 								onOpen={openFolder}
+								onOpenNewTab={openInNewTab}
 								onChanged={loadFolders}
 								bind:selected={selectedFolder}
 								bind:showAll={foldersShowAll}

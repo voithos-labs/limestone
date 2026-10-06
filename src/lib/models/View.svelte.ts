@@ -47,7 +47,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
 import type DocHandle from '$lib/models/DocHandle';
 import type Tag from '$lib/models/Tag';
-import Folder, { folderId, folderIdPath, isSourceRoot } from '$lib/models/Folder';
+import Folder, { folderId, folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 import { listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/services/db';
 import { load, type Store } from '@tauri-apps/plugin-store';
@@ -1162,10 +1162,19 @@ class View {
 	// `scope` is an extra, non-persisted predicate from whoever is rendering the face
 	// (a journal scoping its body to the selected day)
 	// The unit scope is implicit and always applies; view and face filters are additive on top
+	get subfolder(): string | null {
+		const sub = this.state.folder as string | undefined;
+		const unit = this.unit;
+		if (!sub || !unit?.startsWith('folder:') || sub === unit) return null;
+		if (folderIdSource(sub) !== folderIdSource(unit)) return null;
+		const base = folderIdPath(unit);
+		return folderIdPath(sub).startsWith(base ? `${base}/` : '') ? sub : null;
+	}
+
 	private compileScope(opts?: { face?: ViewFace; scope?: FilterNode | null }): CompiledFilter {
 		const compiled = compileFilter(memberFilter(this.filter, opts?.face, opts?.scope), this.fields);
 		if (!this.unit) return compiled;
-		const unit = compileUnit(this.unit);
+		const unit = compileUnit(this.subfolder ?? this.unit);
 		if (!compiled.sql) return unit;
 		return {
 			sql: `(${unit.sql} AND ${compiled.sql})`,
