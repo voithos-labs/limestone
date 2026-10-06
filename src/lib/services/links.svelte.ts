@@ -3,7 +3,8 @@ import { listen } from '@tauri-apps/api/event';
 
 import { select } from '$lib/services/db';
 import { flushAll } from '$lib/util/flush';
-import { toastBulkFailures, type BulkResult } from '$lib/models/View.svelte';
+import { describeBulkFailure, type BulkResult } from '$lib/models/View.svelte';
+import { splitMessage } from '$lib/errors';
 import {
 	pathRank,
 	resolveAmong,
@@ -77,6 +78,21 @@ export async function linkTargets(
 
 const UNLINKABLE = /[[\]|#^]|\p{Cc}/u;
 
+export class LinkRewriteFailure extends Error {
+	kind: string;
+	failed: number;
+	reason: string | null;
+
+	constructor(result: BulkResult) {
+		super('link rewrite failed');
+		this.kind = result.source_unreachable
+			? 'source_missing'
+			: (result.failures[0]?.kind ?? 'other');
+		this.failed = result.failed;
+		this.reason = splitMessage(describeBulkFailure(result))[1];
+	}
+}
+
 async function rewrite(sourceId: string, replacements: [string, string][]): Promise<void> {
 	const live = replacements.filter(
 		([a, b]) =>
@@ -87,7 +103,7 @@ async function rewrite(sourceId: string, replacements: [string, string][]): Prom
 		sourceId,
 		replacements: live
 	});
-	toastBulkFailures([result]);
+	if (result.failed > 0 || result.source_unreachable) throw new LinkRewriteFailure(result);
 }
 
 export async function rewriteLinksForMove(

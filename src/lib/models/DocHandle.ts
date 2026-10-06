@@ -31,7 +31,8 @@ import * as yaml from 'js-yaml';
 // Internal
 import { select, execute } from '$lib/services/db';
 import { addChangeHistory, removeHistory } from '$lib/services/history';
-import { rewriteLinksForMove } from '$lib/services/links.svelte';
+import { LinkRewriteFailure, rewriteLinksForMove } from '$lib/services/links.svelte';
+import { isRetryable } from '$lib/errors';
 import { toasts, mark } from '$lib/toasts.svelte';
 import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
@@ -569,9 +570,13 @@ class DocHandle {
 			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this._relPath);
 		} catch (e) {
 			console.error('link rewrite failed', e);
-			toasts.push(`Links to ${mark('note', this.title)} still use its old name.`, {
-				action: { label: 'Retry', run: () => this.updateLinks(oldRelPath) }
-			});
+			let message = `Links to ${mark('note', this.title)} still use its old name`;
+			if (e instanceof LinkRewriteFailure && e.failed > 0)
+				message += ` in ${e.failed} ${e.failed === 1 ? 'note' : 'notes'}`;
+			if (e instanceof LinkRewriteFailure && e.reason) message += `: ${e.reason}`;
+			else message += '.';
+			const retry = { label: 'Retry', run: () => void this.updateLinks(oldRelPath) };
+			toasts.push(message, { action: isRetryable(e) ? retry : undefined });
 		}
 	}
 
