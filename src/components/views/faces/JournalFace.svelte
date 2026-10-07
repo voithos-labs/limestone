@@ -8,7 +8,7 @@
 	import { rawStatefulValue } from '$lib/views/fieldValue';
 	import { wallClockToMs } from '$lib/views/dateFormat';
 	import type { DocPicker } from '$lib/views/project.svelte';
-	import DateValueEditor from '../DateValueEditor.svelte';
+	import DateValueEditor from '../editors/DateValueEditor.svelte';
 	import DocFace from './DocFace.svelte';
 	import ListFace from './ListFace.svelte';
 	import MasonryFace from './MasonryFace.svelte';

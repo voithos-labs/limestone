@@ -2,7 +2,7 @@
 	import { toasts, type Toast, type ToastVariant } from '$lib/overlays.svelte';
 	import { splitMessage } from '$lib/overlays.svelte';
 	import { X, CircleX, CircleCheck, CircleArrowUp } from '@lucide/svelte';
-	import MarkText from './MarkText.svelte';
+	import MarkText from '../ui/MarkText.svelte';
 
 	function act(t: Toast) {
 		t.action?.run();

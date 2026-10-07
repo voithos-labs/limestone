@@ -2,7 +2,7 @@
 	import type { ViewField } from '$lib/models/View.svelte';
 	import SelectOptionEditor from './SelectOptionEditor.svelte';
 	import FolderValueEditor from './FolderValueEditor.svelte';
-	import FilterValueEditor from './FilterValueEditor.svelte';
+	import FilterValueEditor from '../FilterValueEditor.svelte';
 
 	let {
 		open = $bindable(false),

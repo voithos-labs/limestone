@@ -15,7 +15,7 @@
 	import CellEditor from './CellEditor.svelte';
 	import CellTextEditor from './CellTextEditor.svelte';
 	import TagMenu from './TagMenu.svelte';
-	import Menu from './Menu.svelte';
+	import Menu from '../../ui/Menu.svelte';
 
 	// The popovers a face needs once, whatever it draws its rows as: the value editor, the tag
 	// menu, and the row menu (from a button, or at the pointer on right-click)

@@ -11,9 +11,9 @@
 	} from '$lib/models/View.svelte';
 	import { fieldLabel, withStatefulValue, rawStatefulValue } from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
-	import CellValue from './CellValue.svelte';
-	import CellEditor from './CellEditor.svelte';
-	import CellTextEditor from './CellTextEditor.svelte';
+	import CellValue from '../views/CellValue.svelte';
+	import CellEditor from '../views/editors/CellEditor.svelte';
+	import CellTextEditor from '../views/editors/CellTextEditor.svelte';
 	import { registerFlush } from '$lib/services/platform';
 	import { Box } from '@lucide/svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';

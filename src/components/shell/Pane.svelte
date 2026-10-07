@@ -3,13 +3,13 @@
 	import type Session from '$lib/models/Session.svelte.js';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
-	import HomePage from './pages/HomePage.svelte';
-	import SettingsPage from './pages/SettingsPage.svelte';
-	import ViewPage from './pages/ViewPage.svelte';
-	import FolderPage from './pages/FolderPage.svelte';
-	import ProjectSetup from './pages/ProjectSetup.svelte';
-	import LicensesPage from './pages/LicensesPage.svelte';
-	import DocumentEditor from './editor/DocumentEditor.svelte';
+	import HomePage from '../pages/HomePage.svelte';
+	import SettingsPage from '../pages/SettingsPage.svelte';
+	import ViewPage from '../pages/ViewPage.svelte';
+	import FolderPage from '../pages/FolderPage.svelte';
+	import ProjectSetup from '../pages/ProjectSetup.svelte';
+	import LicensesPage from '../pages/LicensesPage.svelte';
+	import DocumentEditor from '../editor/DocumentEditor.svelte';
 
 	let {
 		editor,

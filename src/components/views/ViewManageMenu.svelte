@@ -22,7 +22,7 @@
 	} from '$lib/models/View.svelte';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
-	import Menu from './Menu.svelte';
+	import Menu from '../ui/Menu.svelte';
 	import { nameGuard } from '$lib/util/paths';
 
 	let {

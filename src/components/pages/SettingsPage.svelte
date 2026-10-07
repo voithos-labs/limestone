@@ -23,12 +23,12 @@
 	} from '$lib/models/Source';
 	import { select } from '$lib/services/db';
 	import { openPath } from '@tauri-apps/plugin-opener';
-	import SourceDialog from '../SourceDialog.svelte';
-	import SourceMenu from '../SourceMenu.svelte';
-	import Toggle from '../Toggle.svelte';
+	import SourceDialog from '../dialogs/SourceDialog.svelte';
+	import SourceMenu from '../dialogs/SourceMenu.svelte';
+	import Toggle from '../ui/Toggle.svelte';
 	import { updater } from '$lib/services/updater.svelte';
-	import Menu from '../views/Menu.svelte';
-	import ScrollThumb from '../ScrollThumb.svelte';
+	import Menu from '../ui/Menu.svelte';
+	import ScrollThumb from '../ui/ScrollThumb.svelte';
 	import type { MenuEntry, MenuItem } from '$lib/overlays.svelte';
 	import type Session from '$lib/models/Session.svelte.js';
 	import type { ViewTab } from '$lib/models/Session.svelte.js';

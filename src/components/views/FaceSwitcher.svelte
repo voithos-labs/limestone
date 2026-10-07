@@ -30,7 +30,7 @@
 	import type { MenuEntry } from '$lib/overlays.svelte';
 	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
-	import Menu from './Menu.svelte';
+	import Menu from '../ui/Menu.svelte';
 	import { dashboardSections, DASH_SECTION_LABEL } from '$lib/views/project.svelte';
 
 	let { view, face }: { view: View; face: ViewFace } = $props();

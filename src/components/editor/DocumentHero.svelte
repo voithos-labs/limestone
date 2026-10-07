@@ -13,10 +13,10 @@
 	import { folderPath } from '$lib/views/FaceRows.svelte';
 	import { isValidSegment, nameGuard, segmentProblem } from '$lib/util/paths';
 	import type { MenuEntry } from '$lib/overlays.svelte';
-	import Menu from './views/Menu.svelte';
-	import TagMenu from './views/TagMenu.svelte';
-	import MoveDialog from './MoveDialog.svelte';
-	import DocProperties from './views/DocProperties.svelte';
+	import Menu from '../ui/Menu.svelte';
+	import TagMenu from '../views/editors/TagMenu.svelte';
+	import MoveDialog from '../dialogs/MoveDialog.svelte';
+	import DocProperties from './DocProperties.svelte';
 	import TodoCard from './TodoCard.svelte';
 	import {
 		Hash,

@@ -3,7 +3,7 @@
 	import Folder, { folderId, folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
 	import Tag, { tagId } from '$lib/models/Tag';
 	import { isBuiltinUnit } from '$lib/models/View.svelte';
-	import NewFolderDialog from '../NewFolderDialog.svelte';
+	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
 	import { openProjectSetup } from '$lib/views/project.svelte';
 	import { metaDialog } from '$lib/overlays.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
@@ -20,10 +20,10 @@
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { listSources, removeSource, onSourceReconciled, type Source } from '$lib/models/Source';
 	import { folderPresence, type FolderPresence } from '$lib/views/project.svelte';
-	import GonePage from '../GonePage.svelte';
-	import type { GoneAction } from '../GoneActions.svelte';
+	import GonePage from './GonePage.svelte';
+	import type { GoneAction } from './GoneActions.svelte';
 	import catBox from '$assets/art/cat-box.txt?raw';
-	import SourceDialog from '../SourceDialog.svelte';
+	import SourceDialog from '../dialogs/SourceDialog.svelte';
 	import DocHandle from '$lib/models/DocHandle';
 	import ViewHeader from '../views/ViewHeader.svelte';
 	import JournalFace from '../views/faces/JournalFace.svelte';
@@ -35,9 +35,9 @@
 	import DocFace from '../views/faces/DocFace.svelte';
 	import { DocPicker } from '$lib/views/project.svelte';
 	import { convertFileSrc } from '@tauri-apps/api/core';
-	import Menu from '../views/Menu.svelte';
-	import CoverSourceDialog from '../CoverSourceDialog.svelte';
-	import ScrollThumb from '../ScrollThumb.svelte';
+	import Menu from '../ui/Menu.svelte';
+	import CoverSourceDialog from '../dialogs/CoverSourceDialog.svelte';
+	import ScrollThumb from '../ui/ScrollThumb.svelte';
 	import type { MenuEntry } from '$lib/overlays.svelte';
 	import {
 		Crop,

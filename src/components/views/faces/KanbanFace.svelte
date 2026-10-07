@@ -8,9 +8,9 @@
 	import { FaceRows } from '$lib/views/FaceRows.svelte';
 	import { rawStatefulValue, statefulValue, fieldLabel } from '$lib/views/fieldValue';
 	import NoteCard from '../NoteCard.svelte';
-	import RowEditors from '../RowEditors.svelte';
+	import RowEditors from '../editors/RowEditors.svelte';
 	import Pill from '../Pill.svelte';
-	import ScrollThumb from '../../ScrollThumb.svelte';
+	import ScrollThumb from '../../ui/ScrollThumb.svelte';
 	import { Plus, CornerDownLeft, ChevronDown } from '@lucide/svelte';
 	import { nameGuard } from '$lib/util/paths';
 	import { onMount, tick } from 'svelte';

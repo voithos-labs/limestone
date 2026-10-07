@@ -17,8 +17,8 @@
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
 	import { ChevronDown, Folder, GitBranch, TriangleAlert } from '@lucide/svelte';
 	import { slide } from 'svelte/transition';
-	import Toggle from './Toggle.svelte';
-	import FolderValueEditor from './views/FolderValueEditor.svelte';
+	import Toggle from '../ui/Toggle.svelte';
+	import FolderValueEditor from '../views/editors/FolderValueEditor.svelte';
 
 	let {
 		open = $bindable(false),

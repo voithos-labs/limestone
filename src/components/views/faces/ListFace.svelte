@@ -13,7 +13,7 @@
 	import { highlightTitle } from '$lib/util/dom';
 	import RowChips from '../RowChips.svelte';
 	import SectionHead from '../SectionHead.svelte';
-	import RowEditors from '../RowEditors.svelte';
+	import RowEditors from '../editors/RowEditors.svelte';
 	import NoteCard from '../NoteCard.svelte';
 	import Pill from '../Pill.svelte';
 	import { Check, PanelRight, Plus, ChevronDown, CornerDownLeft } from '@lucide/svelte';

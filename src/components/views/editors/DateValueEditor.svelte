@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { ChevronLeft, ChevronRight, Clock } from '@lucide/svelte';
-	import Toggle from '../Toggle.svelte';
+	import Toggle from '../../ui/Toggle.svelte';
 	import { isRelativeDate, resolveRelativeDate } from '$lib/views/dateFormat';
 
 	let {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { folderPresence, type FolderPresence } from '$lib/views/project.svelte';
-	import GonePage from '../GonePage.svelte';
-	import type { GoneAction } from '../GoneActions.svelte';
+	import GonePage from './GonePage.svelte';
+	import type { GoneAction } from './GoneActions.svelte';
 	import catBox from '$assets/art/cat-box.txt?raw';
 	import { reportError } from '$lib/overlays.svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -24,15 +24,15 @@
 	import { addSourceRequest } from '$lib/overlays.svelte';
 	import { folderNameProblem } from '$lib/util/paths';
 	import ListFace from '../views/faces/ListFace.svelte';
-	import Menu from '../views/Menu.svelte';
-	import InputPopover from '../views/InputPopover.svelte';
-	import NewFolderDialog from '../NewFolderDialog.svelte';
+	import Menu from '../ui/Menu.svelte';
+	import InputPopover from '../ui/InputPopover.svelte';
+	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
 	import frog from '$assets/art/frog.txt?raw';
 	import { openProjectSetup } from '$lib/views/project.svelte';
 	import { metaDialog } from '$lib/overlays.svelte';
 	import { isMove, readMove, movingNow, moveInto, type MovePayload } from '$lib/views/move.svelte';
-	import SourceDialog from '../SourceDialog.svelte';
-	import ScrollThumb from '../ScrollThumb.svelte';
+	import SourceDialog from '../dialogs/SourceDialog.svelte';
+	import ScrollThumb from '../ui/ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
 	import NewFab from '../views/NewFab.svelte';
 	import { undoKey } from '$lib/views/FaceRows.svelte';

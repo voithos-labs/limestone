@@ -1,16 +1,58 @@
+import {
+	getContentRange,
+	parse,
+	type InlineMenuItem,
+	type InlineMenuSource
+} from '@voithos-labs/aragonite';
+import { headingLevel, walkBlocks } from '@voithos-labs/aragonite/plugin';
+import { headingFragment, linkTargets, resolveWikiLink } from '$lib/services/links.svelte';
+import { readTextFile } from '@tauri-apps/plugin-fs';
+import DocHandle from '$lib/models/DocHandle';
+import { searchTitles } from '$lib/services/search';
+import { LINK_OPEN, writeWikiLink } from './wikilinks';
+
+/**
+ * A note's headings as link fragments, and which one a fragment names. The [[Note# menu lists
+ * these and a heading link jumps with findHeading, so anything the menu writes always lands.
+ */
+
+export interface NoteHeading {
+	text: string;
+	level: number;
+	/** Where the heading sits in the note, as the editor addresses blocks. */
+	path: number[];
+}
+
+export function noteHeadings(markdown: string): NoteHeading[] {
+	const headings: NoteHeading[] = [];
+	walkBlocks(parse(markdown), (node, path) => {
+		const level = headingLevel(node);
+		if (level === null) return;
+		const range = getContentRange(node);
+		const text = headingFragment(node.raw.slice(range.start, range.end));
+		if (text) headings.push({ text, level, path });
+		return 'skip';
+	});
+	return headings;
+}
+
+// The first heading with exactly this text, else the first that differs only by case (a link
+// typed by hand), else null
+export function findHeading(markdown: string, fragment: string): NoteHeading | null {
+	const wanted = headingFragment(fragment);
+	const headings = noteHeadings(markdown);
+	return (
+		headings.find((h) => h.text === wanted) ??
+		headings.find((h) => h.text.toLowerCase() === wanted.toLowerCase()) ??
+		null
+	);
+}
+
 /**
  * The [[ menu: notes in this vault by title, and after [[Note# that note's headings (a bare [[#
  * lists this note's own). A pick writes the link through writeWikiLink, so what lands always
  * reads back as the same wikilink.
  */
-
-import type { InlineMenuItem, InlineMenuSource } from '@voithos-labs/aragonite';
-import { readTextFile } from '@tauri-apps/plugin-fs';
-import DocHandle from '$lib/models/DocHandle';
-import { linkTargets, resolveWikiLink } from '$lib/services/links.svelte';
-import { searchTitles } from '$lib/services/search';
-import { noteHeadings } from './note-headings';
-import { LINK_OPEN, writeWikiLink } from './wikilinks-scan';
 
 export const NOTE_LINK_MENU = 'limestone-note-links';
 

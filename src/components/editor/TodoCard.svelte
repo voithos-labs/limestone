@@ -9,7 +9,7 @@
 	import { formatDateCompact } from '$lib/views/dateFormat';
 	import { dueState } from '$lib/views/fieldValue';
 	import { toasts, mark } from '$lib/overlays.svelte';
-	import CellEditor from './views/CellEditor.svelte';
+	import CellEditor from '../views/editors/CellEditor.svelte';
 
 	// A note that is a todo wears its todo-ness as one card in the meta row: the checkbox,
 	// its dates, and the way out. The registry defines the fields; this only draws them

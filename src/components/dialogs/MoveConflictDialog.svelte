@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { moveConflict, type ConflictChoice } from '$lib/views/move.svelte';
 	import { mark } from '$lib/overlays.svelte';
-	import MarkText from './MarkText.svelte';
+	import MarkText from '../ui/MarkText.svelte';
 	import type Session from '$lib/models/Session.svelte';
 
 	let { session }: { session: Session } = $props();

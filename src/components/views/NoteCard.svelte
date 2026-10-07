@@ -11,7 +11,7 @@
 	import { leave } from '$lib/views/FaceRows.svelte';
 	import { highlightTitle, highlightSnippet } from '$lib/util/dom';
 	import RowChips from './RowChips.svelte';
-	import type RowEditors from './RowEditors.svelte';
+	import type RowEditors from './editors/RowEditors.svelte';
 	import { nameGuard } from '$lib/util/paths';
 	import { selectionIn, restoreSelection } from '$lib/util/dom';
 

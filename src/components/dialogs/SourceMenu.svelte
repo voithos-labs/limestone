@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SlidersHorizontal, ExternalLink, Star, Trash2, TriangleAlert } from '@lucide/svelte';
-	import Menu from './views/Menu.svelte';
+	import Menu from '../ui/Menu.svelte';
 	import type { MenuEntry } from '$lib/overlays.svelte';
 	import type { Source } from '$lib/models/Source';
 

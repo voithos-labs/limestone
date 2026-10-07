@@ -23,8 +23,8 @@
 	import { mark } from '$lib/overlays.svelte';
 	import { addSourceRequest } from '$lib/overlays.svelte';
 	import { palette } from '$lib/overlays.svelte';
-	import Menu from '../views/Menu.svelte';
-	import EmojiPicker from '../views/EmojiPicker.svelte';
+	import Menu from '../ui/Menu.svelte';
+	import EmojiPicker from '../views/editors/EmojiPicker.svelte';
 	import { dashboardSections } from '$lib/views/project.svelte';
 	import { nameGuard } from '$lib/util/paths';
 
