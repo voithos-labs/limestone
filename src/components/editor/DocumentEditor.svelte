@@ -126,21 +126,18 @@
 
 	// ── Load: the body only; frontmatter stays DocHandle-owned ──────────────────────────
 
-	let content = $state('');
+	// The text last handed to the editor, a fresh object per load: the editor rereads `source` only
+	// when it changes, and a new object counts as a change even when the text is the same.
+	let editorText = $state.raw({ text: '' });
 	let loaded = $state(false);
 	/** Why the file's frontmatter failed to parse, which the hero shows beside its two repairs. */
 	let frontmatterError = $state<string | null>(null);
 
-	/**
-	 * Hands the editor a new text; true when it differs from what the editor shows, so a
-	 * sourceSwap follows. `content` is first brought level with what's been typed since limestone
-	 * last set it, because the editor only reads it when it changes.
-	 */
+	/** Hands the editor a text; true when it differs from what it shows, so a sourceSwap follows. */
 	function setEditorText(next: string): boolean {
-		const live = instance?.getSource() ?? content;
-		content = live;
-		content = next;
-		return next !== live;
+		const swaps = next !== (instance?.getSource() ?? editorText.text);
+		editorText = { text: next };
+		return swaps;
 	}
 
 	$effect(() => {
@@ -166,7 +163,7 @@
 			h.adoptAsDraft();
 		}
 		if (h !== handle) return;
-		content = c;
+		setEditorText(c);
 		loaded = true;
 		frontmatterError = h.frontmatterError;
 	}
@@ -225,7 +222,7 @@
 		unavailable = null;
 		frontmatterError = h.frontmatterError;
 		if (!instance) {
-			content = c;
+			setEditorText(c);
 			loaded = true;
 			return;
 		}
@@ -252,7 +249,7 @@
 				savedBody = text;
 				if (text !== instance.getSource()) swapContent(text, null);
 			} else {
-				content = text;
+				setEditorText(text);
 				loaded = true;
 			}
 		} catch (e) {
@@ -585,7 +582,7 @@
 			if (!ready) return;
 			if (version) {
 				if (liveBody === null) {
-					liveBody = instance?.getSource() ?? content;
+					liveBody = instance?.getSource() ?? editorText.text;
 					liveSelection = instance?.getSelection() ?? null;
 				}
 				swapContent(version.text, version);
@@ -1173,7 +1170,7 @@
 	{:else if loaded}
 		<Editor
 			bind:this={instance}
-			source={content}
+			source={editorText.text}
 			scrollMode={flow ? 'host' : 'self'}
 			header={flow ? undefined : documentHeader}
 			theme={currentThemeType()}
