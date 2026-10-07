@@ -1,44 +1,54 @@
 <script lang="ts">
-	import { reportError } from '$lib/overlays.svelte';
-	import Folder, { folderId, folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
-	import Tag, { tagId } from '$lib/models/Tag';
-	import { isBuiltinUnit } from '$lib/models/View.svelte';
+	import { reportError } from '#lib/overlays.svelte.js';
+	import Folder, {
+		folderId,
+		folderIdSource,
+		folderIdPath,
+		isSourceRoot
+	} from '#lib/models/Folder.js';
+	import Tag, { tagId } from '#lib/models/Tag.js';
+	import { isBuiltinUnit } from '#lib/models/View.svelte.js';
 	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
-	import { openProjectSetup } from '$lib/views/project.svelte';
-	import { metaDialog } from '$lib/overlays.svelte';
+	import { openProjectSetup } from '#lib/views/project.svelte.js';
+	import { metaDialog } from '#lib/overlays.svelte.js';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { mark } from '$lib/overlays.svelte';
-	import { addSourceRequest } from '$lib/overlays.svelte';
-	import { folderNameProblem } from '$lib/util/paths';
+	import { mark } from '#lib/overlays.svelte.js';
+	import { addSourceRequest } from '#lib/overlays.svelte.js';
+	import { folderNameProblem } from '#lib/util/paths.js';
 	import { onMount, onDestroy } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
-	import View from '$lib/models/View.svelte';
-	import type { ViewFace, FilterLeaf } from '$lib/models/View.svelte';
-	import { listSavedViewJSON } from '$lib/models/View.svelte';
-	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import type { TabState } from '$lib/models/EditorState.svelte.js';
-	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { listSources, removeSource, onSourceReconciled, type Source } from '$lib/models/Source';
-	import { folderPresence, type FolderPresence } from '$lib/views/project.svelte';
+	import View from '#lib/models/View.svelte.js';
+	import type { ViewFace, FilterLeaf } from '#lib/models/View.svelte.js';
+	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import type EditorState from '#lib/models/EditorState.svelte.js';
+	import type { TabState } from '#lib/models/EditorState.svelte.js';
+	import type { SettingsState } from '#lib/models/Settings.svelte.js';
+	import {
+		listSources,
+		removeSource,
+		onSourceReconciled,
+		type Source
+	} from '#lib/models/Source.js';
+	import { folderPresence, type FolderPresence } from '#lib/views/project.svelte.js';
 	import GonePage from './GonePage.svelte';
 	import type { GoneAction } from './GoneActions.svelte';
-	import catBox from '$assets/art/cat-box.txt?raw';
+	import catBox from '#assets/art/cat-box.txt?raw';
 	import SourceDialog from '../dialogs/SourceDialog.svelte';
-	import DocHandle from '$lib/models/DocHandle';
+	import DocHandle from '#lib/models/DocHandle.js';
 	import ViewHeader from '../views/ViewHeader.svelte';
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import MasonryFace from '../views/faces/MasonryFace.svelte';
 	import KanbanFace from '../views/faces/KanbanFace.svelte';
-	import { history, undoKey } from '$lib/views/FaceRows.svelte';
+	import { history, undoKey } from '#lib/views/FaceRows.svelte.js';
 	import DashboardFace from '../views/faces/DashboardFace.svelte';
 	import DocFace from '../views/faces/DocFace.svelte';
-	import { DocPicker } from '$lib/views/project.svelte';
+	import { DocPicker } from '#lib/views/project.svelte.js';
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import Menu from '../ui/Menu.svelte';
 	import CoverSourceDialog from '../dialogs/CoverSourceDialog.svelte';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
-	import type { MenuEntry } from '$lib/overlays.svelte';
+	import type { MenuEntry } from '#lib/overlays.svelte.js';
 	import {
 		Crop,
 		X,
@@ -58,7 +68,7 @@
 		SquareCheck
 	} from '@lucide/svelte';
 	import NewFab from '../views/NewFab.svelte';
-	import { createInView } from '$lib/views/FaceRows.svelte';
+	import { createInView } from '#lib/views/FaceRows.svelte.js';
 
 	let {
 		view,

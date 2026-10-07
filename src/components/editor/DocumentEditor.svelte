@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { describeError, isRetryable, splitMessage } from '$lib/overlays.svelte';
+	import { describeError, isRetryable, splitMessage } from '#lib/overlays.svelte.js';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { Editor } from '@voithos-labs/aragonite';
 	import type {
@@ -17,36 +17,36 @@
 	import { createPasteImportLedger } from './paste-imports';
 	import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 	import { openUrl } from '@tauri-apps/plugin-opener';
-	import { deleteSourceAsset, importSourceAssetBytes } from '$lib/services/assets';
-	import { currentThemeType } from '$lib/services/theme.svelte';
-	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { registerFlush } from '$lib/services/platform';
-	import { onDocChanged, onSourceReconciled, sourceName } from '$lib/models/Source';
-	import DocHandle, { readErrorKind, type ReadErrorKind } from '$lib/models/DocHandle';
-	import { historyCheckpoints, historyTextAt } from '$lib/services/history';
+	import { deleteSourceAsset, importSourceAssetBytes } from '#lib/services/assets.js';
+	import { currentThemeType } from '#lib/services/theme.svelte.js';
+	import type { SettingsState } from '#lib/models/Settings.svelte.js';
+	import { registerFlush } from '#lib/services/platform.js';
+	import { onDocChanged, onSourceReconciled, sourceName } from '#lib/models/Source.js';
+	import DocHandle, { readErrorKind, type ReadErrorKind } from '#lib/models/DocHandle.js';
+	import { historyCheckpoints, historyTextAt } from '#lib/services/history.js';
 	import GonePage from '../pages/GonePage.svelte';
 	import GoneActions, { type GoneAction } from '../pages/GoneActions.svelte';
-	import DocHistory, { type HistoryVersion } from '$lib/models/DocHistory.svelte';
-	import View from '$lib/models/View.svelte';
-	import { tagId } from '$lib/models/Tag';
-	import { resolveWikiLink, touchLinkIndex } from '$lib/services/links.svelte';
-	import { joinRel, targetStem } from '$lib/services/links.svelte';
+	import DocHistory, { type HistoryVersion } from '#lib/models/DocHistory.svelte.js';
+	import View from '#lib/models/View.svelte.js';
+	import { tagId } from '#lib/models/Tag.js';
+	import { resolveWikiLink, touchLinkIndex } from '#lib/services/links.svelte.js';
+	import { joinRel, targetStem } from '#lib/services/links.svelte.js';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 	import { historyDecorations } from './history-decorations';
 	import { bodyTags, createTagStepper, type BodyTag } from './body-tags';
 	import { findHeading } from './note-links';
 	import { noteLinkMenu } from './note-links';
 	import { tagMenu } from './body-tags';
-	import { appEditorShortcut, registerDocumentEditor } from '$lib/shortcuts';
-	import { TabState, type TabContent } from '$lib/models/EditorState.svelte.js';
-	import { getViewIcon } from '$lib/views/filterDisplay';
+	import { appEditorShortcut, registerDocumentEditor } from '#lib/shortcuts.js';
+	import { TabState, type TabContent } from '#lib/models/EditorState.svelte.js';
+	import { getViewIcon } from '#lib/views/filterDisplay.js';
 	import { LayoutList, TextAlignStart } from '@lucide/svelte';
-	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
+	import type EditorStateModel from '#lib/models/EditorState.svelte.js';
 	import DocumentHero from './DocumentHero.svelte';
-	import { metaDialog } from '$lib/overlays.svelte';
+	import { metaDialog } from '#lib/overlays.svelte.js';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
 	import HistoryPanel from './HistoryPanel.svelte';
-	import { portal } from '$lib/util/dom';
+	import { portal } from '#lib/util/dom.js';
 
 	let {
 		tab,

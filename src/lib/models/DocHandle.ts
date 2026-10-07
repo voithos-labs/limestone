@@ -29,11 +29,11 @@ import { invoke } from '@tauri-apps/api/core';
 import * as yaml from 'js-yaml';
 
 // Internal
-import { select, execute } from '$lib/services/db';
-import { addChangeHistory, removeHistory } from '$lib/services/history';
-import { LinkRewriteFailure, rewriteLinksForMove } from '$lib/services/links.svelte';
-import { isRetryable, toasts, mark } from '$lib/overlays.svelte';
-import { sanitizeSegment } from '$lib/util/paths';
+import { select, execute } from '#lib/services/db.js';
+import { addChangeHistory, removeHistory } from '#lib/services/history.js';
+import { LinkRewriteFailure, rewriteLinksForMove } from '#lib/services/links.svelte.js';
+import { isRetryable, toasts, mark } from '#lib/overlays.svelte.js';
+import { sanitizeSegment } from '#lib/util/paths.js';
 import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
 import Tag, { tagSlug, type TagRow } from './Tag';
 import Folder from './Folder';

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getCurrentWindow } from '@tauri-apps/api/window';
-	import type { WindowStyle } from '$lib/services/platform';
+	import type { WindowStyle } from '#lib/services/platform.js';
 
 	let { style, native = false }: { style: WindowStyle; native?: boolean } = $props();
 

@@ -45,15 +45,20 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
-import type DocHandle from '$lib/models/DocHandle';
-import type Tag from '$lib/models/Tag';
-import Folder, { folderId, folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
-import { listSources, sourceName, type Source } from '$lib/models/Source';
-import { select } from '$lib/services/db';
+import type DocHandle from '#lib/models/DocHandle.js';
+import type Tag from '#lib/models/Tag.js';
+import Folder, {
+	folderId,
+	folderIdPath,
+	folderIdSource,
+	isSourceRoot
+} from '#lib/models/Folder.js';
+import { listSources, sourceName, type Source } from '#lib/models/Source.js';
+import { select } from '#lib/services/db.js';
 import { load, type Store } from '@tauri-apps/plugin-store';
-import { toasts } from '$lib/overlays.svelte';
-import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
-import { appSettings } from '$lib/models/Settings.svelte';
+import { toasts } from '#lib/overlays.svelte.js';
+import { resolveRelativeDate, wallClockToMs } from '#lib/views/dateFormat.js';
+import { appSettings } from '#lib/models/Settings.svelte.js';
 
 export type ViewFaceType =
 	'list' | 'masonry' | 'dashboard' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';

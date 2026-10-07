@@ -36,9 +36,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import DocHandle from '$lib/models/DocHandle';
-import View, { listSavedViewJSON } from '$lib/models/View.svelte.js';
-import type Session from '$lib/models/Session.svelte.js';
+import DocHandle from '#lib/models/DocHandle.js';
+import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
+import type Session from '#lib/models/Session.svelte.js';
 
 // ── Focus (used elsewhere) ───────────────────────────────────────────────────────────
 

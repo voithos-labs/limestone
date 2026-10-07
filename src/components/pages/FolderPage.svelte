@@ -1,43 +1,54 @@
 <script lang="ts">
-	import { folderPresence, type FolderPresence } from '$lib/views/project.svelte';
+	import { folderPresence, type FolderPresence } from '#lib/views/project.svelte.js';
 	import GonePage from './GonePage.svelte';
 	import type { GoneAction } from './GoneActions.svelte';
-	import catBox from '$assets/art/cat-box.txt?raw';
-	import { reportError } from '$lib/overlays.svelte';
+	import catBox from '#assets/art/cat-box.txt?raw';
+	import { reportError } from '#lib/overlays.svelte.js';
 	import { onDestroy, onMount } from 'svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
-	import type { FilterNode, ViewField } from '$lib/models/View.svelte';
-	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import type { TabState } from '$lib/models/EditorState.svelte.js';
-	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import Folder, { folderId, folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
+	import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import type { FilterNode, ViewField } from '#lib/models/View.svelte.js';
+	import type EditorState from '#lib/models/EditorState.svelte.js';
+	import type { TabState } from '#lib/models/EditorState.svelte.js';
+	import type { SettingsState } from '#lib/models/Settings.svelte.js';
+	import Folder, {
+		folderId,
+		folderIdPath,
+		folderIdSource,
+		isSourceRoot
+	} from '#lib/models/Folder.js';
 	import {
 		getSource,
 		onSourceReconciled,
 		removeSource,
 		sourceName,
 		type Source
-	} from '$lib/models/Source';
-	import DocHandle from '$lib/models/DocHandle';
-	import { mark } from '$lib/overlays.svelte';
-	import { addSourceRequest } from '$lib/overlays.svelte';
-	import { folderNameProblem } from '$lib/util/paths';
+	} from '#lib/models/Source.js';
+	import DocHandle from '#lib/models/DocHandle.js';
+	import { mark } from '#lib/overlays.svelte.js';
+	import { addSourceRequest } from '#lib/overlays.svelte.js';
+	import { folderNameProblem } from '#lib/util/paths.js';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import Menu from '../ui/Menu.svelte';
 	import InputPopover from '../ui/InputPopover.svelte';
 	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
-	import frog from '$assets/art/frog.txt?raw';
-	import { openProjectSetup } from '$lib/views/project.svelte';
-	import { metaDialog } from '$lib/overlays.svelte';
-	import { isMove, readMove, movingNow, moveInto, type MovePayload } from '$lib/views/move.svelte';
+	import frog from '#assets/art/frog.txt?raw';
+	import { openProjectSetup } from '#lib/views/project.svelte.js';
+	import { metaDialog } from '#lib/overlays.svelte.js';
+	import {
+		isMove,
+		readMove,
+		movingNow,
+		moveInto,
+		type MovePayload
+	} from '#lib/views/move.svelte.js';
 	import SourceDialog from '../dialogs/SourceDialog.svelte';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
 	import NewFab from '../views/NewFab.svelte';
-	import { undoKey } from '$lib/views/FaceRows.svelte';
-	import { contextMenu } from '$lib/overlays.svelte';
-	import { createInView } from '$lib/views/FaceRows.svelte';
+	import { undoKey } from '#lib/views/FaceRows.svelte.js';
+	import { contextMenu } from '#lib/overlays.svelte.js';
+	import { createInView } from '#lib/views/FaceRows.svelte.js';
 	import {
 		ChevronRight,
 		ChevronDown,

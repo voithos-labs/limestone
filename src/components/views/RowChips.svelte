@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Check } from '@lucide/svelte';
-	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
-	import { isDerived, isStatusField } from '$lib/models/View.svelte';
+	import type { MemberRow, ViewField } from '#lib/models/View.svelte.js';
+	import { isDerived, isStatusField } from '#lib/models/View.svelte.js';
 	import {
 		fieldLabel,
 		folderDir,
@@ -10,12 +10,12 @@
 		statefulValue,
 		titleFor,
 		valueFor
-	} from '$lib/views/fieldValue';
-	import { formatDateCompact } from '$lib/views/dateFormat';
-	import { dueState } from '$lib/views/fieldValue';
-	import { getFieldIcon } from '$lib/views/filterDisplay';
-	import { listPrefixed } from '$lib/views/fieldValue';
-	import type { FaceRows } from '$lib/views/FaceRows.svelte';
+	} from '#lib/views/fieldValue.js';
+	import { formatDateCompact } from '#lib/views/dateFormat.js';
+	import { dueState } from '#lib/views/fieldValue.js';
+	import { getFieldIcon } from '#lib/views/filterDisplay.js';
+	import { listPrefixed } from '#lib/views/fieldValue.js';
+	import type { FaceRows } from '#lib/views/FaceRows.svelte.js';
 	import CellValue from './CellValue.svelte';
 
 	// One lane of a row's fields. A value is drawn only when the row has it, unless the face

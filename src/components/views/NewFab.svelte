@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Plus } from '@lucide/svelte';
 	import Menu from '../ui/Menu.svelte';
-	import type { MenuItem } from '$lib/overlays.svelte';
+	import type { MenuItem } from '#lib/overlays.svelte.js';
 
 	let {
 		items,

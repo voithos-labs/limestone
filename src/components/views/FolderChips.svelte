@@ -16,13 +16,13 @@
 		Trash2,
 		SquareArrowOutUpRight
 	} from '@lucide/svelte';
-	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
-	import { getSource } from '$lib/models/Source';
-	import View from '$lib/models/View.svelte';
-	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/overlays.svelte';
-	import { metaDialog } from '$lib/overlays.svelte';
-	import { folderNameProblem, nameGuard } from '$lib/util/paths';
-	import { mark } from '$lib/overlays.svelte';
+	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
+	import { getSource } from '#lib/models/Source.js';
+	import View from '#lib/models/View.svelte.js';
+	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
+	import { metaDialog } from '#lib/overlays.svelte.js';
+	import { folderNameProblem, nameGuard } from '#lib/util/paths.js';
+	import { mark } from '#lib/overlays.svelte.js';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import {
 		startMove,
@@ -32,7 +32,7 @@
 		movingNow,
 		canMoveInto,
 		moveInto
-	} from '$lib/views/move.svelte';
+	} from '#lib/views/move.svelte.js';
 
 	// Folders as a strip of compact chips: projects first with their own icon, plain folders
 	// after. Shows a few rows and tucks the rest behind a quiet "show more"

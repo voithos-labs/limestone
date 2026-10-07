@@ -10,9 +10,9 @@ import {
 	TODO_DONE,
 	isStatusField,
 	type StatusOption
-} from '$lib/models/View.svelte';
-import { sourceName as sourceFolderName, type Source } from '$lib/models/Source';
-import { formatDateFriendly, formatDateISO, formatViewDate } from '$lib/views/dateFormat';
+} from '#lib/models/View.svelte.js';
+import { sourceName as sourceFolderName, type Source } from '#lib/models/Source.js';
+import { formatDateFriendly, formatDateISO, formatViewDate } from '#lib/views/dateFormat.js';
 
 // reads a stateful field value (views.<unit key>.<field>) off a row's props
 export function rawStatefulValue(row: MemberRow, field: ViewField): unknown {

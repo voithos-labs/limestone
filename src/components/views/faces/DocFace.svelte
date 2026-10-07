@@ -1,21 +1,21 @@
 <script lang="ts">
-	import { reportError } from '$lib/overlays.svelte';
-	import type View from '$lib/models/View.svelte';
-	import type { ViewFace, FilterNode, MemberRow } from '$lib/models/View.svelte';
-	import { TabState } from '$lib/models/EditorState.svelte.js';
-	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import DocHandle from '$lib/models/DocHandle';
-	import { getDefaultSourceId, listSources, pickCreationSource } from '$lib/models/Source';
-	import { createMetaDate, deriveCreateContext, folderPath } from '$lib/views/FaceRows.svelte';
-	import { seedProperties } from '$lib/views/fieldValue';
-	import Folder from '$lib/models/Folder';
-	import type { DocPicker } from '$lib/views/project.svelte';
-	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { searchDocuments } from '$lib/services/search';
-	import type { SearchResult } from '$lib/services/search';
+	import { reportError } from '#lib/overlays.svelte.js';
+	import type View from '#lib/models/View.svelte.js';
+	import type { ViewFace, FilterNode, MemberRow } from '#lib/models/View.svelte.js';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
+	import type EditorState from '#lib/models/EditorState.svelte.js';
+	import DocHandle from '#lib/models/DocHandle.js';
+	import { getDefaultSourceId, listSources, pickCreationSource } from '#lib/models/Source.js';
+	import { createMetaDate, deriveCreateContext, folderPath } from '#lib/views/FaceRows.svelte.js';
+	import { seedProperties } from '#lib/views/fieldValue.js';
+	import Folder from '#lib/models/Folder.js';
+	import type { DocPicker } from '#lib/views/project.svelte.js';
+	import type { SettingsState } from '#lib/models/Settings.svelte.js';
+	import { searchDocuments } from '#lib/services/search.js';
+	import type { SearchResult } from '#lib/services/search.js';
 	import DocumentEditor from '../../editor/DocumentEditor.svelte';
 	import { untrack } from 'svelte';
-	import { onSourceReconciled } from '$lib/models/Source';
+	import { onSourceReconciled } from '#lib/models/Source.js';
 
 	let {
 		view,

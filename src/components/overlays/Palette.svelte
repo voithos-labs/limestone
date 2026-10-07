@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { reportError } from '$lib/overlays.svelte';
-	import { mark } from '$lib/overlays.svelte';
+	import { reportError } from '#lib/overlays.svelte.js';
+	import { mark } from '#lib/overlays.svelte.js';
 	import { tick, untrack } from 'svelte';
 	import {
 		Search,
@@ -17,21 +17,27 @@
 		FolderPlus
 	} from '@lucide/svelte';
 	import type { Component } from 'svelte';
-	import type Session from '$lib/models/Session.svelte.js';
-	import { TabState } from '$lib/models/EditorState.svelte.js';
-	import type { SearchResult } from '$lib/services/search';
-	import { searchDocuments } from '$lib/services/search';
-	import { select } from '$lib/services/db';
-	import { listSources, sourceName, getSource, touchSource, type Source } from '$lib/models/Source';
-	import DocHandle from '$lib/models/DocHandle';
-	import Tag from '$lib/models/Tag';
-	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
-	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
-	import { actions, keyTokens, type Action } from '$lib/shortcuts';
-	import { highlightTitle } from '$lib/util/dom';
-	import { palette } from '$lib/overlays.svelte';
-	import { openProjectSetup } from '$lib/views/project.svelte';
-	import { getViewIcon } from '$lib/views/filterDisplay';
+	import type Session from '#lib/models/Session.svelte.js';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
+	import type { SearchResult } from '#lib/services/search.js';
+	import { searchDocuments } from '#lib/services/search.js';
+	import { select } from '#lib/services/db.js';
+	import {
+		listSources,
+		sourceName,
+		getSource,
+		touchSource,
+		type Source
+	} from '#lib/models/Source.js';
+	import DocHandle from '#lib/models/DocHandle.js';
+	import Tag from '#lib/models/Tag.js';
+	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
+	import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import { actions, keyTokens, type Action } from '#lib/shortcuts.js';
+	import { highlightTitle } from '#lib/util/dom.js';
+	import { palette } from '#lib/overlays.svelte.js';
+	import { openProjectSetup } from '#lib/views/project.svelte.js';
+	import { getViewIcon } from '#lib/views/filterDisplay.js';
 
 	let { session, onAddSource }: { session: Session; onAddSource: () => void } = $props();
 	const editor = $derived(session.active);

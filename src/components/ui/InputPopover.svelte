@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack, type Component } from 'svelte';
-	import { nameGuard, type NameKind } from '$lib/util/paths';
+	import { nameGuard, type NameKind } from '#lib/util/paths.js';
 
 	let {
 		open = $bindable(false),

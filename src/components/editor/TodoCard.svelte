@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { reportError } from '$lib/overlays.svelte';
+	import { reportError } from '#lib/overlays.svelte.js';
 	import { Check, X, Calendar, CalendarClock } from '@lucide/svelte';
-	import View from '$lib/models/View.svelte';
-	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
-	import { describeBulkFailure } from '$lib/models/View.svelte';
-	import type DocHandle from '$lib/models/DocHandle';
-	import { rawStatefulValue, withStatefulValue } from '$lib/views/fieldValue';
-	import { formatDateCompact } from '$lib/views/dateFormat';
-	import { dueState } from '$lib/views/fieldValue';
-	import { toasts, mark } from '$lib/overlays.svelte';
+	import View from '#lib/models/View.svelte.js';
+	import type { MemberRow, ViewField } from '#lib/models/View.svelte.js';
+	import { describeBulkFailure } from '#lib/models/View.svelte.js';
+	import type DocHandle from '#lib/models/DocHandle.js';
+	import { rawStatefulValue, withStatefulValue } from '#lib/views/fieldValue.js';
+	import { formatDateCompact } from '#lib/views/dateFormat.js';
+	import { dueState } from '#lib/views/fieldValue.js';
+	import { toasts, mark } from '#lib/overlays.svelte.js';
 	import CellEditor from '../views/editors/CellEditor.svelte';
 
 	// A note that is a todo wears its todo-ness as one card in the meta row: the checkbox,

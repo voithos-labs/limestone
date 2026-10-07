@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
 	import { Search, ChevronRight, ExternalLink } from '@lucide/svelte';
-	import type { TabState } from '$lib/models/EditorState.svelte.js';
+	import type { TabState } from '#lib/models/EditorState.svelte.js';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 
 	interface NoticeComponent {

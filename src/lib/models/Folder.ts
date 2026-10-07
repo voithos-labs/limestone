@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { select, execute } from '$lib/services/db';
+import { select, execute } from '#lib/services/db.js';
 import {
 	deleteSavedView,
 	folderPropKey,
@@ -7,9 +7,9 @@ import {
 	remapIdsInSavedViews,
 	renameUnitViewPrefix,
 	type BulkResult
-} from '$lib/models/View.svelte';
-import { flushAll } from '$lib/services/platform';
-import { reportError, mark } from '$lib/overlays.svelte';
+} from '#lib/models/View.svelte.js';
+import { flushAll } from '#lib/services/platform.js';
+import { reportError, mark } from '#lib/overlays.svelte.js';
 
 // a folder's metadata policy: its own choice, or whatever its parent (and Git) decide
 export type MetaMode = 'follow' | 'write' | 'off';

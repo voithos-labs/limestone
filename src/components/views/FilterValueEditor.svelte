@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
-	import type { ViewField } from '$lib/models/View.svelte';
+	import type { ViewField } from '#lib/models/View.svelte.js';
 	import { SquareCheck, Square } from '@lucide/svelte';
 	import Menu from '../ui/Menu.svelte';
 	import TagMenu from './editors/TagMenu.svelte';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { describeError, reportError } from '$lib/overlays.svelte';
+	import { describeError, reportError } from '#lib/overlays.svelte.js';
 	import {
 		resetAllSettings,
 		getAppInfo,
@@ -11,8 +11,8 @@
 		type SettingCategory,
 		type SettingDef,
 		type SettingValue
-	} from '$lib/models/Settings.svelte';
-	import { ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent } from '$lib/services/theme.svelte';
+	} from '#lib/models/Settings.svelte.js';
+	import { ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent } from '#lib/services/theme.svelte.js';
 	import {
 		getDefaultSourceId,
 		listSources,
@@ -20,18 +20,18 @@
 		setDefaultSource,
 		sourceName,
 		type Source
-	} from '$lib/models/Source';
-	import { select } from '$lib/services/db';
+	} from '#lib/models/Source.js';
+	import { select } from '#lib/services/db.js';
 	import { openPath } from '@tauri-apps/plugin-opener';
 	import SourceDialog from '../dialogs/SourceDialog.svelte';
 	import SourceMenu from '../dialogs/SourceMenu.svelte';
 	import Toggle from '../ui/Toggle.svelte';
-	import { updater } from '$lib/services/updater.svelte';
+	import { updater } from '#lib/services/updater.svelte.js';
 	import Menu from '../ui/Menu.svelte';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
-	import type { MenuEntry, MenuItem } from '$lib/overlays.svelte';
-	import type Session from '$lib/models/Session.svelte.js';
-	import type { ViewTab } from '$lib/models/Session.svelte.js';
+	import type { MenuEntry, MenuItem } from '#lib/overlays.svelte.js';
+	import type Session from '#lib/models/Session.svelte.js';
+	import type { ViewTab } from '#lib/models/Session.svelte.js';
 	import {
 		actions,
 		keyTokens,
@@ -40,7 +40,7 @@
 		keyCapture,
 		SHORTCUT_CATEGORIES,
 		type Action
-	} from '$lib/shortcuts';
+	} from '#lib/shortcuts.js';
 	import { onDestroy, onMount, type Component } from 'svelte';
 	import {
 		RotateCcw,

@@ -3,8 +3,8 @@
 		isWidgetActivationClick,
 		type InlineWidgetComponentProps
 	} from '@voithos-labs/aragonite/plugin';
-	import { parseWikiTarget } from '$lib/services/links.svelte';
-	import { linkIndex, resolveWikiLink } from '$lib/services/links.svelte';
+	import { parseWikiTarget } from '#lib/services/links.svelte.js';
+	import { linkIndex, resolveWikiLink } from '#lib/services/links.svelte.js';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 
 	let { source, getPresentationMode }: InlineWidgetComponentProps = $props();

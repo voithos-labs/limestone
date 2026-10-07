@@ -1,18 +1,18 @@
 <script lang="ts">
-	import { reportError } from '$lib/overlays.svelte';
+	import { reportError } from '#lib/overlays.svelte.js';
 	import { FilePlus, LayoutPanelTop, FolderInput, Bookmark, TextAlignStart } from '@lucide/svelte';
 	import type { Component } from 'svelte';
-	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import DocHandle from '$lib/models/DocHandle';
-	import View from '$lib/models/View.svelte';
-	import { listSources, sourceName, type Source } from '$lib/models/Source';
-	import { folderIdSource } from '$lib/models/Folder';
-	import { select } from '$lib/services/db';
-	import { getViewIcon } from '$lib/views/filterDisplay';
-	import { formatDateFriendly } from '$lib/views/dateFormat';
-	import { openProjectSetup } from '$lib/views/project.svelte';
-	import { mark } from '$lib/overlays.svelte';
-	import { addSourceRequest } from '$lib/overlays.svelte';
+	import type EditorState from '#lib/models/EditorState.svelte.js';
+	import DocHandle from '#lib/models/DocHandle.js';
+	import View from '#lib/models/View.svelte.js';
+	import { listSources, sourceName, type Source } from '#lib/models/Source.js';
+	import { folderIdSource } from '#lib/models/Folder.js';
+	import { select } from '#lib/services/db.js';
+	import { getViewIcon } from '#lib/views/filterDisplay.js';
+	import { formatDateFriendly } from '#lib/views/dateFormat.js';
+	import { openProjectSetup } from '#lib/views/project.svelte.js';
+	import { mark } from '#lib/overlays.svelte.js';
+	import { addSourceRequest } from '#lib/overlays.svelte.js';
 
 	// Where the app lands when no tab is open: what you can start, and what you were in
 	let { editor, onAddSource }: { editor: EditorState; onAddSource?: () => void } = $props();

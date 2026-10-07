@@ -1,20 +1,25 @@
 <script lang="ts">
 	import { Plus } from '@lucide/svelte';
 	import type { Component } from 'svelte';
-	import type View from '$lib/models/View.svelte';
-	import type { FilterCompound, ViewField, FilterLeaf, FilterNode } from '$lib/models/View.svelte';
-	import { METADATA_FIELD, VIEW_FIELD_OPS } from '$lib/models/View.svelte';
-	import Tag from '$lib/models/Tag';
-	import Folder, { folderIdSource, isSourceRoot } from '$lib/models/Folder';
-	import { getSource, sourceName } from '$lib/models/Source';
+	import type View from '#lib/models/View.svelte.js';
+	import type {
+		FilterCompound,
+		ViewField,
+		FilterLeaf,
+		FilterNode
+	} from '#lib/models/View.svelte.js';
+	import { METADATA_FIELD, VIEW_FIELD_OPS } from '#lib/models/View.svelte.js';
+	import Tag from '#lib/models/Tag.js';
+	import Folder, { folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
+	import { getSource, sourceName } from '#lib/models/Source.js';
 	import {
 		getFieldIcon,
 		getOpLabel,
 		opHasValue,
 		formatFilterValue,
 		opsFor
-	} from '$lib/views/filterDisplay';
-	import { fieldLabel } from '$lib/views/fieldValue';
+	} from '#lib/views/filterDisplay.js';
+	import { fieldLabel } from '#lib/views/fieldValue.js';
 	import { Tags, Folder as FolderIcon } from '@lucide/svelte';
 	import FilterChipIsland from './FilterChipIsland.svelte';
 	import Menu from '../ui/Menu.svelte';

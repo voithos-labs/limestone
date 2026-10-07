@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import View, { ViewFace, VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
-	import { fieldLabel } from '$lib/views/fieldValue';
-	import { getFieldIcon } from '$lib/views/filterDisplay';
-	import type { FilterNode, ViewField } from '$lib/models/View.svelte';
-	import { onSourceReconciled } from '$lib/models/Source';
-	import { folderIdPath, folderIdSource } from '$lib/models/Folder';
-	import { select } from '$lib/services/db';
+	import View, { ViewFace, VIEW_FIELD_SORTABLE } from '#lib/models/View.svelte.js';
+	import { fieldLabel } from '#lib/views/fieldValue.js';
+	import { getFieldIcon } from '#lib/views/filterDisplay.js';
+	import type { FilterNode, ViewField } from '#lib/models/View.svelte.js';
+	import { onSourceReconciled } from '#lib/models/Source.js';
+	import { folderIdPath, folderIdSource } from '#lib/models/Folder.js';
+	import { select } from '#lib/services/db.js';
 	import ListFace from './ListFace.svelte';
 	import SectionHead from '../SectionHead.svelte';
 	import {
@@ -19,14 +19,14 @@
 		GripVertical,
 		EyeOff
 	} from '@lucide/svelte';
-	import { contextMenu, type CtxEntry } from '$lib/overlays.svelte';
+	import { contextMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import {
 		dashboardSections,
 		DASH_SECTION_LABEL,
 		type DashSection
-	} from '$lib/views/project.svelte';
-	import Folder from '$lib/models/Folder';
-	import { listSavedViewJSON } from '$lib/models/View.svelte';
+	} from '#lib/views/project.svelte.js';
+	import Folder from '#lib/models/Folder.js';
+	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
 	import FolderChips from '../FolderChips.svelte';
 	import { LayoutArrowDown, Settings2, ArrowDownUp, ArrowUpAZ, ArrowDownAZ } from '@lucide/svelte';
 	import ArrangeFields from '../ArrangeFields.svelte';

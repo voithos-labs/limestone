@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type DocHistory from '$lib/models/DocHistory.svelte';
+	import type DocHistory from '#lib/models/DocHistory.svelte.js';
 	import { History, X } from '@lucide/svelte';
 
 	let {
