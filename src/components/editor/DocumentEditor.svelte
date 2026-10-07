@@ -634,15 +634,31 @@
 
 	let textTags = $state<BodyTag[]>([]);
 
+	// Typing reads the tags once it pauses, since each read parses the whole note. A swap reads
+	// them at once, so a different text never shows the old one's tags.
+	const TAG_READ_DELAY_MS = 300;
+
 	$effect(() => {
 		const inst = instance;
 		if (!inst || !loaded) return;
-		const read = () => untrack(() => (textTags = bodyTags(inst.getSource())));
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const cancel = () => {
+			if (timer) clearTimeout(timer);
+			timer = null;
+		};
+		const read = () => {
+			cancel();
+			untrack(() => (textTags = bodyTags(inst.getSource())));
+		};
 		read();
 		const events = inst.getEvents();
-		const offEdit = events.on('edit', read);
+		const offEdit = events.on('edit', () => {
+			cancel();
+			timer = setTimeout(read, TAG_READ_DELAY_MS);
+		});
 		const offSwap = events.on('sourceSwap', read);
 		return () => {
+			cancel();
 			offEdit();
 			offSwap();
 		};
