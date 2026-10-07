@@ -131,6 +131,18 @@
 	/** Why the file's frontmatter failed to parse, which the hero shows beside its two repairs. */
 	let frontmatterError = $state<string | null>(null);
 
+	/**
+	 * Hands the editor a new text; true when it differs from what the editor shows, so a
+	 * sourceSwap follows. `content` is first brought level with what's been typed since limestone
+	 * last set it, because the editor only reads it when it changes.
+	 */
+	function setEditorText(next: string): boolean {
+		const live = instance?.getSource() ?? content;
+		content = live;
+		content = next;
+		return next !== live;
+	}
+
 	$effect(() => {
 		const h = handle;
 		loaded = false;
@@ -475,7 +487,7 @@
 		const live = instance.getSource();
 		const body = mode === 'rebuild' ? DocHandle.stripFence(live) : live;
 		// The save takes the body directly rather than waiting on the re-seed to reach the editor.
-		if (body !== live) content = body;
+		setEditorText(body);
 		await flushSave({ body, rebuildFrontmatter: true });
 		await tick();
 		await reloadFromDisk(h);
@@ -545,15 +557,14 @@
 	function swapContent(next: string, shown: HistoryVersion | null) {
 		const el = scroller();
 		const top = el?.scrollTop ?? 0;
-		const swaps = next !== content;
 		swappingTo = shown;
-		content = next;
+		const swaps = setEditorText(next);
 		void tick().then(() => {
 			if (el) {
 				el.scrollTop = top;
 				requestAnimationFrame(() => (el.scrollTop = top));
 			}
-			// same text as before, so the editor has nothing to swap and no sourceSwap comes
+			// the text the editor already shows, so it has nothing to swap and no sourceSwap comes
 			if (!swaps) {
 				shownVersion = shown;
 				decorations?.invalidate();
@@ -679,7 +690,7 @@
 			slug
 		});
 		if (body === null) return;
-		content = body;
+		setEditorText(body);
 		await flushSave({ body });
 	}
 
