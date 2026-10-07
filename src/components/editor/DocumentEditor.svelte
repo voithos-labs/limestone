@@ -126,10 +126,19 @@
 
 	// ── Load: the body only; frontmatter stays DocHandle-owned ──────────────────────────
 
-	let content = $state('');
+	// The text last handed to the editor, a fresh object per load: the editor rereads `source` only
+	// when it changes, and a new object counts as a change even when the text is the same.
+	let editorText = $state.raw({ text: '' });
 	let loaded = $state(false);
 	/** Why the file's frontmatter failed to parse, which the hero shows beside its two repairs. */
 	let frontmatterError = $state<string | null>(null);
+
+	/** Hands the editor a text; true when it differs from what it shows, so a sourceSwap follows. */
+	function setEditorText(next: string): boolean {
+		const swaps = next !== (instance?.getSource() ?? editorText.text);
+		editorText = { text: next };
+		return swaps;
+	}
 
 	$effect(() => {
 		const h = handle;
@@ -154,7 +163,7 @@
 			h.adoptAsDraft();
 		}
 		if (h !== handle) return;
-		content = c;
+		setEditorText(c);
 		loaded = true;
 		frontmatterError = h.frontmatterError;
 	}
@@ -213,7 +222,7 @@
 		unavailable = null;
 		frontmatterError = h.frontmatterError;
 		if (!instance) {
-			content = c;
+			setEditorText(c);
 			loaded = true;
 			return;
 		}
@@ -240,7 +249,7 @@
 				savedBody = text;
 				if (text !== instance.getSource()) swapContent(text, null);
 			} else {
-				content = text;
+				setEditorText(text);
 				loaded = true;
 			}
 		} catch (e) {
@@ -372,9 +381,9 @@
 
 	const SAVE_DEBOUNCE_MS = 250;
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
-	// Captured when the edit lands, so a flush that outlives the editor instance (window close,
-	// tab teardown) still has a body to write.
-	let pendingSource: string | null = null;
+	// The editor a pending save reads from, so a flush that runs after `instance` is unbound (tab
+	// teardown) still gets the text that was typed.
+	let pendingEditor: EditorInstance | null = null;
 	// What we last wrote, or what the editor started with. Comparing against it keeps an untouched
 	// document unsaved even when the editor's output differs from the file on disk.
 	let savedBody: string | null = null;
@@ -389,13 +398,12 @@
 			clearTimeout(saveTimer);
 			saveTimer = null;
 		}
-		// Ask the editor now: its `edit` event is debounced, so the last thing it handed us can be a
-		// whole typing burst behind. `pendingSource` is the fallback when the editor is already gone.
+		// Read here, when the save runs, not on every key: the whole note is serialized to get it.
 		const body =
 			deleted || unavailable
 				? null
-				: (opts.body ?? liveBody ?? instance?.getSource() ?? pendingSource);
-		pendingSource = null;
+				: (opts.body ?? liveBody ?? (instance ?? pendingEditor)?.getSource() ?? null);
+		pendingEditor = null;
 		// A frontmatter rebuild writes even an unchanged body: the repair is in the part of the file
 		// the editor never holds.
 		if (!handle || body === null || (body === savedBody && !opts.rebuildFrontmatter)) return;
@@ -423,18 +431,14 @@
 
 	function scheduleSave() {
 		if (liveBody !== null) return;
-		pendingSource = instance?.getSource() ?? pendingSource;
+		pendingEditor = instance ?? pendingEditor;
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
 	}
 
 	// ── Outside edits, and the frontmatter repair ───────────────────────────────────────
 
-	/**
-	 * Whether an edit here is still on its way to disk, so nothing from disk may replace it. The
-	 * editor batches its edit event, so a keystroke runs ahead of the save timer it will schedule;
-	 * the document itself is asked, not just the timers.
-	 */
+	/** Whether an edit here is still on its way to disk, so nothing from disk may replace it. */
 	function hasUnsavedEdits(): boolean {
 		if (saveTimer !== null || saving !== null) return true;
 		const live = liveBody ?? instance?.getSource();
@@ -480,7 +484,7 @@
 		const live = instance.getSource();
 		const body = mode === 'rebuild' ? DocHandle.stripFence(live) : live;
 		// The save takes the body directly rather than waiting on the re-seed to reach the editor.
-		if (body !== live) content = body;
+		setEditorText(body);
 		await flushSave({ body, rebuildFrontmatter: true });
 		await tick();
 		await reloadFromDisk(h);
@@ -550,15 +554,14 @@
 	function swapContent(next: string, shown: HistoryVersion | null) {
 		const el = scroller();
 		const top = el?.scrollTop ?? 0;
-		const swaps = next !== content;
 		swappingTo = shown;
-		content = next;
+		const swaps = setEditorText(next);
 		void tick().then(() => {
 			if (el) {
 				el.scrollTop = top;
 				requestAnimationFrame(() => (el.scrollTop = top));
 			}
-			// same text as before, so the editor has nothing to swap and no sourceSwap comes
+			// the text the editor already shows, so it has nothing to swap and no sourceSwap comes
 			if (!swaps) {
 				shownVersion = shown;
 				decorations?.invalidate();
@@ -579,7 +582,7 @@
 			if (!ready) return;
 			if (version) {
 				if (liveBody === null) {
-					liveBody = instance?.getSource() ?? content;
+					liveBody = instance?.getSource() ?? editorText.text;
 					liveSelection = instance?.getSelection() ?? null;
 				}
 				swapContent(version.text, version);
@@ -639,15 +642,31 @@
 
 	let textTags = $state<BodyTag[]>([]);
 
+	// Typing reads the tags once it pauses, since each read parses the whole note. A swap reads
+	// them at once, so a different text never shows the old one's tags.
+	const TAG_READ_DELAY_MS = 300;
+
 	$effect(() => {
 		const inst = instance;
 		if (!inst || !loaded) return;
-		const read = () => untrack(() => (textTags = bodyTags(inst.getSource())));
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const cancel = () => {
+			if (timer) clearTimeout(timer);
+			timer = null;
+		};
+		const read = () => {
+			cancel();
+			untrack(() => (textTags = bodyTags(inst.getSource())));
+		};
 		read();
 		const events = inst.getEvents();
-		const offEdit = events.on('edit', read);
+		const offEdit = events.on('edit', () => {
+			cancel();
+			timer = setTimeout(read, TAG_READ_DELAY_MS);
+		});
 		const offSwap = events.on('sourceSwap', read);
 		return () => {
+			cancel();
 			offEdit();
 			offSwap();
 		};
@@ -668,7 +687,7 @@
 			slug
 		});
 		if (body === null) return;
-		content = body;
+		setEditorText(body);
 		await flushSave({ body });
 	}
 
@@ -1032,7 +1051,7 @@
 			clearTimeout(saveTimer);
 			saveTimer = null;
 		}
-		pendingSource = null;
+		pendingEditor = null;
 		// Set before the delete, not after: a save flushing while the delete is in flight reads the
 		// editor's live text and would write the file back after the backend removed it.
 		deleted = true;
@@ -1151,7 +1170,7 @@
 	{:else if loaded}
 		<Editor
 			bind:this={instance}
-			source={content}
+			source={editorText.text}
 			scrollMode={flow ? 'host' : 'self'}
 			header={flow ? undefined : documentHeader}
 			theme={currentThemeType()}
