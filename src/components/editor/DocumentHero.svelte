@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
-	import { reportError, type ReportError } from '$lib/overlays.svelte';
-	import { moveNote } from '$lib/views/move.svelte';
-	import DocHandle from '$lib/models/DocHandle';
-	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
-	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
-	import { listSavedViewJSON } from '$lib/models/View.svelte';
-	import type Tag from '$lib/models/Tag';
-	import { tagId } from '$lib/models/Tag';
-	import { formatDateFriendly } from '$lib/views/dateFormat';
-	import { folderDir, fileName } from '$lib/views/fieldValue';
-	import { folderPath } from '$lib/views/FaceRows.svelte';
-	import { isValidSegment, nameGuard, segmentProblem } from '$lib/util/paths';
-	import type { MenuEntry } from '$lib/overlays.svelte';
+	import { reportError, type ReportError } from '#lib/overlays.svelte.js';
+	import { moveNote } from '#lib/views/move.svelte.js';
+	import DocHandle from '#lib/models/DocHandle.js';
+	import { sourceName, listSources, onSourceReconciled, type Source } from '#lib/models/Source.js';
+	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
+	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import type Tag from '#lib/models/Tag.js';
+	import { tagId } from '#lib/models/Tag.js';
+	import { formatDateFriendly } from '#lib/views/dateFormat.js';
+	import { folderDir, fileName } from '#lib/views/fieldValue.js';
+	import { folderPath } from '#lib/views/FaceRows.svelte.js';
+	import { isValidSegment, nameGuard, segmentProblem } from '#lib/util/paths.js';
+	import type { MenuEntry } from '#lib/overlays.svelte.js';
 	import Menu from '../ui/Menu.svelte';
 	import TagMenu from '../views/editors/TagMenu.svelte';
 	import MoveDialog from '../dialogs/MoveDialog.svelte';
@@ -42,7 +42,7 @@
 	} from '@lucide/svelte';
 	import { onMount, untrack, type Component } from 'svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { flushAll } from '$lib/services/platform';
+	import { flushAll } from '#lib/services/platform.js';
 
 	type Place = { label: string; icon: Component; emoji?: string; go: () => void };
 

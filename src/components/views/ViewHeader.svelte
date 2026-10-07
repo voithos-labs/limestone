@@ -1,22 +1,22 @@
 <script lang="ts">
-	import { reportError } from '$lib/overlays.svelte';
-	import { mark } from '$lib/overlays.svelte';
-	import type View from '$lib/models/View.svelte';
-	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
-	import { sanitizeName } from '$lib/models/View.svelte';
-	import Folder, { folderId, folderIdSource, folderIdPath } from '$lib/models/Folder';
-	import Tag, { tagSlug } from '$lib/models/Tag';
+	import { reportError } from '#lib/overlays.svelte.js';
+	import { mark } from '#lib/overlays.svelte.js';
+	import type View from '#lib/models/View.svelte.js';
+	import type { ViewField, ViewFieldType } from '#lib/models/View.svelte.js';
+	import { sanitizeName } from '#lib/models/View.svelte.js';
+	import Folder, { folderId, folderIdSource, folderIdPath } from '#lib/models/Folder.js';
+	import Tag, { tagSlug } from '#lib/models/Tag.js';
 	import FaceSwitcher from './FaceSwitcher.svelte';
 	import ViewManageMenu from './ViewManageMenu.svelte';
 	import ArrangeFields from './ArrangeFields.svelte';
 	import FilterEditor from './FilterEditor.svelte';
 	import EmojiPicker from './editors/EmojiPicker.svelte';
 	import DocPickerPanel from './DocPicker.svelte';
-	import type { DocPicker } from '$lib/views/project.svelte';
-	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
-	import { fieldLabel } from '$lib/views/fieldValue';
-	import { VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
-	import type { MenuEntry } from '$lib/overlays.svelte';
+	import type { DocPicker } from '#lib/views/project.svelte.js';
+	import { getFaceIcon, getFieldIcon } from '#lib/views/filterDisplay.js';
+	import { fieldLabel } from '#lib/views/fieldValue.js';
+	import { VIEW_FIELD_SORTABLE } from '#lib/models/View.svelte.js';
+	import type { MenuEntry } from '#lib/overlays.svelte.js';
 	import Menu from '../ui/Menu.svelte';
 	import {
 		Funnel,
@@ -34,8 +34,8 @@
 		SquareArrowOutUpRight
 	} from '@lucide/svelte';
 	import { tick, untrack } from 'svelte';
-	import { ctxMenu } from '$lib/overlays.svelte';
-	import { nameGuard, type NameKind } from '$lib/util/paths';
+	import { ctxMenu } from '#lib/overlays.svelte.js';
+	import { nameGuard, type NameKind } from '#lib/util/paths.js';
 
 	let {
 		view,

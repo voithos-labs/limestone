@@ -16,14 +16,14 @@
 		ArrowRight,
 		X
 	} from '@lucide/svelte';
-	import Folder, { folderId, folderIdSource, isSourceRoot } from '$lib/models/Folder';
-	import { listSources, sourceName } from '$lib/models/Source';
-	import { listSavedViewJSON } from '$lib/models/View.svelte';
-	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/overlays.svelte';
+	import Folder, { folderId, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
+	import { listSources, sourceName } from '#lib/models/Source.js';
+	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { folderPath } from '$lib/views/FaceRows.svelte';
-	import { folderNameProblem, isValidSegment, nameGuard } from '$lib/util/paths';
-	import { mark } from '$lib/overlays.svelte';
+	import { folderPath } from '#lib/views/FaceRows.svelte.js';
+	import { folderNameProblem, isValidSegment, nameGuard } from '#lib/util/paths.js';
+	import { mark } from '#lib/overlays.svelte.js';
 
 	type FolderNode = {
 		id: string;

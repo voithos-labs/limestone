@@ -1,4 +1,4 @@
-import { reportError, addSourceRequest, toasts, mark } from '$lib/overlays.svelte';
+import { reportError, addSourceRequest, toasts, mark } from '#lib/overlays.svelte.js';
 import View, {
 	type FilterNode,
 	type MemberRow,
@@ -11,7 +11,7 @@ import View, {
 	TODO_DONE,
 	ViewFace,
 	type FilterLeaf
-} from '$lib/models/View.svelte';
+} from '#lib/models/View.svelte.js';
 import {
 	rawStatefulValue,
 	seedProperties,
@@ -20,22 +20,22 @@ import {
 	statusIsDone,
 	statusOf,
 	listInlineByDefault
-} from '$lib/views/fieldValue';
-import { select } from '$lib/services/db';
-import { searchDocuments, type SearchResult } from '$lib/services/search';
+} from '#lib/views/fieldValue.js';
+import { select } from '#lib/services/db.js';
+import { searchDocuments, type SearchResult } from '#lib/services/search.js';
 import {
 	getDefaultSourceId,
 	listSources,
 	pickCreationSource,
 	type Source
-} from '$lib/models/Source';
-import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
-import DocHandle from '$lib/models/DocHandle';
-import { sanitizeSegment } from '$lib/util/paths';
-import { tagId } from '$lib/models/Tag';
+} from '#lib/models/Source.js';
+import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
+import DocHandle from '#lib/models/DocHandle.js';
+import { sanitizeSegment } from '#lib/util/paths.js';
+import { tagId } from '#lib/models/Tag.js';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { SvelteSet } from 'svelte/reactivity';
-import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
+import { resolveRelativeDate, wallClockToMs } from '#lib/views/dateFormat.js';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { cubicOut } from 'svelte/easing';
 import type { TransitionConfig } from 'svelte/transition';

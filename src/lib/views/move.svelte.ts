@@ -1,8 +1,8 @@
-import DocHandle from '$lib/models/DocHandle';
-import Folder, { folderIdPath, folderIdSource } from '$lib/models/Folder';
-import { mark, errorKind } from '$lib/overlays.svelte';
-import { getSource, sourceName, type Source } from '$lib/models/Source';
-import { flushAll } from '$lib/services/platform';
+import DocHandle from '#lib/models/DocHandle.js';
+import Folder, { folderIdPath, folderIdSource } from '#lib/models/Folder.js';
+import { mark, errorKind } from '#lib/overlays.svelte.js';
+import { getSource, sourceName, type Source } from '#lib/models/Source.js';
+import { flushAll } from '#lib/services/platform.js';
 
 // Moving things between places by drag: a document or folder picked up in one list and dropped
 // on a folder chip or a breadcrumb. Native drag and drop (the window's Tauri drag-drop is off

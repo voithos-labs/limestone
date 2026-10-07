@@ -4,20 +4,20 @@
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { getCurrentWebview } from '@tauri-apps/api/webview';
 	import TopBar from '../components/shell/TopBar.svelte';
-	import { flushAll } from '$lib/services/platform';
-	import Session from '$lib/models/Session.svelte.js';
+	import { flushAll } from '#lib/services/platform.js';
+	import Session from '#lib/models/Session.svelte.js';
 	import Pane from '../components/shell/Pane.svelte';
 	import Palette from '../components/overlays/Palette.svelte';
 	import MetadataDialog from '../components/dialogs/MetadataDialog.svelte';
 	import MoveConflictDialog from '../components/dialogs/MoveConflictDialog.svelte';
-	import { addSourceRequest } from '$lib/overlays.svelte';
+	import { addSourceRequest } from '#lib/overlays.svelte.js';
 	import ContextMenu from '../components/overlays/ContextMenu.svelte';
-	import { actionForKey, keyCapture } from '$lib/shortcuts';
-	import { editorTakesKey } from '$lib/shortcuts';
-	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
-	import { toasts } from '$lib/overlays.svelte';
-	import { startWatching, onSourceReconciled } from '$lib/models/Source';
-	import DocHandle from '$lib/models/DocHandle';
+	import { actionForKey, keyCapture } from '#lib/shortcuts.js';
+	import { editorTakesKey } from '#lib/shortcuts.js';
+	import { runStartupUpdateCheck, notePostUpdate } from '#lib/services/updater.svelte.js';
+	import { toasts } from '#lib/overlays.svelte.js';
+	import { startWatching, onSourceReconciled } from '#lib/models/Source.js';
+	import DocHandle from '#lib/models/DocHandle.js';
 
 	let session = $state<Session>();
 	const addSourceSignal = $derived(addSourceRequest.signal);
@@ -155,7 +155,7 @@
 	const SCROLL_STEP = 48;
 	// `.editor` is aragonite's own class, not a promised API, but it earns its place: focus can
 	// rest on the editor root, which is neither a form field nor contenteditable, and without it
-	// arrow keys would scroll the page while the reader is only moving the caret. `$lib/editor-chords`
+	// arrow keys would scroll the page while the reader is only moving the caret. `#lib/editor-chords`
 	// depends on it too.
 	const EDITABLE =
 		'input, textarea, select, [contenteditable=""], [contenteditable="true"], .editor';

@@ -24,14 +24,14 @@
 		ScanBarcode,
 		ChevronRight
 	} from '@lucide/svelte';
-	import type View from '$lib/models/View.svelte';
-	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '$lib/models/View.svelte';
-	import { isStatusField } from '$lib/models/View.svelte';
-	import type { MenuEntry } from '$lib/overlays.svelte';
-	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
-	import { fieldLabel } from '$lib/views/fieldValue';
+	import type View from '#lib/models/View.svelte.js';
+	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '#lib/models/View.svelte.js';
+	import { isStatusField } from '#lib/models/View.svelte.js';
+	import type { MenuEntry } from '#lib/overlays.svelte.js';
+	import { getFaceIcon, getFieldIcon } from '#lib/views/filterDisplay.js';
+	import { fieldLabel } from '#lib/views/fieldValue.js';
 	import Menu from '../ui/Menu.svelte';
-	import { dashboardSections, DASH_SECTION_LABEL } from '$lib/views/project.svelte';
+	import { dashboardSections, DASH_SECTION_LABEL } from '#lib/views/project.svelte.js';
 
 	let { view, face }: { view: View; face: ViewFace } = $props();
 

@@ -8,9 +8,9 @@ import {
 	type InlineMenuSource
 } from '@voithos-labs/aragonite';
 import { walkBlocks } from '@voithos-labs/aragonite/plugin';
-import { tagSlug } from '$lib/models/Tag';
+import { tagSlug } from '#lib/models/Tag.js';
 import { BODY_TAG_KIND, isTagOpening, isTagQuery } from './wikilinks';
-import { select } from '$lib/services/db';
+import { select } from '#lib/services/db.js';
 
 /**
  * The #tags written in a note's text, found the way the editor draws them: each is one of the

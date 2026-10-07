@@ -1,9 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { select } from '$lib/services/db';
-import { flushAll } from '$lib/services/platform';
-import { describeBulkFailure, type BulkResult } from '$lib/models/View.svelte';
-import { splitMessage } from '$lib/overlays.svelte';
+import { select } from '#lib/services/db.js';
+import { flushAll } from '#lib/services/platform.js';
+import { describeBulkFailure, type BulkResult } from '#lib/models/View.svelte.js';
+import { splitMessage } from '#lib/overlays.svelte.js';
 
 export const linkIndex = $state({ version: 0 });
 

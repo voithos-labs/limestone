@@ -11,8 +11,8 @@ import {
 } from '@automerge/automerge-repo/slim';
 import wasmUrl from '@automerge/automerge/automerge.wasm?url';
 
-import { fromBase64, toBase64 } from '$lib/services/assets';
-import { registerFlush } from '$lib/services/platform';
+import { fromBase64, toBase64 } from '#lib/services/assets.js';
+import { registerFlush } from '#lib/services/platform.js';
 
 // region storage adapter
 // ── Storage Adapter (via Tauri To Fs) ────────────────────────────────────────────────

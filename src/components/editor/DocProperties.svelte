@@ -1,20 +1,20 @@
 <script lang="ts">
-	import { reportError, type ReportError } from '$lib/overlays.svelte';
-	import type DocHandle from '$lib/models/DocHandle';
-	import View from '$lib/models/View.svelte';
-	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
+	import { reportError, type ReportError } from '#lib/overlays.svelte.js';
+	import type DocHandle from '#lib/models/DocHandle.js';
+	import View from '#lib/models/View.svelte.js';
+	import type { ViewField, MemberRow } from '#lib/models/View.svelte.js';
 	import {
 		BUILTIN_UNITS,
 		isBuiltinUnit,
 		isDerived,
 		describeBulkFailure
-	} from '$lib/models/View.svelte';
-	import { fieldLabel, withStatefulValue, rawStatefulValue } from '$lib/views/fieldValue';
-	import { getFieldIcon } from '$lib/views/filterDisplay';
+	} from '#lib/models/View.svelte.js';
+	import { fieldLabel, withStatefulValue, rawStatefulValue } from '#lib/views/fieldValue.js';
+	import { getFieldIcon } from '#lib/views/filterDisplay.js';
 	import CellValue from '../views/CellValue.svelte';
 	import CellEditor from '../views/editors/CellEditor.svelte';
 	import CellTextEditor from '../views/editors/CellTextEditor.svelte';
-	import { registerFlush } from '$lib/services/platform';
+	import { registerFlush } from '#lib/services/platform.js';
 	import { Box } from '@lucide/svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
 

@@ -128,8 +128,8 @@ kinda nasty
 
  */
 
-import type { Source } from '$lib/models/Source';
-import type Tag from '$lib/models/Tag';
+import type { Source } from '#lib/models/Source.js';
+import type Tag from '#lib/models/Tag.js';
 
 /**
  * Yes I am using snakecase here, this is what they are in the db

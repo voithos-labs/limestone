@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { getViewIcon, getUnitIcon } from '$lib/views/filterDisplay';
-	import { palette } from '$lib/overlays.svelte';
-	import { openProjectSetup } from '$lib/views/project.svelte';
-	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import { TabState, type FocusTarget } from '$lib/models/EditorState.svelte.js';
-	import type Session from '$lib/models/Session.svelte.js';
+	import { getViewIcon, getUnitIcon } from '#lib/views/filterDisplay.js';
+	import { palette } from '#lib/overlays.svelte.js';
+	import { openProjectSetup } from '#lib/views/project.svelte.js';
+	import type EditorState from '#lib/models/EditorState.svelte.js';
+	import { TabState, type FocusTarget } from '#lib/models/EditorState.svelte.js';
+	import type Session from '#lib/models/Session.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import WindowControls from './WindowControls.svelte';
-	import { hostWindowStyle, resolveWindowStyle } from '$lib/services/platform';
+	import { hostWindowStyle, resolveWindowStyle } from '#lib/services/platform.js';
 
 	import {
 		Settings,
@@ -28,10 +28,10 @@
 		Blocks,
 		Columns2
 	} from '@lucide/svelte';
-	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/overlays.svelte';
-	import { listSources, sourceName, type Source } from '$lib/models/Source';
-	import { folderId } from '$lib/models/Folder';
-	import View, { BUILTIN_UNITS } from '$lib/models/View.svelte';
+	import { ctxMenu, contextMenu, type CtxEntry } from '#lib/overlays.svelte.js';
+	import { listSources, sourceName, type Source } from '#lib/models/Source.js';
+	import { folderId } from '#lib/models/Folder.js';
+	import View, { BUILTIN_UNITS } from '#lib/models/View.svelte.js';
 	import { FolderInput, SquareArrowOutUpRight } from '@lucide/svelte';
 
 	let { session, onAddSource }: { session: Session; onAddSource?: () => void } = $props();

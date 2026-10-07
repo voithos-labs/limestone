@@ -14,19 +14,19 @@
 		Globe
 	} from '@lucide/svelte';
 	import type { Component } from 'svelte';
-	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import { TabState } from '$lib/models/EditorState.svelte.js';
-	import View, { ViewFace, sanitizeName } from '$lib/models/View.svelte';
-	import type { ViewFieldType } from '$lib/models/View.svelte';
-	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
-	import { listSources, getDefaultSourceId, sourceName, type Source } from '$lib/models/Source';
-	import { mark } from '$lib/overlays.svelte';
-	import { addSourceRequest } from '$lib/overlays.svelte';
-	import { palette } from '$lib/overlays.svelte';
+	import type EditorState from '#lib/models/EditorState.svelte.js';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
+	import View, { ViewFace, sanitizeName } from '#lib/models/View.svelte.js';
+	import type { ViewFieldType } from '#lib/models/View.svelte.js';
+	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
+	import { listSources, getDefaultSourceId, sourceName, type Source } from '#lib/models/Source.js';
+	import { mark } from '#lib/overlays.svelte.js';
+	import { addSourceRequest } from '#lib/overlays.svelte.js';
+	import { palette } from '#lib/overlays.svelte.js';
 	import Menu from '../ui/Menu.svelte';
 	import EmojiPicker from '../views/editors/EmojiPicker.svelte';
-	import { dashboardSections } from '$lib/views/project.svelte';
-	import { nameGuard } from '$lib/util/paths';
+	import { dashboardSections } from '#lib/views/project.svelte.js';
+	import { nameGuard } from '#lib/util/paths.js';
 
 	let { tab, editor }: { tab: TabState; editor: EditorState } = $props();
 
