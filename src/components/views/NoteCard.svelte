@@ -8,6 +8,7 @@
 	import { isStatusField } from '$lib/models/View.svelte';
 	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/todoStatus';
 	import StatusIcon from './StatusIcon.svelte';
+	import { leave } from '$lib/views/leave';
 	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
 	import RowChips from './RowChips.svelte';
 	import type RowEditors from './RowEditors.svelte';
@@ -107,8 +108,10 @@
 	class:editable={editMode}
 	role="listitem"
 	data-id={row.id}
+	data-leaving={rows.leaving.has(row.id) ? '' : undefined}
 	tabindex="-1"
 	draggable={moveable}
+	out:leave={{ mode: body === 'none' ? 'row' : 'card' }}
 	ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 	ondragend={endMove}
 	onclick={(e) => onOpen?.(row.id, openHow(e))}
@@ -242,6 +245,7 @@
 <style>
 	/* a flat tile: one faint fill, no border, a touch darker on hover */
 	.card {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;

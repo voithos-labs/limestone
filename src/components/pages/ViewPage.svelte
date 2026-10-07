@@ -30,6 +30,7 @@
 	import ListFace from '../views/faces/ListFace.svelte';
 	import MasonryFace from '../views/faces/MasonryFace.svelte';
 	import KanbanFace from '../views/faces/KanbanFace.svelte';
+	import { history, undoKey } from '$lib/history';
 	import DashboardFace from '../views/faces/DashboardFace.svelte';
 	import DocFace from '../views/faces/DocFace.svelte';
 	import { DocPicker } from '$lib/views/docPicker.svelte';
@@ -495,6 +496,12 @@
 	}
 	let header: ViewHeader | null = $state(null);
 
+	// a different face is a different place: what was done on the last one isn't undone here
+	$effect(() => {
+		void activeFace?.id;
+		history.clear();
+	});
+
 	// the folder under a folder project, for its per-folder metadata switch (the folder page's
 	// own menu carries the same one); re-read whenever the menu opens so it's never stale
 	let unitFolder: Folder | null = $state(null);
@@ -743,6 +750,8 @@
 			.catch(console.error);
 	}
 </script>
+
+<svelte:window onkeydown={(e) => undoKey(e, view.id, bodyEl)} />
 
 <div class="view-page">
 	{#if gone}

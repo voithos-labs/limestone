@@ -8,6 +8,8 @@
 	import { isStatusField } from '$lib/models/View.svelte';
 	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/todoStatus';
 	import StatusIcon from '../StatusIcon.svelte';
+	import { leave } from '$lib/views/leave';
+	import { history } from '$lib/history';
 	import { highlightTitle } from '$lib/util/highlight';
 	import RowChips from '../RowChips.svelte';
 	import SectionHead from '../SectionHead.svelte';
@@ -501,6 +503,19 @@
 		});
 	}
 
+	// a drag's order is one undo step, together with any group it moved the row into
+	function pushOrder(prevIds: string[], prevOrder: string[] | undefined, ids: string[]) {
+		const apply = async (list: string[], order: string[] | undefined) => {
+			rows.reorder(list);
+			if (onReorder) onReorder(order ?? list);
+			else face.config.order = order;
+		};
+		history.push(view.id, {
+			back: () => apply(prevIds, prevOrder),
+			forward: () => apply(ids, ids)
+		});
+	}
+
 	function drop(d: Drag) {
 		const target = d.slots[d.gap - 1]?.group ?? d.group;
 		const peers = d.slots.filter((s) => s.kind === 'row' && s.group === target);
@@ -510,10 +525,15 @@
 		const prev = peers[above - 1]?.el.dataset.id;
 		const at = below ? ids.indexOf(below) : prev ? ids.indexOf(prev) + 1 : ids.length;
 		ids.splice(at, 0, d.row.id);
-		rows.reorder(ids);
-		if (onReorder) onReorder(ids);
-		else face.config.order = ids;
-		if (target !== d.group) writeGroup(rows.rows.find((r) => r.id === d.row.id) ?? d.row, target);
+		const prevIds = rows.rows.map((r) => r.id);
+		const prevOrder = face.config.order ? [...(face.config.order as string[])] : undefined;
+		history.group(view.id, () => {
+			pushOrder(prevIds, prevOrder, ids);
+			rows.reorder(ids);
+			if (onReorder) onReorder(ids);
+			else face.config.order = ids;
+			if (target !== d.group) writeGroup(rows.rows.find((r) => r.id === d.row.id) ?? d.row, target);
+		});
 	}
 
 	async function finishDrag(commit: boolean) {
@@ -904,8 +924,10 @@
 						role="listitem"
 						data-id={row.id}
 						data-group={g.key}
+						data-leaving={rows.leaving.has(row.id) ? '' : undefined}
 						tabindex="-1"
 						draggable={moveable}
+						out:leave={{ mode: 'row' }}
 						ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 						ondragend={endMove}
 						onpointerdown={(e) => armReorder(e, row)}

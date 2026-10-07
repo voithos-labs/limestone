@@ -3,6 +3,7 @@
 	import type { FilterNode, MemberRow, ViewFace } from '$lib/models/View.svelte';
 	import { isStatusField } from '$lib/models/View.svelte';
 	import { statusOf } from '$lib/views/todoStatus';
+	import { history } from '$lib/history';
 	import { onSourceReconciled } from '$lib/models/Source';
 	import { FaceRows } from '$lib/views/FaceRows.svelte';
 	import { rawStatefulValue, statefulValue, fieldLabel } from '$lib/views/fieldValue';
@@ -456,12 +457,24 @@
 		const prev = peers[i - 1]?.id;
 		const at = below ? ids.indexOf(below) : prev ? ids.indexOf(prev) + 1 : ids.length;
 		ids.splice(at, 0, d.row.id);
-		rows.reorder(ids);
-		face.config.order = ids;
-		if (to.col !== d.home) {
-			const row = rows.rows.find((r) => r.id === d.row.id) ?? d.row;
-			rows.writeCell(row, colField, col.value);
-		}
+		const prevIds = rows.rows.map((r) => r.id);
+		const prevOrder = face.config.order ? [...(face.config.order as string[])] : undefined;
+		const apply = async (list: string[], order: string[] | undefined) => {
+			rows.reorder(list);
+			face.config.order = order;
+		};
+		history.group(view.id, () => {
+			history.push(view.id, {
+				back: () => apply(prevIds, prevOrder),
+				forward: () => apply(ids, ids)
+			});
+			rows.reorder(ids);
+			face.config.order = ids;
+			if (to.col !== d.home) {
+				const row = rows.rows.find((r) => r.id === d.row.id) ?? d.row;
+				rows.writeCell(row, colField, col.value);
+			}
+		});
 	}
 
 	async function finishDrag(commit: boolean) {

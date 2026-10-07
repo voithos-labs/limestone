@@ -33,11 +33,19 @@ import DocHandle from '$lib/models/DocHandle';
 import { sanitizeSegment } from '$lib/util/paths';
 import { tagId } from '$lib/models/Tag';
 import { invoke } from '@tauri-apps/api/core';
+import { SvelteSet } from 'svelte/reactivity';
 import { toasts, mark } from '$lib/toasts.svelte';
+import { history } from '$lib/history';
 
 export type RowTag = { id: string; slug: string };
 
 const PAGE = 100;
+type Write = { field: ViewField; value: unknown };
+
+function applyWrites(props: string, writes: Write[]): string {
+	for (const w of writes) props = withStatefulValue(props, w.field, w.value);
+	return props;
+}
 
 function nodeSig(n: FilterNode): string {
 	if ('children' in n) return `C|${n.op}|${n.children.map(nodeSig).join(',')}`;
@@ -69,6 +77,9 @@ export class FaceRows {
 	sources: Source[] = $state([]);
 	folders: Folder[] = $state([]);
 	defaultSourceId: string | null = $state(null);
+	// rows a filtered field was just changed on: the reload may drop them, and they leave
+	// with a transition rather than a cut
+	leaving = new SvelteSet<string>();
 	private token = 0;
 
 	constructor(
@@ -159,6 +170,11 @@ export class FaceRows {
 			this.rowTags = tags;
 			this.searchHits = hits;
 			this.total = out.length;
+			// rows still here after all weren't leaving; the ones gone keep their mark while
+			// their exit plays, then it's dropped
+			const gone = [...this.leaving].filter((id) => !out.some((r) => r.id === id));
+			for (const id of this.leaving) if (!gone.includes(id)) this.leaving.delete(id);
+			if (gone.length) setTimeout(() => gone.forEach((id) => this.leaving.delete(id)), 400);
 			if (!q && out.length === PAGE) {
 				view
 					.countMembers({ face, scope })
@@ -283,14 +299,18 @@ export class FaceRows {
 	}
 
 	// ── Mutations ────────────────────────────────────────────────────────────
-	// a field the view filters or sorts on changes membership or order, so reload after
-	fieldAffectsView(fieldId: string): boolean {
+	// a field the view filters on changes membership: the row may be leaving
+	fieldFiltersView(fieldId: string): boolean {
 		const hit = (n: FilterNode): boolean =>
 			'children' in n
 				? n.children.some(hit)
 				: n.field_id === fieldId && isLeafActive(n.op, n.value);
-		if (hit(this.view().filter) || hit(this.face().additive_filter)) return true;
-		return this.face().sort.some((s) => s.field_id === fieldId);
+		return hit(this.view().filter) || hit(this.face().additive_filter);
+	}
+
+	// a field the view filters or sorts on changes membership or order, so reload after
+	fieldAffectsView(fieldId: string): boolean {
+		return this.fieldFiltersView(fieldId) || this.face().sort.some((s) => s.field_id === fieldId);
 	}
 
 	// the rows as the reader dragged them; the face's owner persists the order
@@ -305,11 +325,7 @@ export class FaceRows {
 
 	// the todo's status and checkbox say the same thing: setting one may move the other. A
 	// status is only ever written once it's been set; until then it follows the checkbox
-	private companion(
-		row: MemberRow,
-		field: ViewField,
-		value: unknown
-	): { field: ViewField; value: unknown } | null {
+	private companion(row: MemberRow, field: ViewField, value: unknown): Write | null {
 		const fields = this.view().fields;
 		if (isStatusField(field)) {
 			const done = fields.find((f) => f.id === TODO_DONE);
@@ -331,34 +347,56 @@ export class FaceRows {
 
 	async writeCell(row: MemberRow, field: ViewField, value: unknown): Promise<void> {
 		if (!this.writable(row)) return;
-		const before = row.properties;
 		const extra = this.companion(row, field, value);
-		let props = withStatefulValue(before, field, value);
-		if (extra) props = withStatefulValue(props, extra.field, extra.value);
-		this.patchRow(row.id, { properties: props });
+		const writes: Write[] = extra ? [{ field, value }, extra] : [{ field, value }];
+		const prev: Write[] = writes.map((w) => ({
+			field: w.field,
+			value: rawStatefulValue(row, w.field)
+		}));
+		history.push(this.view().id, {
+			back: () => this.restore(row, prev),
+			forward: () => this.restore(row, writes)
+		});
+		if (writes.some((w) => this.fieldFiltersView(w.field.id))) this.leaving.add(row.id);
+		const before = row.properties;
+		this.patchRow(row.id, { properties: applyWrites(before, writes) });
 		try {
 			const view = this.view();
-			let result = await view.writeFieldValue(row.source_id, field, value, [row.id]);
-			if (result.failed === 0 && extra) {
-				result = await view.writeFieldValue(row.source_id, extra.field, extra.value, [row.id]);
+			for (const w of writes) {
+				const result = await view.writeFieldValue(row.source_id, w.field, w.value, [row.id]);
+				if (result.failed > 0) {
+					this.patchRow(row.id, { properties: before });
+					this.leaving.delete(row.id);
+					toasts.push(describeBulkFailure(result), {
+						action: { label: 'Retry', run: () => this.writeCell(row, field, value) }
+					});
+					return;
+				}
 			}
-			if (result.failed > 0) {
-				this.patchRow(row.id, { properties: before });
-				toasts.push(describeBulkFailure(result), {
-					action: { label: 'Retry', run: () => this.writeCell(row, field, value) }
-				});
-			} else if (
-				this.fieldAffectsView(field.id) ||
-				(extra && this.fieldAffectsView(extra.field.id))
-			) {
-				this.load(true);
-			}
+			if (writes.some((w) => this.fieldAffectsView(w.field.id))) this.load(true);
 		} catch (e) {
 			this.patchRow(row.id, { properties: before });
+			this.leaving.delete(row.id);
 			reportError(e, `${mark('note', row.title)} couldn't be saved.`, () =>
 				this.writeCell(row, field, value)
 			);
 		}
+	}
+
+	// an undo or redo: the values go to the file as they were, and the view follows
+	private async restore(row: MemberRow, writes: Write[]): Promise<void> {
+		const here = this.rows.find((r) => r.id === row.id);
+		if (here) {
+			if (writes.some((w) => this.fieldFiltersView(w.field.id))) this.leaving.add(row.id);
+			this.patchRow(row.id, { properties: applyWrites(here.properties, writes) });
+		}
+		try {
+			for (const w of writes)
+				await this.view().writeFieldValue(row.source_id, w.field, w.value, [row.id]);
+		} catch (e) {
+			reportError(e, `${mark('note', row.title)} couldn't be saved.`);
+		}
+		this.load(true);
 	}
 
 	toggle(row: MemberRow, field: ViewField): void {
@@ -390,6 +428,16 @@ export class FaceRows {
 	async setTag(rowId: string, slug: string, on: boolean): Promise<RowTag[] | null> {
 		const row = this.rows.find((r) => r.id === rowId);
 		if (!row || !this.writable(row)) return null;
+		history.push(this.view().id, {
+			back: async () => void (await this.applyTag(rowId, slug, !on)),
+			forward: async () => void (await this.applyTag(rowId, slug, on))
+		});
+		return this.applyTag(rowId, slug, on);
+	}
+
+	private async applyTag(rowId: string, slug: string, on: boolean): Promise<RowTag[] | null> {
+		const row = this.rows.find((r) => r.id === rowId);
+		if (!row) return null;
 		try {
 			const id = tagId(slug);
 			const { frontmatter, body } = await this.readTags(row);
@@ -421,6 +469,15 @@ export class FaceRows {
 		const row = this.rows.find((r) => r.id === rowId);
 		if (!row || !title.trim() || title.trim() === row.title) return;
 		const prev = row.title;
+		history.push(this.view().id, {
+			back: () => this.applyRename(rowId, prev),
+			forward: () => this.applyRename(rowId, title.trim())
+		});
+		await this.applyRename(rowId, title);
+	}
+
+	private async applyRename(rowId: string, title: string): Promise<void> {
+		const prev = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		this.patchRow(rowId, { title: title.trim() });
 		try {
 			const doc = await DocHandle.fromID(rowId);

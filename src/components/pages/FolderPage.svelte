@@ -35,6 +35,7 @@
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
 	import NewFab from '../views/NewFab.svelte';
+	import { undoKey } from '$lib/history';
 	import { contextMenu } from '$lib/contextMenu.svelte';
 	import { createInView } from '$lib/views/FaceRows.svelte';
 	import {
@@ -533,6 +534,8 @@
 		<span class="fold-caret"><ChevronDown size={12} strokeWidth={2} /></span>
 	</button>
 {/snippet}
+
+<svelte:window onkeydown={(e) => undoKey(e, view.id, bodyEl)} />
 
 <div class="folder-page">
 	{#if gone}
