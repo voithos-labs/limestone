@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { describeError, isRetryable, splitMessage } from '$lib/overlays.svelte';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { Editor } from '@voithos-labs/aragonite';
 	import type {
@@ -12,37 +13,40 @@
 	// yes you must load editor-tokens.css after aragonite's editor-theme.css
 	import './editor-tokens.css';
 	import { EDITOR_PLUGINS } from './editor-plugins';
-	import { isImageTarget } from './image-targets';
+	import { isImageTarget } from './image-embeds';
 	import { createPasteImportLedger } from './paste-imports';
 	import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { deleteSourceAsset, importSourceAssetBytes } from '$lib/services/assets';
 	import { currentThemeType } from '$lib/services/theme.svelte';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { registerFlush } from '$lib/util/flush';
-	import { onDocChanged } from '$lib/models/Source';
-	import MarkdownHandle from '$lib/models/MarkdownHandle';
+	import { registerFlush } from '$lib/services/platform';
+	import { onDocChanged, onSourceReconciled, sourceName } from '$lib/models/Source';
+	import MarkdownHandle, { readErrorKind, type ReadErrorKind } from '$lib/models/MarkdownHandle';
+	import { historyCheckpoints, historyTextAt } from '$lib/services/history';
+	import GonePage from '../pages/GonePage.svelte';
+	import GoneActions, { type GoneAction } from '../pages/GoneActions.svelte';
 	import DocHistory, { type HistoryVersion } from '$lib/models/DocHistory.svelte';
 	import View from '$lib/models/View.svelte';
 	import { tagId } from '$lib/models/Tag';
 	import { resolveWikiLink, touchLinkIndex } from '$lib/services/links.svelte';
-	import { joinRel, targetStem } from '$lib/wikilinks';
-	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks-plugin';
+	import { joinRel, targetStem } from '$lib/services/links.svelte';
+	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 	import { historyDecorations } from './history-decorations';
 	import { bodyTags, createTagStepper, type BodyTag } from './body-tags';
-	import { findHeading } from './note-headings';
-	import { noteLinkMenu } from './note-link-menu';
-	import { tagMenu } from './tag-menu';
-	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
+	import { findHeading } from './note-links';
+	import { noteLinkMenu } from './note-links';
+	import { tagMenu } from './body-tags';
+	import { appEditorShortcut, registerDocumentEditor } from '$lib/shortcuts';
 	import { TabState, type TabContent } from '$lib/models/EditorState.svelte.js';
 	import { getViewIcon } from '$lib/views/filterDisplay';
 	import { LayoutList, TextAlignStart } from '@lucide/svelte';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
-	import DocumentHero from '../DocumentHero.svelte';
-	import { metaDialog } from '$lib/metaDialog.svelte';
-	import ScrollThumb from '../ScrollThumb.svelte';
+	import DocumentHero from './DocumentHero.svelte';
+	import { metaDialog } from '$lib/overlays.svelte';
+	import ScrollThumb from '../ui/ScrollThumb.svelte';
 	import HistoryPanel from './HistoryPanel.svelte';
-	import { portal } from '$lib/util/portal';
+	import { portal } from '$lib/util/dom';
 
 	let {
 		tab,
@@ -130,11 +134,237 @@
 	$effect(() => {
 		const h = handle;
 		loaded = false;
-		h?.loadContent().then((c) => {
+		unavailable = null;
+		problem = null;
+		if (h) void open(h);
+	});
+
+	async function open(h: MarkdownHandle) {
+		let c = '';
+		try {
+			c = await h.loadContent();
+		} catch (e) {
+			const kind = readErrorKind(e);
+			const fromHistory = canRestoreKind(kind) && (await lastKnownText(h)) !== null;
 			if (h !== handle) return;
+			if (kind !== 'not_found' || fromHistory) {
+				unavailable = { kind, held: null, fromHistory, settled: true };
+				return;
+			}
+			h.adoptAsDraft();
+		}
+		if (h !== handle) return;
+		content = c;
+		loaded = true;
+		frontmatterError = h.frontmatterError;
+	}
+
+	// ── Unavailable: the source or the file can't be read ───────────────────────────────
+
+	type Unavailable = {
+		kind: ReadErrorKind;
+		held: string | null;
+		fromHistory: boolean;
+		settled: boolean;
+	};
+	let unavailable = $state<Unavailable | null>(null);
+	let restoring = $state(false);
+	let restoreFailed = $state(false);
+
+	function canRestoreKind(kind: ReadErrorKind): boolean {
+		return kind === 'not_found' || kind === 'invalid_data';
+	}
+
+	const canRestore = $derived(
+		!!unavailable &&
+			canRestoreKind(unavailable.kind) &&
+			(unavailable.held !== null || unavailable.fromHistory)
+	);
+
+	async function lastKnownText(h: MarkdownHandle): Promise<string | null> {
+		try {
+			const last = (await historyCheckpoints(h.id)).at(-1);
+			const text = last ? await historyTextAt(h.id, last) : '';
+			return text.trim() ? text : null;
+		} catch {
+			return null;
+		}
+	}
+
+	async function retry(h: MarkdownHandle, settle = false) {
+		if (!unavailable || restoring) return;
+		await h.refreshPath().catch(() => false);
+		let c: string;
+		try {
+			c = await h.loadContent();
+		} catch (e) {
+			if (h !== handle || !unavailable) return;
+			const settling = settle && !unavailable.settled && unavailable.held !== null;
+			unavailable = {
+				...unavailable,
+				kind: readErrorKind(e),
+				held: settling ? (instance?.getSource() ?? unavailable.held) : unavailable.held,
+				settled: unavailable.settled || settle
+			};
+			return;
+		}
+		if (h !== handle || !unavailable) return;
+		const held = unavailable.held;
+		unavailable = null;
+		frontmatterError = h.frontmatterError;
+		if (!instance) {
 			content = c;
 			loaded = true;
-			frontmatterError = h.frontmatterError;
+			return;
+		}
+		savedBody = c;
+		const live = instance.getSource();
+		if (held !== null && live !== held) void flushSave({ body: live });
+		else if (c !== live) swapContent(c, null);
+	}
+
+	async function restoreFile() {
+		const h = handle;
+		const u = unavailable;
+		if (!h || !u || restoring) return;
+		restoring = true;
+		restoreFailed = false;
+		try {
+			const text = u.held ?? (await lastKnownText(h));
+			if (text === null) throw new Error('nothing to restore');
+			await h.restore(text, u.kind === 'invalid_data');
+			if (h !== handle) return;
+			unavailable = null;
+			frontmatterError = null;
+			if (instance) {
+				savedBody = text;
+				if (text !== instance.getSource()) swapContent(text, null);
+			} else {
+				content = text;
+				loaded = true;
+			}
+		} catch (e) {
+			console.error('restore failed', e);
+			restoreFailed = true;
+		} finally {
+			restoring = false;
+		}
+	}
+
+	const goneActions = $derived.by(() => {
+		const out: GoneAction[] = [];
+		if (canRestore)
+			out.push({
+				label: restoring ? 'Restoring…' : 'Restore',
+				run: restoreFile,
+				strong: true,
+				disabled: restoring
+			});
+		if (unavailable && unavailable.kind !== 'not_found')
+			out.push({ label: 'Try again', run: () => handle && retry(handle) });
+		if (editor) out.push({ label: 'Close', run: () => editor.closeTab(tab.id, false) });
+		return out;
+	});
+
+	const restoreNote = $derived(
+		restoreFailed
+			? "Restore didn't work. Check that the source is connected, then try again."
+			: null
+	);
+
+	const sourceLabel = $derived(handle ? sourceName(handle.source) : '');
+
+	const BANG = '<!>';
+	const CAT_FACE = ' /\\_/\\\n( o.o )';
+
+	type Problem = { title: string; detail: string | null; retry: (() => unknown) | null };
+	let problem = $state.raw<Problem | null>(null);
+	let saveProblem: Problem | null = null;
+
+	function reportProblem(e: unknown, fallback: string, retry?: () => unknown): Problem {
+		console.error(fallback, e);
+		const [title, detail] = splitMessage(fallback);
+		problem = {
+			title: title.replace(/\.$/, ''),
+			detail: [detail, describeError(e, '')].filter(Boolean).join(' ') || null,
+			retry: retry && isRetryable(e) ? retry : null
+		};
+		return problem;
+	}
+
+	const problemActions = $derived.by(() => {
+		const out: GoneAction[] = [];
+		const retry = problem?.retry;
+		if (retry)
+			out.push({
+				label: 'Retry',
+				strong: true,
+				run: () => {
+					problem = null;
+					return retry();
+				}
+			});
+		out.push({ label: 'Dismiss', run: () => (problem = null) });
+		return out;
+	});
+
+	const notice = $derived.by(() => {
+		const u = unavailable;
+		if (!u) return null;
+		switch (u.kind) {
+			case 'source_missing':
+				return {
+					headline: `the ${sourceLabel} source isn't available`,
+					detail:
+						"Check that the drive or folder is connected. This note opens by itself when it's back."
+				};
+			case 'source_permission':
+				return {
+					headline: `limestone can't open the ${sourceLabel} source`,
+					detail: 'Check that the folder lets Limestone read it, then try again.'
+				};
+			case 'not_found':
+				return u.held !== null
+					? {
+							headline: 'this note was deleted',
+							detail:
+								'Its file was deleted or moved outside Limestone. Restore puts it back as you see it.'
+						}
+					: {
+							headline: "this note's file is gone",
+							detail: 'It was deleted or moved outside Limestone.'
+						};
+			case 'permission':
+				return {
+					headline: "this note can't be opened",
+					detail:
+						"You don't have permission to read its file. Check its permissions, then try again."
+				};
+			case 'locked':
+				return {
+					headline: 'this note is in use',
+					detail: 'Another app is holding its file. Close it there, then try again.'
+				};
+			case 'invalid_data':
+				return {
+					headline: "this note isn't readable",
+					detail: canRestore
+						? "Its file isn't text anymore and may be damaged. Restore replaces it with the last version Limestone saw."
+						: "Its file isn't text anymore and may be damaged."
+				};
+			default:
+				return {
+					headline: "this note couldn't be opened",
+					detail: 'Something went wrong reading its file. Try again in a moment.'
+				};
+		}
+	});
+
+	$effect(() => {
+		const h = handle;
+		if (!h) return;
+		return onSourceReconciled((id) => {
+			if (id === h.source.id && unavailable) void retry(h, true);
 		});
 	});
 
@@ -161,7 +391,10 @@
 		}
 		// Ask the editor now: its `edit` event is debounced, so the last thing it handed us can be a
 		// whole typing burst behind. `pendingSource` is the fallback when the editor is already gone.
-		const body = deleted ? null : (opts.body ?? liveBody ?? instance?.getSource() ?? pendingSource);
+		const body =
+			deleted || unavailable
+				? null
+				: (opts.body ?? liveBody ?? instance?.getSource() ?? pendingSource);
 		pendingSource = null;
 		// A frontmatter rebuild writes even an unchanged body: the repair is in the part of the file
 		// the editor never holds.
@@ -172,9 +405,13 @@
 			.saveContent(body, opts)
 			.then(() => {
 				savedBody = body;
+				if (saveProblem && problem === saveProblem) problem = null;
+				saveProblem = null;
 				if (historyOpen && history?.atPresent) void history.load();
 			})
-			.catch((e) => console.error('saveContent failed', e))
+			.catch((e) => {
+				saveProblem = reportProblem(e, "This note couldn't be saved.", () => flushSave());
+			})
 			.finally(() => {
 				if (saving === write) saving = null;
 			});
@@ -210,12 +447,20 @@
 	$effect(() => {
 		const h = handle;
 		if (!h) return;
-		return onDocChanged(h, () => void reloadFromDisk(h));
+		return onDocChanged(h, () => void (unavailable ? retry(h) : reloadFromDisk(h)));
 	});
 
 	async function reloadFromDisk(h: MarkdownHandle) {
 		if (deleted || liveBody !== null || hasUnsavedEdits()) return;
-		const fromDisk = await h.loadContent();
+		let fromDisk: string;
+		try {
+			fromDisk = await h.loadContent();
+		} catch (e) {
+			if (deleted || h !== handle || !instance) return;
+			const held = instance.getSource();
+			unavailable = { kind: readErrorKind(e), held, fromHistory: false, settled: false };
+			return;
+		}
 		if (deleted || h !== handle || !instance || liveBody !== null || hasUnsavedEdits()) return;
 		frontmatterError = h.frontmatterError;
 		if (fromDisk === instance.getSource()) return;
@@ -439,7 +684,7 @@
 	// The mode and font are global, not the tab's: every open document follows the setting as it
 	// changes.
 	let mode = $derived<PresentationMode>(
-		readOnly || previewing
+		readOnly || previewing || unavailable?.settled
 			? 'reading'
 			: settings.get('editor.mode') === 'source'
 				? 'source'
@@ -761,6 +1006,7 @@
 			// The editor reports this on the same `clipboard` error channel as a failed insertion,
 			// and the paste's other images still land, so the error handler must not delete on it.
 			pasteImports.markOwnFailure(e);
+			reportProblem(e, "The image couldn't be added.");
 			throw e;
 		}
 		pasteImports.record(relPath);
@@ -795,7 +1041,7 @@
 			editor?.closeTab(tab.id, false);
 		} catch (e) {
 			deleted = false;
-			console.error('delete failed', e);
+			reportProblem(e, "This note couldn't be deleted.", deleteDoc);
 		}
 	}
 
@@ -826,7 +1072,32 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onError={reportProblem}
 		/>
+		{@render docNotices()}
+	{/if}
+{/snippet}
+
+{#snippet docNotices()}
+	{#if notice && unavailable?.held != null && unavailable.settled}
+		<div class="held-notice">
+			<pre class="held-cat" aria-hidden="true">{CAT_FACE}</pre>
+			<div class="held-text">
+				<p class="ua-headline">{notice.headline} {BANG}</p>
+				<p class="ua-detail">{notice.detail}</p>
+			</div>
+			<GoneActions actions={goneActions} note={restoreNote} />
+		</div>
+	{/if}
+	{#if problem}
+		<div class="held-notice">
+			<pre class="held-cat" aria-hidden="true">{CAT_FACE}</pre>
+			<div class="held-text">
+				<p class="ua-headline">{problem.title} {BANG}</p>
+				{#if problem.detail}<p class="ua-detail">{problem.detail}</p>{/if}
+			</div>
+			<GoneActions actions={problemActions} />
+		</div>
 	{/if}
 {/snippet}
 
@@ -861,9 +1132,23 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onError={reportProblem}
 		/>
+		{@render docNotices()}
 	{/if}
-	{#if loaded}
+	{#if unavailable && unavailable.held === null}
+		<div class="unavailable" class:flow>
+			{#if !flow}{@render documentHeader()}{/if}
+			{#if notice}
+				<GonePage
+					headline={notice.headline}
+					detail={notice.detail}
+					actions={goneActions}
+					note={restoreNote}
+				/>
+			{/if}
+		</div>
+	{:else if loaded}
 		<Editor
 			bind:this={instance}
 			source={content}
@@ -891,6 +1176,76 @@
 </div>
 
 <style>
+	.unavailable {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.unavailable.flow {
+		min-height: 320px;
+	}
+
+	.ua-headline {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 12px;
+		color: var(--color-ui-muted);
+	}
+
+	.ua-detail {
+		max-width: 360px;
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--color-ui-dulled);
+	}
+
+	.held-notice {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 10px 16px;
+		max-width: calc(var(--page-max-width, 1200px) - 48px);
+		margin: -16px auto 16px;
+		width: calc(100% - 48px);
+		padding: 12px 14px;
+		border-radius: 8px;
+		background: var(--chip-bg);
+	}
+
+	.held-cat {
+		flex-shrink: 0;
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		line-height: 1.2;
+		color: var(--color-ui-dulled);
+		user-select: none;
+	}
+
+	.held-notice + .held-notice {
+		margin-top: -8px;
+	}
+
+	.held-text {
+		display: flex;
+		flex: 1 1 240px;
+		flex-direction: column;
+		gap: 3px;
+	}
+
+	.held-notice :global(.gone-actions) {
+		justify-content: flex-start;
+	}
+
+	.held-notice .ua-detail {
+		max-width: none;
+	}
+
 	.doc-editor {
 		position: relative;
 		display: flex;

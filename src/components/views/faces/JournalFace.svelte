@@ -7,8 +7,8 @@
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { rawStatefulValue } from '$lib/views/fieldValue';
 	import { wallClockToMs } from '$lib/views/dateFormat';
-	import type { DocPicker } from '$lib/views/docPicker.svelte';
-	import DateValueEditor from '../DateValueEditor.svelte';
+	import type { DocPicker } from '$lib/views/project.svelte';
+	import DateValueEditor from '../editors/DateValueEditor.svelte';
 	import DocFace from './DocFace.svelte';
 	import ListFace from './ListFace.svelte';
 	import MasonryFace from './MasonryFace.svelte';
@@ -917,9 +917,9 @@
 		margin: 0 -24px;
 	}
 
-	/* a document body reads as the day itself, so it sits tight under the strip */
+	/* a document body is narrower than the strip, so it needs room to read as its own thing */
 	.body-face.doc {
-		margin-top: 8px;
+		margin-top: 40px;
 	}
 
 	.controls {

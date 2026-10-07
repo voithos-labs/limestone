@@ -1,6 +1,5 @@
 import { select } from '$lib/services/db';
-import { SNIPPET_MARK_START, SNIPPET_MARK_END } from '$lib/util/highlight';
-import type { SearchResult } from '$lib/types/SearchResult';
+import { SNIPPET_MARK_START, SNIPPET_MARK_END } from '$lib/util/dom';
 
 // Ranking constants (fml I spent 4 hours playing with this shiot)
 const MAX_RESULTS = 100;
@@ -321,4 +320,17 @@ async function containerMatches(q: string): Promise<SearchResult[]> {
 		...sources.map((s) => container(s.id, s.title, 'source', matchLen)),
 		...groups.map((g) => container(g.id, g.slug, 'group', matchLen, g.group_type, g.source_id))
 	];
+}
+
+export interface SearchResult {
+	id: string;
+	title: string;
+	rel_path: string | null;
+	source_id: string | null;
+	score: number;
+	match_indices: number[];
+	kind: 'document' | 'group' | 'source' | 'view';
+	group_type: string | null;
+	snippet?: string | null;
+	emoji?: string;
 }

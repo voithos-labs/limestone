@@ -5,10 +5,11 @@ import {
 	folderPropKey,
 	listSavedViewJSON,
 	remapIdsInSavedViews,
-	renameUnitViewPrefix
+	renameUnitViewPrefix,
+	type BulkResult
 } from '$lib/models/View.svelte';
-import { flushAll } from '$lib/util/flush';
-import type { BulkResult } from '$lib/models/View.svelte';
+import { flushAll } from '$lib/services/platform';
+import { reportError, mark } from '$lib/overlays.svelte';
 
 // a folder's metadata policy: its own choice, or whatever its parent (and Git) decide
 export type MetaMode = 'follow' | 'write' | 'off';
@@ -181,7 +182,7 @@ class Folder {
 		switch (err?.kind) {
 			case 'already_exists':
 				return err.name
-					? `A folder named "${err.name}" is already there.`
+					? `A folder named ${mark('folder', err.name)} is already there.`
 					: 'A folder with that name is already there.';
 			case 'into_itself':
 				return "A folder can't be moved inside itself.";
@@ -190,18 +191,22 @@ class Folder {
 					? `"${err.name}" can't be used as a folder name.`
 					: "That name can't be used for a folder.";
 			case 'not_found':
-				return "That folder couldn't be found. It may have been moved or deleted outside Limestone.";
+				return "The folder couldn't be found. It may have been moved or deleted outside Limestone.";
 			case 'source_missing':
 				return 'The source folder is unavailable. Check that the drive or folder is connected.';
 			case 'locked':
-				return 'A file in that folder is open in another app. Close it and try again.';
+				return 'A file in the folder is open in another app. Close it and try again.';
 			case 'permission':
-				return "That folder is read-only or you don't have permission to change it.";
+				return "The folder is read-only or you don't have permission to change it.";
 			case 'no_space':
 				return 'Your disk is out of space.';
 			default:
 				return fallback;
 		}
+	}
+
+	static reportOpError(e: unknown, fallback: string, retry?: () => unknown): void {
+		reportError(e, fallback, retry, Folder.describeOpError);
 	}
 
 	// to the OS trash; project views for it and anything below it go with it

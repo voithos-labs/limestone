@@ -47,12 +47,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
 import type MarkdownHandle from '$lib/models/MarkdownHandle';
 import type Tag from '$lib/models/Tag';
-import Folder, { folderId, folderIdPath, isSourceRoot } from '$lib/models/Folder';
+import Folder, { folderId, folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 import { listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/services/db';
 import { load, type Store } from '@tauri-apps/plugin-store';
-import { toasts } from '$lib/toasts.svelte';
+import { toasts } from '$lib/overlays.svelte';
 import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
+import { appSettings } from '$lib/models/Settings.svelte';
 
 export type ViewFaceType =
 	'list' | 'masonry' | 'dashboard' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
@@ -231,6 +232,28 @@ function builtinField(unit: string, name: string, type: ViewFieldType): ViewFiel
 }
 
 const TODO = 'tag:todo';
+export const TODO_DONE = `${TODO}/done`;
+export const TODO_STATUS = `${TODO}/status`;
+
+// a todo's progression: each option sits on one side of the done checkbox. The list is one
+// per app, kept in settings, so every view agrees on the workflow
+export type StatusOption = { value: string; color: number; done: boolean };
+export const DEFAULT_STATUSES: StatusOption[] = [
+	{ value: 'todo', color: 0, done: false },
+	{ value: 'doing', color: 4, done: false },
+	{ value: 'done', color: 12, done: true }
+];
+
+export function isStatusField(field: Pick<ViewField, 'id'>): boolean {
+	return field.id === TODO_STATUS;
+}
+
+export function saveStatuses(options: StatusOption[]): void {
+	void appSettings?.set(
+		'todo.statuses',
+		options.map((o) => ({ value: o.value, color: o.color, done: !!o.done }))
+	);
+}
 
 export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
 	[TODO]: {
@@ -238,6 +261,7 @@ export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
 		emoji: '',
 		fields: [
 			builtinField(TODO, 'done', 'boolean'),
+			builtinField(TODO, 'status', 'select'),
 			builtinField(TODO, 'due', 'date'),
 			builtinField(TODO, 'scheduled', 'date')
 		],
@@ -251,8 +275,12 @@ const BUILTIN_FIELD_IDS = new Set(
 
 // fresh copies: views hold their fields in $state and write config in place
 function builtinFields(): ViewField[] {
+	const statuses = appSettings?.get<StatusOption[]>('todo.statuses') ?? DEFAULT_STATUSES;
 	return Object.values(BUILTIN_UNITS).flatMap((u) =>
-		u.fields.map((f) => ({ ...f, config: { ...f.config } }))
+		u.fields.map((f) => ({
+			...f,
+			config: isStatusField(f) ? { options: statuses.map((o) => ({ ...o })) } : { ...f.config }
+		}))
 	);
 }
 
@@ -1162,10 +1190,19 @@ class View {
 	// `scope` is an extra, non-persisted predicate from whoever is rendering the face
 	// (a journal scoping its body to the selected day)
 	// The unit scope is implicit and always applies; view and face filters are additive on top
+	get subfolder(): string | null {
+		const sub = this.state.folder as string | undefined;
+		const unit = this.unit;
+		if (!sub || !unit?.startsWith('folder:') || sub === unit) return null;
+		if (folderIdSource(sub) !== folderIdSource(unit)) return null;
+		const base = folderIdPath(unit);
+		return folderIdPath(sub).startsWith(base ? `${base}/` : '') ? sub : null;
+	}
+
 	private compileScope(opts?: { face?: ViewFace; scope?: FilterNode | null }): CompiledFilter {
 		const compiled = compileFilter(memberFilter(this.filter, opts?.face, opts?.scope), this.fields);
 		if (!this.unit) return compiled;
-		const unit = compileUnit(this.unit);
+		const unit = compileUnit(this.subfolder ?? this.unit);
 		if (!compiled.sql) return unit;
 		return {
 			sql: `(${unit.sql} AND ${compiled.sql})`,
@@ -1261,7 +1298,7 @@ class View {
 
 	/** Rename a select/multiselect option value across all stored documents */
 	async renameOption(field: ViewField, oldValue: string, newValue: string): Promise<void> {
-		if (isBuiltinField(field)) return;
+		if (isBuiltinField(field) && !isStatusField(field)) return;
 		await bulkPerSource('bulk_rename_view_option', {
 			viewSlug: fieldKey(field),
 			fieldName: field.name,

@@ -3,7 +3,7 @@
 		isWidgetActivationClick,
 		type InlineWidgetComponentProps
 	} from '@voithos-labs/aragonite/plugin';
-	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks-plugin';
+	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 
 	let { source, getPresentationMode }: InlineWidgetComponentProps = $props();
 

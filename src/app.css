@@ -35,6 +35,8 @@ input[type='number']::-webkit-outer-spin-button {
 	--color-accent-contrast: #ffffff;
 
 	--font-ui: 'Inter', system-ui, sans-serif;
+	/* a project page's column until the setting lands; documents read at --page-max-width */
+	--view-max-width: 1200px;
 	--font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
 	/* overlays */

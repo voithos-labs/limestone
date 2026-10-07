@@ -38,6 +38,14 @@ export interface SettingCategory {
 	settings: SettingDef[];
 }
 
+const WIDTH_OPTIONS: SettingOption[] = [
+	{ value: 1600, label: 'Very wide' },
+	{ value: 1200, label: 'Wide' },
+	{ value: 1000, label: 'Standard' },
+	{ value: 800, label: 'Thin' },
+	{ value: 650, label: 'Very thin' }
+];
+
 export const SETTINGS_REGISTRY: SettingCategory[] = [
 	{
 		id: 'appearance',
@@ -89,13 +97,28 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 			{
 				key: 'appearance.max_page_width',
 				type: 'number',
-				control: 'stepper',
-				label: 'Max Page Width',
-				description: 'Maximum content width in pixels for documents and views.',
-				min: 600,
+				control: 'select',
+				label: 'Document Width',
+				description: 'How wide a document reads, in pixels.',
+				min: 400,
 				max: 3000,
 				step: 50,
-				unit: 'px'
+				unit: 'px',
+				options: WIDTH_OPTIONS,
+				allowCustom: true
+			},
+			{
+				key: 'appearance.max_view_width',
+				type: 'number',
+				control: 'select',
+				label: 'Project Width',
+				description: 'How wide a project page and its header read, in pixels.',
+				min: 400,
+				max: 3000,
+				step: 50,
+				unit: 'px',
+				options: WIDTH_OPTIONS,
+				allowCustom: true
 			}
 		]
 	},
@@ -287,4 +310,10 @@ export class SettingsState {
 			}
 		}
 	}
+}
+
+// the live settings, for code outside the session tree (built-in field config reads them)
+export let appSettings: SettingsState | null = null;
+export function registerSettings(s: SettingsState): void {
+	appSettings = s;
 }

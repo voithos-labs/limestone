@@ -32,8 +32,8 @@ import * as yaml from 'js-yaml';
 // Internal
 import { select, execute } from '$lib/services/db';
 import { addChangeHistory, removeHistory } from '$lib/services/history';
-import { rewriteLinksForMove } from '$lib/services/links.svelte';
-import { toasts } from '$lib/toasts.svelte';
+import { LinkRewriteFailure, rewriteLinksForMove } from '$lib/services/links.svelte';
+import { isRetryable, toasts, mark } from '$lib/overlays.svelte';
 import { sanitizeSegment } from '$lib/util/paths';
 import { creationSource, defaultNoteDir, type Source } from './Source';
 import Tag, { tagSlug } from './Tag';
@@ -50,6 +50,10 @@ function yamlErrorText(e: unknown): string {
 	const reason = err?.reason ?? err?.message ?? 'invalid YAML';
 	const line = err?.mark?.line;
 	return typeof line === 'number' ? `${reason} (line ${line + 2})` : reason;
+}
+
+function stemOf(relPath: string): string {
+	return relPath.slice(relPath.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '');
 }
 
 function dirOf(relPath: string): string {
@@ -78,6 +82,29 @@ export interface DocumentFrontmatter {
  * while maintaining data sync between the disk, db, and delta history.
  *
  */
+export type ReadErrorKind =
+	| 'source_missing'
+	| 'source_permission'
+	| 'not_found'
+	| 'permission'
+	| 'locked'
+	| 'invalid_data'
+	| 'other';
+
+const READ_ERROR_KINDS: ReadErrorKind[] = [
+	'source_missing',
+	'source_permission',
+	'not_found',
+	'permission',
+	'locked',
+	'invalid_data'
+];
+
+export function readErrorKind(e: unknown): ReadErrorKind {
+	const kind = (e as { kind?: string } | null)?.kind;
+	return READ_ERROR_KINDS.find((k) => k === kind) ?? 'other';
+}
+
 class MarkdownHandle extends Doc {
 	private hasFile = true;
 	private static unopened = new Set<string>();
@@ -153,11 +180,7 @@ class MarkdownHandle extends Doc {
 
 	static async pathTaken(source: Source, relPath: string): Promise<boolean> {
 		if (await MarkdownHandle.pathExists(source.id, relPath)) return true;
-		try {
-			return await exists(`${source.path}/${relPath}`);
-		} catch {
-			return false;
-		}
+		return exists(`${source.path}/${relPath}`);
 	}
 
 	static async uniqueRelPath(source: Source, dir: string, base: string): Promise<string> {
@@ -220,7 +243,7 @@ class MarkdownHandle extends Doc {
 		await invoke('set_document_tags', {
 			id: this.id,
 			sourceId: this.source.id,
-			relPath: this.relPath,
+			relPath: this._relPath,
 			tags: [...new Set(slugs.map(tagSlug).filter(Boolean))]
 		});
 		await this.fetchTags();
@@ -302,11 +325,15 @@ class MarkdownHandle extends Doc {
 
 		let raw: string;
 		try {
-			raw = await readTextFile(`${this.source.path}/${this.relPath}`);
-		} catch {
-			this.hasFile = false;
-			return '';
+			raw = await invoke<string>('read_document', {
+				sourceId: this.source.id,
+				relPath: this._relPath
+			});
+		} catch (e) {
+			if (!this.hasFile && readErrorKind(e) === 'not_found') return '';
+			throw e;
 		}
+		this.hasFile = true;
 		const { frontmatter, body, error } = MarkdownHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 		this.fence = raw.slice(0, raw.length - body.length);
@@ -349,7 +376,7 @@ class MarkdownHandle extends Doc {
 	private async refreshMetaFromDisk(): Promise<void> {
 		let raw: string;
 		try {
-			raw = await readTextFile(`${this.source.path}/${this.relPath}`);
+			raw = await readTextFile(`${this.source.path}/${this._relPath}`);
 		} catch {
 			return;
 		}
@@ -369,7 +396,7 @@ class MarkdownHandle extends Doc {
 		const contents = await this.serialize(body, opts.rebuildFrontmatter);
 		await invoke('write_document', {
 			sourceId: this.source.id,
-			relPath: this.relPath,
+			relPath: this._relPath,
 			contents,
 			updatedAt: this.updatedAt.getTime(),
 			create: !this.hasFile
@@ -384,7 +411,16 @@ class MarkdownHandle extends Doc {
 	}
 
 	async refreshMeta(): Promise<void> {
-		this.applyMeta(await Folder.metaAt(this.source.id, dirOf(this.relPath)));
+		this.applyMeta(await Folder.metaAt(this.source.id, dirOf(this._relPath)));
+	}
+
+	async restore(body: string, overwrite: boolean): Promise<void> {
+		this.hasFile = overwrite;
+		await this.saveContent(body, { rebuildFrontmatter: true });
+	}
+
+	adoptAsDraft(): void {
+		this.hasFile = false;
 	}
 
 	private async ensureFile(): Promise<void> {
@@ -396,9 +432,19 @@ class MarkdownHandle extends Doc {
 		await invoke('delete_document', {
 			id: this.id,
 			sourceId: this.source.id,
-			relPath: this.relPath
+			relPath: this._relPath
 		});
 		removeHistory(this.id).catch((e) => console.error('history remove failed', e));
+	}
+
+	static async trashAt(source: Source, relPath: string): Promise<string | null> {
+		const [row] = await select<{ id: string }>(
+			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2`,
+			[source.id, relPath]
+		);
+		await invoke('delete_document', { id: row?.id ?? null, sourceId: source.id, relPath });
+		if (row) removeHistory(row.id).catch((e) => console.error('history remove failed', e));
+		return row?.id ?? null;
 	}
 
 	/**
@@ -407,39 +453,58 @@ class MarkdownHandle extends Doc {
 	 *
 	 * @param newRelPath Path, relative to source, to move the document to
 	 */
+	static async syncSource(sourceId: string): Promise<void> {
+		const ids = [...this.places].filter(([, p]) => p.sourceId === sourceId).map(([id]) => id);
+		if (ids.length === 0) return;
+		const rows = await select<{ id: string; rel_path: string; title: string }>(
+			`SELECT id, rel_path, title FROM documents WHERE id IN (${ids.map(() => '?').join(', ')})`,
+			ids
+		);
+		for (const row of rows) {
+			const p = this.places.get(row.id);
+			if (p && (p.relPath !== row.rel_path || p.title !== row.title)) {
+				this.places.set(row.id, { ...p, relPath: row.rel_path, title: row.title });
+			}
+		}
+	}
+
 	async refreshPath(): Promise<boolean> {
-		const [row] = await select<{ rel_path: string }>(
-			`SELECT rel_path
+		const [row] = await select<{ rel_path: string; title: string }>(
+			`SELECT rel_path, title
              FROM documents
              WHERE id = ?1`,
 			[this.id]
 		);
-		if (!row || row.rel_path === this.relPath) return false;
-		this.updateLocation(this.source, row.rel_path);
+		if (!row || (row.rel_path === this._relPath && row.title === this._title)) return false;
+		this.updateLocation(this.source, row.rel_path, row.title);
 		return true;
 	}
 
 	async moveToPath(newRelPath: string): Promise<void> {
 		await this.ensureFile();
-		const oldRelPath = this.relPath;
+		const oldRelPath = this._relPath;
 		await invoke('move_document', {
 			sourceId: this.source.id,
 			relPath: oldRelPath,
 			newRelPath
 		});
-		this.updateLocation(this.source, newRelPath);
+		this.updateLocation(this.source, newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
 		await this.updateLinks(oldRelPath);
 	}
 
 	private async updateLinks(oldRelPath: string): Promise<void> {
 		try {
-			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this.relPath);
+			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this._relPath);
 		} catch (e) {
 			console.error('link rewrite failed', e);
-			toasts.push(
-				`"${this.title}" was moved, but links to it could not be updated. Search for [[${oldRelPath.replace(/\.md$/i, '')}]] to fix them by hand.`
-			);
+			let message = `Links to ${mark('note', this.title)} still use its old name`;
+			if (e instanceof LinkRewriteFailure && e.failed > 0)
+				message += ` in ${e.failed} ${e.failed === 1 ? 'note' : 'notes'}`;
+			if (e instanceof LinkRewriteFailure && e.reason) message += `: ${e.reason}`;
+			else message += '.';
+			const retry = { label: 'Retry', run: () => void this.updateLinks(oldRelPath) };
+			toasts.push(message, { action: isRetryable(e) ? retry : undefined });
 		}
 	}
 
@@ -450,11 +515,11 @@ class MarkdownHandle extends Doc {
 		await this.ensureFile();
 		await invoke('move_document', {
 			sourceId: this.source.id,
-			relPath: this.relPath,
+			relPath: this._relPath,
 			newRelPath,
 			newSourceId: newSource.id
 		});
-		this.updateLocation(newSource, newRelPath);
+		this.updateLocation(newSource, newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
 	}
 
@@ -466,7 +531,7 @@ class MarkdownHandle extends Doc {
 		await invoke('save_document_meta', {
 			id: this.id,
 			sourceId: this.source.id,
-			relPath: this.relPath,
+			relPath: this._relPath,
 			createdAt: meta.createdAt ? meta.createdAt.toISOString() : null,
 			updatedAt: meta.updatedAt ? meta.updatedAt.toISOString() : null
 		});
@@ -481,15 +546,14 @@ class MarkdownHandle extends Doc {
 	 */
 	async rename(title: string): Promise<void> {
 		await this.ensureFile();
-		const oldRelPath = this.relPath;
+		const oldRelPath = this._relPath;
 		const ext = oldRelPath.match(/\.[^./]+$/)?.[0] ?? '.md';
 		const newRel: string = await invoke('rename_document', {
 			sourceId: this.source.id,
 			relPath: oldRelPath,
 			newName: title + ext
 		});
-		this.updateLocation(this.source, newRel);
-		this.title = title;
+		this.updateLocation(this.source, newRel, title);
 		await this.updateLinks(oldRelPath);
 	}
 

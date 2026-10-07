@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import ToastHost from '../components/ToastHost.svelte';
+	import ToastHost from '../components/overlays/ToastHost.svelte';
 	import '@fontsource/inter/400.css';
 	import '@fontsource/inter/500.css';
 	import '@fontsource/inter/600.css';

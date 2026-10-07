@@ -3,37 +3,55 @@
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { getCurrentWebview } from '@tauri-apps/api/webview';
-	import TopBar from '../components/nav/TopBar.svelte';
-	import { flushAll } from '$lib/util/flush';
+	import TopBar from '../components/shell/TopBar.svelte';
+	import { flushAll } from '$lib/services/platform';
 	import Session from '$lib/models/Session.svelte.js';
-	import Pane from '../components/Pane.svelte';
-	import Palette from '../components/Palette.svelte';
-	import MetadataDialog from '../components/MetadataDialog.svelte';
-	import ContextMenu from '../components/ContextMenu.svelte';
-	import { actionForKey, keyCapture } from '$lib/actions';
-	import { editorTakesKey } from '$lib/editor-chords';
+	import Pane from '../components/shell/Pane.svelte';
+	import Palette from '../components/overlays/Palette.svelte';
+	import MetadataDialog from '../components/dialogs/MetadataDialog.svelte';
+	import MoveConflictDialog from '../components/dialogs/MoveConflictDialog.svelte';
+	import { addSourceRequest } from '$lib/overlays.svelte';
+	import ContextMenu from '../components/overlays/ContextMenu.svelte';
+	import { actionForKey, keyCapture } from '$lib/shortcuts';
+	import { editorTakesKey } from '$lib/shortcuts';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
-	import { toasts } from '$lib/toasts.svelte';
-	import { startWatching } from '$lib/models/Source';
+	import { toasts } from '$lib/overlays.svelte';
+	import { startWatching, onSourceReconciled } from '$lib/models/Source';
+	import MarkdownHandle from '$lib/models/MarkdownHandle';
 
 	let session = $state<Session>();
-	let addSourceSignal = $state(0);
+	const addSourceSignal = $derived(addSourceRequest.signal);
 
 	Session.init().then((s) => (session = s));
 
 	function addSource() {
-		addSourceSignal++;
-		session?.editors[0].focusTab({ kind: 'settings' });
+		addSourceRequest.open();
 	}
+
+	$effect(() => {
+		if (addSourceSignal) session?.editors[0].focusTab({ kind: 'settings' });
+	});
+
+	$effect(() => onSourceReconciled((id) => void MarkdownHandle.syncSource(id)));
 
 	// watching for external changes
 	let unlistenWatch: Promise<UnlistenFn> | undefined;
 	$effect(() => {
 		if (!session || unlistenWatch) return;
-		unlistenWatch = startWatching(session.missingSources).catch((err) => {
-			console.error('file watching failed to start', err);
-			return () => {};
-		});
+		const watch = () =>
+			startWatching(session!.missingSources).catch((err) => {
+				console.error('file watching failed to start', err);
+				toasts.push("Limestone can't watch your notes for changes made in other apps.", {
+					action: {
+						label: 'Retry',
+						run: () => {
+							unlistenWatch = watch();
+						}
+					}
+				});
+				return () => {};
+			});
+		unlistenWatch = watch();
 	});
 
 	let updateChecked = false;
@@ -63,20 +81,39 @@
 		}
 	});
 
+	$effect(() => {
+		const maxWidth = session?.settings.get<number>('appearance.max_view_width');
+		if (maxWidth && maxWidth > 0) {
+			document.documentElement.style.setProperty('--view-max-width', maxWidth + 'px');
+		}
+	});
+
 	let persistTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
 		if (!session) return;
 		$state.snapshot(session.toJSON());
 		if (persistTimer) clearTimeout(persistTimer);
-		persistTimer = setTimeout(() => session!.persist(), 200);
+		persistTimer = setTimeout(
+			() =>
+				session!.persist().catch((e) => {
+					console.error('persist failed', e);
+					toasts.push("Your open tabs couldn't be saved, so they may not reopen next time.");
+				}),
+			200
+		);
 	});
 
 	// todo: start collecting launch actionables here
-	function reportScanSkips(count: number) {
+	const reportedSkips = new Map<string, number>();
+	function reportScanSkips(sourceId: string, count: number) {
+		if (count === (reportedSkips.get(sourceId) ?? 0)) return;
+		reportedSkips.set(sourceId, count);
 		if (count === 0) return;
 		toasts.push(
-			`${count} ${count === 1 ? 'note' : 'notes'} couldn't be indexed: unsupported title encoding`,
-			{ timeout: 5000 }
+			count === 1
+				? "1 file isn't showing: its name has characters Limestone can't read. Rename it in your file manager to bring it back."
+				: `${count} files aren't showing: their names have characters Limestone can't read. Rename them in your file manager to bring them back.`,
+			{ timeout: 10000 }
 		);
 	}
 
@@ -94,7 +131,7 @@
 		});
 		// startup scan
 		const unlistenScan = listen<{ source_id: string; skipped: number }>('source-reconciled', (e) =>
-			reportScanSkips(e.payload.skipped)
+			reportScanSkips(e.payload.source_id, e.payload.skipped)
 		);
 		return () => {
 			unlisten.then((f) => f());
@@ -227,6 +264,7 @@
 	<ContextMenu />
 	<Palette {session} onAddSource={addSource} />
 	<MetadataDialog />
+	<MoveConflictDialog {session} />
 {/if}
 
 <style>

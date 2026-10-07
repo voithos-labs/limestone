@@ -1,0 +1,11 @@
+name: Feature
+description: Suggest something new or a change to how something works
+type: Feature
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What would you like?
+      description: Mockups and screenshots are welcome.
+    validations:
+      required: true

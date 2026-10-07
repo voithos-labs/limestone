@@ -4,6 +4,7 @@
 	import type View from '$lib/models/View.svelte';
 	import type { ViewFace, ViewField, ViewFieldType } from '$lib/models/View.svelte';
 	import {
+		isStatusField,
 		CREATABLE_FIELD_TYPES,
 		isBuiltinField,
 		isDerived,
@@ -11,9 +12,11 @@
 	} from '$lib/models/View.svelte';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
-	import { listInlineByDefault, listPrefixed } from '$lib/views/listLayout';
-	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
-	import Menu from './Menu.svelte';
+	import StatusIcon from './StatusIcon.svelte';
+	import { listInlineByDefault, listPrefixed } from '$lib/views/fieldValue';
+	import { ctxMenu, type CtxEntry } from '$lib/overlays.svelte';
+	import Menu from '../ui/Menu.svelte';
+	import { nameGuard } from '$lib/util/paths';
 
 	// Arranging and managing a list's fields in one place: drag chips between the lanes of a
 	// schematic row (or card), right-click one to rename or delete it, add a new one below
@@ -35,7 +38,10 @@
 		onDelete?: (fieldId: string) => void;
 	} = $props();
 
-	const cards = $derived(face.config.layout === 'grid');
+	// every face that draws NoteCards arranges them as a card
+	const cards = $derived(
+		face.config.layout === 'grid' || face.type === 'kanban' || face.type === 'masonry'
+	);
 
 	type Lane = 'check' | 'left' | 'right' | 'hidden';
 	type Model = { check: string | null; left: string[]; right: string[]; hidden: string[] };
@@ -48,7 +54,8 @@
 		const shown = face.display_field_ids
 			.map((id) => fieldsById.get(id))
 			.filter((f): f is ViewField => !!f && f.type !== 'title');
-		const check = shown[0]?.type === 'boolean' ? shown[0].id : null;
+		const check =
+			shown[0] && (shown[0].type === 'boolean' || isStatusField(shown[0])) ? shown[0].id : null;
 		const rest = check ? shown.slice(1) : shown;
 		const rightIds = face.config.right as string[] | undefined;
 		const isRight = (f: ViewField) =>
@@ -144,7 +151,7 @@
 		const lane = laneAt(e.clientX, e.clientY);
 		overLane = lane;
 		if (!lane || !dragField) return;
-		if (lane === 'check' && dragField.type !== 'boolean') {
+		if (lane === 'check' && dragField.type !== 'boolean' && !isStatusField(dragField)) {
 			rejected = true;
 			return;
 		}
@@ -158,8 +165,8 @@
 			hidden: [...base.hidden]
 		};
 		if (lane === 'check') {
-			// a boolean already there steps aside to the front of the left lane
-			if (base.check && base.check !== id) next.left.unshift(base.check);
+			// whatever held the slot is replaced, not moved: it goes back among the hidden
+			if (base.check && base.check !== id) next.hidden.unshift(base.check);
 			next.check = id;
 		} else {
 			next[lane].splice(indexAt(lane, e.clientX, id), 0, id);
@@ -327,6 +334,7 @@
 						class="rename-input"
 						bind:value={renameDraft}
 						use:focusSelect
+						use:nameGuard={'ident'}
 						onblur={commitRename}
 						onkeydown={renameKey}
 						onpointerdown={(e) => e.stopPropagation()}
@@ -336,7 +344,12 @@
 			{:else}
 				<span>{fieldLabel(f)}</span>
 			{/if}
-			{#if labelled && f.type === 'boolean'}<span class="box"></span>{/if}
+			{#if labelled && f.type === 'boolean'}<span class="box"
+				></span>{:else if labelled && isStatusField(f)}<StatusIcon
+					kind="doing"
+					color={4}
+					size={12}
+				/>{/if}
 		</span>
 	{/if}
 {/snippet}
@@ -415,7 +428,11 @@
 							role="presentation"
 							onpointerdown={(e) => armDrag(e, checkField.id)}
 						>
-							<span class="box"><Check size={10} strokeWidth={3} /></span>
+							{#if isStatusField(checkField)}
+								<StatusIcon kind="doing" color={4} size={14} />
+							{:else}
+								<span class="box"><Check size={10} strokeWidth={3} /></span>
+							{/if}
 						</span>
 					{:else}
 						<span class="box empty"></span>
@@ -426,7 +443,12 @@
 			{#if (overLane === 'check' && rejected) || checkField}
 				<div class="hint">
 					{#if overLane === 'check' && rejected}
-						<span class="note bad">Only a checkbox can go here</span>
+						<span class="note bad">Only a checkbox or the status can go here</span>
+					{:else if checkField && isStatusField(checkField)}
+						<span class="note">
+							<StatusIcon kind="doing" color={4} size={12} />
+							<b>{fieldLabel(checkField)}</b> shown as its ring
+						</span>
 					{:else if checkField}
 						<span class="note">
 							<span class="box tiny"><Check size={9} strokeWidth={3} /></span>

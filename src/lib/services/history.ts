@@ -1,17 +1,18 @@
 import { invoke } from '@tauri-apps/api/core';
 import * as Automerge from '@automerge/automerge/slim';
-import { Repo, updateText } from '@automerge/automerge-repo/slim';
-import type {
-	Chunk,
-	DocHandle,
-	DocumentId,
-	StorageAdapterInterface,
-	StorageKey
+import {
+	Repo,
+	updateText,
+	type Chunk,
+	type DocHandle,
+	type DocumentId,
+	type StorageAdapterInterface,
+	type StorageKey
 } from '@automerge/automerge-repo/slim';
 import wasmUrl from '@automerge/automerge/automerge.wasm?url';
 
-import { fromBase64, toBase64 } from '$lib/util/bytes';
-import { registerFlush } from '$lib/util/flush';
+import { fromBase64, toBase64 } from '$lib/services/assets';
+import { registerFlush } from '$lib/services/platform';
 
 // region storage adapter
 // ── Storage Adapter (via Tauri To Fs) ────────────────────────────────────────────────

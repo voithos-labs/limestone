@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { ChevronDown } from '@lucide/svelte';
-	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { ctxMenu, type CtxEntry } from '$lib/overlays.svelte';
 
 	let {
 		title,

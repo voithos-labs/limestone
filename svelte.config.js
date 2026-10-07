@@ -14,6 +14,9 @@ const config = {
 		}),
 		output: {
 			bundleStrategy: 'single'
+		},
+		alias: {
+			$assets: 'static/assets'
 		}
 	}
 };

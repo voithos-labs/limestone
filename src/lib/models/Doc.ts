@@ -131,6 +131,8 @@ can i discard your rambling - they are in git history anyways
 
  */
 
+import { untrack } from 'svelte';
+import { SvelteMap } from 'svelte/reactivity';
 import type { Source } from '$lib/models/Source';
 import type Tag from '$lib/models/Tag';
 
@@ -153,18 +155,19 @@ export interface DocumentRow {
 	properties: string;
 }
 
+type DocumentPlace = { sourceId: string; relPath: string; title: string };
+
 // shared document state
 // protected (not public) such that outside code cannot call it
 // its honestly just the convention of giving things the needed minimum scope
 export default abstract class Doc {
+	protected static readonly places = new SvelteMap<string, DocumentPlace>();
+
 	readonly id: string; // primary id
 	readonly documentType: string;
 	// imma write the prefix _ as its the convention for private backing fields
 	// private backing fields, btw, is a stupid ass name
 	private _source: Source; // source instance, for data and ui
-	private _relPath: string; // path relative to source root
-
-	title: string;
 	tags: Tag[];
 	properties: Record<string, unknown>;
 	createdAt: Date;
@@ -176,8 +179,7 @@ export default abstract class Doc {
 		this.id = row.id;
 		this.documentType = row.document_type;
 		this._source = source;
-		this._relPath = row.rel_path;
-		this.title = row.title;
+		this.updateLocation(source, row.rel_path, row.title);
 		this.tags = [];
 		this.properties =
 			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
@@ -194,12 +196,24 @@ export default abstract class Doc {
 	}
 
 	get relPath(): string {
-		return this._relPath;
+		return Doc.places.get(this.id)!.relPath;
+	}
+
+	get title(): string {
+		return Doc.places.get(this.id)!.title;
+	}
+
+	protected get _relPath(): string {
+		return untrack(() => Doc.places.get(this.id)!.relPath);
+	}
+
+	protected get _title(): string {
+		return untrack(() => Doc.places.get(this.id)!.title);
 	}
 
 	// such that subclass can still write
-	protected updateLocation(source: Source, relPath: string): void {
+	protected updateLocation(source: Source, relPath: string, title: string): void {
 		this._source = source;
-		this._relPath = relPath;
+		Doc.places.set(this.id, { sourceId: source.id, relPath, title });
 	}
 }

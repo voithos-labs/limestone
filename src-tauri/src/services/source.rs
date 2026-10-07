@@ -25,8 +25,8 @@
 //!     - same path AND NOT same mtime => modified
 //!     - on disk but not found in db (by rel_path) => new_paths
 //!     - in db but not found on disk => missing, delete from cache (TODO: soft-delete, recoverable)
-//!          -> later can prompt to restore for autpmerge history in UI, and allows a better missing
-//!             doc page
+//!       -> later can prompt to restore for autpmerge history in UI, and allows a better missing
+//!       doc page
 //! 4. Extract and parse frontmatter, quickly ideally
 //! 5. Resolve id-first for each read file, dupes get re-keyed
 //! 6. Commit changes

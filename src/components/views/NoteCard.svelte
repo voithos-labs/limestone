@@ -1,14 +1,19 @@
 <script lang="ts">
 	import { Check, PanelRight } from '@lucide/svelte';
-	import { openHow } from '$lib/views/rowOpen';
-	import { startMove, endMove } from '$lib/views/dragMove';
+	import { openHow } from '$lib/views/FaceRows.svelte';
+	import { startMove, endMove } from '$lib/views/move.svelte';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
 	import type { FaceRows } from '$lib/views/FaceRows.svelte';
-	import type { Preview } from '$lib/views/previews';
-	import { rawStatefulValue } from '$lib/views/fieldValue';
-	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
+	import type { Preview } from '$lib/views/FaceRows.svelte';
+	import { isStatusField } from '$lib/models/View.svelte';
+	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/fieldValue';
+	import StatusIcon from './StatusIcon.svelte';
+	import { leave } from '$lib/views/FaceRows.svelte';
+	import { highlightTitle, highlightSnippet } from '$lib/util/dom';
 	import RowChips from './RowChips.svelte';
-	import type RowEditors from './RowEditors.svelte';
+	import type RowEditors from './editors/RowEditors.svelte';
+	import { nameGuard } from '$lib/util/paths';
+	import { selectionIn, restoreSelection } from '$lib/util/dom';
 
 	// A note as a card: the list row folded onto three lines. Same lanes, same chips, same two
 	// modes, so a grid and a board read like the list they sit next to
@@ -21,6 +26,7 @@
 		meta = [],
 		editMode = false,
 		preview,
+		body = 'fixed',
 		onOpen,
 		moveable = false,
 		onFocus
@@ -33,30 +39,48 @@
 		meta?: ViewField[];
 		editMode?: boolean;
 		preview?: Preview;
+		body?: 'fixed' | 'flow' | 'none'; // grid: a fixed window; masonry: as tall as it is; board: none
 		onOpen?: (rowId: string, newTab?: boolean | 'side') => void;
 		moveable?: boolean;
 		onFocus?: () => void;
 	} = $props();
 
 	const member = $derived(checkField ? rows.memberOf(row, checkField) : false);
-	const done = $derived(member && checkField ? rawStatefulValue(row, checkField) === true : false);
+	const done = $derived(member && checkField ? checkDone(row, checkField) : false);
 	const hit = $derived(rows.searchHits[row.id]);
 	const snippet = $derived(hit?.snippet?.trim() ? highlightSnippet(hit.snippet) : '');
 
 	// ── Rename in place ────────────────────────────────────────────────────────
 	let renaming = $state(false);
 	let draft = $state('');
+	let renameRange: [number, number] | null = null;
 
 	function startRename(e: MouseEvent) {
 		if (!editMode) return;
 		e.stopPropagation();
+		renameRange = selectionIn(e.currentTarget as HTMLElement, row.title);
 		renaming = true;
 		draft = row.title;
 	}
 
+	let renameTaken = $state(false);
+	let renameToken = 0;
+	$effect(() => {
+		const draftNow = draft;
+		const target = renaming ? row : null;
+		const token = ++renameToken;
+		renameTaken = false;
+		if (!target || !draftNow.trim()) return;
+		const timer = setTimeout(async () => {
+			const taken = await rows.renameTaken(target, draftNow);
+			if (token === renameToken) renameTaken = taken;
+		}, 150);
+		return () => clearTimeout(timer);
+	});
+
 	function commitRename() {
 		renaming = false;
-		rows.rename(row.id, draft);
+		if (!renameTaken) rows.rename(row.id, draft);
 	}
 
 	function onRenameKey(e: KeyboardEvent) {
@@ -68,8 +92,7 @@
 	}
 
 	function renameFocus(node: HTMLInputElement) {
-		node.focus();
-		node.select();
+		restoreSelection(node, renameRange);
 	}
 
 	let imgOk = $state(true);
@@ -85,8 +108,10 @@
 	class:editable={editMode}
 	role="listitem"
 	data-id={row.id}
+	data-leaving={rows.leaving.has(row.id) ? '' : undefined}
 	tabindex="-1"
 	draggable={moveable}
+	out:leave={{ mode: body === 'none' ? 'row' : 'card' }}
 	ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 	ondragend={endMove}
 	onclick={(e) => onOpen?.(row.id, openHow(e))}
@@ -97,7 +122,26 @@
 	onfocus={onFocus}
 >
 	<div class="head">
-		{#if checkField && member && rows.writable(row)}
+		{#if checkField && isStatusField(checkField)}
+			{@const sv = statusOf(row, checkField)}
+			<button
+				class="check status"
+				type="button"
+				tabindex="-1"
+				aria-label="Change status"
+				title={sv}
+				onclick={(e) => {
+					e.stopPropagation();
+					if (rows.writable(row)) editors.edit(row, checkField, e.currentTarget as HTMLElement);
+				}}
+			>
+				<StatusIcon
+					kind={statusKind(checkField, sv)}
+					color={statusColor(checkField, sv)}
+					size={16}
+				/>
+			</button>
+		{:else if checkField && member && rows.writable(row)}
 			<button
 				class="check"
 				class:done
@@ -125,8 +169,11 @@
 				<span class="rename-ghost">{draft || ' '}</span>
 				<input
 					class="rename"
+					class:invalid={renameTaken}
+					title={renameTaken ? 'A note with this name is already in this folder.' : undefined}
 					bind:value={draft}
 					use:renameFocus
+					use:nameGuard
 					onblur={commitRename}
 					onkeydown={onRenameKey}
 					spellcheck="false"
@@ -152,17 +199,19 @@
 		</button>
 	</div>
 
-	<div class="body">
-		{#if preview?.image && imgOk}
-			<img class="image" src={preview.image} alt="" onerror={() => (imgOk = false)} />
-		{:else if snippet}
-			<p class="text">{@html snippet}</p>
-		{:else if preview?.text}
-			<p class="text">{preview.text}</p>
-		{:else}
-			<p class="text empty">Empty note</p>
-		{/if}
-	</div>
+	{#if body === 'fixed' || (body === 'flow' && (snippet || preview?.text || (preview?.image && imgOk)))}
+		<div class="body" class:flow={body === 'flow'}>
+			{#if preview?.image && imgOk}
+				<img class="image" src={preview.image} alt="" onerror={() => (imgOk = false)} />
+			{:else if snippet}
+				<p class="text">{@html snippet}</p>
+			{:else if preview?.text}
+				<p class="text">{preview.text}</p>
+			{:else}
+				<p class="text empty">Empty note</p>
+			{/if}
+		</div>
+	{/if}
 
 	{#if inline.length || meta.length}
 		<div class="foot">
@@ -196,6 +245,7 @@
 <style>
 	/* a flat tile: one faint fill, no border, a touch darker on hover */
 	.card {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
@@ -258,6 +308,10 @@
 		cursor: default;
 	}
 
+	.check.status {
+		cursor: pointer;
+	}
+
 	.check.inert .box {
 		border-color: var(--color-border);
 		opacity: 0.55;
@@ -318,6 +372,12 @@
 		visibility: hidden;
 	}
 
+	.rename.invalid {
+		text-decoration: underline;
+		text-decoration-color: var(--error-fg);
+		text-underline-offset: 3px;
+	}
+
 	.rename {
 		width: 0;
 		min-width: 100%;
@@ -369,6 +429,21 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+
+	/* masonry: the window opens up to what the note has, an image at its own shape */
+	.body.flow {
+		height: auto;
+	}
+
+	.body.flow .image {
+		height: auto;
+		max-height: 240px;
+	}
+
+	.body.flow .text {
+		-webkit-line-clamp: 6;
+		line-clamp: 6;
 	}
 
 	.text {

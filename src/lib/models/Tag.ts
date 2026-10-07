@@ -30,8 +30,8 @@ import {
 	type BulkResult
 } from '$lib/models/View.svelte';
 import { sourceName, type Source } from '$lib/models/Source';
-import { toasts } from '$lib/toasts.svelte';
-import { flushAll } from '$lib/util/flush';
+import { toasts, mark } from '$lib/overlays.svelte';
+import { flushAll } from '$lib/services/platform';
 
 export interface TagRow {
 	id: string;
@@ -131,12 +131,12 @@ class Tag {
 
 	private static toastSkippedSources(
 		results: { source: Source; result: BulkResult }[],
-		action: string
+		attempt: string
 	) {
 		for (const { source, result } of results) {
 			if (result.source_unreachable) {
 				toasts.push(
-					`The ${sourceName(source)} source folder is not present, associated notes have not had their tags ${action}.`
+					`Failed to ${attempt} in ${mark('source', sourceName(source))}, the source is missing.`
 				);
 			}
 		}
@@ -152,7 +152,7 @@ class Tag {
 			{ oldSlug: tag.slug, newSlug },
 			{ silent: true }
 		);
-		Tag.toastSkippedSources(results, 'renamed');
+		Tag.toastSkippedSources(results, `rename ${mark('tag', tag.slug)}`);
 		await remapIdsInSavedViews(tag.id, newId);
 		return newId;
 	}
@@ -161,7 +161,7 @@ class Tag {
 		if (isBuiltinUnit(tag.id)) return;
 		await flushAll();
 		const results = await bulkPerSource('bulk_remove_tag', { slug: tag.slug }, { silent: true });
-		Tag.toastSkippedSources(results, 'removed');
+		Tag.toastSkippedSources(results, `remove ${mark('tag', tag.slug)}`);
 		const view = (await listSavedViewJSON()).find((v) => v.unit === tag.id);
 		if (view) await deleteSavedView(view.id);
 	}
