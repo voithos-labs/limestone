@@ -1,41 +1,44 @@
-import { reportError } from '$lib/errors';
-import { addSourceRequest } from '$lib/addSource.svelte';
-import type View from '$lib/models/View.svelte';
-import type { FilterNode, MemberRow, SortKey, ViewField } from '$lib/models/View.svelte';
-import {
+import { reportError, addSourceRequest, toasts, mark } from '$lib/overlays.svelte';
+import View, {
+	type FilterNode,
+	type MemberRow,
+	type SortKey,
+	type ViewField,
 	describeBulkFailure,
 	isBuiltinUnit,
 	isLeafActive,
 	isStatusField,
 	TODO_DONE,
-	ViewFace
+	ViewFace,
+	type FilterLeaf
 } from '$lib/models/View.svelte';
 import {
-	createMetaDate,
-	deriveCreateContext,
-	folderPath,
-	type CreateContext
-} from '$lib/views/createDefaults';
-import { rawStatefulValue, seedProperties, withStatefulValue } from '$lib/views/fieldValue';
-import { firstStatus, statusIsDone, statusOf } from '$lib/views/todoStatus';
-import { listInlineByDefault } from '$lib/views/listLayout';
+	rawStatefulValue,
+	seedProperties,
+	withStatefulValue,
+	firstStatus,
+	statusIsDone,
+	statusOf,
+	listInlineByDefault
+} from '$lib/views/fieldValue';
 import { select } from '$lib/services/db';
-import { searchDocuments } from '$lib/services/search';
-import type { SearchResult } from '$lib/types/SearchResult';
+import { searchDocuments, type SearchResult } from '$lib/services/search';
 import {
 	getDefaultSourceId,
 	listSources,
 	pickCreationSource,
 	type Source
 } from '$lib/models/Source';
-import Folder, { folderIdPath } from '$lib/models/Folder';
+import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 import DocHandle from '$lib/models/DocHandle';
 import { sanitizeSegment } from '$lib/util/paths';
 import { tagId } from '$lib/models/Tag';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { SvelteSet } from 'svelte/reactivity';
-import { toasts, mark } from '$lib/toasts.svelte';
-import { history } from '$lib/history';
+import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
+import { readTextFile } from '@tauri-apps/plugin-fs';
+import { cubicOut } from 'svelte/easing';
+import type { TransitionConfig } from 'svelte/transition';
 
 export type RowTag = { id: string; slug: string };
 
@@ -608,4 +611,361 @@ export async function createInView(view: View, todo = false): Promise<string | n
 	const source = sourceFor(ctx, sources, folders, defaultSourceId);
 	if (!source) return null;
 	return (await createFromContext(view, ctx, source, '')).id;
+}
+
+export interface CreateContext {
+	folderGroupId: string | null;
+	ambiguous: boolean;
+	fieldValues: Record<string, unknown>;
+	tagGroupIds: string[];
+	sourceId: string | null;
+	metaDates: { created_at?: string; updated_at?: string };
+}
+
+function conjunctiveLeaves(node: FilterNode, out: FilterLeaf[]): void {
+	if ('children' in node) {
+		if (node.op !== 'and') return;
+		for (const c of node.children) conjunctiveLeaves(c, out);
+	} else {
+		out.push(node);
+	}
+}
+
+function ancestorChain(id: string, byId: Map<string, Folder>): string[] {
+	const chain: string[] = [];
+	let g = byId.get(id);
+	let guard = 0;
+	while (g?.parentId && guard++ < 64) {
+		chain.push(g.parentId);
+		g = byId.get(g.parentId);
+	}
+	return chain;
+}
+
+function resolveFolder(
+	folderIds: string[],
+	byId: Map<string, Folder>
+): { id: string | null; ambiguous: boolean } {
+	const ids = [...new Set(folderIds)];
+	if (ids.length === 0) return { id: null, ambiguous: false };
+	if (ids.length === 1) return { id: ids[0], ambiguous: false };
+
+	const deepest = ids.filter((c) => {
+		const ancestors = new Set(ancestorChain(c, byId));
+		return ids.every((o) => o === c || ancestors.has(o));
+	});
+	if (deepest.length === 1) return { id: deepest[0], ambiguous: false };
+	return { id: null, ambiguous: true };
+}
+
+export function deriveCreateContext(
+	view: View,
+	face: ViewFace,
+	folders: Folder[],
+	scope?: FilterNode | null
+): CreateContext {
+	const leaves: FilterLeaf[] = [];
+	conjunctiveLeaves(view.filter, leaves);
+	conjunctiveLeaves(face.additive_filter, leaves);
+	// the caller's scope (a journal's selected day) seeds new docs (so they stay on screen)
+	if (scope) conjunctiveLeaves(scope, leaves);
+
+	const fieldsById = new Map(view.fields.map((f) => [f.id, f]));
+	const byId = new Map(folders.map((g) => [g.id, g]));
+
+	const folderIds: string[] = [];
+	const tagGroupIds: string[] = [];
+	const fieldValues: Record<string, unknown> = {};
+	const metaDates: { created_at?: string; updated_at?: string } = {};
+	let sourceId: string | null = null;
+	let folderSourceId: string | null = null;
+
+	for (const field of view.fields) {
+		const def = field.config?.default;
+		if (def === undefined || def === null || def === '') continue;
+		if (field.type === 'select' || field.type === 'multiselect') {
+			fieldValues[field.name] = field.type === 'multiselect' && !Array.isArray(def) ? [def] : def;
+		}
+	}
+
+	if (view.unit?.startsWith('tag:')) tagGroupIds.push(view.unit);
+	else if (view.unit && isSourceRoot(view.unit)) folderSourceId = folderIdSource(view.unit);
+	else if (view.unit) folderIds.push(view.subfolder ?? view.unit);
+
+	for (const leaf of leaves) {
+		const field = fieldsById.get(leaf.field_id);
+		if (!field) continue;
+
+		if (field.type === 'folder') {
+			if (leaf.op === 'in' && typeof leaf.value === 'string') {
+				if (isSourceRoot(leaf.value)) {
+					if (!folderSourceId) folderSourceId = folderIdSource(leaf.value);
+				} else folderIds.push(leaf.value);
+			}
+		} else if (field.type === 'tags') {
+			if ((leaf.op === 'has_any' || leaf.op === 'has_all') && Array.isArray(leaf.value)) {
+				for (const v of leaf.value) if (typeof v === 'string') tagGroupIds.push(v);
+			}
+		} else if (field.type === 'created_at' || field.type === 'updated_at') {
+			// a day scope ("on or after <day>", "before <next day>") seeds
+			if (leaf.op === 'on_or_after' && typeof leaf.value === 'string') {
+				metaDates[field.type] = resolveRelativeDate(leaf.value) ?? leaf.value;
+			}
+		} else {
+			collectFieldDefault(field, leaf, fieldValues);
+		}
+	}
+
+	const folder = resolveFolder(folderIds, byId);
+	if (!sourceId && folder.id) sourceId = byId.get(folder.id)?.sourceId ?? null;
+	if (!sourceId) sourceId = folderSourceId;
+
+	return {
+		folderGroupId: folder.id,
+		ambiguous: folder.ambiguous,
+		fieldValues,
+		tagGroupIds: [...new Set(tagGroupIds)],
+		sourceId,
+		metaDates
+	};
+}
+
+/**
+ * The created_at/updated_at a new doc needs to land inside the view's date scope
+ * or null when shit does not work out
+ */
+export function createMetaDate(ctx: CreateContext, type: 'created_at' | 'updated_at'): Date | null {
+	const raw = ctx.metaDates[type];
+	if (!raw) return null;
+	const ms = wallClockToMs(raw);
+	if (ms === null) return null;
+	const d = new Date(ms);
+	const now = new Date();
+	const isToday =
+		d.getFullYear() === now.getFullYear() &&
+		d.getMonth() === now.getMonth() &&
+		d.getDate() === now.getDate();
+	return isToday ? null : d;
+}
+
+function collectFieldDefault(
+	field: ViewField,
+	leaf: FilterLeaf,
+	out: Record<string, unknown>
+): void {
+	if (leaf.value === null || leaf.value === undefined || leaf.value === '') return;
+	if (field.type === 'multiselect') {
+		if (leaf.op === 'contains') out[field.name] = [leaf.value];
+		return;
+	}
+	// boolean filters use eq with a real true/false ;;;; both are valid defaults
+	if (field.type === 'boolean') {
+		if (leaf.op === 'eq') out[field.name] = leaf.value === true || leaf.value === 'true';
+		return;
+	}
+	// a day scope is a range, so seed from its lower bound as well as from eq
+	if (field.type === 'date') {
+		if (leaf.op === 'eq' || leaf.op === 'on_or_after')
+			out[field.name] = resolveRelativeDate(leaf.value) ?? leaf.value;
+		return;
+	}
+	if (leaf.op === 'eq') out[field.name] = leaf.value;
+}
+
+export function folderPath(groupId: string): string {
+	return folderIdPath(groupId);
+}
+
+// Cheap previews for cards until there are real thumbnails: the first image embedded in the
+// body if there is one, else the first few hundred characters of prose with the markdown
+// stripped. Cached per (id, updated_at) so a reload only reads files that changed.
+
+export type Preview = { text: string; image: string };
+
+const PREVIEW_MAX = 280;
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
+const IMAGE_EMBED_RE = /!\[\[([^\]\n]+?)\]\]|!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/;
+
+function stripMd(s: string): string {
+	return s
+		.replace(/```[\s\S]*?```/g, ' ')
+		.replace(/`([^`]*)`/g, '$1')
+		.replace(/!\[\[[^\]\n]*\]\]/g, ' ')
+		.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+		.replace(/^#{1,6}\s+/gm, '')
+		.replace(/^[-*+]\s+\[[ xX]\]\s+/gm, '')
+		.replace(/^\s*[-*+>]\s+/gm, '')
+		.replace(/[*_~]{1,3}([^*_~\n]+)[*_~]{1,3}/g, '$1')
+		.replace(/\n{2,}/g, '\n')
+		.trim();
+}
+
+// same resolution the editor's inline embeds use: source-relative, falling back to the
+// source's asset folder for bare filenames
+function firstImage(body: string, source: Source): string {
+	const m = IMAGE_EMBED_RE.exec(body);
+	if (!m) return '';
+	const target = (m[1] ? m[1].split('|')[0] : m[3]).trim();
+	if (/^(https?|data|asset):/i.test(target)) return target;
+	const clean = target.replace(/\\/g, '/').replace(/^\.?\//, '');
+	const ext = clean.split('.').pop()?.toLowerCase() ?? '';
+	if (!IMAGE_EXTS.has(ext)) return '';
+	const loc = (source.asset_location ?? '').replace(/^\/+|\/+$/g, '');
+	const rel = clean.includes('/') || !loc ? clean : `${loc}/${clean}`;
+	return convertFileSrc(`${source.path}/${rel}`);
+}
+
+export class PreviewCache {
+	private cache = new Map<string, Preview>();
+
+	async fetch(rows: MemberRow[], sources: Source[]): Promise<Record<string, Preview>> {
+		const out: Record<string, Preview> = {};
+		if (rows.length === 0) return out;
+		const byId = new Map(sources.map((s) => [s.id, s]));
+		await Promise.all(
+			rows.map(async (r) => {
+				const key = `${r.id}:${r.updated_at}`;
+				let hit = this.cache.get(key);
+				if (hit === undefined) {
+					const src = byId.get(r.source_id);
+					if (!src) return;
+					try {
+						const raw = await readTextFile(`${src.path}/${r.rel_path}`);
+						const body = DocHandle.deserialize(raw).body;
+						hit = { text: stripMd(body).slice(0, PREVIEW_MAX), image: firstImage(body, src) };
+					} catch {
+						hit = { text: '', image: '' };
+					}
+					this.cache.set(key, hit);
+				}
+				out[r.id] = hit;
+			})
+		);
+		return out;
+	}
+}
+
+export type RowOpen = boolean | 'side';
+
+export function openHow(e: MouseEvent): RowOpen {
+	const mod = e.ctrlKey || e.metaKey;
+	return mod && e.shiftKey ? 'side' : mod;
+}
+
+// How a row or card that stopped matching the view goes: rows and board cards fold up so what's
+// below slides in, grid cards fade and shrink a touch. Anything else removed goes at once
+export function leave(node: HTMLElement, { mode }: { mode: 'row' | 'card' }): TransitionConfig {
+	if (node.dataset.leaving === undefined) return { duration: 0 };
+	if (mode === 'card') {
+		return {
+			duration: 160,
+			easing: cubicOut,
+			css: (t) => `opacity: ${t}; transform: scale(${0.96 + 0.04 * t});`
+		};
+	}
+	const h = node.offsetHeight;
+	const s = getComputedStyle(node);
+	const mt = parseFloat(s.marginTop) || 0;
+	const mb = parseFloat(s.marginBottom) || 0;
+	return {
+		duration: 200,
+		easing: cubicOut,
+		css: (t) =>
+			`overflow: hidden; height: ${t * h}px; min-height: 0; margin-top: ${t * mt}px; ` +
+			`margin-bottom: ${t * mb}px; opacity: ${t};`
+	};
+}
+
+// Undo for view actions: one stack, owned by whichever view last pushed, cleared when its face
+// changes. Entries put the file back (or forward again); the screen follows the file
+export type Entry = { back: () => Promise<void>; forward: () => Promise<void> };
+
+const MAX = 50;
+
+class History {
+	private owner: string | null = null;
+	private undos: Entry[] = [];
+	private redos: Entry[] = [];
+	private batch: Entry[] | null = null;
+
+	push(owner: string, entry: Entry): void {
+		if (owner !== this.owner) {
+			this.owner = owner;
+			this.undos = [];
+			this.redos = [];
+		}
+		if (this.batch) {
+			this.batch.push(entry);
+			return;
+		}
+		this.redos = [];
+		this.undos.push(entry);
+		if (this.undos.length > MAX) this.undos.shift();
+	}
+
+	// everything pushed inside runs as one step, undone in reverse
+	group(owner: string, fn: () => void): void {
+		if (this.batch) {
+			fn();
+			return;
+		}
+		const list: Entry[] = (this.batch = []);
+		try {
+			fn();
+		} finally {
+			this.batch = null;
+		}
+		if (list.length === 0) return;
+		this.push(owner, {
+			back: async () => {
+				for (const e of [...list].reverse()) await e.back();
+			},
+			forward: async () => {
+				for (const e of list) await e.forward();
+			}
+		});
+	}
+
+	clear(): void {
+		this.owner = null;
+		this.undos = [];
+		this.redos = [];
+	}
+
+	async undo(owner: string): Promise<boolean> {
+		if (owner !== this.owner) return false;
+		const e = this.undos.pop();
+		if (!e) return false;
+		await e.back();
+		this.redos.push(e);
+		return true;
+	}
+
+	async redo(owner: string): Promise<boolean> {
+		if (owner !== this.owner) return false;
+		const e = this.redos.pop();
+		if (!e) return false;
+		await e.forward();
+		this.undos.push(e);
+		return true;
+	}
+}
+
+export const history = new History();
+
+// a page's Ctrl/Cmd+Z and Shift+Z / Y, when the page is the active pane and nothing with its
+// own undo (a field, the editor, a menu) has the keyboard
+export function undoKey(e: KeyboardEvent, owner: string, root: HTMLElement | null): void {
+	if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+	const k = e.key.toLowerCase();
+	if (k !== 'z' && k !== 'y') return;
+	if (!root?.closest('.content-area.active')) return;
+	const a = document.activeElement as HTMLElement | null;
+	if (a && (a.matches('input, textarea, select') || a.isContentEditable || a.closest('.editor')))
+		return;
+	if (document.querySelector('.menu, .pop, .overlay, .ctx-menu, [role="dialog"]')) return;
+	e.preventDefault();
+	const redo = k === 'y' || e.shiftKey;
+	void (redo ? history.redo(owner) : history.undo(owner));
 }

@@ -30,8 +30,8 @@ import {
 	type BulkResult
 } from '$lib/models/View.svelte';
 import { sourceName, type Source } from '$lib/models/Source';
-import { toasts, mark } from '$lib/toasts.svelte';
-import { flushAll } from '$lib/util/flush';
+import { toasts, mark } from '$lib/overlays.svelte';
+import { flushAll } from '$lib/services/platform';
 
 export interface TagRow {
 	id: string;

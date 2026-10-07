@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { DocPicker } from '$lib/views/docPicker.svelte';
-	import SearchResultRow from '../SearchResultRow.svelte';
+	import type { DocPicker } from '$lib/views/project.svelte';
+	import SearchResultRow from '../overlays/SearchResultRow.svelte';
 	import { Plus } from '@lucide/svelte';
 
 	let {

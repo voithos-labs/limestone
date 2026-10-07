@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { reportError } from '$lib/errors';
+	import { reportError } from '$lib/overlays.svelte';
 	import { FilePlus, LayoutPanelTop, FolderInput, Bookmark, TextAlignStart } from '@lucide/svelte';
 	import type { Component } from 'svelte';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
@@ -10,9 +10,9 @@
 	import { select } from '$lib/services/db';
 	import { getViewIcon } from '$lib/views/filterDisplay';
 	import { formatDateFriendly } from '$lib/views/dateFormat';
-	import { openProjectSetup } from '$lib/views/projectSetup';
-	import { mark } from '$lib/toasts.svelte';
-	import { addSourceRequest } from '$lib/addSource.svelte';
+	import { openProjectSetup } from '$lib/views/project.svelte';
+	import { mark } from '$lib/overlays.svelte';
+	import { addSourceRequest } from '$lib/overlays.svelte';
 
 	// Where the app lands when no tab is open: what you can start, and what you were in
 	let { editor, onAddSource }: { editor: EditorState; onAddSource?: () => void } = $props();

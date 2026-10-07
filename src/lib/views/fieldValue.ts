@@ -1,12 +1,18 @@
-import type { MemberRow, ViewField, ViewFieldType } from '$lib/models/View.svelte';
 import {
+	type MemberRow,
+	type ViewField,
+	type ViewFieldType,
 	CREATABLE_FIELD_TYPES,
 	fieldKey,
 	isBuiltinField,
-	isDerived
+	isDerived,
+	BUILTIN_UNITS,
+	TODO_DONE,
+	isStatusField,
+	type StatusOption
 } from '$lib/models/View.svelte';
 import { sourceName as sourceFolderName, type Source } from '$lib/models/Source';
-import { formatDateFriendly, formatDateISO, formatViewDate } from './dateFormat';
+import { formatDateFriendly, formatDateISO, formatViewDate } from '$lib/views/dateFormat';
 
 // reads a stateful field value (views.<unit key>.<field>) off a row's props
 export function rawStatefulValue(row: MemberRow, field: ViewField): unknown {
@@ -160,4 +166,92 @@ export function fieldLabel(field: ViewField): string {
 	// registry names are lowercase keys; they read like the derived fields do
 	if (isBuiltinField(field)) return field.name.charAt(0).toUpperCase() + field.name.slice(1);
 	return field.name;
+}
+
+// The list has two lanes after the title. Fields that say what a note is sit right after it as
+// pills; fields that say when or how much pack to the right. A face can override the lane per
+// field (config.right); this is the default when it hasn't.
+const INLINE: ReadonlySet<string> = new Set(['tags', 'select', 'multiselect']);
+
+export function listInlineByDefault(type: ViewFieldType): boolean {
+	return INLINE.has(type);
+}
+
+// A value is prefixed (icon for derived, label for stateful) only where it would otherwise be
+// ambiguous: pills carry their own look and "updated" is the date everyone expects.
+const BARE: ReadonlySet<string> = new Set(['tags', 'select', 'multiselect', 'updated_at']);
+
+export function listPrefixed(type: ViewFieldType): boolean {
+	return !BARE.has(type);
+}
+
+// How pressing a todo's due date is: due today asks for attention, before today is late. A
+// todo that's done is neither, and only the built-in due date means "due"
+export type DueState = 'today' | 'overdue' | null;
+
+const TODO = 'tag:todo';
+const DUE = `${TODO}/due`;
+const DONE = `${TODO}/done`;
+
+export function dueState(row: MemberRow, field: ViewField): DueState {
+	if (field.id !== DUE) return null;
+	const done = BUILTIN_UNITS[TODO]?.fields.find((f) => f.id === DONE);
+	if (done && rawStatefulValue(row, done) === true) return null;
+	const v = rawStatefulValue(row, field);
+	const m = typeof v === 'string' ? v.match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+	if (!m) return null;
+	const due = new Date(+m[1], +m[2] - 1, +m[3]).getTime();
+	const now = new Date();
+	const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+	return due < today ? 'overdue' : due === today ? 'today' : null;
+}
+
+// The todo tag's status is a select whose options each sit on one side of done. The checkbox
+// stays canonical: a status is only written once it's been set, and until then it reads as
+// the first option on the checkbox's side. Where the two disagree, the checkbox wins.
+
+export type StatusKind = 'todo' | 'doing' | 'done';
+
+const DONE_FIELD: ViewField = {
+	id: TODO_DONE,
+	name: 'done',
+	type: 'boolean',
+	config: {},
+	unit: 'tag:todo'
+};
+
+export function statusOptions(field: ViewField): StatusOption[] {
+	return ((field.config?.options ?? []) as StatusOption[]).map((o) => ({ ...o, done: !!o.done }));
+}
+
+export function statusIsDone(field: ViewField, value: string): boolean {
+	return statusOptions(field).find((o) => o.value === value)?.done ?? false;
+}
+
+export function firstStatus(field: ViewField, done: boolean): string {
+	return statusOptions(field).find((o) => o.done === done)?.value ?? (done ? 'done' : 'todo');
+}
+
+export function statusColor(field: ViewField, value: string): number {
+	return statusOptions(field).find((o) => o.value === value)?.color ?? 0;
+}
+
+// the glyph: done is a filled check, the first open option an empty ring, anything else a half
+export function statusKind(field: ViewField, value: string): StatusKind {
+	if (statusIsDone(field, value)) return 'done';
+	return value === firstStatus(field, false) ? 'todo' : 'doing';
+}
+
+export function statusOf(row: MemberRow, field: ViewField): string {
+	const done = rawStatefulValue(row, DONE_FIELD) === true;
+	const raw = rawStatefulValue(row, field);
+	const v = typeof raw === 'string' ? raw : '';
+	if (v && statusIsDone(field, v) === done) return v;
+	return firstStatus(field, done);
+}
+
+// whether the leading slot's field reads as done, for a checkbox or a status
+export function checkDone(row: MemberRow, field: ViewField): boolean {
+	if (isStatusField(field)) return statusIsDone(field, statusOf(row, field));
+	return rawStatefulValue(row, field) === true;
 }

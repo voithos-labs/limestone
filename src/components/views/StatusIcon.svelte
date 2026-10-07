@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Check } from '@lucide/svelte';
-	import type { StatusKind } from '$lib/views/todoStatus';
+	import type { StatusKind } from '$lib/views/fieldValue';
 
 	let { kind, color, size = 16 }: { kind: StatusKind; color: number; size?: number } = $props();
 </script>

@@ -17,7 +17,7 @@
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import { Tags, Folder as FolderIcon } from '@lucide/svelte';
 	import FilterChipIsland from './FilterChipIsland.svelte';
-	import Menu from './Menu.svelte';
+	import Menu from '../ui/Menu.svelte';
 
 	// edits the leaves of one 'and' compound: a view's filter or a face's subfilter
 	let {

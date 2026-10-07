@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { reportError } from '$lib/errors';
+	import { reportError } from '$lib/overlays.svelte';
 	import Folder, { folderId, folderIdSource, folderIdPath, isSourceRoot } from '$lib/models/Folder';
 	import Tag, { tagId } from '$lib/models/Tag';
 	import { isBuiltinUnit } from '$lib/models/View.svelte';
-	import NewFolderDialog from '../NewFolderDialog.svelte';
-	import { openProjectSetup } from '$lib/views/projectSetup';
-	import { metaDialog } from '$lib/metaDialog.svelte';
+	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
+	import { openProjectSetup } from '$lib/views/project.svelte';
+	import { metaDialog } from '$lib/overlays.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { mark } from '$lib/toasts.svelte';
-	import { addSourceRequest } from '$lib/addSource.svelte';
+	import { mark } from '$lib/overlays.svelte';
+	import { addSourceRequest } from '$lib/overlays.svelte';
 	import { folderNameProblem } from '$lib/util/paths';
 	import { onMount, onDestroy } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
@@ -19,26 +19,26 @@
 	import type { TabState } from '$lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { listSources, removeSource, onSourceReconciled, type Source } from '$lib/models/Source';
-	import { folderPresence, type FolderPresence } from '$lib/views/presence';
-	import GonePage from '../GonePage.svelte';
-	import type { GoneAction } from '../GoneActions.svelte';
-	import catBox from '$lib/cat-box.txt?raw';
-	import SourceDialog from '../SourceDialog.svelte';
+	import { folderPresence, type FolderPresence } from '$lib/views/project.svelte';
+	import GonePage from './GonePage.svelte';
+	import type { GoneAction } from './GoneActions.svelte';
+	import catBox from '$assets/art/cat-box.txt?raw';
+	import SourceDialog from '../dialogs/SourceDialog.svelte';
 	import DocHandle from '$lib/models/DocHandle';
 	import ViewHeader from '../views/ViewHeader.svelte';
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import MasonryFace from '../views/faces/MasonryFace.svelte';
 	import KanbanFace from '../views/faces/KanbanFace.svelte';
-	import { history, undoKey } from '$lib/history';
+	import { history, undoKey } from '$lib/views/FaceRows.svelte';
 	import DashboardFace from '../views/faces/DashboardFace.svelte';
 	import DocFace from '../views/faces/DocFace.svelte';
-	import { DocPicker } from '$lib/views/docPicker.svelte';
+	import { DocPicker } from '$lib/views/project.svelte';
 	import { convertFileSrc } from '@tauri-apps/api/core';
-	import Menu from '../views/Menu.svelte';
-	import CoverSourceDialog from '../CoverSourceDialog.svelte';
-	import ScrollThumb from '../ScrollThumb.svelte';
-	import type { MenuEntry } from '$lib/views/menuTypes';
+	import Menu from '../ui/Menu.svelte';
+	import CoverSourceDialog from '../dialogs/CoverSourceDialog.svelte';
+	import ScrollThumb from '../ui/ScrollThumb.svelte';
+	import type { MenuEntry } from '$lib/overlays.svelte';
 	import {
 		Crop,
 		X,

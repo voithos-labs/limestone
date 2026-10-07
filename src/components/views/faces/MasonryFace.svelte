@@ -3,9 +3,9 @@
 	import type { FilterNode, ViewFace } from '$lib/models/View.svelte';
 	import { onSourceReconciled } from '$lib/models/Source';
 	import { FaceRows } from '$lib/views/FaceRows.svelte';
-	import { PreviewCache, type Preview } from '$lib/views/previews';
+	import { PreviewCache, type Preview } from '$lib/views/FaceRows.svelte';
 	import NoteCard from '../NoteCard.svelte';
-	import RowEditors from '../RowEditors.svelte';
+	import RowEditors from '../editors/RowEditors.svelte';
 	import { onMount, untrack } from 'svelte';
 
 	let {

@@ -12,9 +12,9 @@
 		valueFor
 	} from '$lib/views/fieldValue';
 	import { formatDateCompact } from '$lib/views/dateFormat';
-	import { dueState } from '$lib/views/due';
+	import { dueState } from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
-	import { listPrefixed } from '$lib/views/listLayout';
+	import { listPrefixed } from '$lib/views/fieldValue';
 	import type { FaceRows } from '$lib/views/FaceRows.svelte';
 	import CellValue from './CellValue.svelte';
 

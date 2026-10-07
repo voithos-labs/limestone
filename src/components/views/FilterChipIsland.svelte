@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import { X } from '@lucide/svelte';
 	import type { ViewField } from '$lib/models/View.svelte';
-	import Menu from './Menu.svelte';
+	import Menu from '../ui/Menu.svelte';
 	import FilterValueEditor from './FilterValueEditor.svelte';
 	import type { OpOption } from '$lib/views/filterDisplay';
 

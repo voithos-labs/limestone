@@ -1,19 +1,19 @@
 <script lang="ts">
 	import { Check, PanelRight } from '@lucide/svelte';
-	import { openHow } from '$lib/views/rowOpen';
-	import { startMove, endMove } from '$lib/views/dragMove';
+	import { openHow } from '$lib/views/FaceRows.svelte';
+	import { startMove, endMove } from '$lib/views/move.svelte';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
 	import type { FaceRows } from '$lib/views/FaceRows.svelte';
-	import type { Preview } from '$lib/views/previews';
+	import type { Preview } from '$lib/views/FaceRows.svelte';
 	import { isStatusField } from '$lib/models/View.svelte';
-	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/todoStatus';
+	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/fieldValue';
 	import StatusIcon from './StatusIcon.svelte';
-	import { leave } from '$lib/views/leave';
-	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
+	import { leave } from '$lib/views/FaceRows.svelte';
+	import { highlightTitle, highlightSnippet } from '$lib/util/dom';
 	import RowChips from './RowChips.svelte';
-	import type RowEditors from './RowEditors.svelte';
+	import type RowEditors from './editors/RowEditors.svelte';
 	import { nameGuard } from '$lib/util/paths';
-	import { selectionIn, restoreSelection } from '$lib/util/selection';
+	import { selectionIn, restoreSelection } from '$lib/util/dom';
 
 	// A note as a card: the list row folded onto three lines. Same lanes, same chips, same two
 	// modes, so a grid and a board read like the list they sit next to

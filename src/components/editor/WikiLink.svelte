@@ -3,9 +3,9 @@
 		isWidgetActivationClick,
 		type InlineWidgetComponentProps
 	} from '@voithos-labs/aragonite/plugin';
-	import { parseWikiTarget } from '$lib/wikilinks';
+	import { parseWikiTarget } from '$lib/services/links.svelte';
 	import { linkIndex, resolveWikiLink } from '$lib/services/links.svelte';
-	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks-plugin';
+	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 
 	let { source, getPresentationMode }: InlineWidgetComponentProps = $props();
 

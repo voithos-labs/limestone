@@ -2,11 +2,11 @@
 	import type { Component } from 'svelte';
 	import type { ViewField } from '$lib/models/View.svelte';
 	import { SquareCheck, Square } from '@lucide/svelte';
-	import Menu from './Menu.svelte';
-	import TagMenu from './TagMenu.svelte';
-	import InputPopover from './InputPopover.svelte';
-	import FolderValueEditor from './FolderValueEditor.svelte';
-	import DateValueEditor from './DateValueEditor.svelte';
+	import Menu from '../ui/Menu.svelte';
+	import TagMenu from './editors/TagMenu.svelte';
+	import InputPopover from '../ui/InputPopover.svelte';
+	import FolderValueEditor from './editors/FolderValueEditor.svelte';
+	import DateValueEditor from './editors/DateValueEditor.svelte';
 
 	interface MenuItem {
 		value: string;

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { reportError } from '$lib/errors';
-	import { mark } from '$lib/toasts.svelte';
+	import { reportError } from '$lib/overlays.svelte';
+	import { mark } from '$lib/overlays.svelte';
 	import type View from '$lib/models/View.svelte';
 	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
 	import { sanitizeName } from '$lib/models/View.svelte';
@@ -10,14 +10,14 @@
 	import ViewManageMenu from './ViewManageMenu.svelte';
 	import ArrangeFields from './ArrangeFields.svelte';
 	import FilterEditor from './FilterEditor.svelte';
-	import EmojiPicker from './EmojiPicker.svelte';
+	import EmojiPicker from './editors/EmojiPicker.svelte';
 	import DocPickerPanel from './DocPicker.svelte';
-	import type { DocPicker } from '$lib/views/docPicker.svelte';
+	import type { DocPicker } from '$lib/views/project.svelte';
 	import { getFaceIcon, getFieldIcon } from '$lib/views/filterDisplay';
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import { VIEW_FIELD_SORTABLE } from '$lib/models/View.svelte';
-	import type { MenuEntry } from '$lib/views/menuTypes';
-	import Menu from './Menu.svelte';
+	import type { MenuEntry } from '$lib/overlays.svelte';
+	import Menu from '../ui/Menu.svelte';
 	import {
 		Funnel,
 		ChevronDown,
@@ -34,7 +34,7 @@
 		SquareArrowOutUpRight
 	} from '@lucide/svelte';
 	import { tick, untrack } from 'svelte';
-	import { ctxMenu } from '$lib/contextMenu.svelte';
+	import { ctxMenu } from '$lib/overlays.svelte';
 	import { nameGuard, type NameKind } from '$lib/util/paths';
 
 	let {

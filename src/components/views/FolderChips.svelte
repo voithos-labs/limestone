@@ -19,10 +19,10 @@
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { getSource } from '$lib/models/Source';
 	import View from '$lib/models/View.svelte';
-	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
-	import { metaDialog } from '$lib/metaDialog.svelte';
+	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/overlays.svelte';
+	import { metaDialog } from '$lib/overlays.svelte';
 	import { folderNameProblem, nameGuard } from '$lib/util/paths';
-	import { mark } from '$lib/toasts.svelte';
+	import { mark } from '$lib/overlays.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import {
 		startMove,
@@ -32,7 +32,7 @@
 		movingNow,
 		canMoveInto,
 		moveInto
-	} from '$lib/views/dragMove';
+	} from '$lib/views/move.svelte';
 
 	// Folders as a strip of compact chips: projects first with their own icon, plain folders
 	// after. Shows a few rows and tucks the rest behind a quiet "show more"

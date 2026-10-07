@@ -19,8 +19,12 @@
 		GripVertical,
 		EyeOff
 	} from '@lucide/svelte';
-	import { contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
-	import { dashboardSections, DASH_SECTION_LABEL, type DashSection } from '$lib/views/dashboard';
+	import { contextMenu, type CtxEntry } from '$lib/overlays.svelte';
+	import {
+		dashboardSections,
+		DASH_SECTION_LABEL,
+		type DashSection
+	} from '$lib/views/project.svelte';
 	import Folder from '$lib/models/Folder';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import FolderChips from '../FolderChips.svelte';

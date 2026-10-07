@@ -51,7 +51,7 @@ import Folder, { folderId, folderIdPath, folderIdSource, isSourceRoot } from '$l
 import { listSources, sourceName, type Source } from '$lib/models/Source';
 import { select } from '$lib/services/db';
 import { load, type Store } from '@tauri-apps/plugin-store';
-import { toasts } from '$lib/toasts.svelte';
+import { toasts } from '$lib/overlays.svelte';
 import { resolveRelativeDate, wallClockToMs } from '$lib/views/dateFormat';
 import { appSettings } from '$lib/models/Settings.svelte';
 
