@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { SearchResult } from '$lib/types/SearchResult';
+	import type { SearchResult } from '$lib/services/search';
 	import { sourceName, type Source } from '$lib/models/Source';
-	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
+	import { highlightTitle, highlightSnippet } from '$lib/util/dom';
 	import { Folder, FolderInput, Hash, TextAlignStart, Box, Check } from '@lucide/svelte';
 
 	let {

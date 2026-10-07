@@ -3,8 +3,13 @@
  * tag widgets recognizeTag opens, so a # in code, mid-word or in a link's address isn't one.
  */
 
-import { getContentRange, isProseKind, parse, parseInline } from '@voithos-labs/aragonite';
-import type { InlineNode } from '@voithos-labs/aragonite';
+import {
+	getContentRange,
+	isProseKind,
+	parse,
+	parseInline,
+	type InlineNode
+} from '@voithos-labs/aragonite';
 import { walkBlocks } from '@voithos-labs/aragonite/plugin';
 import { tagSlug } from '$lib/models/Tag';
 import { BODY_TAG_KIND } from './wikilinks-plugin';

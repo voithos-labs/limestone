@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { describeError } from '$lib/errors';
+	import { describeError } from '$lib/overlays.svelte';
 	import {
 		containsGitRepo,
 		createSource,

@@ -19,11 +19,11 @@
 	import Folder, { folderId, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { listSources, sourceName } from '$lib/models/Source';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
-	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/overlays.svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { folderPath } from '$lib/views/createDefaults';
+	import { folderPath } from '$lib/views/FaceRows.svelte';
 	import { folderNameProblem, isValidSegment, nameGuard } from '$lib/util/paths';
-	import { mark } from '$lib/toasts.svelte';
+	import { mark } from '$lib/overlays.svelte';
 
 	type FolderNode = {
 		id: string;

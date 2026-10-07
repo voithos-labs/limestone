@@ -4,18 +4,18 @@
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { getCurrentWebview } from '@tauri-apps/api/webview';
 	import TopBar from '../components/nav/TopBar.svelte';
-	import { flushAll } from '$lib/util/flush';
+	import { flushAll } from '$lib/services/platform';
 	import Session from '$lib/models/Session.svelte.js';
 	import Pane from '../components/Pane.svelte';
 	import Palette from '../components/Palette.svelte';
 	import MetadataDialog from '../components/MetadataDialog.svelte';
 	import MoveConflictDialog from '../components/MoveConflictDialog.svelte';
-	import { addSourceRequest } from '$lib/addSource.svelte';
+	import { addSourceRequest } from '$lib/overlays.svelte';
 	import ContextMenu from '../components/ContextMenu.svelte';
-	import { actionForKey, keyCapture } from '$lib/actions';
-	import { editorTakesKey } from '$lib/editor-chords';
+	import { actionForKey, keyCapture } from '$lib/shortcuts';
+	import { editorTakesKey } from '$lib/shortcuts';
 	import { runStartupUpdateCheck, notePostUpdate } from '$lib/services/updater.svelte';
-	import { toasts } from '$lib/toasts.svelte';
+	import { toasts } from '$lib/overlays.svelte';
 	import { startWatching, onSourceReconciled } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 

@@ -5,7 +5,7 @@
 
 import { getContentRange, parse } from '@voithos-labs/aragonite';
 import { headingLevel, walkBlocks } from '@voithos-labs/aragonite/plugin';
-import { headingFragment } from '$lib/wikilinks';
+import { headingFragment } from '$lib/services/links.svelte';
 
 export interface NoteHeading {
 	text: string;

@@ -13,8 +13,8 @@
 	import { fieldLabel } from '$lib/views/fieldValue';
 	import { getFieldIcon } from '$lib/views/filterDisplay';
 	import StatusIcon from './StatusIcon.svelte';
-	import { listInlineByDefault, listPrefixed } from '$lib/views/listLayout';
-	import { ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { listInlineByDefault, listPrefixed } from '$lib/views/fieldValue';
+	import { ctxMenu, type CtxEntry } from '$lib/overlays.svelte';
 	import Menu from './Menu.svelte';
 	import { nameGuard } from '$lib/util/paths';
 

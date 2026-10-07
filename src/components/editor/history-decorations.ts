@@ -1,5 +1,9 @@
-import { isProseKind } from '@voithos-labs/aragonite';
-import type { Decoration, DocumentView, NodeView } from '@voithos-labs/aragonite';
+import {
+	isProseKind,
+	type Decoration,
+	type DocumentView,
+	type NodeView
+} from '@voithos-labs/aragonite';
 import type { StateDelta } from '$lib/services/history';
 
 export const HISTORY_INSERT_CLASS = 'hist-ins';

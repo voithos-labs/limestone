@@ -3,25 +3,25 @@
 	import type { FilterNode, MemberRow, ViewFace, ViewField } from '$lib/models/View.svelte';
 	import { onSourceReconciled } from '$lib/models/Source';
 	import { FaceRows } from '$lib/views/FaceRows.svelte';
-	import { PreviewCache, type Preview } from '$lib/views/previews';
+	import { PreviewCache, type Preview } from '$lib/views/FaceRows.svelte';
 	import { rawStatefulValue, valueFor, fieldLabel } from '$lib/views/fieldValue';
 	import { isStatusField } from '$lib/models/View.svelte';
-	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/todoStatus';
+	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/fieldValue';
 	import StatusIcon from '../StatusIcon.svelte';
-	import { leave } from '$lib/views/leave';
-	import { history } from '$lib/history';
-	import { highlightTitle } from '$lib/util/highlight';
+	import { leave } from '$lib/views/FaceRows.svelte';
+	import { history } from '$lib/views/FaceRows.svelte';
+	import { highlightTitle } from '$lib/util/dom';
 	import RowChips from '../RowChips.svelte';
 	import SectionHead from '../SectionHead.svelte';
 	import RowEditors from '../RowEditors.svelte';
 	import NoteCard from '../NoteCard.svelte';
 	import Pill from '../Pill.svelte';
 	import { Check, PanelRight, Plus, ChevronDown, CornerDownLeft } from '@lucide/svelte';
-	import { openHow } from '$lib/views/rowOpen';
+	import { openHow } from '$lib/views/FaceRows.svelte';
 	import { onMount, tick } from 'svelte';
-	import { startMove, endMove } from '$lib/views/dragMove';
+	import { startMove, endMove } from '$lib/views/move.svelte';
 	import { nameGuard } from '$lib/util/paths';
-	import { selectionIn, restoreSelection } from '$lib/util/selection';
+	import { selectionIn, restoreSelection } from '$lib/util/dom';
 
 	let {
 		view,

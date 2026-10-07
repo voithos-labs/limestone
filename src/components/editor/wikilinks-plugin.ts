@@ -3,9 +3,10 @@ import {
 	declarePluginInlineKind,
 	registerInlineSyntax,
 	registerInlineWidgetKind,
-	INLINE_PRIORITIES
+	INLINE_PRIORITIES,
+	type EditorPlugin,
+	type InlineNode
 } from '@voithos-labs/aragonite/plugin';
-import type { EditorPlugin, InlineNode } from '@voithos-labs/aragonite/plugin';
 import WikiLink from './WikiLink.svelte';
 import BodyTag from './BodyTag.svelte';
 import { LINK_OPEN, recognizeTag, recognizeWikiLink } from './wikilinks-scan';

@@ -1,4 +1,4 @@
-import { parseWikiTarget } from '$lib/wikilinks';
+import { parseWikiTarget } from '$lib/services/links.svelte';
 
 export const LINK_OPEN = '[[';
 const LINK_CLOSE = ']]';

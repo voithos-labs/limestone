@@ -2,7 +2,7 @@
 	import { Square, Hash } from '@lucide/svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
 	import { isBuiltinUnit, isStatusField } from '$lib/models/View.svelte';
-	import { statusOf } from '$lib/views/todoStatus';
+	import { statusOf } from '$lib/views/fieldValue';
 	import type { Source } from '$lib/models/Source';
 	import {
 		rawStatefulValue,

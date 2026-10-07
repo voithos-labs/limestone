@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { folderPresence, type FolderPresence } from '$lib/views/presence';
+	import { folderPresence, type FolderPresence } from '$lib/views/project.svelte';
 	import GonePage from '../GonePage.svelte';
 	import type { GoneAction } from '../GoneActions.svelte';
-	import catBox from '$lib/cat-box.txt?raw';
-	import { reportError } from '$lib/errors';
+	import catBox from '$assets/art/cat-box.txt?raw';
+	import { reportError } from '$lib/overlays.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
@@ -20,23 +20,23 @@
 		type Source
 	} from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
-	import { mark } from '$lib/toasts.svelte';
-	import { addSourceRequest } from '$lib/addSource.svelte';
+	import { mark } from '$lib/overlays.svelte';
+	import { addSourceRequest } from '$lib/overlays.svelte';
 	import { folderNameProblem } from '$lib/util/paths';
 	import ListFace from '../views/faces/ListFace.svelte';
 	import Menu from '../views/Menu.svelte';
 	import InputPopover from '../views/InputPopover.svelte';
 	import NewFolderDialog from '../NewFolderDialog.svelte';
-	import frog from '$lib/frog.txt?raw';
-	import { openProjectSetup } from '$lib/views/projectSetup';
-	import { metaDialog } from '$lib/metaDialog.svelte';
-	import { isMove, readMove, movingNow, moveInto, type MovePayload } from '$lib/views/dragMove';
+	import frog from '$assets/art/frog.txt?raw';
+	import { openProjectSetup } from '$lib/views/project.svelte';
+	import { metaDialog } from '$lib/overlays.svelte';
+	import { isMove, readMove, movingNow, moveInto, type MovePayload } from '$lib/views/move.svelte';
 	import SourceDialog from '../SourceDialog.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
 	import NewFab from '../views/NewFab.svelte';
-	import { undoKey } from '$lib/history';
-	import { contextMenu } from '$lib/contextMenu.svelte';
+	import { undoKey } from '$lib/views/FaceRows.svelte';
+	import { contextMenu } from '$lib/overlays.svelte';
 	import { createInView } from '$lib/views/FaceRows.svelte';
 	import {
 		ChevronRight,

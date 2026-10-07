@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { describeError, reportError } from '$lib/errors';
+	import { describeError, reportError } from '$lib/overlays.svelte';
 	import {
 		resetAllSettings,
 		getAppInfo,
@@ -29,7 +29,7 @@
 	import { updater } from '$lib/services/updater.svelte';
 	import Menu from '../views/Menu.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
-	import type { MenuEntry, MenuItem } from '$lib/views/menuTypes';
+	import type { MenuEntry, MenuItem } from '$lib/overlays.svelte';
 	import type Session from '$lib/models/Session.svelte.js';
 	import type { ViewTab } from '$lib/models/Session.svelte.js';
 	import {
@@ -40,7 +40,7 @@
 		keyCapture,
 		SHORTCUT_CATEGORIES,
 		type Action
-	} from '$lib/actions';
+	} from '$lib/shortcuts';
 	import { onDestroy, onMount, type Component } from 'svelte';
 	import {
 		RotateCcw,

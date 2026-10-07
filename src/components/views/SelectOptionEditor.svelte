@@ -13,10 +13,10 @@
 		X,
 		EllipsisVertical
 	} from '@lucide/svelte';
-	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/overlays.svelte';
 	import type { ViewField } from '$lib/models/View.svelte';
 	import { isStatusField, saveStatuses } from '$lib/models/View.svelte';
-	import { statusKind } from '$lib/views/todoStatus';
+	import { statusKind } from '$lib/views/fieldValue';
 	import StatusIcon from './StatusIcon.svelte';
 
 	interface TagOption {

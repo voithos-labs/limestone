@@ -5,12 +5,11 @@ import {
 	folderPropKey,
 	listSavedViewJSON,
 	remapIdsInSavedViews,
-	renameUnitViewPrefix
+	renameUnitViewPrefix,
+	type BulkResult
 } from '$lib/models/View.svelte';
-import { flushAll } from '$lib/util/flush';
-import { reportError } from '$lib/errors';
-import { mark } from '$lib/toasts.svelte';
-import type { BulkResult } from '$lib/models/View.svelte';
+import { flushAll } from '$lib/services/platform';
+import { reportError, mark } from '$lib/overlays.svelte';
 
 // a folder's metadata policy: its own choice, or whatever its parent (and Git) decide
 export type MetaMode = 'follow' | 'write' | 'off';

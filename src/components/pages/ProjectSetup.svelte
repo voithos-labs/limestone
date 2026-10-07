@@ -20,12 +20,12 @@
 	import type { ViewFieldType } from '$lib/models/View.svelte';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '$lib/models/Folder';
 	import { listSources, getDefaultSourceId, sourceName, type Source } from '$lib/models/Source';
-	import { mark } from '$lib/toasts.svelte';
-	import { addSourceRequest } from '$lib/addSource.svelte';
-	import { palette } from '$lib/palette.svelte';
+	import { mark } from '$lib/overlays.svelte';
+	import { addSourceRequest } from '$lib/overlays.svelte';
+	import { palette } from '$lib/overlays.svelte';
 	import Menu from '../views/Menu.svelte';
 	import EmojiPicker from '../views/EmojiPicker.svelte';
-	import { dashboardSections } from '$lib/views/dashboard';
+	import { dashboardSections } from '$lib/views/project.svelte';
 	import { nameGuard } from '$lib/util/paths';
 
 	let { tab, editor }: { tab: TabState; editor: EditorState } = $props();

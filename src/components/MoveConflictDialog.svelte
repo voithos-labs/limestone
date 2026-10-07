@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { moveConflict, type ConflictChoice } from '$lib/views/moveConflict.svelte';
-	import { mark } from '$lib/toasts.svelte';
+	import { moveConflict, type ConflictChoice } from '$lib/views/move.svelte';
+	import { mark } from '$lib/overlays.svelte';
 	import MarkText from './MarkText.svelte';
 	import type Session from '$lib/models/Session.svelte';
 

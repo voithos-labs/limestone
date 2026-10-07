@@ -2,8 +2,8 @@
 	import type View from '$lib/models/View.svelte';
 	import type { FilterNode, MemberRow, ViewFace } from '$lib/models/View.svelte';
 	import { isStatusField } from '$lib/models/View.svelte';
-	import { statusOf } from '$lib/views/todoStatus';
-	import { history } from '$lib/history';
+	import { statusOf } from '$lib/views/fieldValue';
+	import { history } from '$lib/views/FaceRows.svelte';
 	import { onSourceReconciled } from '$lib/models/Source';
 	import { FaceRows } from '$lib/views/FaceRows.svelte';
 	import { rawStatefulValue, statefulValue, fieldLabel } from '$lib/views/fieldValue';

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getViewIcon, getUnitIcon } from '$lib/views/filterDisplay';
-	import { palette } from '$lib/palette.svelte';
-	import { openProjectSetup } from '$lib/views/projectSetup';
+	import { palette } from '$lib/overlays.svelte';
+	import { openProjectSetup } from '$lib/views/project.svelte';
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import { TabState, type FocusTarget } from '$lib/models/EditorState.svelte.js';
 	import type Session from '$lib/models/Session.svelte.js';
@@ -28,7 +28,7 @@
 		Blocks,
 		Columns2
 	} from '@lucide/svelte';
-	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/contextMenu.svelte';
+	import { ctxMenu, contextMenu, type CtxEntry } from '$lib/overlays.svelte';
 	import { listSources, sourceName, type Source } from '$lib/models/Source';
 	import { folderId } from '$lib/models/Folder';
 	import View, { BUILTIN_UNITS } from '$lib/models/View.svelte';

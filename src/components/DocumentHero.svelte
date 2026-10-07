@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
-	import { reportError, type ReportError } from '$lib/errors';
-	import { moveNote } from '$lib/views/moveConflict.svelte';
+	import { reportError, type ReportError } from '$lib/overlays.svelte';
+	import { moveNote } from '$lib/views/move.svelte';
 	import DocHandle from '$lib/models/DocHandle';
 	import { sourceName, listSources, onSourceReconciled, type Source } from '$lib/models/Source';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
@@ -10,9 +10,9 @@
 	import { tagId } from '$lib/models/Tag';
 	import { formatDateFriendly } from '$lib/views/dateFormat';
 	import { folderDir, fileName } from '$lib/views/fieldValue';
-	import { folderPath } from '$lib/views/createDefaults';
+	import { folderPath } from '$lib/views/FaceRows.svelte';
 	import { isValidSegment, nameGuard, segmentProblem } from '$lib/util/paths';
-	import type { MenuEntry } from '$lib/views/menuTypes';
+	import type { MenuEntry } from '$lib/overlays.svelte';
 	import Menu from './views/Menu.svelte';
 	import TagMenu from './views/TagMenu.svelte';
 	import MoveDialog from './MoveDialog.svelte';
@@ -42,7 +42,7 @@
 	} from '@lucide/svelte';
 	import { onMount, untrack, type Component } from 'svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { flushAll } from '$lib/util/flush';
+	import { flushAll } from '$lib/services/platform';
 
 	type Place = { label: string; icon: Component; emoji?: string; go: () => void };
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { describeError, isRetryable, splitMessage } from '$lib/errors';
+	import { describeError, isRetryable, splitMessage } from '$lib/overlays.svelte';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { Editor } from '@voithos-labs/aragonite';
 	import type {
@@ -20,7 +20,7 @@
 	import { deleteSourceAsset, importSourceAssetBytes } from '$lib/services/assets';
 	import { currentThemeType } from '$lib/services/theme.svelte';
 	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { registerFlush } from '$lib/util/flush';
+	import { registerFlush } from '$lib/services/platform';
 	import { onDocChanged, onSourceReconciled, sourceName } from '$lib/models/Source';
 	import DocHandle, { readErrorKind, type ReadErrorKind } from '$lib/models/DocHandle';
 	import { historyCheckpoints, historyTextAt } from '$lib/services/history';
@@ -30,23 +30,23 @@
 	import View from '$lib/models/View.svelte';
 	import { tagId } from '$lib/models/Tag';
 	import { resolveWikiLink, touchLinkIndex } from '$lib/services/links.svelte';
-	import { joinRel, targetStem } from '$lib/wikilinks';
+	import { joinRel, targetStem } from '$lib/services/links.svelte';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks-plugin';
 	import { historyDecorations } from './history-decorations';
 	import { bodyTags, createTagStepper, type BodyTag } from './body-tags';
 	import { findHeading } from './note-headings';
 	import { noteLinkMenu } from './note-link-menu';
 	import { tagMenu } from './tag-menu';
-	import { appEditorShortcut, registerDocumentEditor } from '$lib/editor-chords';
+	import { appEditorShortcut, registerDocumentEditor } from '$lib/shortcuts';
 	import { TabState, type TabContent } from '$lib/models/EditorState.svelte.js';
 	import { getViewIcon } from '$lib/views/filterDisplay';
 	import { LayoutList, TextAlignStart } from '@lucide/svelte';
 	import type EditorStateModel from '$lib/models/EditorState.svelte.js';
 	import DocumentHero from '../DocumentHero.svelte';
-	import { metaDialog } from '$lib/metaDialog.svelte';
+	import { metaDialog } from '$lib/overlays.svelte';
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import HistoryPanel from './HistoryPanel.svelte';
-	import { portal } from '$lib/util/portal';
+	import { portal } from '$lib/util/dom';
 
 	let {
 		tab,

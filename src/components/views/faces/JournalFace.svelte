@@ -7,7 +7,7 @@
 	import type { SettingsState } from '$lib/models/Settings.svelte';
 	import { rawStatefulValue } from '$lib/views/fieldValue';
 	import { wallClockToMs } from '$lib/views/dateFormat';
-	import type { DocPicker } from '$lib/views/docPicker.svelte';
+	import type { DocPicker } from '$lib/views/project.svelte';
 	import DateValueEditor from '../DateValueEditor.svelte';
 	import DocFace from './DocFace.svelte';
 	import ListFace from './ListFace.svelte';

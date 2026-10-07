@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { reportError } from '$lib/errors';
+	import { reportError } from '$lib/overlays.svelte';
 	import { Check, X, Calendar, CalendarClock } from '@lucide/svelte';
 	import View from '$lib/models/View.svelte';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
@@ -7,8 +7,8 @@
 	import type DocHandle from '$lib/models/DocHandle';
 	import { rawStatefulValue, withStatefulValue } from '$lib/views/fieldValue';
 	import { formatDateCompact } from '$lib/views/dateFormat';
-	import { dueState } from '$lib/views/due';
-	import { toasts, mark } from '$lib/toasts.svelte';
+	import { dueState } from '$lib/views/fieldValue';
+	import { toasts, mark } from '$lib/overlays.svelte';
 	import CellEditor from './views/CellEditor.svelte';
 
 	// A note that is a todo wears its todo-ness as one card in the meta row: the checkbox,

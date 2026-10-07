@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type EditorState from '$lib/models/EditorState.svelte.js';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
-	import type { SearchResult } from '$lib/types/SearchResult';
+	import type { SearchResult } from '$lib/services/search';
 	import { getSource, touchSource, listSources, sourceName, type Source } from '$lib/models/Source';
 	import DocHandle from '$lib/models/DocHandle';
 	import Tag from '$lib/models/Tag';

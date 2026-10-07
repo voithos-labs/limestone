@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { describeError } from '$lib/errors';
+	import { describeError } from '$lib/overlays.svelte';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
 	import { importGlobalAsset, importGlobalAssetBytes } from '$lib/services/assets';
 	import { ImageUp, FolderOpen } from '@lucide/svelte';

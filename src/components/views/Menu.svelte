@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { Check, Search, ChevronRight, Plus } from '@lucide/svelte';
-	import type { MenuItem, MenuEntry } from '$lib/views/menuTypes';
-	import { isMenuItem as isItem } from '$lib/views/menuTypes';
+	import type { MenuItem, MenuEntry } from '$lib/overlays.svelte';
+	import { isMenuItem as isItem } from '$lib/overlays.svelte';
 	import Menu from './Menu.svelte';
 
 	let {

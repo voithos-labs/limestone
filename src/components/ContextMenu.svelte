@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { contextMenu, isCtxItem, type CtxEntry, type CtxItem } from '$lib/contextMenu.svelte';
+	import { contextMenu, isCtxItem, type CtxEntry, type CtxItem } from '$lib/overlays.svelte';
 	import { onMount } from 'svelte';
 	import { Check, ChevronRight } from '@lucide/svelte';
 

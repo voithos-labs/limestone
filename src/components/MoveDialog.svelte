@@ -13,9 +13,9 @@
 	import { listSources, sourceName, type Source } from '$lib/models/Source';
 	import { listSavedViewJSON } from '$lib/models/View.svelte';
 	import FolderChips from './views/FolderChips.svelte';
-	import { isMove, readMove, movingNow, canMoveInto, moveInto } from '$lib/views/dragMove';
+	import { isMove, readMove, movingNow, canMoveInto, moveInto } from '$lib/views/move.svelte';
 	import { folderNameProblem, nameGuard } from '$lib/util/paths';
-	import { mark } from '$lib/toasts.svelte';
+	import { mark } from '$lib/overlays.svelte';
 
 	type Place = { id: string; slug: string; repo?: boolean };
 

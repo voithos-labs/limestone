@@ -24,15 +24,14 @@ import {
 	FileLock
 } from '@lucide/svelte';
 import { isSourceRoot } from '$lib/models/Folder';
-import { isBuiltinUnit } from '$lib/models/View.svelte';
-import {
+import View, {
+	isBuiltinUnit,
 	VIEW_FIELD_OPS,
 	opTakesValue,
 	type ViewFaceType,
-	type ViewFieldType
+	type ViewFieldType,
+	type ViewFace
 } from '$lib/models/View.svelte';
-import type View from '$lib/models/View.svelte';
-import type { ViewFace } from '$lib/models/View.svelte';
 
 const FACE_ICONS: Record<ViewFaceType, Component> = {
 	kanban: Columns3,

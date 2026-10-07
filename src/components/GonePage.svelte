@@ -1,5 +1,5 @@
 <script lang="ts">
-	import cat from '$lib/cat.txt?raw';
+	import cat from '$assets/art/cat.txt?raw';
 	import GoneActions, { type GoneAction } from './GoneActions.svelte';
 
 	let {

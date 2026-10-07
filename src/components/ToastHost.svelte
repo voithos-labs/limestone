@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { toasts, type Toast, type ToastVariant } from '$lib/toasts.svelte';
-	import { splitMessage } from '$lib/errors';
+	import { toasts, type Toast, type ToastVariant } from '$lib/overlays.svelte';
+	import { splitMessage } from '$lib/overlays.svelte';
 	import { X, CircleX, CircleCheck, CircleArrowUp } from '@lucide/svelte';
 	import MarkText from './MarkText.svelte';
 

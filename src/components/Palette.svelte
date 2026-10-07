@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { reportError } from '$lib/errors';
-	import { mark } from '$lib/toasts.svelte';
+	import { reportError } from '$lib/overlays.svelte';
+	import { mark } from '$lib/overlays.svelte';
 	import { tick, untrack } from 'svelte';
 	import {
 		Search,
@@ -19,7 +19,7 @@
 	import type { Component } from 'svelte';
 	import type Session from '$lib/models/Session.svelte.js';
 	import { TabState } from '$lib/models/EditorState.svelte.js';
-	import type { SearchResult } from '$lib/types/SearchResult';
+	import type { SearchResult } from '$lib/services/search';
 	import { searchDocuments } from '$lib/services/search';
 	import { select } from '$lib/services/db';
 	import { listSources, sourceName, getSource, touchSource, type Source } from '$lib/models/Source';
@@ -27,10 +27,10 @@
 	import Tag from '$lib/models/Tag';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
 	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
-	import { actions, keyTokens, type Action } from '$lib/actions';
-	import { highlightTitle } from '$lib/util/highlight';
-	import { palette } from '$lib/palette.svelte';
-	import { openProjectSetup } from '$lib/views/projectSetup';
+	import { actions, keyTokens, type Action } from '$lib/shortcuts';
+	import { highlightTitle } from '$lib/util/dom';
+	import { palette } from '$lib/overlays.svelte';
+	import { openProjectSetup } from '$lib/views/project.svelte';
 	import { getViewIcon } from '$lib/views/filterDisplay';
 
 	let { session, onAddSource }: { session: Session; onAddSource: () => void } = $props();

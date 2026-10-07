@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { toastParts } from '$lib/toasts.svelte';
+	import { toastParts } from '$lib/overlays.svelte';
 	import { FolderInput, Folder, Box, Hash, TextAlignStart } from '@lucide/svelte';
 
 	let { text }: { text: string } = $props();

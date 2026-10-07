@@ -2,7 +2,7 @@
 	import type { ViewField } from '$lib/models/View.svelte';
 	import { isStatusField } from '$lib/models/View.svelte';
 	import { tagClass } from '$lib/views/fieldValue';
-	import { statusColor, statusKind } from '$lib/views/todoStatus';
+	import { statusColor, statusKind } from '$lib/views/fieldValue';
 	import StatusIcon from './StatusIcon.svelte';
 
 	let { field, value }: { field: ViewField; value: string } = $props();

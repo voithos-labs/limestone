@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { describeError, reportError } from '$lib/errors';
-	import { mark } from '$lib/toasts.svelte';
+	import { describeError, reportError } from '$lib/overlays.svelte';
+	import { mark } from '$lib/overlays.svelte';
 	import { untrack } from 'svelte';
 	import {
 		ArrowRight,
@@ -19,7 +19,7 @@
 		type MetaMode
 	} from '$lib/models/Folder';
 	import { getSource, sourceName } from '$lib/models/Source';
-	import { metaDialog } from '$lib/metaDialog.svelte';
+	import { metaDialog } from '$lib/overlays.svelte';
 
 	// Where a folder's tags and fields live: written into the top of each file, or kept by
 	// Limestone alone. The diagram shows the difference; the choice below sets it

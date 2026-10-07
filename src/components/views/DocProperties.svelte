@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { reportError, type ReportError } from '$lib/errors';
+	import { reportError, type ReportError } from '$lib/overlays.svelte';
 	import type DocHandle from '$lib/models/DocHandle';
 	import View from '$lib/models/View.svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
@@ -14,7 +14,7 @@
 	import CellValue from './CellValue.svelte';
 	import CellEditor from './CellEditor.svelte';
 	import CellTextEditor from './CellTextEditor.svelte';
-	import { registerFlush } from '$lib/util/flush';
+	import { registerFlush } from '$lib/services/platform';
 	import { Box } from '@lucide/svelte';
 	import { onMount, onDestroy, untrack } from 'svelte';
 
