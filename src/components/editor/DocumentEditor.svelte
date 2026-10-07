@@ -372,9 +372,9 @@
 
 	const SAVE_DEBOUNCE_MS = 250;
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
-	// Captured when the edit lands, so a flush that outlives the editor instance (window close,
-	// tab teardown) still has a body to write.
-	let pendingSource: string | null = null;
+	// The editor a pending save reads from, so a flush that runs after `instance` is unbound (tab
+	// teardown) still gets the text that was typed.
+	let pendingEditor: EditorInstance | null = null;
 	// What we last wrote, or what the editor started with. Comparing against it keeps an untouched
 	// document unsaved even when the editor's output differs from the file on disk.
 	let savedBody: string | null = null;
@@ -389,13 +389,12 @@
 			clearTimeout(saveTimer);
 			saveTimer = null;
 		}
-		// Ask the editor now: its `edit` event is debounced, so the last thing it handed us can be a
-		// whole typing burst behind. `pendingSource` is the fallback when the editor is already gone.
+		// Read here, when the save runs, not on every key: the whole note is serialized to get it.
 		const body =
 			deleted || unavailable
 				? null
-				: (opts.body ?? liveBody ?? instance?.getSource() ?? pendingSource);
-		pendingSource = null;
+				: (opts.body ?? liveBody ?? (instance ?? pendingEditor)?.getSource() ?? null);
+		pendingEditor = null;
 		// A frontmatter rebuild writes even an unchanged body: the repair is in the part of the file
 		// the editor never holds.
 		if (!handle || body === null || (body === savedBody && !opts.rebuildFrontmatter)) return;
@@ -423,18 +422,14 @@
 
 	function scheduleSave() {
 		if (liveBody !== null) return;
-		pendingSource = instance?.getSource() ?? pendingSource;
+		pendingEditor = instance ?? pendingEditor;
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
 	}
 
 	// ── Outside edits, and the frontmatter repair ───────────────────────────────────────
 
-	/**
-	 * Whether an edit here is still on its way to disk, so nothing from disk may replace it. The
-	 * editor batches its edit event, so a keystroke runs ahead of the save timer it will schedule;
-	 * the document itself is asked, not just the timers.
-	 */
+	/** Whether an edit here is still on its way to disk, so nothing from disk may replace it. */
 	function hasUnsavedEdits(): boolean {
 		if (saveTimer !== null || saving !== null) return true;
 		const live = liveBody ?? instance?.getSource();
@@ -1032,7 +1027,7 @@
 			clearTimeout(saveTimer);
 			saveTimer = null;
 		}
-		pendingSource = null;
+		pendingEditor = null;
 		// Set before the delete, not after: a save flushing while the delete is in flight reads the
 		// editor's live text and would write the file back after the backend removed it.
 		deleted = true;
