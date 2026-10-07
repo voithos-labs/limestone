@@ -1,5 +1,15 @@
 <script lang="ts">
-	let { scroller, top = 34 }: { scroller: HTMLElement | null | undefined; top?: number } = $props();
+	let {
+		scroller,
+		top = 34,
+		axis = 'y'
+	}: { scroller: HTMLElement | null | undefined; top?: number; axis?: 'x' | 'y' } = $props();
+
+	// along the axis: `top` is the inset at the start, the thumb runs the rest of the way
+	const vertical = $derived(axis === 'y');
+	const viewOf = (el: HTMLElement) => (vertical ? el.clientHeight : el.clientWidth);
+	const contentOf = (el: HTMLElement) => (vertical ? el.scrollHeight : el.scrollWidth);
+	const posOf = (el: HTMLElement) => (vertical ? el.scrollTop : el.scrollLeft);
 
 	const THUMB_MAX_FRACTION = 1 / 5;
 	const THUMB_MIN_PX = 24;
@@ -14,8 +24,8 @@
 	function update() {
 		const el = scroller;
 		if (!el) return;
-		const viewH = el.clientHeight;
-		const contentH = el.scrollHeight;
+		const viewH = viewOf(el);
+		const contentH = contentOf(el);
 		const maxScroll = contentH - viewH;
 		const trackH = viewH - top - THUMB_INSET_PX;
 		if (maxScroll <= 0 || trackH <= 0) {
@@ -25,7 +35,7 @@
 		const natural = (viewH / contentH) * trackH;
 		const capped = Math.min(natural, trackH * THUMB_MAX_FRACTION);
 		thumbHeight = Math.max(capped, THUMB_MIN_PX);
-		thumbTop = top + (el.scrollTop / maxScroll) * (trackH - thumbHeight);
+		thumbTop = top + (posOf(el) / maxScroll) * (trackH - thumbHeight);
 		show = true;
 	}
 
@@ -57,16 +67,18 @@
 		const el = scroller;
 		if (!el) return;
 		e.preventDefault();
-		const startY = e.clientY;
-		const startScroll = el.scrollTop;
-		const viewH = el.clientHeight;
-		const maxScroll = el.scrollHeight - viewH;
+		const startY = vertical ? e.clientY : e.clientX;
+		const startScroll = posOf(el);
+		const viewH = viewOf(el);
+		const maxScroll = contentOf(el) - viewH;
 		const trackRange = viewH - top - THUMB_INSET_PX - thumbHeight;
 		if (trackRange <= 0 || maxScroll <= 0) return;
 		const ratio = maxScroll / trackRange;
 
 		const onMove = (ev: PointerEvent) => {
-			el.scrollTop = startScroll + (ev.clientY - startY) * ratio;
+			const next = startScroll + ((vertical ? ev.clientY : ev.clientX) - startY) * ratio;
+			if (vertical) el.scrollTop = next;
+			else el.scrollLeft = next;
 		};
 		const onUp = () => {
 			window.removeEventListener('pointermove', onMove);
@@ -81,7 +93,10 @@
 	<div
 		class="scroll-thumb"
 		class:scrolling
-		style="height: {thumbHeight}px; transform: translateY({thumbTop}px);"
+		class:horizontal={!vertical}
+		style={vertical
+			? `height: ${thumbHeight}px; transform: translateY(${thumbTop}px);`
+			: `width: ${thumbHeight}px; transform: translateX(${thumbTop}px);`}
 		onpointerdown={startDrag}
 	></div>
 {/if}
@@ -115,5 +130,33 @@
 	.scroll-thumb:hover::before {
 		width: 4px;
 		background: var(--color-ui-muted);
+	}
+
+	/* the same hairline laid along the bottom edge */
+	.scroll-thumb.horizontal {
+		top: auto;
+		right: auto;
+		left: 0;
+		bottom: 0;
+		width: auto;
+		height: 14px;
+	}
+
+	.scroll-thumb.horizontal::before {
+		top: auto;
+		right: 0;
+		left: 0;
+		bottom: 4px;
+		width: auto;
+		height: 1px;
+		transition:
+			background-color 350ms ease,
+			height 350ms ease;
+	}
+
+	.scroll-thumb.horizontal.scrolling::before,
+	.scroll-thumb.horizontal:hover::before {
+		width: auto;
+		height: 4px;
 	}
 </style>

@@ -1,18 +1,19 @@
 <script lang="ts">
 	import { Square, Hash } from '@lucide/svelte';
 	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
-	import { isBuiltinUnit } from '$lib/models/View.svelte';
+	import { isBuiltinUnit, isStatusField } from '$lib/models/View.svelte';
+	import { statusOf } from '$lib/views/todoStatus';
 	import type { Source } from '$lib/models/Source';
 	import {
 		rawStatefulValue,
 		statefulValue,
 		rawArrayValue,
-		tagClass,
 		valueFor,
 		folderDir,
 		sourceName
 	} from '$lib/views/fieldValue';
 	import FolderCrumb from './FolderCrumb.svelte';
+	import Pill from './Pill.svelte';
 
 	let {
 		field,
@@ -36,13 +37,13 @@
 			/>{/if}
 	</span>
 {:else if field.type === 'select'}
-	{@const v = statefulValue(row, field)}
-	{#if v}<span class="pill {tagClass(field, v)}">{v}</span>{:else}<span class="muted">—</span>{/if}
+	{@const v = isStatusField(field) ? statusOf(row, field) : statefulValue(row, field)}
+	{#if v}<Pill {field} value={v} />{:else}<span class="muted">—</span>{/if}
 {:else if field.type === 'multiselect'}
 	{@const arr = rawArrayValue(row, field)}
 	{#if arr.length}
 		<span class="pills">
-			{#each arr as t (t)}<span class="pill {tagClass(field, t)}">{t}</span>{/each}
+			{#each arr as t (t)}<Pill {field} value={t} />{/each}
 		</span>
 	{:else}<span class="muted">—</span>{/if}
 {:else if field.type === 'tags'}
@@ -82,19 +83,6 @@
 		gap: 4px;
 		overflow: hidden;
 		vertical-align: middle;
-	}
-
-	.pill {
-		display: inline-flex;
-		align-items: center;
-		flex-shrink: 0;
-		padding: 1px 8px;
-		border-radius: 4px;
-		font-size: 11px;
-		line-height: 1.55;
-		white-space: nowrap;
-		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
-		color: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-fg-l, 30%));
 	}
 
 	.tag {

@@ -435,7 +435,7 @@
 			title="Fields"
 			bind:this={fieldsEl}
 			onclick={() => {
-				if (fieldTarget.type === 'list') arrangeOpen = true;
+				if (['list', 'kanban', 'masonry'].includes(fieldTarget.type)) arrangeOpen = true;
 				else fieldsOpen = !fieldsOpen;
 			}}
 		>

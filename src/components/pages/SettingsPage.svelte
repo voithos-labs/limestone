@@ -1063,7 +1063,7 @@
 		justify-content: space-between;
 		gap: 12px;
 		width: 100%;
-		max-width: var(--page-max-width, none);
+		max-width: var(--view-max-width, 1200px);
 		margin: 0 auto;
 		padding: 24px 32px 14px;
 		box-sizing: border-box;
@@ -1263,7 +1263,7 @@
 		flex: 1;
 		min-height: 0;
 		width: 100%;
-		max-width: var(--page-max-width, none);
+		max-width: var(--view-max-width, 1200px);
 		margin-left: auto;
 		margin-right: auto;
 	}

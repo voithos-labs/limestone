@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Check } from '@lucide/svelte';
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
-	import { isDerived } from '$lib/models/View.svelte';
+	import { isDerived, isStatusField } from '$lib/models/View.svelte';
 	import {
 		fieldLabel,
 		folderDir,
@@ -50,7 +50,7 @@
 			case 'folder':
 				return !inScopeDir && valueFor(f, row) !== '';
 			case 'select':
-				return statefulValue(row, f) !== '';
+				return isStatusField(f) || statefulValue(row, f) !== '';
 			case 'multiselect':
 				return rawArrayValue(row, f).length > 0;
 			case 'boolean':

@@ -35,6 +35,7 @@
 	import ScrollThumb from '../ScrollThumb.svelte';
 	import FolderChips from '../views/FolderChips.svelte';
 	import NewFab from '../views/NewFab.svelte';
+	import { undoKey } from '$lib/history';
 	import { contextMenu } from '$lib/contextMenu.svelte';
 	import { createInView } from '$lib/views/FaceRows.svelte';
 	import {
@@ -534,6 +535,8 @@
 	</button>
 {/snippet}
 
+<svelte:window onkeydown={(e) => undoKey(e, view.id, bodyEl)} />
+
 <div class="folder-page">
 	{#if gone}
 		<GonePage art={catBox} headline={gone.headline} detail={gone.detail} actions={gone.actions} />
@@ -981,9 +984,9 @@
 		display: none;
 	}
 
-	/* the same reading column every page uses */
+	/* a folder is a project page, so it takes the project column */
 	.inner {
-		max-width: var(--page-max-width, none);
+		max-width: var(--view-max-width, 1200px);
 		margin: 0 auto;
 		padding: 16px 16px 0 24px;
 	}

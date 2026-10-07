@@ -5,11 +5,17 @@
 	import { FaceRows } from '$lib/views/FaceRows.svelte';
 	import { PreviewCache, type Preview } from '$lib/views/previews';
 	import { rawStatefulValue, valueFor, fieldLabel } from '$lib/views/fieldValue';
+	import { isStatusField } from '$lib/models/View.svelte';
+	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/todoStatus';
+	import StatusIcon from '../StatusIcon.svelte';
+	import { leave } from '$lib/views/leave';
+	import { history } from '$lib/history';
 	import { highlightTitle } from '$lib/util/highlight';
 	import RowChips from '../RowChips.svelte';
 	import SectionHead from '../SectionHead.svelte';
 	import RowEditors from '../RowEditors.svelte';
 	import NoteCard from '../NoteCard.svelte';
+	import Pill from '../Pill.svelte';
 	import { Check, PanelRight, Plus, ChevronDown, CornerDownLeft } from '@lucide/svelte';
 	import { openHow } from '$lib/views/rowOpen';
 	import { onMount, tick } from 'svelte';
@@ -70,7 +76,7 @@
 	function groupOf(row: MemberRow): { key: string; label: string } {
 		const f = groupField!;
 		if (f.type === 'boolean') return boolGroup(f, rawStatefulValue(row, f) === true);
-		const v = valueFor(f, row);
+		const v = isStatusField(f) ? statusOf(row, f) : valueFor(f, row);
 		return v ? { key: v, label: v } : { key: '', label: `No ${fieldLabel(f).toLowerCase()}` };
 	}
 
@@ -104,6 +110,21 @@
 	}
 
 	const newGroup = $derived(groupField?.type === 'boolean' ? '0' : null);
+
+	// a select group's header summons a draft row at its top, seeded with the group's value
+	const canSummon = $derived(groupField?.type === 'select');
+	let summoned: string | null = $state(null);
+
+	function seedFor(key: string): Record<string, unknown> {
+		return canSummon && key ? { [groupField!.name]: key } : {};
+	}
+
+	async function summon(key: string) {
+		if (collapsedGroups.has(key)) toggleGroup(key);
+		summoned = key;
+		await tick();
+		newEl?.focus();
+	}
 
 	function toggleGroup(key: string) {
 		const next = new Set(collapsedGroups);
@@ -482,6 +503,19 @@
 		});
 	}
 
+	// a drag's order is one undo step, together with any group it moved the row into
+	function pushOrder(prevIds: string[], prevOrder: string[] | undefined, ids: string[]) {
+		const apply = async (list: string[], order: string[] | undefined) => {
+			rows.reorder(list);
+			if (onReorder) onReorder(order ?? list);
+			else face.config.order = order;
+		};
+		history.push(view.id, {
+			back: () => apply(prevIds, prevOrder),
+			forward: () => apply(ids, ids)
+		});
+	}
+
 	function drop(d: Drag) {
 		const target = d.slots[d.gap - 1]?.group ?? d.group;
 		const peers = d.slots.filter((s) => s.kind === 'row' && s.group === target);
@@ -491,10 +525,15 @@
 		const prev = peers[above - 1]?.el.dataset.id;
 		const at = below ? ids.indexOf(below) : prev ? ids.indexOf(prev) + 1 : ids.length;
 		ids.splice(at, 0, d.row.id);
-		rows.reorder(ids);
-		if (onReorder) onReorder(ids);
-		else face.config.order = ids;
-		if (target !== d.group) writeGroup(rows.rows.find((r) => r.id === d.row.id) ?? d.row, target);
+		const prevIds = rows.rows.map((r) => r.id);
+		const prevOrder = face.config.order ? [...(face.config.order as string[])] : undefined;
+		history.group(view.id, () => {
+			pushOrder(prevIds, prevOrder, ids);
+			rows.reorder(ids);
+			if (onReorder) onReorder(ids);
+			else face.config.order = ids;
+			if (target !== d.group) writeGroup(rows.rows.find((r) => r.id === d.row.id) ?? d.row, target);
+		});
 	}
 
 	async function finishDrag(commit: boolean) {
@@ -670,11 +709,11 @@
 	let newEl: HTMLInputElement | null = $state(null);
 	let creating = false;
 
-	async function createNote(title: string, open: boolean) {
+	async function createNote(title: string, open: boolean, values: Record<string, unknown> = {}) {
 		if (creating) return;
 		creating = true;
 		try {
-			const id = await rows.create(title);
+			const id = await rows.create(title, values);
 			if (!id) return;
 			newTitle = '';
 			if (open) onOpenRow?.(id);
@@ -703,10 +742,10 @@
 		}, 150);
 	});
 
-	function onNewKey(e: KeyboardEvent) {
+	function onNewKey(e: KeyboardEvent, values: Record<string, unknown>) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
-			if (newTitle.trim()) createNote(newTitle, false);
+			if (newTitle.trim()) createNote(newTitle, false, values);
 		} else if (e.key === 'Escape') {
 			newTitle = '';
 			(e.currentTarget as HTMLInputElement).blur();
@@ -728,8 +767,25 @@
 	});
 </script>
 
-{#snippet newRow()}
+{#snippet addTo(g: { key: string; label: string }, open: boolean)}
+	{#if canSummon && !rows.loading && openTodos}
+		<button
+			class="add"
+			class:open={summoned === g.key}
+			type="button"
+			tabindex="-1"
+			aria-label="New todo in {g.label}"
+			title="New todo"
+			onclick={() => (open ? createNote('', true, seedFor(g.key)) : summon(g.key))}
+		>
+			<Plus size={14} strokeWidth={2} />
+		</button>
+	{/if}
+{/snippet}
+
+{#snippet newRow(g: { key: string } | null)}
 	{#if !rows.loading && openTodos}
+		{@const values = g ? seedFor(g.key) : {}}
 		<label class="row new">
 			<span class="new-mark">
 				{#if checkField}<span class="dashed"></span>{:else}<Plus
@@ -747,11 +803,23 @@
 					bind:value={newTitle}
 					bind:this={newEl}
 					use:nameGuard
-					onkeydown={onNewKey}
+					onkeydown={(e) => onNewKey(e, values)}
+					onblur={() => {
+						if (!newTitle.trim()) summoned = null;
+					}}
 				/>
 			</span>
 			{#if newTitle.trim() && !titleTaken}
 				<span class="new-hint"><CornerDownLeft size={12} strokeWidth={1.75} />to create</span>
+			{/if}
+			{#if g?.key && groupField}
+				{#if lanes.inline.some((f) => f.id === groupField.id)}
+					<span class="inline"><Pill field={groupField} value={g.key} /></span>
+					<span class="spacer"></span>
+				{:else}
+					<span class="spacer"></span>
+					<span class="values"><Pill field={groupField} value={g.key} /></span>
+				{/if}
 			{/if}
 		</label>
 	{/if}
@@ -778,7 +846,9 @@
 						count={g.items.length}
 						collapsed={collapsedGroups.has(g.key)}
 						onToggle={() => toggleGroup(g.key)}
-					/>
+					>
+						{#snippet trail()}{@render addTo(g, true)}{/snippet}
+					</SectionHead>
 				</div>
 			{/if}
 			{#if !collapsedGroups.has(g.key)}
@@ -834,13 +904,18 @@
 						count={g.items.length}
 						collapsed={collapsedGroups.has(g.key)}
 						onToggle={() => toggleGroup(g.key)}
-					/>
+					>
+						{#snippet trail()}{@render addTo(g, false)}{/snippet}
+					</SectionHead>
 				</div>
 			{/if}
 			{#if !collapsedGroups.has(g.key)}
+				{#if summoned === g.key}
+					{@render newRow(g)}
+				{/if}
 				{#each g.items as row (row.id)}
 					{@const member = checkField ? rows.memberOf(row, checkField) : false}
-					{@const done = member && checkField ? rawStatefulValue(row, checkField) === true : false}
+					{@const done = member && checkField ? checkDone(row, checkField) : false}
 					<div
 						class="row"
 						class:done
@@ -849,8 +924,10 @@
 						role="listitem"
 						data-id={row.id}
 						data-group={g.key}
+						data-leaving={rows.leaving.has(row.id) ? '' : undefined}
 						tabindex="-1"
 						draggable={moveable}
+						out:leave={{ mode: 'row' }}
 						ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 						ondragend={endMove}
 						onpointerdown={(e) => armReorder(e, row)}
@@ -861,7 +938,27 @@
 						onfocus={(e) => (focusIdx = items().indexOf(e.currentTarget))}
 						oncontextmenu={(e) => editors.menu(e, row.id)}
 					>
-						{#if checkField && member && rows.writable(row)}
+						{#if checkField && isStatusField(checkField)}
+							{@const sv = statusOf(row, checkField)}
+							<button
+								class="check status"
+								type="button"
+								tabindex="-1"
+								aria-label="Change status"
+								title={sv}
+								onclick={(e) => {
+									e.stopPropagation();
+									if (rows.writable(row))
+										editors.edit(row, checkField, e.currentTarget as HTMLElement);
+								}}
+							>
+								<StatusIcon
+									kind={statusKind(checkField, sv)}
+									color={statusColor(checkField, sv)}
+									size={18}
+								/>
+							</button>
+						{:else if checkField && member && rows.writable(row)}
 							<button
 								class="check"
 								class:done
@@ -967,13 +1064,13 @@
 					</div>
 				{/each}
 				{#if g.key === newGroup}
-					{@render newRow()}
+					{@render newRow(null)}
 				{/if}
 			{/if}
 		{/each}
 
-		{#if newGroup === null}
-			{@render newRow()}
+		{#if newGroup === null && (!canSummon || groups.length === 0)}
+			{@render newRow(null)}
 		{/if}
 
 		{#if !rows.loading && rows.rows.length === 0 && rows.query}
@@ -1071,6 +1168,37 @@
 		margin-top: 8px;
 	}
 
+	/* the header's add: hidden like the caret until the head is hovered or its draft is open,
+	   and pulled in so the rule runs up close to it */
+	.add {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		margin-left: -12px;
+		padding: 0;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		opacity: 0;
+		cursor: pointer;
+		transition:
+			opacity 80ms ease,
+			color 80ms ease;
+	}
+
+	.group-head:hover .add,
+	.add.open {
+		opacity: 1;
+	}
+
+	.add:hover {
+		color: var(--color-text-primary);
+		background: var(--chip-bg);
+	}
+
 	/* while a row is carried the others slide out of its way; the carried one rides above */
 	.list-face.reordering .row,
 	.list-face.reordering .group-head {
@@ -1165,6 +1293,10 @@
 	/* a note outside the checkbox's unit keeps the slot, but the box is only a trace */
 	.check.inert {
 		cursor: default;
+	}
+
+	.check.status {
+		cursor: pointer;
 	}
 
 	.check.inert .box {
@@ -1344,6 +1476,15 @@
 
 	.row.new:focus-within .dashed {
 		border-color: var(--color-ui-muted);
+	}
+
+	/* the draft's group pill is row-sized, like the pills RowChips draws */
+	.row.new :global(.pill) {
+		height: 22px;
+		padding-top: 0;
+		padding-bottom: 0;
+		line-height: 22px;
+		font-size: 12px;
 	}
 
 	.new-field {

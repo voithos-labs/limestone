@@ -5,7 +5,10 @@
 	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
 	import type { FaceRows } from '$lib/views/FaceRows.svelte';
 	import type { Preview } from '$lib/views/previews';
-	import { rawStatefulValue } from '$lib/views/fieldValue';
+	import { isStatusField } from '$lib/models/View.svelte';
+	import { checkDone, statusOf, statusKind, statusColor } from '$lib/views/todoStatus';
+	import StatusIcon from './StatusIcon.svelte';
+	import { leave } from '$lib/views/leave';
 	import { highlightTitle, highlightSnippet } from '$lib/util/highlight';
 	import RowChips from './RowChips.svelte';
 	import type RowEditors from './RowEditors.svelte';
@@ -23,6 +26,7 @@
 		meta = [],
 		editMode = false,
 		preview,
+		body = 'fixed',
 		onOpen,
 		moveable = false,
 		onFocus
@@ -35,13 +39,14 @@
 		meta?: ViewField[];
 		editMode?: boolean;
 		preview?: Preview;
+		body?: 'fixed' | 'flow' | 'none'; // grid: a fixed window; masonry: as tall as it is; board: none
 		onOpen?: (rowId: string, newTab?: boolean | 'side') => void;
 		moveable?: boolean;
 		onFocus?: () => void;
 	} = $props();
 
 	const member = $derived(checkField ? rows.memberOf(row, checkField) : false);
-	const done = $derived(member && checkField ? rawStatefulValue(row, checkField) === true : false);
+	const done = $derived(member && checkField ? checkDone(row, checkField) : false);
 	const hit = $derived(rows.searchHits[row.id]);
 	const snippet = $derived(hit?.snippet?.trim() ? highlightSnippet(hit.snippet) : '');
 
@@ -103,8 +108,10 @@
 	class:editable={editMode}
 	role="listitem"
 	data-id={row.id}
+	data-leaving={rows.leaving.has(row.id) ? '' : undefined}
 	tabindex="-1"
 	draggable={moveable}
+	out:leave={{ mode: body === 'none' ? 'row' : 'card' }}
 	ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
 	ondragend={endMove}
 	onclick={(e) => onOpen?.(row.id, openHow(e))}
@@ -115,7 +122,26 @@
 	onfocus={onFocus}
 >
 	<div class="head">
-		{#if checkField && member && rows.writable(row)}
+		{#if checkField && isStatusField(checkField)}
+			{@const sv = statusOf(row, checkField)}
+			<button
+				class="check status"
+				type="button"
+				tabindex="-1"
+				aria-label="Change status"
+				title={sv}
+				onclick={(e) => {
+					e.stopPropagation();
+					if (rows.writable(row)) editors.edit(row, checkField, e.currentTarget as HTMLElement);
+				}}
+			>
+				<StatusIcon
+					kind={statusKind(checkField, sv)}
+					color={statusColor(checkField, sv)}
+					size={16}
+				/>
+			</button>
+		{:else if checkField && member && rows.writable(row)}
 			<button
 				class="check"
 				class:done
@@ -173,17 +199,19 @@
 		</button>
 	</div>
 
-	<div class="body">
-		{#if preview?.image && imgOk}
-			<img class="image" src={preview.image} alt="" onerror={() => (imgOk = false)} />
-		{:else if snippet}
-			<p class="text">{@html snippet}</p>
-		{:else if preview?.text}
-			<p class="text">{preview.text}</p>
-		{:else}
-			<p class="text empty">Empty note</p>
-		{/if}
-	</div>
+	{#if body === 'fixed' || (body === 'flow' && (snippet || preview?.text || (preview?.image && imgOk)))}
+		<div class="body" class:flow={body === 'flow'}>
+			{#if preview?.image && imgOk}
+				<img class="image" src={preview.image} alt="" onerror={() => (imgOk = false)} />
+			{:else if snippet}
+				<p class="text">{@html snippet}</p>
+			{:else if preview?.text}
+				<p class="text">{preview.text}</p>
+			{:else}
+				<p class="text empty">Empty note</p>
+			{/if}
+		</div>
+	{/if}
 
 	{#if inline.length || meta.length}
 		<div class="foot">
@@ -217,6 +245,7 @@
 <style>
 	/* a flat tile: one faint fill, no border, a touch darker on hover */
 	.card {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
@@ -277,6 +306,10 @@
 
 	.check.inert {
 		cursor: default;
+	}
+
+	.check.status {
+		cursor: pointer;
 	}
 
 	.check.inert .box {
@@ -396,6 +429,21 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+
+	/* masonry: the window opens up to what the note has, an image at its own shape */
+	.body.flow {
+		height: auto;
+	}
+
+	.body.flow .image {
+		height: auto;
+		max-height: 240px;
+	}
+
+	.body.flow .text {
+		-webkit-line-clamp: 6;
+		line-clamp: 6;
 	}
 
 	.text {

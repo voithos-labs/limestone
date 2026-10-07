@@ -11,7 +11,7 @@ import { SvelteSet } from 'svelte/reactivity';
 
 // internal
 import EditorState, { type EditorJSON, type TabState } from '$lib/models/EditorState.svelte.js';
-import { SettingsState, getSetting } from '$lib/models/Settings.svelte.js';
+import { SettingsState, getSetting, registerSettings } from '$lib/models/Settings.svelte.js';
 import type { Source } from '$lib/models/Source';
 import {
 	applyAccent,
@@ -93,6 +93,7 @@ class Session {
 		viewTabs?: ViewTab[]
 	) {
 		this.editors = editors;
+		registerSettings(this.settings);
 		for (const e of editors) e.session = this;
 		this.activeTheme = activeTheme;
 		this.themeStore = themeStore;
