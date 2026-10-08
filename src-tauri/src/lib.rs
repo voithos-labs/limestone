@@ -307,12 +307,9 @@ pub fn run() {
             commands::asset_commands::import_source_asset,
             commands::asset_commands::import_source_asset_bytes,
             commands::asset_commands::delete_source_asset,
-            commands::history_commands::storage_load,
-            commands::history_commands::storage_save,
-            commands::history_commands::storage_remove,
-            commands::history_commands::storage_load_range,
-            commands::history_commands::storage_list_roots,
-            commands::history_commands::storage_remove_range,
+            commands::history_commands::history_load,
+            commands::history_commands::history_append,
+            commands::history_commands::history_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
