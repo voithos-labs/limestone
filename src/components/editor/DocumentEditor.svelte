@@ -939,7 +939,12 @@
 		void openWikiLink(target);
 	}
 
-	async function openWikiLink(target: string, heading?: string, side = false): Promise<void> {
+	async function openWikiLink(
+		target: string,
+		heading?: string,
+		side = false,
+		newTab = false
+	): Promise<void> {
 		const h = handle;
 		if (!h || !editor) return;
 		const hit = await resolveWikiLink(h.source.id, target);
@@ -961,6 +966,7 @@
 		}
 		const state = heading ? { [OPEN_AT_HEADING]: heading } : {};
 		if (side) editor.beside().openDetail({ type: 'markdown', handle: doc }, h.title);
+		else if (newTab) editor.openDoc(doc, state);
 		else editor.showDocInTab(tab, doc, state);
 	}
 
@@ -981,8 +987,8 @@
 	}
 
 	function onActivate(e: Event): void {
-		const { kind, target, fragment, side } = (e as CustomEvent<ActivateDetail>).detail;
-		if (kind === 'wikilink' && target) void openWikiLink(target, fragment, side);
+		const { kind, target, fragment, side, newTab } = (e as CustomEvent<ActivateDetail>).detail;
+		if (kind === 'wikilink' && target) void openWikiLink(target, fragment, side, newTab);
 		else if (kind === 'wikilink' && fragment) void jumpToHeading(fragment);
 		else if (kind === 'tag') void openTagView(target, side);
 	}

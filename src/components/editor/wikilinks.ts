@@ -19,6 +19,8 @@ export interface ActivateDetail {
 	target: string;
 	fragment?: string;
 	side?: boolean;
+	/** Ctrl/Cmd-click: open in a new tab rather than this one. */
+	newTab?: boolean;
 }
 
 export const ACTIVATE_EVENT = 'limestone-activate';
@@ -36,10 +38,11 @@ export function wikiLinksPlugin(): EditorPlugin {
 				},
 				{ prefix: LINK_OPEN, priority: INLINE_PRIORITIES.prefixOverride }
 			);
+			// A plain click follows the link, as on a web page; the caret arrowing in shows its source
 			registerInlineWidgetKind(link, {
 				isWidget: () => true,
 				component: WikiLink,
-				editing: { revealSource: true, claimsActivationClick: true }
+				editing: { revealSource: true, claimsActivationClick: true, plainClickActivates: true }
 			});
 
 			const tag = declarePluginInlineKind(BODY_TAG_KIND);

@@ -1,13 +1,10 @@
 <script lang="ts">
-	import {
-		isWidgetActivationClick,
-		type InlineWidgetComponentProps
-	} from '@voithos-labs/aragonite/plugin';
+	import type { InlineWidgetComponentProps } from '@voithos-labs/aragonite/plugin';
 	import { parseWikiTarget } from '#lib/services/links.svelte.js';
 	import { linkIndex, resolveWikiLink } from '#lib/services/links.svelte.js';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 
-	let { source, getPresentationMode }: InlineWidgetComponentProps = $props();
+	let { source }: InlineWidgetComponentProps = $props();
 
 	// svelte-ignore state_referenced_locally
 	const { target, fragment, alias } = parseWikiTarget(source.slice(2, -2));
@@ -29,10 +26,19 @@
 		};
 	});
 
+	// Any click follows the link (the registration's plainClickActivates): Shift opens it beside,
+	// Ctrl/Cmd in a new tab
 	function onClick(e: MouseEvent): void {
-		if (!isWidgetActivationClick(e.ctrlKey || e.metaKey, getPresentationMode())) return;
+		// A drag that began and ended on the link is a selection, not a click on it
+		if (!(window.getSelection()?.isCollapsed ?? true)) return;
 		e.preventDefault();
-		const detail: ActivateDetail = { kind: 'wikilink', target, fragment, side: e.shiftKey };
+		const detail: ActivateDetail = {
+			kind: 'wikilink',
+			target,
+			fragment,
+			side: e.shiftKey,
+			newTab: e.ctrlKey || e.metaKey
+		};
 		el?.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { bubbles: true, detail }));
 	}
 </script>
