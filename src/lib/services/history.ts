@@ -2,9 +2,9 @@ import { invoke } from '@tauri-apps/api/core';
 import * as Automerge from '@automerge/automerge/slim';
 import wasmUrl from '@automerge/automerge/automerge.wasm?url';
 
-import { fromBase64, toBase64 } from '#lib/services/assets';
-import { getAppInfo } from '#lib/models/Settings.svelte';
-import { registerFlush } from '#lib/services/platform';
+import { fromBase64, toBase64 } from '#lib/services/assets.js';
+import { getAppInfo } from '#lib/models/Settings.svelte.js';
+import { registerFlush } from '#lib/services/platform.js';
 
 // region store
 // ── Per-Doc Automerge Store ──────────────────────────────────────────────────────────
