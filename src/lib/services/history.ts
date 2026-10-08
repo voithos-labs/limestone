@@ -1,112 +1,111 @@
 import { invoke } from '@tauri-apps/api/core';
 import * as Automerge from '@automerge/automerge/slim';
-import {
-	Repo,
-	updateText,
-	type Chunk,
-	type DocHandle,
-	type DocumentId,
-	type StorageAdapterInterface,
-	type StorageKey
-} from '@automerge/automerge-repo/slim';
 import wasmUrl from '@automerge/automerge/automerge.wasm?url';
 
 import { fromBase64, toBase64 } from '#lib/services/assets.js';
+import { getAppInfo } from '#lib/models/Settings.svelte.js';
 import { registerFlush } from '#lib/services/platform.js';
 
-// region storage adapter
-// ── Storage Adapter (via Tauri To Fs) ────────────────────────────────────────────────
-
-interface WireChunk {
-	key: string[];
-	data: string;
-}
-
-class TauriStorageAdapter implements StorageAdapterInterface {
-	constructor(private readonly scope: string[]) {}
-
-	async load(key: StorageKey): Promise<Uint8Array | undefined> {
-		const data = await invoke<string | null>('storage_load', { key: [...this.scope, ...key] });
-		return data === null ? undefined : fromBase64(data);
-	}
-
-	async save(key: StorageKey, data: Uint8Array): Promise<void> {
-		await invoke('storage_save', { key: [...this.scope, ...key], data: toBase64(data) });
-	}
-
-	async remove(key: StorageKey): Promise<void> {
-		await invoke('storage_remove', { key: [...this.scope, ...key] });
-	}
-
-	async loadRange(keyPrefix: StorageKey): Promise<Chunk[]> {
-		const chunks = await invoke<WireChunk[]>('storage_load_range', {
-			prefix: [...this.scope, ...keyPrefix]
-		});
-		return chunks.map((c) => ({ key: c.key.slice(this.scope.length), data: fromBase64(c.data) }));
-	}
-
-	async removeRange(keyPrefix: StorageKey): Promise<void> {
-		await invoke('storage_remove_range', { prefix: [...this.scope, ...keyPrefix] });
-	}
-}
-// endregion
-// region repo
-// ── Repo Automerge ───────────────────────────────────────────────────────────────────
+// region store
+// ── Per-Doc Automerge Store ──────────────────────────────────────────────────────────
 
 interface DocHistoryShape {
-	docId: string;
 	text: string;
 }
 
+type Doc = Automerge.Doc<DocHistoryShape>;
+
 interface HistoryEntry {
-	repo: Repo;
-	handle: Promise<DocHandle<DocHistoryShape>>;
+	doc: Doc;
+	chain: Promise<unknown>;
 }
 
-const entries = new Map<string, HistoryEntry>();
+const entries = new Map<string, Promise<HistoryEntry>>();
 
-let wasmReady: Promise<void> | null = null;
+let deviceActor: Promise<string> | null = null;
 
-function ensureWasm(): Promise<void> {
-	if (!wasmReady) {
-		wasmReady = Automerge.initializeWasm(wasmUrl).catch((e) => {
-			wasmReady = null;
-			throw e;
-		});
+function ensureReady(): Promise<string> {
+	if (!deviceActor) {
+		deviceActor = Promise.all([Automerge.initializeWasm(wasmUrl), getAppInfo()])
+			.then(([, info]) => actorOf(info.device_key))
+			.catch((e) => {
+				deviceActor = null;
+				throw e;
+			});
 	}
-	return wasmReady;
+	return deviceActor;
 }
 
-function listHistoryRoots(docId: string): Promise<string[]> {
-	return invoke<string[]>('storage_list_roots', { prefix: [docId] });
+function actorOf(uuid: string): string {
+	return uuid.replace(/-/g, '');
 }
 
-async function openHistory(repo: Repo, docId: string): Promise<DocHandle<DocHistoryShape>> {
-	const [roots] = await Promise.all([listHistoryRoots(docId), ensureWasm()]);
-	const root = roots[0];
-	if (root) {
-		return await repo.find<DocHistoryShape>(root as DocumentId);
-	}
-	return repo.create<DocHistoryShape>({ docId, text: '' });
+function genesis(docId: string): Uint8Array {
+	const doc = Automerge.change(
+		Automerge.init<DocHistoryShape>({ actor: actorOf(docId) }),
+		{ time: 0 },
+		(d) => {
+			d.text = '';
+		}
+	);
+	return Automerge.getLastLocalChange(doc)!;
 }
 
-function historyEntry(docId: string): HistoryEntry {
+async function openHistory(docId: string): Promise<HistoryEntry> {
+	const [actor, chunks] = await Promise.all([
+		ensureReady(),
+		invoke<string[]>('history_load', { docId })
+	]);
+	let doc = Automerge.init<DocHistoryShape>({ actor });
+	doc = Automerge.loadIncremental(doc, genesis(docId));
+	for (const chunk of chunks) doc = Automerge.loadIncremental(doc, fromBase64(chunk));
+	return { doc, chain: Promise.resolve() };
+}
+
+function historyEntry(docId: string): Promise<HistoryEntry> {
 	let entry = entries.get(docId);
 	if (!entry) {
-		const repo = new Repo({ storage: new TauriStorageAdapter([docId]) });
-		entry = { repo, handle: openHistory(repo, docId) };
-		entry.handle.catch(() => entries.delete(docId));
+		entry = openHistory(docId);
+		entry.catch(() => entries.delete(docId));
 		entries.set(docId, entry);
 	}
 	return entry;
 }
 
-function getDocHistoryHandle(docId: string): Promise<DocHandle<DocHistoryShape>> {
-	return historyEntry(docId).handle;
+async function historyDoc(docId: string): Promise<Doc> {
+	const entry = await historyEntry(docId);
+	await entry.chain;
+	return entry.doc;
+}
+
+async function changeHistory(
+	docId: string,
+	fn: Automerge.ChangeFn<DocHistoryShape>
+): Promise<void> {
+	const entry = await historyEntry(docId);
+	const run = entry.chain.then(async () => {
+		const before = Automerge.getHeads(entry.doc).join();
+		const next = Automerge.change(entry.doc, fn);
+		const heads = Automerge.getHeads(next);
+		if (heads.join() === before) return;
+		const [hash] = heads;
+		const data = toBase64(Automerge.getLastLocalChange(next)!);
+		await invoke('history_append', { docId, hash, data });
+		entry.doc = next;
+	});
+	entry.chain = run.catch(() => {});
+	await run;
+}
+
+function settled(entry: Promise<HistoryEntry>): Promise<unknown> {
+	return entry.then(
+		(e) => e.chain,
+		() => {}
+	);
 }
 
 export async function flushHistory(): Promise<void> {
-	await Promise.all([...entries.values()].map((e) => e.repo.flush()));
+	await Promise.all([...entries.values()].map(settled));
 }
 
 registerFlush(flushHistory);
@@ -114,12 +113,19 @@ registerFlush(flushHistory);
 export async function removeHistory(docId: string): Promise<void> {
 	const entry = entries.get(docId);
 	entries.delete(docId);
-	if (entry) await entry.repo.shutdown();
-	await invoke('storage_remove_range', { prefix: [docId] });
+	if (entry) await settled(entry);
+	await invoke('history_remove', { docId });
+}
+
+/**
+ * Add change to history via Automerge `updateText`
+ */
+export function addChangeHistory(docId: string, newBody: string): Promise<void> {
+	return changeHistory(docId, (d) => Automerge.updateText(d, ['text'], newBody));
 }
 // endregion
-// region doc history management
-// ── Doc History Management ───────────────────────────────────────────────────────────
+// region checkpoints
+// ── Checkpoints ──────────────────────────────────────────────────────────────────────
 
 export interface Checkpoint {
 	heads: string[]; // like git heads, literally hash[], of the changes sorted under this checkpoint
@@ -130,8 +136,9 @@ export interface Checkpoint {
 const CHECKPOINT_GAP_MS = 5_000;
 const CHECKPOINT_MAX_SPAN_MS = 30_000;
 
-function buildCheckpoints(doc: Automerge.Doc<DocHistoryShape>): Checkpoint[] {
-	const meta = Automerge.getChangesMetaSince(doc, []);
+function buildCheckpoints(docId: string, doc: Doc): Checkpoint[] {
+	const skip = actorOf(docId);
+	const meta = Automerge.getChangesMetaSince(doc, []).filter((c) => c.actor !== skip);
 	const checkpoints: Checkpoint[] = [];
 	let last: { hash: string; time: number } | null = null;
 	let bucketStart = 0;
@@ -157,15 +164,6 @@ function buildCheckpoints(doc: Automerge.Doc<DocHistoryShape>): Checkpoint[] {
 	}
 	return checkpoints;
 }
-/**
- * Add change to history via Automerge `updateText`
- */
-export async function addChangeHistory(docId: string, newBody: string) {
-	// load or create history
-	const dh = await getDocHistoryHandle(docId);
-	// apply change
-	dh.change((d) => updateText(d, ['text'], newBody));
-}
 // endregion
 // region api
 // ── READ API FOR UI-LIKE TYPES N STUFF ───────────────────────────────────────────────
@@ -178,13 +176,8 @@ export interface StateDelta {
 	removals: { at: number; text: string }[];
 }
 
-async function historyDoc(docId: string): Promise<Automerge.Doc<DocHistoryShape>> {
-	const dh = await getDocHistoryHandle(docId);
-	return dh.doc();
-}
-
 export async function historyCheckpoints(docId: string): Promise<Checkpoint[]> {
-	return buildCheckpoints(await historyDoc(docId));
+	return buildCheckpoints(docId, await historyDoc(docId));
 }
 
 export async function historyTextAt(docId: string, cp: Checkpoint): Promise<string> {
@@ -205,7 +198,7 @@ export async function historyDelta(
 	const removals: StateDelta['removals'] = [];
 	let working = Automerge.view(doc, fromHeads).text;
 	for (const patch of patches) {
-		// sort operation types, {'splice', 'del', 'put'},
+		// sort operation types, {'splice', 'del'},
 		// into `inserts` and `removals` for highlighting in editor UI
 		if (patch.action === 'splice') {
 			const at = patch.path[1] as number;
@@ -216,10 +209,6 @@ export async function historyDelta(
 			const len = patch.length ?? 1;
 			removals.push({ at, text: working.slice(at, at + len) });
 			working = working.slice(0, at) + working.slice(at + len);
-		} else if (patch.action === 'put' && typeof patch.value === 'string') {
-			removals.push({ at: 0, text: working });
-			working = patch.value;
-			inserts.push({ from: 0, to: working.length });
 		}
 	}
 	return { inserts, removals };

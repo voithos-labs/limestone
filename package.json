@@ -19,7 +19,6 @@
 	"private": true,
 	"dependencies": {
 		"@automerge/automerge": "^3.4.1",
-		"@automerge/automerge-repo": "^2.5.6",
 		"@fontsource/inter": "^5.3.0",
 		"@fontsource/jetbrains-mono": "^5.2.8",
 		"@iconify-json/material-symbols": "^1.2.89",
@@ -53,11 +52,6 @@
 		"typescript": "^6.0.0",
 		"unplugin-icons": "^23.0.1",
 		"vite": "^8.2.2"
-	},
-	"overrides": {
-		"@automerge/automerge-repo": {
-			"uuid": "$uuid"
-		}
 	},
 	"imports": {
 		"#lib/*": "./src/lib/*",
