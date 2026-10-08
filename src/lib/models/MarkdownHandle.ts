@@ -39,7 +39,6 @@ import { creationSource, defaultNoteDir, type Source } from './Source';
 import Tag, { tagSlug } from './Tag';
 import Folder from './Folder';
 import Doc, { type DocumentRow } from './Doc';
-import { loadDocumentRecord } from './document-record';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
@@ -114,7 +113,7 @@ class MarkdownHandle extends Doc {
 	inRepo = false;
 	private fence = '';
 
-	private constructor(row: DocumentRow, source: Source) {
+	constructor(row: DocumentRow, source: Source) {
 		if (row.document_type !== 'md') {
 			throw new Error(
 				`you dumbass, ${row.document_type} is an unsupported document type for markdown. \ndoc id is this: ${row.id}, figure it out.`
@@ -157,12 +156,8 @@ class MarkdownHandle extends Doc {
 		return doc;
 	}
 
-	static async fromID(id: string): Promise<MarkdownHandle> {
-		const { row, source, tags } = await loadDocumentRecord(id);
-		const doc = new MarkdownHandle(row, source);
-		doc.tags = tags;
-		doc.applyMeta(await Folder.metaAt(source.id, dirOf(row.rel_path)));
-		return doc;
+	protected override hydrate(): Promise<void> {
+		return this.refreshMeta();
 	}
 
 	/** Is there a live (non-deleted) document at this path in the source? */
