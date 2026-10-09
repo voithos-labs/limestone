@@ -7,11 +7,11 @@
 		SquareMinus,
 		Trash2
 	} from '@lucide/svelte';
-	import type View from '$lib/models/View.svelte';
-	import type { MemberRow, ViewField } from '$lib/models/View.svelte';
-	import type Tag from '$lib/models/Tag';
-	import type { FaceRows, RowTag } from '$lib/views/FaceRows.svelte';
-	import { rawStatefulValue } from '$lib/views/fieldValue';
+	import type View from '#lib/models/View.svelte.js';
+	import type { MemberRow, ViewField } from '#lib/models/View.svelte.js';
+	import type Tag from '#lib/models/Tag.js';
+	import type { FaceRows, RowTag } from '#lib/views/FaceRows.svelte.js';
+	import { rawStatefulValue } from '#lib/views/fieldValue.js';
 	import CellEditor from './CellEditor.svelte';
 	import CellTextEditor from './CellTextEditor.svelte';
 	import TagMenu from './TagMenu.svelte';

@@ -2,10 +2,10 @@
 	import type { Component } from 'svelte';
 	import { onMount } from 'svelte';
 	import { X } from '@lucide/svelte';
-	import type { ViewField } from '$lib/models/View.svelte';
+	import type { ViewField } from '#lib/models/View.svelte.js';
 	import Menu from '../ui/Menu.svelte';
 	import FilterValueEditor from './FilterValueEditor.svelte';
-	import type { OpOption } from '$lib/views/filterDisplay';
+	import type { OpOption } from '#lib/views/filterDisplay.js';
 
 	let {
 		icon,

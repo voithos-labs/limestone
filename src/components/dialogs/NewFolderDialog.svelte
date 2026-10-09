@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { FolderPlus } from '@lucide/svelte';
-	import { nameGuard } from '$lib/util/paths';
+	import { nameGuard } from '#lib/util/paths.js';
 
 	let {
 		open = $bindable(false),

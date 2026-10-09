@@ -9,13 +9,13 @@
 		Search,
 		X
 	} from '@lucide/svelte';
-	import Folder, { folderId, folderIdPath, folderIdSource } from '$lib/models/Folder';
-	import { listSources, sourceName, type Source } from '$lib/models/Source';
-	import { listSavedViewJSON } from '$lib/models/View.svelte';
+	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
+	import { listSources, sourceName, type Source } from '#lib/models/Source.js';
+	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
 	import FolderChips from '../views/FolderChips.svelte';
-	import { isMove, readMove, movingNow, canMoveInto, moveInto } from '$lib/views/move.svelte';
-	import { folderNameProblem, nameGuard } from '$lib/util/paths';
-	import { mark } from '$lib/overlays.svelte';
+	import { isMove, readMove, movingNow, canMoveInto, moveInto } from '#lib/views/move.svelte.js';
+	import { folderNameProblem, nameGuard } from '#lib/util/paths.js';
+	import { mark } from '#lib/overlays.svelte.js';
 
 	type Place = { id: string; slug: string; repo?: boolean };
 

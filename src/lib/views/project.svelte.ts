@@ -1,9 +1,9 @@
-import type { ViewFace } from '$lib/models/View.svelte';
-import EditorState, { TabState } from '$lib/models/EditorState.svelte';
+import type { ViewFace } from '#lib/models/View.svelte.js';
+import EditorState, { TabState } from '#lib/models/EditorState.svelte.js';
 import { exists } from '@tauri-apps/plugin-fs';
-import { listSources, sourceName } from '$lib/models/Source';
-import { folderIdPath, folderIdSource } from '$lib/models/Folder';
-import type { SearchResult } from '$lib/services/search';
+import { listSources, sourceName } from '#lib/models/Source.js';
+import { folderIdPath, folderIdSource } from '#lib/models/Folder.js';
+import type { SearchResult } from '#lib/services/search.js';
 
 // The project face's sections: which are shown, in what order, folded or not. Kept on the
 // face so a project remembers how it was left

@@ -4,7 +4,7 @@ import {
 	type DocumentView,
 	type NodeView
 } from '@voithos-labs/aragonite';
-import type { StateDelta } from '$lib/services/history';
+import type { StateDelta } from '#lib/services/history.js';
 
 export const HISTORY_INSERT_CLASS = 'hist-ins';
 export const HISTORY_BLOCK_CLASS = 'hist-block';

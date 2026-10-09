@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { describeError } from '$lib/overlays.svelte';
+	import { describeError } from '#lib/overlays.svelte.js';
 	import {
 		containsGitRepo,
 		createSource,
@@ -12,8 +12,8 @@
 		updateSource,
 		updateSourcePath,
 		type Source
-	} from '$lib/models/Source';
-	import { getSetting } from '$lib/models/Settings.svelte';
+	} from '#lib/models/Source.js';
+	import { getSetting } from '#lib/models/Settings.svelte.js';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
 	import { ChevronDown, Folder, GitBranch, TriangleAlert } from '@lucide/svelte';
 	import { slide } from 'svelte/transition';

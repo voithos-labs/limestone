@@ -5,10 +5,10 @@ import {
 	type InlineMenuSource
 } from '@voithos-labs/aragonite';
 import { headingLevel, walkBlocks } from '@voithos-labs/aragonite/plugin';
-import { headingFragment, linkTargets, resolveWikiLink } from '$lib/services/links.svelte';
+import { headingFragment, linkTargets, resolveWikiLink } from '#lib/services/links.svelte.js';
 import { readTextFile } from '@tauri-apps/plugin-fs';
-import MarkdownHandle from '$lib/models/MarkdownHandle';
-import { searchTitles } from '$lib/services/search';
+import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+import { searchTitles } from '#lib/services/search.js';
 import { LINK_OPEN, writeWikiLink } from './wikilinks';
 
 /**

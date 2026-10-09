@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { Square, Hash } from '@lucide/svelte';
-	import type { ViewField, MemberRow } from '$lib/models/View.svelte';
-	import { isBuiltinUnit, isStatusField } from '$lib/models/View.svelte';
-	import { statusOf } from '$lib/views/fieldValue';
-	import type { Source } from '$lib/models/Source';
+	import type { ViewField, MemberRow } from '#lib/models/View.svelte.js';
+	import { isBuiltinUnit, isStatusField } from '#lib/models/View.svelte.js';
+	import { statusOf } from '#lib/views/fieldValue.js';
+	import type { Source } from '#lib/models/Source.js';
 	import {
 		rawStatefulValue,
 		statefulValue,
@@ -11,7 +11,7 @@
 		valueFor,
 		folderDir,
 		sourceName
-	} from '$lib/views/fieldValue';
+	} from '#lib/views/fieldValue.js';
 	import FolderCrumb from './FolderCrumb.svelte';
 	import Pill from './Pill.svelte';
 

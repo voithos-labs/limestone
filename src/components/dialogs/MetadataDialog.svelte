@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { describeError, reportError } from '$lib/overlays.svelte';
-	import { mark } from '$lib/overlays.svelte';
+	import { describeError, reportError } from '#lib/overlays.svelte.js';
+	import { mark } from '#lib/overlays.svelte.js';
 	import { untrack } from 'svelte';
 	import {
 		ArrowRight,
@@ -11,15 +11,15 @@
 		GitBranch,
 		Hash
 	} from '@lucide/svelte';
-	import { listSavedViewJSON } from '$lib/models/View.svelte';
+	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
 	import Folder, {
 		folderIdPath,
 		folderIdSource,
 		type FolderMeta,
 		type MetaMode
-	} from '$lib/models/Folder';
-	import { getSource, sourceName } from '$lib/models/Source';
-	import { metaDialog } from '$lib/overlays.svelte';
+	} from '#lib/models/Folder.js';
+	import { getSource, sourceName } from '#lib/models/Source.js';
+	import { metaDialog } from '#lib/overlays.svelte.js';
 
 	// Where a folder's tags and fields live: written into the top of each file, or kept by
 	// Limestone alone. The diagram shows the difference; the choice below sets it

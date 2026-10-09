@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { reportError } from '$lib/overlays.svelte';
-	import { mark } from '$lib/overlays.svelte';
+	import { reportError } from '#lib/overlays.svelte.js';
+	import { mark } from '#lib/overlays.svelte.js';
 	import { untrack } from 'svelte';
 	import {
 		Hash,
@@ -13,10 +13,10 @@
 		EllipsisVertical,
 		Pilcrow
 	} from '@lucide/svelte';
-	import { contextMenu, ctxMenu, type CtxEntry } from '$lib/overlays.svelte';
-	import Tag, { tagId } from '$lib/models/Tag';
-	import { isBuiltinUnit } from '$lib/models/View.svelte';
-	import { nameGuard } from '$lib/util/paths';
+	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
+	import Tag, { tagId } from '#lib/models/Tag.js';
+	import { isBuiltinUnit } from '#lib/models/View.svelte.js';
+	import { nameGuard } from '#lib/util/paths.js';
 
 	let {
 		open = $bindable(false),

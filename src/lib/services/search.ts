@@ -1,5 +1,5 @@
-import { select } from '$lib/services/db';
-import { SNIPPET_MARK_START, SNIPPET_MARK_END } from '$lib/util/dom';
+import { select } from '#lib/services/db.js';
+import { SNIPPET_MARK_START, SNIPPET_MARK_END } from '#lib/util/dom.js';
 
 // Ranking constants (fml I spent 4 hours playing with this shiot)
 const MAX_RESULTS = 100;

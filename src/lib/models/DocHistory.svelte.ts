@@ -4,7 +4,7 @@ import {
 	historyTextAt,
 	type Checkpoint,
 	type StateDelta
-} from '$lib/services/history';
+} from '#lib/services/history.js';
 
 export interface HistoryVersion {
 	text: string;

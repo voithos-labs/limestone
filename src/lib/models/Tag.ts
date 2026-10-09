@@ -19,7 +19,7 @@
  * them. It's about 50 fewer lines of code total but also a lot less gross, especially in schema.sql
  */
 
-import { select, execute } from '$lib/services/db';
+import { select, execute } from '#lib/services/db.js';
 import {
 	BUILTIN_UNITS,
 	bulkPerSource,
@@ -28,10 +28,10 @@ import {
 	listSavedViewJSON,
 	remapIdsInSavedViews,
 	type BulkResult
-} from '$lib/models/View.svelte';
-import { sourceName, type Source } from '$lib/models/Source';
-import { toasts, mark } from '$lib/overlays.svelte';
-import { flushAll } from '$lib/services/platform';
+} from '#lib/models/View.svelte.js';
+import { sourceName, type Source } from '#lib/models/Source.js';
+import { toasts, mark } from '#lib/overlays.svelte.js';
+import { flushAll } from '#lib/services/platform.js';
 
 export interface TagRow {
 	id: string;

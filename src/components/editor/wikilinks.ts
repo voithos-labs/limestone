@@ -9,7 +9,7 @@ import {
 } from '@voithos-labs/aragonite/plugin';
 import WikiLink from './WikiLink.svelte';
 import BodyTag from './BodyTag.svelte';
-import { parseWikiTarget } from '$lib/services/links.svelte';
+import { parseWikiTarget } from '#lib/services/links.svelte.js';
 
 export const WIKILINK_KIND = 'limestone-wikilink';
 export const BODY_TAG_KIND = 'limestone-tag';

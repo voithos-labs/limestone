@@ -1,13 +1,19 @@
 <script lang="ts">
-	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import { TabState } from '$lib/models/EditorState.svelte.js';
-	import type { SearchResult } from '$lib/services/search';
-	import { getSource, touchSource, listSources, sourceName, type Source } from '$lib/models/Source';
-	import MarkdownHandle from '$lib/models/MarkdownHandle';
-	import Tag from '$lib/models/Tag';
-	import Folder, { folderId, folderIdSource } from '$lib/models/Folder';
-	import View, { listSavedViewJSON } from '$lib/models/View.svelte';
-	import { searchDocuments } from '$lib/services/search';
+	import type EditorState from '#lib/models/EditorState.svelte.js';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
+	import type { SearchResult } from '#lib/services/search.js';
+	import {
+		getSource,
+		touchSource,
+		listSources,
+		sourceName,
+		type Source
+	} from '#lib/models/Source.js';
+	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import Tag from '#lib/models/Tag.js';
+	import Folder, { folderId, folderIdSource } from '#lib/models/Folder.js';
+	import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import { searchDocuments } from '#lib/services/search.js';
 	import SearchResultRow from './SearchResultRow.svelte';
 	import { Search, X } from '@lucide/svelte';
 	import { onMount, untrack } from 'svelte';

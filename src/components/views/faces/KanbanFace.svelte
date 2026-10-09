@@ -1,18 +1,18 @@
 <script lang="ts">
-	import type View from '$lib/models/View.svelte';
-	import type { FilterNode, MemberRow, ViewFace } from '$lib/models/View.svelte';
-	import { isStatusField } from '$lib/models/View.svelte';
-	import { statusOf } from '$lib/views/fieldValue';
-	import { history } from '$lib/views/FaceRows.svelte';
-	import { onSourceReconciled } from '$lib/models/Source';
-	import { FaceRows } from '$lib/views/FaceRows.svelte';
-	import { rawStatefulValue, statefulValue, fieldLabel } from '$lib/views/fieldValue';
+	import type View from '#lib/models/View.svelte.js';
+	import type { FilterNode, MemberRow, ViewFace } from '#lib/models/View.svelte.js';
+	import { isStatusField } from '#lib/models/View.svelte.js';
+	import { statusOf } from '#lib/views/fieldValue.js';
+	import { history } from '#lib/views/FaceRows.svelte.js';
+	import { onSourceReconciled } from '#lib/models/Source.js';
+	import { FaceRows } from '#lib/views/FaceRows.svelte.js';
+	import { rawStatefulValue, statefulValue, fieldLabel } from '#lib/views/fieldValue.js';
 	import NoteCard from '../NoteCard.svelte';
 	import RowEditors from '../editors/RowEditors.svelte';
 	import Pill from '../Pill.svelte';
 	import ScrollThumb from '../../ui/ScrollThumb.svelte';
 	import { Plus, CornerDownLeft, ChevronDown } from '@lucide/svelte';
-	import { nameGuard } from '$lib/util/paths';
+	import { nameGuard } from '#lib/util/paths.js';
 	import { onMount, tick } from 'svelte';
 
 	let {
@@ -118,7 +118,7 @@
 	let addColEl: HTMLInputElement | null = $state(null);
 
 	function nextColor(): number {
-		const options = ((colField?.config?.options ?? []) as { color: number }[]) ?? [];
+		const options = (colField?.config?.options ?? []) as { color: number }[];
 		const used = new Set(options.map((o) => o.color));
 		for (let i = 0; i < 16; i++) if (!used.has(i)) return i;
 		return options.length % 16;

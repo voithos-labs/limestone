@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import type View from '$lib/models/View.svelte';
-	import { ViewFace, type FilterNode } from '$lib/models/View.svelte';
-	import type { TabState } from '$lib/models/EditorState.svelte.js';
-	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import type { SettingsState } from '$lib/models/Settings.svelte';
-	import { rawStatefulValue } from '$lib/views/fieldValue';
-	import { wallClockToMs } from '$lib/views/dateFormat';
-	import type { DocPicker } from '$lib/views/project.svelte';
+	import type View from '#lib/models/View.svelte.js';
+	import { ViewFace, type FilterNode } from '#lib/models/View.svelte.js';
+	import type { TabState } from '#lib/models/EditorState.svelte.js';
+	import type EditorState from '#lib/models/EditorState.svelte.js';
+	import type { SettingsState } from '#lib/models/Settings.svelte.js';
+	import { rawStatefulValue } from '#lib/views/fieldValue.js';
+	import { wallClockToMs } from '#lib/views/dateFormat.js';
+	import type { DocPicker } from '#lib/views/project.svelte.js';
 	import DateValueEditor from '../editors/DateValueEditor.svelte';
 	import DocFace from './DocFace.svelte';
 	import ListFace from './ListFace.svelte';
 	import MasonryFace from './MasonryFace.svelte';
-	import { onSourceReconciled } from '$lib/models/Source';
+	import { onSourceReconciled } from '#lib/models/Source.js';
 
 	let {
 		view,

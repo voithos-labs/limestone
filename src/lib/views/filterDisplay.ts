@@ -23,7 +23,7 @@ import {
 	FolderInput,
 	FileLock
 } from '@lucide/svelte';
-import { isSourceRoot } from '$lib/models/Folder';
+import { isSourceRoot } from '#lib/models/Folder.js';
 import View, {
 	isBuiltinUnit,
 	VIEW_FIELD_OPS,
@@ -31,7 +31,7 @@ import View, {
 	type ViewFaceType,
 	type ViewFieldType,
 	type ViewFace
-} from '$lib/models/View.svelte';
+} from '#lib/models/View.svelte.js';
 
 const FACE_ICONS: Record<ViewFaceType, Component> = {
 	kanban: Columns3,

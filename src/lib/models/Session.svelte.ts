@@ -10,16 +10,16 @@ import { load, type Store } from '@tauri-apps/plugin-store';
 import { SvelteSet } from 'svelte/reactivity';
 
 // internal
-import EditorState, { type EditorJSON, type TabState } from '$lib/models/EditorState.svelte.js';
-import { SettingsState, getSetting, registerSettings } from '$lib/models/Settings.svelte.js';
-import type { Source } from '$lib/models/Source';
+import EditorState, { type EditorJSON, type TabState } from '#lib/models/EditorState.svelte.js';
+import { SettingsState, getSetting, registerSettings } from '#lib/models/Settings.svelte.js';
+import type { Source } from '#lib/models/Source.js';
 import {
 	applyAccent,
 	applyTheme,
 	BUILTIN_THEMES,
 	DEFAULT_THEME,
 	type Theme
-} from '$lib/services/theme.svelte';
+} from '#lib/services/theme.svelte.js';
 
 export interface ViewTab {
 	kind: string;

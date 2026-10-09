@@ -55,9 +55,9 @@ One would hear so very oft?
 
 import { untrack } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
-import { select } from '$lib/services/db';
-import { getSource, type Source } from '$lib/models/Source';
-import Tag, { type TagRow } from '$lib/models/Tag';
+import { select } from '#lib/services/db.js';
+import { getSource, type Source } from '#lib/models/Source.js';
+import Tag, { type TagRow } from '#lib/models/Tag.js';
 
 /**
  * Yes I am using snakecase here, this is what they are in the db

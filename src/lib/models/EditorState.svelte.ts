@@ -36,9 +36,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import MarkdownHandle from '$lib/models/MarkdownHandle';
-import View, { listSavedViewJSON } from '$lib/models/View.svelte.js';
-import type Session from '$lib/models/Session.svelte.js';
+import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
+import type Session from '#lib/models/Session.svelte.js';
 
 // ── Focus (used elsewhere) ───────────────────────────────────────────────────────────
 

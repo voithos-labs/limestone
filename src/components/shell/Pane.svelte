@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type Session from '$lib/models/Session.svelte.js';
-	import type EditorState from '$lib/models/EditorState.svelte.js';
-	import { TabState } from '$lib/models/EditorState.svelte.js';
+	import type Session from '#lib/models/Session.svelte.js';
+	import type EditorState from '#lib/models/EditorState.svelte.js';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import HomePage from '../pages/HomePage.svelte';
 	import SettingsPage from '../pages/SettingsPage.svelte';
 	import ViewPage from '../pages/ViewPage.svelte';

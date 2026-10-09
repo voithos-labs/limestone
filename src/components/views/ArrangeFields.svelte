@@ -1,22 +1,22 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
 	import { Check, Hash, Plus, Pencil, Trash2 } from '@lucide/svelte';
-	import type View from '$lib/models/View.svelte';
-	import type { ViewFace, ViewField, ViewFieldType } from '$lib/models/View.svelte';
+	import type View from '#lib/models/View.svelte.js';
+	import type { ViewFace, ViewField, ViewFieldType } from '#lib/models/View.svelte.js';
 	import {
 		isStatusField,
 		CREATABLE_FIELD_TYPES,
 		isBuiltinField,
 		isDerived,
 		isLockedField
-	} from '$lib/models/View.svelte';
-	import { fieldLabel } from '$lib/views/fieldValue';
-	import { getFieldIcon } from '$lib/views/filterDisplay';
+	} from '#lib/models/View.svelte.js';
+	import { fieldLabel } from '#lib/views/fieldValue.js';
+	import { getFieldIcon } from '#lib/views/filterDisplay.js';
 	import StatusIcon from './StatusIcon.svelte';
-	import { listInlineByDefault, listPrefixed } from '$lib/views/fieldValue';
-	import { ctxMenu, type CtxEntry } from '$lib/overlays.svelte';
+	import { listInlineByDefault, listPrefixed } from '#lib/views/fieldValue.js';
+	import { ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import Menu from '../ui/Menu.svelte';
-	import { nameGuard } from '$lib/util/paths';
+	import { nameGuard } from '#lib/util/paths.js';
 
 	// Arranging and managing a list's fields in one place: drag chips between the lanes of a
 	// schematic row (or card), right-click one to rename or delete it, add a new one below

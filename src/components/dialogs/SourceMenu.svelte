@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { SlidersHorizontal, ExternalLink, Star, Trash2, TriangleAlert } from '@lucide/svelte';
 	import Menu from '../ui/Menu.svelte';
-	import type { MenuEntry } from '$lib/overlays.svelte';
-	import type { Source } from '$lib/models/Source';
+	import type { MenuEntry } from '#lib/overlays.svelte.js';
+	import type { Source } from '#lib/models/Source.js';
 
 	let {
 		open = $bindable(false),

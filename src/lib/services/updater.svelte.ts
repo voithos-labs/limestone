@@ -1,7 +1,7 @@
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { toasts } from '$lib/overlays.svelte';
-import { getAppInfo } from '$lib/models/Settings.svelte';
+import { toasts } from '#lib/overlays.svelte.js';
+import { getAppInfo } from '#lib/models/Settings.svelte.js';
 
 const LAST_VERSION_KEY = 'limestone:last-version';
 

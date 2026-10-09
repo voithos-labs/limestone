@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ViewField } from '$lib/models/View.svelte';
+	import type { ViewField } from '#lib/models/View.svelte.js';
 	import SelectOptionEditor from './SelectOptionEditor.svelte';
 	import FolderValueEditor from './FolderValueEditor.svelte';
 	import FilterValueEditor from '../FilterValueEditor.svelte';

@@ -1,7 +1,7 @@
-import Session from '$lib/models/Session.svelte';
-import { palette } from '$lib/overlays.svelte';
-import type { SettingsState } from '$lib/models/Settings.svelte';
-import MarkdownHandle from '$lib/models/MarkdownHandle';
+import Session from '#lib/models/Session.svelte.js';
+import { palette } from '#lib/overlays.svelte.js';
+import type { SettingsState } from '#lib/models/Settings.svelte.js';
+import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import type { EditorInstance } from '@voithos-labs/aragonite';
 
 export interface Action {

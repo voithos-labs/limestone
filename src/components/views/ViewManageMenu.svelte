@@ -12,18 +12,18 @@
 		EyeOff,
 		Hash
 	} from '@lucide/svelte';
-	import type { ViewField, ViewFieldType } from '$lib/models/View.svelte';
+	import type { ViewField, ViewFieldType } from '#lib/models/View.svelte.js';
 	import {
 		BUILTIN_UNITS,
 		CREATABLE_FIELD_TYPES,
 		isBuiltinField,
 		isDerived,
 		isLockedField
-	} from '$lib/models/View.svelte';
-	import { getFieldIcon } from '$lib/views/filterDisplay';
-	import { fieldLabel } from '$lib/views/fieldValue';
+	} from '#lib/models/View.svelte.js';
+	import { getFieldIcon } from '#lib/views/filterDisplay.js';
+	import { fieldLabel } from '#lib/views/fieldValue.js';
 	import Menu from '../ui/Menu.svelte';
-	import { nameGuard } from '$lib/util/paths';
+	import { nameGuard } from '#lib/util/paths.js';
 
 	let {
 		open = $bindable(false),
