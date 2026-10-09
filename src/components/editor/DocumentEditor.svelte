@@ -151,7 +151,12 @@
 	async function open(h: DocHandle) {
 		let c = '';
 		try {
-			c = await h.loadContent();
+			c = await h.loadContent().catch(async (e) => {
+				const moved =
+					readErrorKind(e) === 'not_found' && (await h.refreshPath().catch(() => false));
+				if (!moved) throw e;
+				return h.loadContent();
+			});
 		} catch (e) {
 			const kind = readErrorKind(e);
 			const fromHistory = canRestoreKind(kind) && (await lastKnownText(h)) !== null;
@@ -192,8 +197,8 @@
 
 	async function lastKnownText(h: DocHandle): Promise<string | null> {
 		try {
-			const last = (await historyCheckpoints(h.id)).at(-1);
-			const text = last ? await historyTextAt(h.id, last) : '';
+			const last = (await historyCheckpoints(h)).at(-1);
+			const text = last ? await historyTextAt(h, last) : '';
 			return text.trim() ? text : null;
 		} catch {
 			return null;
@@ -501,7 +506,7 @@
 	// ── History: the slider previews a version in the same editor, read-only ────────────
 
 	// History is the tab's too: it reopens docked at the version you left it on, until closed.
-	let history = $derived(handle ? new DocHistory(handle.id) : null);
+	let history = $derived(handle ? new DocHistory(handle) : null);
 	let historyOpen = $state(untrack(() => tab.state.history_open ?? false));
 	const storedHistoryAt = untrack(
 		() => tab.state.history_at as { heads: string[]; time: number } | null | undefined

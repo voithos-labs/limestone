@@ -22,7 +22,7 @@ fn load_sources_file(app: &AppHandle) -> Sources {
     data
 }
 
-fn load_sources(app: &AppHandle) -> Vec<Source> {
+pub(crate) fn load_sources(app: &AppHandle) -> Vec<Source> {
     load_sources_file(app).sources
 }
 
@@ -101,7 +101,7 @@ pub(crate) fn refresh_folder_meta(app: &AppHandle, app_data: &AppData) {
     });
 }
 
-async fn run_reconcile(
+pub(crate) async fn run_reconcile(
     app_handle: AppHandle,
     source: Source,
     pool: sqlx::SqlitePool,
@@ -124,6 +124,7 @@ async fn run_reconcile(
             unreachable: !source.path.is_dir(),
         },
     );
+    crate::commands::history_commands::sweep_orphans(&app_handle, &pool, &source).await;
     if let Err(e) = services::index_fts(&pool, &source, changed).await {
         eprintln!("FTS indexing failed: {e}");
     }

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import * as Automerge from '@automerge/automerge/slim';
 import wasmUrl from '@automerge/automerge/automerge.wasm?url';
 
@@ -13,9 +14,15 @@ interface DocHistoryShape {
 	text: string;
 }
 
+export interface DocRef {
+	id: string;
+	source: { id: string };
+}
+
 type Doc = Automerge.Doc<DocHistoryShape>;
 
 interface HistoryEntry {
+	sourceId: string;
 	doc: Doc;
 	chain: Promise<unknown>;
 }
@@ -51,38 +58,42 @@ function genesis(docId: string): Uint8Array {
 	return Automerge.getLastLocalChange(doc)!;
 }
 
-async function openHistory(docId: string): Promise<HistoryEntry> {
-	const [actor, chunks] = await Promise.all([
-		ensureReady(),
-		invoke<string[]>('history_load', { docId })
-	]);
+function loadChunks(sourceId: string, docId: string): Promise<string[]> {
+	return invoke<string[]>('history_load', { sourceId, docId });
+}
+
+function buildDoc(actor: string, docId: string, chunks: string[]): Doc {
 	let doc = Automerge.init<DocHistoryShape>({ actor });
 	doc = Automerge.loadIncremental(doc, genesis(docId));
 	for (const chunk of chunks) doc = Automerge.loadIncremental(doc, fromBase64(chunk));
-	return { doc, chain: Promise.resolve() };
+	return doc;
 }
 
-function historyEntry(docId: string): Promise<HistoryEntry> {
-	let entry = entries.get(docId);
+async function openHistory(ref: DocRef): Promise<HistoryEntry> {
+	const docId = ref.id;
+	const sourceId = ref.source.id;
+	const [actor, chunks] = await Promise.all([ensureReady(), loadChunks(sourceId, docId)]);
+	return { sourceId, doc: buildDoc(actor, docId, chunks), chain: Promise.resolve() };
+}
+
+function historyEntry(ref: DocRef): Promise<HistoryEntry> {
+	let entry = entries.get(ref.id);
 	if (!entry) {
-		entry = openHistory(docId);
-		entry.catch(() => entries.delete(docId));
-		entries.set(docId, entry);
+		entry = openHistory(ref);
+		entry.catch(() => entries.delete(ref.id));
+		entries.set(ref.id, entry);
 	}
 	return entry;
 }
 
-async function historyDoc(docId: string): Promise<Doc> {
-	const entry = await historyEntry(docId);
+async function historyDoc(ref: DocRef): Promise<Doc> {
+	const entry = await historyEntry(ref);
 	await entry.chain;
 	return entry.doc;
 }
 
-async function changeHistory(
-	docId: string,
-	fn: Automerge.ChangeFn<DocHistoryShape>
-): Promise<void> {
-	const entry = await historyEntry(docId);
+async function changeHistory(ref: DocRef, fn: Automerge.ChangeFn<DocHistoryShape>): Promise<void> {
+	const entry = await historyEntry(ref);
 	const run = entry.chain.then(async () => {
 		const before = Automerge.getHeads(entry.doc).join();
 		const next = Automerge.change(entry.doc, fn);
@@ -90,7 +101,7 @@ async function changeHistory(
 		if (heads.join() === before) return;
 		const [hash] = heads;
 		const data = toBase64(Automerge.getLastLocalChange(next)!);
-		await invoke('history_append', { docId, hash, data });
+		await invoke('history_append', { sourceId: entry.sourceId, docId: ref.id, hash, data });
 		entry.doc = next;
 	});
 	entry.chain = run.catch(() => {});
@@ -110,18 +121,71 @@ export async function flushHistory(): Promise<void> {
 
 registerFlush(flushHistory);
 
-export async function removeHistory(docId: string): Promise<void> {
-	const entry = entries.get(docId);
-	entries.delete(docId);
+export async function removeHistory(ref: DocRef): Promise<void> {
+	const entry = entries.get(ref.id);
+	entries.delete(ref.id);
 	if (entry) await settled(entry);
-	await invoke('history_remove', { docId });
+	await invoke('history_remove', { sourceId: ref.source.id, docId: ref.id });
+}
+
+interface HistoryOrphan {
+	doc_id: string;
+	source_id: string;
+	holder_source_id: string;
+}
+
+async function adoptHistory({ doc_id, source_id, holder_source_id }: HistoryOrphan): Promise<void> {
+	const entry = entries.get(doc_id);
+	entries.delete(doc_id);
+	if (entry) await settled(entry);
+	const [actor, foreign, own] = await Promise.all([
+		ensureReady(),
+		loadChunks(source_id, doc_id),
+		loadChunks(holder_source_id, doc_id)
+	]);
+	if (foreign.length === 0) return;
+	let change: { hash: string; data: string } | null = null;
+	if (own.length > 0) {
+		const base = buildDoc(actor, doc_id, foreign);
+		const text = buildDoc(actor, doc_id, own).text;
+		const next = Automerge.change(base, (d) => Automerge.updateText(d, ['text'], text));
+		const [hash] = Automerge.getHeads(next);
+		if (hash !== Automerge.getHeads(base)[0]) {
+			change = { hash, data: toBase64(Automerge.getLastLocalChange(next)!) };
+		}
+		await invoke('history_remove', { sourceId: holder_source_id, docId: doc_id });
+	}
+	await invoke('history_move', {
+		sourceId: source_id,
+		newSourceId: holder_source_id,
+		docId: doc_id
+	});
+	if (change) {
+		await invoke('history_append', { sourceId: holder_source_id, docId: doc_id, ...change });
+	}
+}
+
+void listen<HistoryOrphan>('history-orphan', (e) => {
+	adoptHistory(e.payload).catch((err) => console.error('history adopt failed', err));
+});
+
+export async function moveHistory(
+	docId: string,
+	sourceId: string,
+	newSourceId: string
+): Promise<void> {
+	const entry = entries.get(docId);
+	if (entry) await settled(entry);
+	await invoke('history_move', { sourceId, newSourceId, docId });
+	const loaded = await entry?.catch(() => null);
+	if (loaded) loaded.sourceId = newSourceId;
 }
 
 /**
  * Add change to history via Automerge `updateText`
  */
-export function addChangeHistory(docId: string, newBody: string): Promise<void> {
-	return changeHistory(docId, (d) => Automerge.updateText(d, ['text'], newBody));
+export function addChangeHistory(ref: DocRef, newBody: string): Promise<void> {
+	return changeHistory(ref, (d) => Automerge.updateText(d, ['text'], newBody));
 }
 // endregion
 // region checkpoints
@@ -176,21 +240,21 @@ export interface StateDelta {
 	removals: { at: number; text: string }[];
 }
 
-export async function historyCheckpoints(docId: string): Promise<Checkpoint[]> {
-	return buildCheckpoints(docId, await historyDoc(docId));
+export async function historyCheckpoints(ref: DocRef): Promise<Checkpoint[]> {
+	return buildCheckpoints(ref.id, await historyDoc(ref));
 }
 
-export async function historyTextAt(docId: string, cp: Checkpoint): Promise<string> {
-	const doc = await historyDoc(docId);
+export async function historyTextAt(ref: DocRef, cp: Checkpoint): Promise<string> {
+	const doc = await historyDoc(ref);
 	return Automerge.view(doc, cp.heads).text;
 }
 
 export async function historyDelta(
-	docId: string,
+	ref: DocRef,
 	from: Checkpoint | 'present', // the present is a present
 	to: Checkpoint
 ): Promise<StateDelta> {
-	const doc = await historyDoc(docId);
+	const doc = await historyDoc(ref);
 	const fromHeads = from === 'present' ? Automerge.getHeads(doc) : from.heads;
 	const patches = Automerge.diff(doc, fromHeads, to.heads).filter((p) => p.path[0] === 'text');
 

@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sqlx::{AssertSqlSafe, SqlitePool};
 use std::sync::RwLock;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri_plugin_fs::FsExt;
 
 mod commands;
@@ -213,34 +213,15 @@ pub fn run() {
                     for source in sources {
                         let app_handle = app_handle.clone();
                         let pool = pool.clone();
-                        tasks.push(tauri::async_runtime::spawn(async move {
-                            let source_id = source.id.to_string();
-                            // reconcile returns changes for deep indexing (FTS, in-body tags, etc.)
-                            let (changed, skipped) = services::reconcile_source(
-                                &source,
-                                &pool,
-                                &["md"],
+                        tasks.push(tauri::async_runtime::spawn(
+                            commands::source_commands::run_reconcile(
+                                app_handle,
+                                source,
+                                pool,
                                 fm_buf_size,
                                 git_off,
-                            )
-                            .await
-                            .unwrap_or_else(|e| {
-                                eprintln!("Reconciliation failed: {e}");
-                                Default::default()
-                            });
-                            let _ = app_handle.emit(
-                                "source-reconciled",
-                                Reconciled {
-                                    source_id: &source_id,
-                                    skipped,
-                                    unreachable: !source.path.is_dir(),
-                                },
-                            );
-                            if let Err(e) = services::index_fts(&pool, &source, changed).await {
-                                eprintln!("FTS indexing failed: {e}");
-                            }
-                            let _ = app_handle.emit("source-indexed", &source_id);
-                        }));
+                            ),
+                        ));
                     }
                     for task in tasks {
                         let _ = task.await;
@@ -310,6 +291,7 @@ pub fn run() {
             commands::history_commands::history_load,
             commands::history_commands::history_append,
             commands::history_commands::history_remove,
+            commands::history_commands::history_move,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
