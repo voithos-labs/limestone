@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { describeError, reportError } from '#lib/overlays.svelte.js';
+	import { addSourceRequest, describeError, reportError } from '#lib/overlays.svelte.js';
 	import {
 		resetAllSettings,
 		getAppInfo,
@@ -66,18 +66,13 @@
 		Scale
 	} from '@lucide/svelte';
 
-	let {
-		viewTab,
-		session,
-		addSourceSignal = 0
-	}: { viewTab: ViewTab; session: Session; addSourceSignal?: number } = $props();
+	let { viewTab, session }: { viewTab: ViewTab; session: Session } = $props();
 
-	// sent here to add a source (the bookmark menu). A signal rather than a flag read at mount:
+	// sent here to add a source (the bookmark menu). An effect rather than a flag read at mount:
 	// the page may already be open, in which case there is no mount to read it
-	let seenAddSignal = 0;
 	$effect(() => {
-		if (addSourceSignal === seenAddSignal) return;
-		seenAddSignal = addSourceSignal;
+		if (!addSourceRequest.pending) return;
+		addSourceRequest.take();
 		activeSection = SOURCES;
 		addSource();
 	});
