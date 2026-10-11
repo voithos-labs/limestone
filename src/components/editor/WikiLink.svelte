@@ -1,13 +1,10 @@
 <script lang="ts">
-	import {
-		isWidgetActivationClick,
-		type InlineWidgetComponentProps
-	} from '@voithos-labs/aragonite/plugin';
+	import { type InlineWidgetComponentProps } from '@voithos-labs/aragonite/plugin';
 	import { parseWikiTarget } from '#lib/services/links.svelte.js';
 	import { linkIndex, resolveWikiLink } from '#lib/services/links.svelte.js';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 
-	let { source, getPresentationMode }: InlineWidgetComponentProps = $props();
+	let { source, isActivationClick }: InlineWidgetComponentProps = $props();
 
 	// svelte-ignore state_referenced_locally
 	const { target, fragment, alias } = parseWikiTarget(source.slice(2, -2));
@@ -30,7 +27,7 @@
 	});
 
 	function onClick(e: MouseEvent): void {
-		if (!isWidgetActivationClick(e.ctrlKey || e.metaKey, getPresentationMode())) return;
+		if (!isActivationClick(e)) return;
 		e.preventDefault();
 		const detail: ActivateDetail = { kind: 'wikilink', target, fragment, side: e.shiftKey };
 		el?.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { bubbles: true, detail }));
