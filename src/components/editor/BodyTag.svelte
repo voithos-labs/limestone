@@ -1,16 +1,13 @@
 <script lang="ts">
-	import {
-		isWidgetActivationClick,
-		type InlineWidgetComponentProps
-	} from '@voithos-labs/aragonite/plugin';
+	import { type InlineWidgetComponentProps } from '@voithos-labs/aragonite/plugin';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 
-	let { source, getPresentationMode }: InlineWidgetComponentProps = $props();
+	let { source, isActivationClick }: InlineWidgetComponentProps = $props();
 
 	let el: HTMLElement | null = $state(null);
 
 	function onClick(e: MouseEvent): void {
-		if (!isWidgetActivationClick(e.ctrlKey || e.metaKey, getPresentationMode())) return;
+		if (!isActivationClick(e)) return;
 		e.preventDefault();
 		const detail: ActivateDetail = { kind: 'tag', target: source.slice(1), side: e.shiftKey };
 		el?.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { bubbles: true, detail }));
