@@ -246,10 +246,16 @@ class MetaDialogController {
 export const metaDialog = new MetaDialogController();
 
 class AddSourceRequest {
-	signal = $state(0);
+	pending = $state(false);
 
 	open(): void {
-		this.signal++;
+		this.pending = true;
+	}
+
+	take(): boolean {
+		const pending = this.pending;
+		this.pending = false;
+		return pending;
 	}
 }
 
