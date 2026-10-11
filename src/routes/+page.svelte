@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -20,7 +20,6 @@
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 
 	let session = $state<Session>();
-	const addSourceSignal = $derived(addSourceRequest.signal);
 
 	Session.init().then((s) => (session = s));
 
@@ -29,7 +28,7 @@
 	}
 
 	$effect(() => {
-		if (addSourceSignal) session?.editors[0].focusTab({ kind: 'settings' });
+		if (addSourceRequest.pending) untrack(() => session?.editors[0].focusTab({ kind: 'settings' }));
 	});
 
 	$effect(() => onSourceReconciled((id) => void MarkdownHandle.syncSource(id)));
@@ -243,7 +242,7 @@
 		<TopBar {session} onAddSource={addSource}></TopBar>
 		<div class="panes">
 			{#each session.editors as editor (editor)}
-				<Pane {editor} {session} {addSourceSignal} onAddSource={addSource} />
+				<Pane {editor} {session} onAddSource={addSource} />
 			{/each}
 			{#if second}
 				<div
