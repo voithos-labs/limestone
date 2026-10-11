@@ -268,6 +268,139 @@ fn tags_in(body: &str, span: Range<usize>) -> Vec<Tag> {
     out
 }
 
+/// index referenced assets
+pub fn scan_asset_refs(body: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for span in prose_spans(body) {
+        let text = &body[span];
+        let mut i = 0;
+        while let Some(off) = text[i..].find("![") {
+            let start = i + off;
+            let after = start + 2;
+            let embed = text[after..]
+                .starts_with('[')
+                .then(|| wiki_embed(&text[after + 1..]).map(|(t, len)| (t, after + 1 + len)))
+                .flatten();
+            let parsed =
+                embed.or_else(|| md_image(&text[after..]).map(|(t, len)| (t, after + len)));
+            let Some((target, end)) = parsed else {
+                i = after;
+                continue;
+            };
+            if !target.is_empty() && !out.contains(&target) {
+                out.push(target);
+            }
+            i = end;
+        }
+    }
+    out
+}
+
+fn wiki_embed(rest: &str) -> Option<(String, usize)> {
+    let close = rest.find("]]")?;
+    let inner = &rest[..close];
+    if inner.contains('[') {
+        return None;
+    }
+    if rest[close + 2..].starts_with('(') {
+        return None;
+    }
+    let target = inner.split('|').next().unwrap_or("").trim();
+    Some((target.to_string(), close + 2))
+}
+
+fn alt_end(rest: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, c) in rest.char_indices() {
+        match c {
+            '[' => depth += 1,
+            ']' if depth == 0 => return Some(i),
+            ']' => depth -= 1,
+            '\n' => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn md_image(rest: &str) -> Option<(String, usize)> {
+    let close = alt_end(rest)?;
+    let after = close + 1;
+    if !rest[after..].starts_with('(') {
+        return None;
+    }
+    let paren = &rest[after + 1..];
+    let (dest, len) = if let Some(angled) = paren.strip_prefix('<') {
+        let e = angled.find('>')?;
+        (&angled[..e], e + 2)
+    } else {
+        let e = paren
+            .find(|c: char| c == ')' || c.is_whitespace())
+            .unwrap_or(paren.len());
+        (&paren[..e], e)
+    };
+    let end = paren[len..].find(')')?;
+    Some((percent_decode(dest), after + 1 + len + end + 1))
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn has_scheme(target: &str) -> bool {
+    let Some(colon) = target.find(':') else {
+        return false;
+    };
+    let head = &target[..colon];
+    head.starts_with(|c: char| c.is_ascii_alphabetic())
+        && head
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+}
+
+pub fn is_asset_path(path: &str) -> bool {
+    match path.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !stem.ends_with('/') => {
+            !ext.is_empty() && !ext.contains('/') && !ext.eq_ignore_ascii_case("md")
+        }
+        _ => false,
+    }
+}
+
+pub fn asset_rel_path(target: &str, asset_location: &str) -> Option<String> {
+    if has_scheme(target) {
+        return None;
+    }
+    let clean = target.replace('\\', "/");
+    let clean = clean
+        .strip_prefix("./")
+        .or_else(|| clean.strip_prefix('/'))
+        .unwrap_or(&clean);
+    if !is_asset_path(clean) {
+        return None;
+    }
+    let loc = asset_location.trim_matches('/');
+    Some(if clean.contains('/') || loc.is_empty() {
+        clean.to_string()
+    } else {
+        format!("{loc}/{clean}")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,5 +503,61 @@ mod tests {
         assert_eq!(scan_tags(body), vec!["out"]);
         let tilde = "~~~\n#inside\n```\n#still\n~~~\n#out";
         assert_eq!(scan_tags(tilde), vec!["out"]);
+    }
+}
+
+#[cfg(test)]
+mod asset_ref_tests {
+    use super::*;
+
+    #[test]
+    fn scans_both_syntaxes_and_skips_code() {
+        let body = "![a](assets/one.png) and ![[two.png|300]]\n```\n![x](code.png)\n```\n`![y](inline.png)`\n![](<with space.png> \"t\") ![](Pasted%20image.png)";
+        assert_eq!(
+            scan_asset_refs(body),
+            vec![
+                "assets/one.png",
+                "two.png",
+                "with space.png",
+                "Pasted image.png"
+            ]
+        );
+    }
+
+    #[test]
+    fn embed_followed_by_paren_is_a_markdown_image() {
+        assert_eq!(
+            scan_asset_refs("![[a]](u.png) ![[b.png]]"),
+            vec!["u.png", "b.png"]
+        );
+    }
+
+    #[test]
+    fn resolves_like_the_editor() {
+        assert_eq!(
+            asset_rel_path("cat.png", "assets").as_deref(),
+            Some("assets/cat.png")
+        );
+        assert_eq!(asset_rel_path("cat.png", "").as_deref(), Some("cat.png"));
+        assert_eq!(
+            asset_rel_path("./sub/cat.png", "assets").as_deref(),
+            Some("sub/cat.png")
+        );
+        assert_eq!(
+            asset_rel_path("/sub\\cat.PNG", "assets").as_deref(),
+            Some("sub/cat.PNG")
+        );
+        assert_eq!(asset_rel_path("https://x/cat.png", "assets"), None);
+        assert_eq!(asset_rel_path("appasset://abc.png", "assets"), None);
+        assert_eq!(asset_rel_path("note.md", "assets"), None);
+        assert_eq!(asset_rel_path("note", "assets"), None);
+        assert_eq!(
+            asset_rel_path("data.csv", "files").as_deref(),
+            Some("files/data.csv")
+        );
+        assert_eq!(
+            asset_rel_path("docs/report.pdf", "files").as_deref(),
+            Some("docs/report.pdf")
+        );
     }
 }

@@ -9,7 +9,7 @@ mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 pub async fn create_pool(
     path: &std::path::Path,
@@ -25,6 +25,7 @@ pub async fn create_pool(
         // rebuild db on schema version change
         sqlx::raw_sql(
             "DROP TABLE IF EXISTS documents_fts;
+             DROP TABLE IF EXISTS asset_refs;
              DROP TABLE IF EXISTS document_tags;
              DROP TABLE IF EXISTS document_groups;
              DROP TABLE IF EXISTS documents;

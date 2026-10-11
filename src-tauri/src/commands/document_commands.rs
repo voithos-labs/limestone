@@ -375,6 +375,12 @@ pub async fn save_document_meta(
     Ok(())
 }
 
+/// moves a doc within or between sources
+///
+/// if the move occurs between sources, it rounds ups its refs
+/// and moves/copies them over:
+/// `if dest_source_id != source_id`
+///
 #[tauri::command]
 pub async fn move_document(
     app_data: State<'_, AppData>,
@@ -408,7 +414,19 @@ pub async fn move_document(
             .map_err(OpError::from)?;
 
     if let Some(doc_id) = doc_id {
+        let mut assets: Vec<(String, bool)> = Vec::new();
         if dest_source_id != source_id {
+            assets = sqlx::query_as(
+                "SELECT a.rel_path, EXISTS(
+                    SELECT 1 FROM asset_refs o JOIN documents d ON d.id = o.document_id
+                    WHERE o.rel_path = a.rel_path AND d.source_id = ?1 AND o.document_id != ?2
+                 ) FROM asset_refs a WHERE a.document_id = ?2",
+            )
+            .bind(&source_id)
+            .bind(&doc_id)
+            .fetch_all(&app_data.db)
+            .await
+            .map_err(OpError::from)?;
             sqlx::query("UPDATE documents SET source_id = ?1 WHERE id = ?2")
                 .bind(&dest_source_id)
                 .bind(&doc_id)
@@ -426,8 +444,33 @@ pub async fn move_document(
         )
         .await
         .map_err(OpError::from)?;
+        carry_assets(&root, &dest_source, &assets).map_err(OpError::from)?;
     }
 
+    Ok(())
+}
+
+fn carry_assets(root: &Path, dest_root: &Path, assets: &[(String, bool)]) -> std::io::Result<()> {
+    for (rel_path, shared) in assets {
+        let Ok(src) = resolve_in_source(root, rel_path) else {
+            continue;
+        };
+        if !src.is_file() {
+            continue;
+        }
+        let dest = resolve_in_source(dest_root, rel_path)?;
+        if dest.exists() {
+            continue;
+        }
+        if *shared {
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(&src, &dest)?;
+        } else {
+            move_file(&src, &dest)?;
+        }
+    }
     Ok(())
 }
 
@@ -487,4 +530,44 @@ pub async fn delete_document(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod carry_assets_tests {
+    use super::carry_assets;
+    use std::fs;
+
+    #[test]
+    fn moves_sole_refs_and_copies_shared_ones() {
+        let tmp = std::env::temp_dir().join(format!("ls-carry-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let a = tmp.join("a");
+        let b = tmp.join("b");
+        fs::create_dir_all(a.join("assets")).unwrap();
+        fs::create_dir_all(b.join("assets")).unwrap();
+        fs::write(a.join("assets/sole.png"), b"sole").unwrap();
+        fs::write(a.join("assets/shared.png"), b"shared").unwrap();
+        fs::write(a.join("assets/taken.png"), b"mine").unwrap();
+        fs::write(b.join("assets/taken.png"), b"theirs").unwrap();
+
+        carry_assets(
+            &a,
+            &b,
+            &[
+                ("assets/sole.png".into(), false),
+                ("assets/shared.png".into(), true),
+                ("assets/taken.png".into(), false),
+                ("assets/missing.png".into(), false),
+            ],
+        )
+        .unwrap();
+
+        assert!(!a.join("assets/sole.png").exists());
+        assert_eq!(fs::read(b.join("assets/sole.png")).unwrap(), b"sole");
+        assert_eq!(fs::read(a.join("assets/shared.png")).unwrap(), b"shared");
+        assert_eq!(fs::read(b.join("assets/shared.png")).unwrap(), b"shared");
+        assert_eq!(fs::read(a.join("assets/taken.png")).unwrap(), b"mine");
+        assert_eq!(fs::read(b.join("assets/taken.png")).unwrap(), b"theirs");
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }

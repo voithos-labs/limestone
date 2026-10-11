@@ -30,12 +30,16 @@ pub async fn index_fts(
     docs.extend(missing.into_iter().filter(|(id, _)| !seen.contains(id)));
 
     for chunk in docs.chunks(CHUNK_SIZE) {
-        let bodies: Vec<(&str, Option<String>)> = chunk
+        let bodies: Vec<(&str, Option<(String, Vec<String>)>)> = chunk
             .par_iter()
             .map(|(id, rel_path)| {
                 let body = std::fs::read_to_string(source.path.join(rel_path))
                     .ok()
-                    .map(|c| frontmatter::split_content(&c).1.to_string());
+                    .map(|c| frontmatter::split_content(&c).1.to_string())
+                    .map(|body| {
+                        let refs = asset_refs(source, &body);
+                        (body, refs)
+                    });
                 (id.as_str(), body)
             })
             .collect();
@@ -48,7 +52,20 @@ pub async fn index_fts(
             .bind(id)
             .execute(&mut *tx)
             .await?;
-            if let Some(body) = body {
+            sqlx::query("DELETE FROM asset_refs WHERE document_id = ?1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            if let Some((body, refs)) = body {
+                for rel_path in refs {
+                    sqlx::query(
+                        "INSERT OR IGNORE INTO asset_refs (document_id, rel_path) VALUES (?1, ?2)",
+                    )
+                    .bind(id)
+                    .bind(&rel_path)
+                    .execute(&mut *tx)
+                    .await?;
+                }
                 sqlx::query(
                     "INSERT INTO documents_fts (rowid, doc_id, body)
                      SELECT rowid, id, ?2 FROM documents WHERE id = ?1",
@@ -88,4 +105,11 @@ pub async fn index_fts(
         docs.len()
     );
     Ok(docs.len())
+}
+/// get asset ref index
+fn asset_refs(source: &Source, body: &str) -> Vec<String> {
+    body::scan_asset_refs(body)
+        .into_iter()
+        .filter_map(|target| body::asset_rel_path(&target, &source.asset_location))
+        .collect()
 }
