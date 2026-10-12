@@ -92,8 +92,6 @@ pub struct SourceRecord {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
     pub accessed_at: DateTime<Utc>,
-    #[serde(flatten, default)]
-    pub legacy: SourceConfig,
 }
 
 #[derive(Serialize, Clone)]
@@ -121,7 +119,6 @@ impl Source {
             id: Uuid::new_v4(),
             created_at: now,
             accessed_at: now,
-            legacy: SourceConfig::default(),
         };
         Self::from_parts(record, SourceConfig::default())
     }
@@ -148,7 +145,6 @@ impl Source {
             id: self.id,
             created_at: self.created_at,
             accessed_at: self.accessed_at,
-            legacy: SourceConfig::default(),
         }
     }
 

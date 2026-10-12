@@ -5,9 +5,7 @@ use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
 use crate::services::fs::{clean_location, resolve_in_source};
-use crate::services::{
-    self, dot_get, JsonSettingsStore, Source, SourceConfig, SourceRecord, Sources,
-};
+use crate::services::{self, dot_get, JsonSettingsStore, Source, SourceRecord, Sources};
 use crate::AppData;
 
 fn sources_store(app: &AppHandle) -> JsonSettingsStore {
@@ -21,21 +19,6 @@ fn load_sources_file(app: &AppHandle) -> Sources {
     let mut data = sources_store(app).load::<Sources>().unwrap_or_default();
     data.sources
         .sort_by_key(|v| std::cmp::Reverse(v.accessed_at));
-    let mut migrated = false;
-    for record in &mut data.sources {
-        if record.legacy.is_default() || !record.path.is_dir() {
-            continue;
-        }
-        if services::source_config_path(&record.path).exists()
-            || services::save_source_config(&record.path, &record.legacy).is_ok()
-        {
-            record.legacy = SourceConfig::default();
-            migrated = true;
-        }
-    }
-    if migrated {
-        let _ = save_sources_file(app, &data);
-    }
     data
 }
 
@@ -44,8 +27,7 @@ pub(crate) fn load_sources(app: &AppHandle) -> Vec<Source> {
         .sources
         .into_iter()
         .map(|record| {
-            let config =
-                services::load_source_config(&record.path).unwrap_or_else(|| record.legacy.clone());
+            let config = services::load_source_config(&record.path).unwrap_or_default();
             Source::from_parts(record, config)
         })
         .collect()
