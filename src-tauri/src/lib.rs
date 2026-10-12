@@ -9,7 +9,7 @@ mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 pub async fn create_pool(
     path: &std::path::Path,
@@ -286,6 +286,12 @@ pub fn run() {
             commands::history_commands::history_append,
             commands::history_commands::history_remove,
             commands::history_commands::history_move,
+            commands::view_commands::view_file_read,
+            commands::view_commands::view_file_write,
+            commands::view_commands::view_file_remove,
+            commands::view_commands::app_views_read,
+            commands::view_commands::app_view_write,
+            commands::view_commands::app_view_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

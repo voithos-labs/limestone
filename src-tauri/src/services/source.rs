@@ -321,10 +321,13 @@ fn keep_dir(rel_path: &str, ignore: Option<&globset::GlobSet>) -> bool {
     ignore.is_none_or(|g| !g.is_match(rel_path))
 }
 
+pub const VIEW_FILE: &str = ".limestone.view.json";
+
 pub struct WalkResult {
     pub files: Vec<(String, i64)>,
     pub dirs: Vec<String>,
     pub repos: HashSet<String>,
+    pub views: HashSet<String>,
     pub skipped: usize,
 }
 
@@ -340,6 +343,8 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
     let prune_root = source_path.clone();
     let found_repos = Arc::new(Mutex::new(HashSet::new()));
     let repo_sink = found_repos.clone();
+    let found_views = Arc::new(Mutex::new(HashSet::new()));
+    let view_sink = found_views.clone();
     let walker = jwalk::WalkDir::new(source_path)
         .sort(true)
         .skip_hidden(false)
@@ -347,10 +352,18 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
             let is_repo = children
                 .iter()
                 .any(|e| e.as_ref().is_ok_and(|e| e.file_name == ".git"));
-            if is_repo {
+            let has_view = children
+                .iter()
+                .any(|e| e.as_ref().is_ok_and(|e| e.file_name == VIEW_FILE));
+            if is_repo || has_view {
                 if let Ok(rel) = path.strip_prefix(&prune_root) {
                     let rel_path = rel.to_string_lossy().replace('\\', "/");
-                    repo_sink.lock().unwrap().insert(rel_path);
+                    if is_repo {
+                        repo_sink.lock().unwrap().insert(rel_path.clone());
+                    }
+                    if has_view {
+                        view_sink.lock().unwrap().insert(rel_path);
+                    }
                 }
             }
             children.retain(|entry| {
@@ -431,10 +444,12 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
     }
 
     let repos = std::mem::take(&mut *found_repos.lock().unwrap());
+    let views = std::mem::take(&mut *found_views.lock().unwrap());
     WalkResult {
         files,
         dirs,
         repos,
+        views,
         skipped,
     }
 }
@@ -939,6 +954,7 @@ pub(crate) async fn sync_folder_dirs(
     source_id: &str,
     dirs: &[String],
     repos: &HashSet<String>,
+    views: &HashSet<String>,
 ) -> sqlx::Result<()> {
     let mut expected: HashSet<String> = HashSet::with_capacity(dirs.len() + 1);
     expected.insert(upsert_folder(tx, source_id, "").await?);
@@ -953,6 +969,16 @@ pub(crate) async fn sync_folder_dirs(
     )
     .bind(source_id)
     .bind(serde_json::to_string(&repo_ids).unwrap_or_default())
+    .execute(&mut **tx)
+    .await?;
+
+    let view_ids: Vec<String> = views.iter().map(|p| folder_id(source_id, p)).collect();
+    sqlx::query(
+        "UPDATE folders SET view = (id IN (SELECT value FROM json_each(?2)))
+         WHERE source_id = ?1 AND view <> (id IN (SELECT value FROM json_each(?2)))",
+    )
+    .bind(source_id)
+    .bind(serde_json::to_string(&view_ids).unwrap_or_default())
     .execute(&mut **tx)
     .await?;
 
@@ -1154,11 +1180,12 @@ pub async fn reconcile_source(
         files: fs_entries,
         dirs: fs_dirs,
         repos,
+        views,
         skipped,
     } = walk_source(source, extensions);
 
     let mut tx = db.begin().await?;
-    sync_folder_dirs(&mut tx, source_id, &fs_dirs, &repos).await?;
+    sync_folder_dirs(&mut tx, source_id, &fs_dirs, &repos, &views).await?;
     tx.commit().await?;
     sync_folder_meta(db, source, git_off).await?;
 
@@ -1419,6 +1446,26 @@ mod tests {
 
         save_source_config(&tmp, &SourceConfig::default()).unwrap();
         assert!(!source_config_path(&tmp).exists());
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn walk_notes_dirs_holding_a_view_file() {
+        let tmp = std::env::temp_dir().join(format!("ls-walk-views-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("a/b")).unwrap();
+        fs::create_dir_all(tmp.join("c")).unwrap();
+        fs::write(tmp.join(VIEW_FILE), b"{}").unwrap();
+        fs::write(tmp.join("a/b").join(VIEW_FILE), b"{}").unwrap();
+        fs::write(tmp.join("c/note.md"), b"hi").unwrap();
+
+        let source = Source::new("t".into(), tmp.clone());
+        let walk = walk_source(&source, &["md"]);
+
+        let mut views: Vec<String> = walk.views.into_iter().collect();
+        views.sort();
+        assert_eq!(views, vec!["".to_string(), "a/b".to_string()]);
+        assert_eq!(walk.files.len(), 1);
         let _ = fs::remove_dir_all(&tmp);
     }
 

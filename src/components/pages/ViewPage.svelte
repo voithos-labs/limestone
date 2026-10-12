@@ -1,1121 +1,1141 @@
 <script lang="ts">
-	import { reportError } from '#lib/overlays.svelte.js';
-	import Folder, {
-		folderId,
-		folderIdSource,
-		folderIdPath,
-		isSourceRoot
-	} from '#lib/models/Folder.js';
-	import Tag, { tagId } from '#lib/models/Tag.js';
-	import { isBuiltinUnit } from '#lib/models/View.svelte.js';
-	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
-	import { openProjectSetup } from '#lib/views/project.svelte.js';
-	import { metaDialog } from '#lib/overlays.svelte.js';
-	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { mark } from '#lib/overlays.svelte.js';
-	import { addSourceRequest } from '#lib/overlays.svelte.js';
-	import { folderNameProblem } from '#lib/util/paths.js';
-	import { onMount, onDestroy } from 'svelte';
-	import { v4 as uuidv4 } from 'uuid';
-	import View from '#lib/models/View.svelte.js';
-	import type { ViewFace, FilterLeaf } from '#lib/models/View.svelte.js';
-	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
-	import type EditorState from '#lib/models/EditorState.svelte.js';
-	import type { TabState } from '#lib/models/EditorState.svelte.js';
-	import type { SettingsState } from '#lib/models/Settings.svelte.js';
-	import {
-		listSources,
-		removeSource,
-		onSourceReconciled,
-		type Source
-	} from '#lib/models/Source.js';
-	import { folderPresence, type FolderPresence } from '#lib/views/project.svelte.js';
-	import GonePage from './GonePage.svelte';
-	import type { GoneAction } from './GoneActions.svelte';
-	import catBox from '#assets/art/cat-box.txt?raw';
-	import SourceDialog from '../dialogs/SourceDialog.svelte';
-	import DocHandle from '#lib/models/DocHandle.js';
-	import ViewHeader from '../views/ViewHeader.svelte';
-	import JournalFace from '../views/faces/JournalFace.svelte';
-	import ListFace from '../views/faces/ListFace.svelte';
-	import MasonryFace from '../views/faces/MasonryFace.svelte';
-	import KanbanFace from '../views/faces/KanbanFace.svelte';
-	import { history, undoKey } from '#lib/views/FaceRows.svelte.js';
-	import DashboardFace from '../views/faces/DashboardFace.svelte';
-	import DocFace from '../views/faces/DocFace.svelte';
-	import { DocPicker } from '#lib/views/project.svelte.js';
-	import { convertFileSrc } from '@tauri-apps/api/core';
-	import Menu from '../ui/Menu.svelte';
-	import CoverSourceDialog from '../dialogs/CoverSourceDialog.svelte';
-	import ScrollThumb from '../ui/ScrollThumb.svelte';
-	import type { MenuEntry } from '#lib/overlays.svelte.js';
-	import {
-		Crop,
-		X,
-		Check,
-		EllipsisVertical,
-		Trash2,
-		ImageUp,
-		Copy,
-		FilePlus,
-		FolderPlus,
-		Pencil,
-		ExternalLink,
-		Bookmark,
-		FileLock,
-		FilePen,
-		Settings,
-		SquareCheck
-	} from '@lucide/svelte';
-	import NewFab from '../views/NewFab.svelte';
-	import { createInView } from '#lib/views/FaceRows.svelte.js';
+    import {reportError} from '#lib/overlays.svelte.js';
+    import Folder, {
+        folderId,
+        folderIdSource,
+        folderIdPath,
+        isSourceRoot
+    } from '#lib/models/Folder.js';
+    import Tag, {tagId} from '#lib/models/Tag.js';
+    import {isBuiltinUnit} from '#lib/models/View.svelte.js';
+    import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
+    import {openProjectSetup} from '#lib/views/project.svelte.js';
+    import {metaDialog} from '#lib/overlays.svelte.js';
+    import {revealItemInDir} from '@tauri-apps/plugin-opener';
+    import {mark} from '#lib/overlays.svelte.js';
+    import {addSourceRequest} from '#lib/overlays.svelte.js';
+    import {folderNameProblem} from '#lib/util/paths.js';
+    import {onMount, onDestroy} from 'svelte';
+    import {v4 as uuidv4} from 'uuid';
+    import View from '#lib/models/View.svelte.js';
+    import type {ViewFace, FilterLeaf} from '#lib/models/View.svelte.js';
+    import {listSavedViewJSON} from '#lib/models/View.svelte.js';
+    import type EditorState from '#lib/models/EditorState.svelte.js';
+    import type {TabState} from '#lib/models/EditorState.svelte.js';
+    import type {SettingsState} from '#lib/models/Settings.svelte.js';
+    import {
+        listSources,
+        removeSource,
+        onSourceReconciled,
+        type Source
+    } from '#lib/models/Source.js';
+    import {folderPresence, type FolderPresence} from '#lib/views/project.svelte.js';
+    import GonePage from './GonePage.svelte';
+    import type {GoneAction} from './GoneActions.svelte';
+    import catBox from '#assets/art/cat-box.txt?raw';
+    import SourceDialog from '../dialogs/SourceDialog.svelte';
+    import DocHandle from '#lib/models/DocHandle.js';
+    import ViewHeader from '../views/ViewHeader.svelte';
+    import JournalFace from '../views/faces/JournalFace.svelte';
+    import ListFace from '../views/faces/ListFace.svelte';
+    import MasonryFace from '../views/faces/MasonryFace.svelte';
+    import KanbanFace from '../views/faces/KanbanFace.svelte';
+    import {history, undoKey} from '#lib/views/FaceRows.svelte.js';
+    import DashboardFace from '../views/faces/DashboardFace.svelte';
+    import DocFace from '../views/faces/DocFace.svelte';
+    import {DocPicker} from '#lib/views/project.svelte.js';
+    import {convertFileSrc} from '@tauri-apps/api/core';
+    import {getSource} from '#lib/models/Source.js';
+    import Menu from '../ui/Menu.svelte';
+    import CoverSourceDialog from '../dialogs/CoverSourceDialog.svelte';
+    import ScrollThumb from '../ui/ScrollThumb.svelte';
+    import type {MenuEntry} from '#lib/overlays.svelte.js';
+    import {
+        Crop,
+        X,
+        Check,
+        EllipsisVertical,
+        Trash2,
+        ImageUp,
+        Copy,
+        FilePlus,
+        FolderPlus,
+        Pencil,
+        ExternalLink,
+        Bookmark,
+        FileLock,
+        FilePen,
+        Settings,
+        SquareCheck
+    } from '@lucide/svelte';
+    import NewFab from '../views/NewFab.svelte';
+    import {createInView} from '#lib/views/FaceRows.svelte.js';
 
-	let {
-		view,
-		tab,
-		editor,
-		settings
-	}: { view: View; tab?: TabState; editor: EditorState; settings: SettingsState } = $props();
+    let {
+        view,
+        tab,
+        editor,
+        settings
+    }: { view: View; tab?: TabState; editor: EditorState; settings: SettingsState } = $props();
 
-	const activeFace: ViewFace = $derived(
-		view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
-	);
+    const activeFace: ViewFace = $derived(
+        view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
+    );
 
-	const bodyFlow = true;
-	let bodyEl: HTMLDivElement | null = $state(null);
-	let findBarAnchor: HTMLDivElement | null = $state(null);
-	let dockTarget: HTMLDivElement | null = $state(null);
+    const bodyFlow = true;
+    let bodyEl: HTMLDivElement | null = $state(null);
+    let findBarAnchor: HTMLDivElement | null = $state(null);
+    let dockTarget: HTMLDivElement | null = $state(null);
 
-	// the doc face draws the document, the header's search bar picks which one
-	// fyi fab=floating action button
-	const docPicker = new DocPicker();
-	docPicker.activeId = (tab?.state.picked_doc as string | undefined) ?? null;
-	$effect(() => {
-		const id = docPicker.activeId;
-		if (tab && id) tab.state.picked_doc = id;
-	});
+    // the doc face draws the document, the header's search bar picks which one
+    // fyi fab=floating action button
+    const docPicker = new DocPicker();
+    docPicker.activeId = (tab?.state.picked_doc as string | undefined) ?? null;
+    $effect(() => {
+        const id = docPicker.activeId;
+        if (tab && id) tab.state.picked_doc = id;
+    });
 
-	// a doc face makes its own entry
-	// a journal adds through the day itself (its entry, or the body's inline add row), so the
-	// fab would only ask a question it can't answer: new note in which day?
-	const showNewFab = $derived(activeFace?.type !== 'doc' && activeFace?.type !== 'journal');
+    // a doc face makes its own entry
+    // a journal adds through the day itself (its entry, or the body's inline add row), so the
+    // fab would only ask a question it can't answer: new note in which day?
+    const showNewFab = $derived(activeFace?.type !== 'doc' && activeFace?.type !== 'journal');
 
-	// a mode bar docked here (the history scrubber) owns the bottom of the page; the fab steps
-	// aside for it rather than sitting on top
-	let docked = $state(false);
-	$effect(() => {
-		const el = dockTarget;
-		if (!el) return;
-		const update = () => (docked = el.childElementCount > 0);
-		update();
-		const ro = new MutationObserver(update);
-		ro.observe(el, { childList: true });
-		return () => ro.disconnect();
-	});
+    // a mode bar docked here (the history scrubber) owns the bottom of the page; the fab steps
+    // aside for it rather than sitting on top
+    let docked = $state(false);
+    $effect(() => {
+        const el = dockTarget;
+        if (!el) return;
+        const update = () => (docked = el.childElementCount > 0);
+        update();
+        const ro = new MutationObserver(update);
+        ro.observe(el, {childList: true});
+        return () => ro.disconnect();
+    });
 
-	let faceInit = false;
-	$effect(() => {
-		const id = activeFace?.id;
-		if (!id || !bodyEl) return;
-		if (!faceInit) {
-			faceInit = true;
-			return;
-		}
-		endScrollRestore();
-		bodyEl.scrollTop = 0;
-		if (tab) tab.state.scrollTop = 0;
-	});
+    let faceInit = false;
+    $effect(() => {
+        const id = activeFace?.id;
+        if (!id || !bodyEl) return;
+        if (!faceInit) {
+            faceInit = true;
+            return;
+        }
+        endScrollRestore();
+        bodyEl.scrollTop = 0;
+        if (tab) tab.state.scrollTop = 0;
+    });
 
-	function bodyScroll() {
-		if (restoreTarget !== null) return;
-		if (tab && bodyEl) tab.state.scrollTop = bodyEl.scrollTop;
-	}
+    function bodyScroll() {
+        if (restoreTarget !== null) return;
+        if (tab && bodyEl) tab.state.scrollTop = bodyEl.scrollTop;
+    }
 
-	let didRestoreScroll = false;
-	let restoreTarget: number | null = null;
-	let restoringScroll = $state(false);
-	let restoreRO: ResizeObserver | null = null;
-	let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+    let didRestoreScroll = false;
+    let restoreTarget: number | null = null;
+    let restoringScroll = $state(false);
+    let restoreRO: ResizeObserver | null = null;
+    let restoreTimer: ReturnType<typeof setTimeout> | null = null;
 
-	function endScrollRestore() {
-		restoreTarget = null;
-		restoringScroll = false;
-		restoreRO?.disconnect();
-		restoreRO = null;
-		if (restoreTimer) clearTimeout(restoreTimer);
-		restoreTimer = null;
-		bodyEl?.removeEventListener('wheel', endScrollRestore);
-		bodyEl?.removeEventListener('pointerdown', endScrollRestore);
-	}
+    function endScrollRestore() {
+        restoreTarget = null;
+        restoringScroll = false;
+        restoreRO?.disconnect();
+        restoreRO = null;
+        if (restoreTimer) clearTimeout(restoreTimer);
+        restoreTimer = null;
+        bodyEl?.removeEventListener('wheel', endScrollRestore);
+        bodyEl?.removeEventListener('pointerdown', endScrollRestore);
+    }
 
-	$effect(() => {
-		if (!bodyEl || didRestoreScroll) return;
-		didRestoreScroll = true;
-		const el = bodyEl;
-		const st = tab?.state.scrollTop;
-		if (typeof st !== 'number' || st <= 0) return;
-		restoreTarget = st;
-		restoringScroll = true;
-		const attempt = () => {
-			if (restoreTarget === null) return;
-			el.scrollTop = restoreTarget;
-			if (Math.abs(el.scrollTop - restoreTarget) < 1) endScrollRestore();
-		};
-		requestAnimationFrame(attempt);
-		restoreRO = new ResizeObserver(attempt);
-		for (const child of el.children) restoreRO.observe(child);
-		el.addEventListener('wheel', endScrollRestore, { passive: true });
-		el.addEventListener('pointerdown', endScrollRestore);
-		restoreTimer = setTimeout(endScrollRestore, 1500);
-	});
+    $effect(() => {
+        if (!bodyEl || didRestoreScroll) return;
+        didRestoreScroll = true;
+        const el = bodyEl;
+        const st = tab?.state.scrollTop;
+        if (typeof st !== 'number' || st <= 0) return;
+        restoreTarget = st;
+        restoringScroll = true;
+        const attempt = () => {
+            if (restoreTarget === null) return;
+            el.scrollTop = restoreTarget;
+            if (Math.abs(el.scrollTop - restoreTarget) < 1) endScrollRestore();
+        };
+        requestAnimationFrame(attempt);
+        restoreRO = new ResizeObserver(attempt);
+        for (const child of el.children) restoreRO.observe(child);
+        el.addEventListener('wheel', endScrollRestore, {passive: true});
+        el.addEventListener('pointerdown', endScrollRestore);
+        restoreTimer = setTimeout(endScrollRestore, 1500);
+    });
 
-	// a journal's card body makes the note itself, so it lands on the day being read
-	let createSignal = $state(0);
+    // a journal's card body makes the note itself, so it lands on the day being read
+    let createSignal = $state(0);
 
-	function parseCover(cover: string) {
-		const [ref, q] = cover.split('?');
-		const p = new URLSearchParams(q ?? '');
-		const num = (k: string, d: number) => {
-			const v = parseFloat(p.get(k) ?? '');
-			return Number.isFinite(v) ? v : d;
-		};
-		return {
-			ref,
-			x: Math.min(100, Math.max(0, num('x', 50))),
-			y: Math.min(100, Math.max(0, num('y', 50))),
-			z: Math.max(1, num('z', 1))
-		};
-	}
+    function parseCover(cover: string) {
+        const [ref, q] = cover.split('?');
+        const p = new URLSearchParams(q ?? '');
+        const num = (k: string, d: number) => {
+            const v = parseFloat(p.get(k) ?? '');
+            return Number.isFinite(v) ? v : d;
+        };
+        return {
+            ref,
+            x: Math.min(100, Math.max(0, num('x', 50))),
+            y: Math.min(100, Math.max(0, num('y', 50))),
+            z: Math.max(1, num('z', 1))
+        };
+    }
 
-	function buildCover(ref: string, x: number, y: number, z: number) {
-		const parts: string[] = [];
-		if (Math.round(x) !== 50) parts.push(`x=${Math.round(x)}`);
-		if (Math.round(y) !== 50) parts.push(`y=${Math.round(y)}`);
-		if (z !== 1) parts.push(`z=${z.toFixed(2)}`);
-		return parts.length ? `${ref}?${parts.join('&')}` : ref;
-	}
+    function buildCover(ref: string, x: number, y: number, z: number) {
+        const parts: string[] = [];
+        if (Math.round(x) !== 50) parts.push(`x=${Math.round(x)}`);
+        if (Math.round(y) !== 50) parts.push(`y=${Math.round(y)}`);
+        if (z !== 1) parts.push(`z=${z.toFixed(2)}`);
+        return parts.length ? `${ref}?${parts.join('&')}` : ref;
+    }
 
-	let cropping = $state(false);
-	let cropX = $state(50);
-	let cropY = $state(50);
-	let cropZoom = $state(1);
-	let dragging = false;
-	let lastX = 0;
-	let lastY = 0;
+    let cropping = $state(false);
+    let cropX = $state(50);
+    let cropY = $state(50);
+    let cropZoom = $state(1);
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
 
-	const geo = $derived.by(() => {
-		if (cropping) return { x: cropX, y: cropY, z: cropZoom };
-		if (view.cover) {
-			const g = parseCover(view.cover);
-			return { x: g.x, y: g.y, z: g.z };
-		}
-		return { x: 50, y: 50, z: 1 };
-	});
+    const geo = $derived.by(() => {
+        if (cropping) return {x: cropX, y: cropY, z: cropZoom};
+        if (view.cover) {
+            const g = parseCover(view.cover);
+            return {x: g.x, y: g.y, z: g.z};
+        }
+        return {x: 50, y: 50, z: 1};
+    });
 
-	let coverUrl = $state('');
-	let coverReady = $state(false);
-	$effect(() => {
-		const cover = view.cover;
-		if (!cover) {
-			coverUrl = '';
-			coverReady = false;
-			return;
-		}
-		const { ref } = parseCover(cover);
-		let cancelled = false;
-		(async () => {
-			const url = convertFileSrc(ref, 'appasset');
-			const img = new Image();
-			img.src = url;
-			try {
-				await img.decode();
-			} catch {}
-			if (cancelled) return;
-			coverUrl = url;
-			coverReady = true;
-		})();
-		return () => {
-			cancelled = true;
-		};
-	});
+    let coverUrl = $state('');
+    let coverReady = $state(false);
+    $effect(() => {
+        const cover = view.cover;
+        if (!cover) {
+            coverUrl = '';
+            coverReady = false;
+            return;
+        }
+        const {ref} = parseCover(cover);
+        let cancelled = false;
+        (async () => {
+            const url = await coverUrlFor(ref).catch(() => '');
+            if (!url) return;
+            const img = new Image();
+            img.src = url;
+            try {
+                await img.decode();
+            } catch {
+            }
+            if (cancelled) return;
+            coverUrl = url;
+            coverReady = true;
+        })();
+        return () => {
+            cancelled = true;
+        };
+    });
 
-	let lastSig = '';
-	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastSig = '';
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-	$effect(() => {
-		const sig = JSON.stringify(view.toJSON(), (k, v) =>
-			k === 'active_cell' ||
-			k === 'search' ||
-			k === 'folder' ||
-			k === 'temporary' ||
-			k === 'accessed_at'
-				? undefined
-				: v
-		);
-		if (lastSig === '') {
-			lastSig = sig;
-			return;
-		}
-		if (sig === lastSig || (view.temporary && !(view.unit && isBuiltinUnit(view.unit)))) return;
-		lastSig = sig;
-		if (saveTimer) clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => {
-			saveTimer = null;
-			view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
-		}, 250);
-	});
+    $effect(() => {
+        const sig = JSON.stringify(view.toJSON(), (k, v) =>
+            k === 'active_cell' ||
+            k === 'search' ||
+            k === 'folder' ||
+            k === 'temporary' ||
+            k === 'accessed_at'
+                ? undefined
+                : v
+        );
+        if (lastSig === '') {
+            lastSig = sig;
+            return;
+        }
+        if (sig === lastSig || (view.temporary && !(view.unit && isBuiltinUnit(view.unit)))) return;
+        lastSig = sig;
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            saveTimer = null;
+            view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
+        }, 250);
+    });
 
-	onDestroy(() => {
-		endScrollRestore();
-		if (saveTimer && !view.temporary)
-			view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
-	});
+    onDestroy(() => {
+        endScrollRestore();
+        if (saveTimer && !view.temporary)
+            view.save().catch((e) => reportError(e, "This view's changes couldn't be saved."));
+    });
 
-	let sourceRemoved = $state(false);
-	let presence = $state<FolderPresence>({ state: 'ok' });
-	let confirmRemove = $state(false);
+    let sourceRemoved = $state(false);
+    let presence = $state<FolderPresence>({state: 'ok'});
+    let confirmRemove = $state(false);
 
-	async function checkPresence() {
-		const unit = view.unit;
-		if (!unit?.startsWith('folder:')) {
-			presence = { state: 'ok' };
-			return;
-		}
-		const next = await folderPresence(unit);
-		if (view.unit === unit) presence = next;
-	}
+    async function checkPresence() {
+        const unit = view.unit;
+        if (!unit?.startsWith('folder:')) {
+            presence = {state: 'ok'};
+            return;
+        }
+        const next = await folderPresence(unit);
+        if (view.unit === unit) presence = next;
+    }
 
-	$effect(() => {
-		void view.unit;
-		void checkPresence();
-	});
-	$effect(() => onSourceReconciled(() => void checkPresence()));
+    $effect(() => {
+        void view.unit;
+        void checkPresence();
+    });
+    $effect(() => onSourceReconciled(() => void checkPresence()));
 
-	function goneFor(
-		p: FolderPresence,
-		kind: 'project' | 'folder'
-	): { headline: string; detail: string; actions: GoneAction[] } | null {
-		const close = { label: 'Close', run: () => editor.closeTab(view.id, false) };
-		switch (p.state) {
-			case 'removed':
-				return {
-					headline: 'this source was removed from limestone',
-					detail:
-						"The folder on disk wasn't touched. Add it again from settings to bring this back.",
-					actions: [close]
-				};
-			case 'source_missing':
-				return {
-					headline: `the ${p.source} source isn't available`,
-					detail:
-						"Check that the drive or folder is connected. This opens by itself when it's back.",
-					actions: [close]
-				};
-			case 'gone':
-				return {
-					headline: `couldn't find the ${kind} ${p.path.split('/').pop()}`,
-					detail: `It was at \`${p.source}/${p.path}\`. It may have been moved, renamed or deleted outside Limestone.`,
-					actions: [close]
-				};
-			default:
-				return null;
-		}
-	}
+    function goneFor(
+        p: FolderPresence,
+        kind: 'project' | 'folder'
+    ): { headline: string; detail: string; actions: GoneAction[] } | null {
+        const close = {label: 'Close', run: () => editor.closeTab(view.id, false)};
+        switch (p.state) {
+            case 'removed':
+                return {
+                    headline: 'this source was removed from limestone',
+                    detail:
+                        "The folder on disk wasn't touched. Add it again from settings to bring this back.",
+                    actions: [close]
+                };
+            case 'source_missing':
+                return {
+                    headline: `the ${p.source} source isn't available`,
+                    detail:
+                        "Check that the drive or folder is connected. This opens by itself when it's back.",
+                    actions: [close]
+                };
+            case 'gone':
+                return {
+                    headline: `couldn't find the ${kind} ${p.path.split('/').pop()}`,
+                    detail: `It was at \`${p.source}/${p.path}\`. It may have been moved, renamed or deleted outside Limestone.`,
+                    actions: [close]
+                };
+            default:
+                return null;
+        }
+    }
 
-	let restoringProject = $state(false);
+    let restoringProject = $state(false);
 
-	async function restoreProject() {
-		const unit = view.unit;
-		if (!unit || restoringProject) return;
-		restoringProject = true;
-		try {
-			await Folder.create(folderIdPath(unit), folderIdSource(unit));
-			await checkPresence();
-		} catch (e) {
-			Folder.reportOpError(e, `${subject} couldn't be restored.`, restoreProject);
-		} finally {
-			restoringProject = false;
-		}
-	}
+    async function restoreProject() {
+        const unit = view.unit;
+        if (!unit || restoringProject) return;
+        restoringProject = true;
+        try {
+            await Folder.create(folderIdPath(unit), folderIdSource(unit));
+            await checkPresence();
+        } catch (e) {
+            Folder.reportOpError(e, `${subject} couldn't be restored.`, restoreProject);
+        } finally {
+            restoringProject = false;
+        }
+    }
 
-	async function removeProject() {
-		if (!confirmRemove) {
-			confirmRemove = true;
-			return;
-		}
-		try {
-			await view.unsave();
-			editor.closeTab(view.id, false);
-		} catch (e) {
-			reportError(e, `${subject} couldn't be removed.`);
-		}
-	}
+    async function removeProject() {
+        if (!confirmRemove) {
+            confirmRemove = true;
+            return;
+        }
+        try {
+            await view.unsave();
+            editor.closeTab(view.id, false);
+        } catch (e) {
+            reportError(e, `${subject} couldn't be removed.`);
+        }
+    }
 
-	const gone = $derived.by(() => {
-		const g = goneFor(sourceRemoved ? { state: 'removed' } : presence, 'project');
-		if (g && presence.state === 'gone' && !view.temporary) {
-			g.actions = [
-				{
-					label: restoringProject ? 'Restoring…' : 'Restore empty',
-					run: restoreProject,
-					strong: true,
-					disabled: restoringProject
-				},
-				{
-					label: confirmRemove ? 'Are you sure?' : 'Remove project',
-					run: removeProject,
-					danger: confirmRemove
-				},
-				...g.actions
-			];
-		}
-		return g;
-	});
+    const gone = $derived.by(() => {
+        const g = goneFor(sourceRemoved ? {state: 'removed'} : presence, 'project');
+        if (g && presence.state === 'gone' && !view.temporary) {
+            g.actions = [
+                {
+                    label: restoringProject ? 'Restoring…' : 'Restore empty',
+                    run: restoreProject,
+                    strong: true,
+                    disabled: restoringProject
+                },
+                {
+                    label: confirmRemove ? 'Are you sure?' : 'Remove project',
+                    run: removeProject,
+                    danger: confirmRemove
+                },
+                ...g.actions
+            ];
+        }
+        return g;
+    });
 
-	// The tab holds this view in memory, so field edits made elsewhere (a document's
-	// properties panel adding a select option) aren't reflected here. The tab remounts
-	// on every switch, so re-read the stored fields then.
-	onMount(async () => {
-		if (view.temporary) return;
-		try {
-			const stored = (await listSavedViewJSON()).find((v) => v.id === view.id);
-			if (stored && JSON.stringify(stored.fields) !== JSON.stringify(view.ownFields)) {
-				view.setOwnFields(stored.fields);
-			}
-		} catch (e) {
-			console.error('refresh view fields failed', e);
-		}
-		view.touchAccessed().catch((e) => console.error('touch view failed', e));
-	});
+    // The tab holds this view in memory, so field edits made elsewhere (a document's
+    // properties panel adding a select option) aren't reflected here. The tab remounts
+    // on every switch, so re-read the stored fields then.
+    onMount(async () => {
+        if (view.temporary) return;
+        try {
+            const stored = (await listSavedViewJSON()).find((v) => v.id === view.id);
+            if (stored && JSON.stringify(stored.fields) !== JSON.stringify(view.ownFields)) {
+                view.setOwnFields(stored.fields);
+            }
+        } catch (e) {
+            console.error('refresh view fields failed', e);
+        }
+        view.touchAccessed().catch((e) => console.error('touch view failed', e));
+    });
 
-	onMount(async () => {
-		const locationField = view.fields.find((f) => f.type === 'folder');
-		if (!locationField) return;
-		const leaf = view.filter.children.find(
-			(n): n is FilterLeaf => 'field_id' in n && n.field_id === locationField.id && n.op === 'in'
-		);
-		const sid =
-			leaf && typeof leaf.value === 'string' && isSourceRoot(leaf.value)
-				? folderIdSource(leaf.value)
-				: undefined;
-		if (!sid) return;
-		const sources = await listSources();
-		sourceRemoved = !sources.some((s) => s.id === sid);
-	});
+    onMount(async () => {
+        const locationField = view.fields.find((f) => f.type === 'folder');
+        if (!locationField) return;
+        const leaf = view.filter.children.find(
+            (n): n is FilterLeaf => 'field_id' in n && n.field_id === locationField.id && n.op === 'in'
+        );
+        const sid =
+            leaf && typeof leaf.value === 'string' && isSourceRoot(leaf.value)
+                ? folderIdSource(leaf.value)
+                : undefined;
+        if (!sid) return;
+        const sources = await listSources();
+        sourceRemoved = !sources.some((s) => s.id === sid);
+    });
 
-	let coverDialogOpen = $state(false);
+    // a project's cover is an asset of its source
+    const coverSourceId = $derived(
+        view.unit?.startsWith('folder:') ? folderIdSource(view.unit) : undefined
+    );
 
-	function pickCover() {
-		coverDialogOpen = true;
-	}
+    async function coverUrlFor(ref: string): Promise<string> {
+        if (!coverSourceId) return convertFileSrc(ref, 'appasset');
+        const source = await getSource(coverSourceId);
+        return convertFileSrc(`${source.path}/${ref}`);
+    }
 
-	function removeCover() {
-		view.cover = '';
-		cropping = false;
-	}
+    let coverDialogOpen = $state(false);
 
-	function startCrop() {
-		const g = parseCover(view.cover);
-		cropX = g.x;
-		cropY = g.y;
-		cropZoom = g.z;
-		cropping = true;
-	}
+    function pickCover() {
+        coverDialogOpen = true;
+    }
 
-	function confirmCrop() {
-		const { ref } = parseCover(view.cover);
-		view.cover = buildCover(ref, cropX, cropY, cropZoom);
-		cropping = false;
-	}
+    function removeCover() {
+        view.cover = '';
+        cropping = false;
+    }
 
-	function cropPointerDown(e: PointerEvent) {
-		if (!cropping) return;
-		if ((e.target as HTMLElement).closest('.cover-actions')) return;
-		dragging = true;
-		lastX = e.clientX;
-		lastY = e.clientY;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-	}
+    function startCrop() {
+        const g = parseCover(view.cover);
+        cropX = g.x;
+        cropY = g.y;
+        cropZoom = g.z;
+        cropping = true;
+    }
 
-	function cropPointerMove(e: PointerEvent) {
-		if (!cropping || !dragging) return;
-		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		cropX = Math.min(100, Math.max(0, cropX - ((e.clientX - lastX) / rect.width) * 100));
-		cropY = Math.min(100, Math.max(0, cropY - ((e.clientY - lastY) / rect.height) * 100));
-		lastX = e.clientX;
-		lastY = e.clientY;
-	}
+    function confirmCrop() {
+        const {ref} = parseCover(view.cover);
+        view.cover = buildCover(ref, cropX, cropY, cropZoom);
+        cropping = false;
+    }
 
-	function cropPointerUp() {
-		dragging = false;
-	}
+    function cropPointerDown(e: PointerEvent) {
+        if (!cropping) return;
+        if ((e.target as HTMLElement).closest('.cover-actions')) return;
+        dragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    }
 
-	function cropWheel(e: WheelEvent) {
-		if (!cropping) return;
-		e.preventDefault();
-		cropZoom = Math.min(4, Math.max(1, cropZoom - e.deltaY * 0.002));
-	}
+    function cropPointerMove(e: PointerEvent) {
+        if (!cropping || !dragging) return;
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        cropX = Math.min(100, Math.max(0, cropX - ((e.clientX - lastX) / rect.width) * 100));
+        cropY = Math.min(100, Math.max(0, cropY - ((e.clientY - lastY) / rect.height) * 100));
+        lastX = e.clientX;
+        lastY = e.clientY;
+    }
 
-	let moreOpen = $state(false);
-	let moreAnchor: HTMLElement | null = $state(null);
-	let confirmingDelete = $state(false);
+    function cropPointerUp() {
+        dragging = false;
+    }
 
-	$effect(() => {
-		if (!moreOpen) confirmingDelete = false;
-	});
+    function cropWheel(e: WheelEvent) {
+        if (!cropping) return;
+        e.preventDefault();
+        cropZoom = Math.min(4, Math.max(1, cropZoom - e.deltaY * 0.002));
+    }
 
-	// a project's menu is its folder's (or tag's) menu, the same one the folder page shows;
-	// only a free view gets the view-shaped one
-	const unitKind = $derived(
-		view.unit?.startsWith('folder:') ? 'folder' : view.unit?.startsWith('tag:') ? 'tag' : null
-	);
-	const unitIsRoot = $derived(unitKind === 'folder' && isSourceRoot(view.unit!));
-	const subject = $derived(mark(unitKind === 'tag' ? 'tag' : 'project', view.slug));
+    let moreOpen = $state(false);
+    let moreAnchor: HTMLElement | null = $state(null);
+    let confirmingDelete = $state(false);
 
-	let unitSiblings = $state<Set<string>>(new Set());
-	let unitChildren = $state<Set<string>>(new Set());
-	async function loadNeighbours() {
-		const unit = view.unit;
-		if (!unit) return;
-		if (unitKind === 'tag') {
-			unitSiblings = new Set((await Tag.list()).filter((t) => t.id !== unit).map((t) => t.id));
-			return;
-		}
-		const path = folderIdPath(unit);
-		const parent = folderId(
-			folderIdSource(unit),
-			path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
-		);
-		const all = await Folder.list();
-		const slugs = (f: Folder) => f.slug.toLowerCase();
-		unitSiblings = new Set(all.filter((f) => f.parentId === parent && f.id !== unit).map(slugs));
-		unitChildren = new Set(all.filter((f) => f.parentId === unit).map(slugs));
-	}
-	$effect(() => {
-		void view.unit;
-		void loadNeighbours();
-	});
-	$effect(() => onSourceReconciled(() => void loadNeighbours()));
+    $effect(() => {
+        if (!moreOpen) confirmingDelete = false;
+    });
 
-	function titleProblem(name: string): string | null {
-		if (unitKind === 'tag')
-			return unitSiblings.has(tagId(name)) ? 'A tag with this name already exists.' : null;
-		if (unitKind === 'folder')
-			return folderNameProblem(name, unitSiblings.has(name.trim().toLowerCase()));
-		return null;
-	}
-	let header: ViewHeader | null = $state(null);
+    // a project's menu is its folder's (or tag's) menu, the same one the folder page shows;
+    // only a free view gets the view-shaped one
+    const unitKind = $derived(
+        view.unit?.startsWith('folder:') ? 'folder' : view.unit?.startsWith('tag:') ? 'tag' : null
+    );
+    const unitIsRoot = $derived(unitKind === 'folder' && isSourceRoot(view.unit!));
+    const subject = $derived(mark(unitKind === 'tag' ? 'tag' : 'project', view.slug));
 
-	// a different face is a different place: what was done on the last one isn't undone here
-	$effect(() => {
-		void activeFace?.id;
-		history.clear();
-	});
+    let unitSiblings = $state<Set<string>>(new Set());
+    let unitChildren = $state<Set<string>>(new Set());
 
-	// the folder under a folder project, for its per-folder metadata switch (the folder page's
-	// own menu carries the same one); re-read whenever the menu opens so it's never stale
-	let unitFolder: Folder | null = $state(null);
-	$effect(() => {
-		if (!moreOpen || unitKind !== 'folder' || !view.unit) return;
-		Folder.fromID(view.unit)
-			.then((f) => (unitFolder = f))
-			.catch(() => (unitFolder = null));
-	});
+    async function loadNeighbours() {
+        const unit = view.unit;
+        if (!unit) return;
+        if (unitKind === 'tag') {
+            unitSiblings = new Set((await Tag.list()).filter((t) => t.id !== unit).map((t) => t.id));
+            return;
+        }
+        const path = folderIdPath(unit);
+        const parent = folderId(
+            folderIdSource(unit),
+            path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+        );
+        const all = await Folder.list();
+        const slugs = (f: Folder) => f.slug.toLowerCase();
+        unitSiblings = new Set(all.filter((f) => f.parentId === parent && f.id !== unit).map(slugs));
+        unitChildren = new Set(all.filter((f) => f.parentId === unit).map(slugs));
+    }
 
-	let newFolderOpen = $state(false);
-	let fabEl: HTMLButtonElement | null = $state(null);
+    $effect(() => {
+        void view.unit;
+        void loadNeighbours();
+    });
+    $effect(() => onSourceReconciled(() => void loadNeighbours()));
 
-	const fabItems = $derived.by(() => {
-		const todo = { value: 'new-todo', label: 'New todo', icon: SquareCheck };
-		if (view.unit && isBuiltinUnit(view.unit)) return [todo];
-		const items = [{ value: 'new-note', label: 'New note', icon: FilePlus }, todo];
-		if (unitKind === 'folder')
-			items.push({ value: 'new-folder', label: 'New folder', icon: FolderPlus });
-		return items;
-	});
+    function titleProblem(name: string): string | null {
+        if (unitKind === 'tag')
+            return unitSiblings.has(tagId(name)) ? 'A tag with this name already exists.' : null;
+        if (unitKind === 'folder')
+            return folderNameProblem(name, unitSiblings.has(name.trim().toLowerCase()));
+        return null;
+    }
 
-	async function newDoc(todo: boolean) {
-		try {
-			const id = await createInView(view, todo);
-			if (id) onOpenRow(id);
-			else addSourceRequest.open();
-		} catch (e) {
-			reportError(e, `A note couldn't be created in ${subject}.`, () => newDoc(todo));
-		}
-	}
+    let header: ViewHeader | null = $state(null);
 
-	function newNote() {
-		const body = activeFace?.type === 'journal' ? activeFace.body?.type : null;
-		if (body === 'list' || body === 'masonry') createSignal++;
-		else void newDoc(false);
-	}
+    // a different face is a different place: what was done on the last one isn't undone here
+    $effect(() => {
+        void activeFace?.id;
+        history.clear();
+    });
 
-	function onFabSelect(value: string) {
-		if (value === 'new-note') newNote();
-		else if (value === 'new-todo') void newDoc(true);
-		else if (value === 'new-folder') newFolderOpen = true;
-	}
+    // the folder under a folder project, for its per-folder metadata switch (the folder page's
+    // own menu carries the same one); re-read whenever the menu opens so it's never stale
+    let unitFolder: Folder | null = $state(null);
+    $effect(() => {
+        if (!moreOpen || unitKind !== 'folder' || !view.unit) return;
+        Folder.fromID(view.unit)
+            .then((f) => (unitFolder = f))
+            .catch(() => (unitFolder = null));
+    });
 
-	const moreItems = $derived.by(() => {
-		const items: MenuEntry[] = [];
-		const cover: MenuEntry[] = view.cover
-			? []
-			: [{ value: 'add-cover', label: 'Add cover', icon: ImageUp }];
-		const builtin = !!view.unit && isBuiltinUnit(view.unit);
-		if (builtin) {
-			items.push({ value: 'new-note', label: 'New note', icon: FilePlus });
-			items.push(...cover);
-			return items;
-		}
-		if (unitKind) {
-			// making things is the fab's job; in a project this menu holds the place underneath
-			// and the project on top of it, so the place gets named
-			items.push({
-				kind: 'divider',
-				section: unitIsRoot ? 'Source' : unitKind === 'folder' ? 'Folder' : 'Tag'
-			});
-			if (unitIsRoot) {
-				items.push({ value: 'configure', label: 'Configure source', icon: Settings });
-			} else {
-				items.push({ value: 'rename', label: 'Rename', icon: Pencil });
-			}
-			if (unitKind === 'folder') {
-				items.push({ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink });
-				if (unitFolder)
-					items.push({
-						value: 'meta',
-						label: 'Metadata…',
-						icon: unitFolder.writesMeta ? FilePen : FileLock,
-						hint: unitFolder.writesMeta ? 'On' : 'Off'
-					});
-			}
-			items.push({ kind: 'divider' });
-			items.push(...cover);
-			items.push(
-				view.temporary
-					? { value: 'project', label: 'Turn into project', icon: Bookmark }
-					: { value: 'unproject', label: 'Stop being a project', icon: Bookmark }
-			);
-			items.push({ kind: 'divider' });
-			{
-				const what = unitIsRoot ? 'source' : unitKind === 'folder' ? 'folder' : 'tag';
-				const verb = unitIsRoot ? 'remove' : 'delete';
-				items.push(
-					confirmingDelete
-						? {
-								value: 'confirm-delete',
-								label: `Confirm ${verb}`,
-								icon: Trash2,
-								danger: true
-							}
-						: {
-								value: 'delete',
-								label: `${verb[0].toUpperCase()}${verb.slice(1)} ${what}`,
-								icon: Trash2,
-								keepOpen: true
-							}
-				);
-			}
-			return items;
-		}
-		items.push(...cover);
-		items.push({ value: 'duplicate', label: 'Duplicate view', icon: Copy });
-		items.push(
-			confirmingDelete
-				? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
-				: { value: 'delete', label: 'Delete view', icon: Trash2, keepOpen: true }
-		);
-		return items;
-	});
+    let newFolderOpen = $state(false);
+    let fabEl: HTMLButtonElement | null = $state(null);
 
-	async function createFolder(name: string) {
-		if (!view.unit) return;
-		try {
-			const sourceId = folderIdSource(view.unit);
-			const path = folderIdPath(view.unit);
-			const created = await Folder.create(
-				name,
-				sourceId,
-				path ? { id: view.unit, path } : undefined
-			);
-			const next = await View.forUnit(created.id, created.slug);
-			if (tab) editor.showViewInTab(tab, next);
-			else editor.openView(next);
-		} catch (e) {
-			Folder.reportOpError(e, `${mark('folder', name)} couldn't be created.`, () =>
-				createFolder(name)
-			);
-		}
-	}
+    const fabItems = $derived.by(() => {
+        const todo = {value: 'new-todo', label: 'New todo', icon: SquareCheck};
+        if (view.unit && isBuiltinUnit(view.unit)) return [todo];
+        const items = [{value: 'new-note', label: 'New note', icon: FilePlus}, todo];
+        if (unitKind === 'folder')
+            items.push({value: 'new-folder', label: 'New folder', icon: FolderPlus});
+        return items;
+    });
 
-	let sourceDialogOpen = $state(false);
-	let dialogSource: Source | null = $state(null);
-	async function configureSource() {
-		if (!view.unit) return;
-		dialogSource = (await listSources()).find((s) => s.id === folderIdSource(view.unit!)) ?? null;
-		if (dialogSource) sourceDialogOpen = true;
-	}
+    async function newDoc(todo: boolean) {
+        try {
+            const id = await createInView(view, todo);
+            if (id) onOpenRow(id);
+            else addSourceRequest.open();
+        } catch (e) {
+            reportError(e, `A note couldn't be created in ${subject}.`, () => newDoc(todo));
+        }
+    }
 
-	async function revealUnit() {
-		if (!view.unit) return;
-		const src = (await listSources()).find((s) => s.id === folderIdSource(view.unit!));
-		if (!src) return;
-		const path = folderIdPath(view.unit);
-		revealItemInDir(path ? `${src.path}/${path}` : src.path).catch(console.error);
-	}
+    function newNote() {
+        const body = activeFace?.type === 'journal' ? activeFace.body?.type : null;
+        if (body === 'list' || body === 'masonry') createSignal++;
+        else void newDoc(false);
+    }
 
-	async function deleteUnit() {
-		if (!view.unit) return;
-		if (unitIsRoot) {
-			try {
-				await removeSource(folderIdSource(view.unit));
-				editor.closeTab(view.id, false);
-			} catch (e) {
-				reportError(e, `${mark('source', view.slug)} couldn't be removed.`);
-			}
-			return;
-		}
-		if (unitKind === 'tag') {
-			try {
-				await Tag.delete(await Tag.fromID(view.unit));
-				editor.closeTab(view.id, false);
-			} catch (e) {
-				reportError(e, `${mark('tag', view.slug)} couldn't be deleted.`);
-			}
-		} else {
-			try {
-				await Folder.delete(folderIdSource(view.unit), folderIdPath(view.unit));
-				editor.closeTab(view.id, false);
-			} catch (e) {
-				Folder.reportOpError(e, `${mark('folder', view.slug)} couldn't be deleted.`, deleteUnit);
-			}
-		}
-	}
+    function onFabSelect(value: string) {
+        if (value === 'new-note') newNote();
+        else if (value === 'new-todo') void newDoc(true);
+        else if (value === 'new-folder') newFolderOpen = true;
+    }
 
-	function openMore(e: MouseEvent) {
-		moreAnchor = e.currentTarget as HTMLElement;
-		moreOpen = true;
-	}
+    const moreItems = $derived.by(() => {
+        const items: MenuEntry[] = [];
+        const cover: MenuEntry[] = view.cover
+            ? []
+            : [{value: 'add-cover', label: 'Add cover', icon: ImageUp}];
+        const builtin = !!view.unit && isBuiltinUnit(view.unit);
+        if (builtin) {
+            items.push({value: 'new-note', label: 'New note', icon: FilePlus});
+            items.push(...cover);
+            return items;
+        }
+        if (unitKind) {
+            // making things is the fab's job; in a project this menu holds the place underneath
+            // and the project on top of it, so the place gets named
+            items.push({
+                kind: 'divider',
+                section: unitIsRoot ? 'Source' : unitKind === 'folder' ? 'Folder' : 'Tag'
+            });
+            if (unitIsRoot) {
+                items.push({value: 'configure', label: 'Configure source', icon: Settings});
+            } else {
+                items.push({value: 'rename', label: 'Rename', icon: Pencil});
+            }
+            if (unitKind === 'folder') {
+                items.push({value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink});
+                if (unitFolder)
+                    items.push({
+                        value: 'meta',
+                        label: 'Metadata…',
+                        icon: unitFolder.writesMeta ? FilePen : FileLock,
+                        hint: unitFolder.writesMeta ? 'On' : 'Off'
+                    });
+            }
+            items.push({kind: 'divider'});
+            items.push(...cover);
+            items.push(
+                view.temporary
+                    ? {value: 'project', label: 'Turn into project', icon: Bookmark}
+                    : {value: 'unproject', label: 'Stop being a project', icon: Bookmark}
+            );
+            items.push({kind: 'divider'});
+            {
+                const what = unitIsRoot ? 'source' : unitKind === 'folder' ? 'folder' : 'tag';
+                const verb = unitIsRoot ? 'remove' : 'delete';
+                items.push(
+                    confirmingDelete
+                        ? {
+                            value: 'confirm-delete',
+                            label: `Confirm ${verb}`,
+                            icon: Trash2,
+                            danger: true
+                        }
+                        : {
+                            value: 'delete',
+                            label: `${verb[0].toUpperCase()}${verb.slice(1)} ${what}`,
+                            icon: Trash2,
+                            keepOpen: true
+                        }
+                );
+            }
+            return items;
+        }
+        items.push(...cover);
+        items.push({value: 'duplicate', label: 'Duplicate view', icon: Copy});
+        items.push(
+            confirmingDelete
+                ? {value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true}
+                : {value: 'delete', label: 'Delete view', icon: Trash2, keepOpen: true}
+        );
+        return items;
+    });
 
-	async function duplicateView() {
-		try {
-			const json = JSON.parse(JSON.stringify(view.toJSON()));
-			json.id = uuidv4();
-			json.slug = `${view.slug} copy`;
-			json.created_at = new Date();
-			json.updated_at = new Date();
-			json.temporary = false;
-			const copy = new View(json);
-			copy.detachUnit();
-			await copy.save();
-			editor.openView(copy);
-		} catch (e) {
-			console.error('duplicate view failed', e);
-		}
-	}
+    async function createFolder(name: string) {
+        if (!view.unit) return;
+        try {
+            const sourceId = folderIdSource(view.unit);
+            const path = folderIdPath(view.unit);
+            const created = await Folder.create(
+                name,
+                sourceId,
+                path ? {id: view.unit, path} : undefined
+            );
+            const next = await View.forUnit(created.id, created.slug);
+            if (tab) editor.showViewInTab(tab, next);
+            else editor.openView(next);
+        } catch (e) {
+            Folder.reportOpError(e, `${mark('folder', name)} couldn't be created.`, () =>
+                createFolder(name)
+            );
+        }
+    }
 
-	async function deleteView() {
-		try {
-			await view.unsave();
-			editor.closeTab(view.id, false);
-		} catch (e) {
-			console.error('delete view failed', e);
-		}
-	}
+    let sourceDialogOpen = $state(false);
+    let dialogSource: Source | null = $state(null);
 
-	function onMoreSelect(value: string) {
-		if (value === 'delete') {
-			confirmingDelete = true;
-			return;
-		}
-		moreOpen = false;
-		if (value === 'add-cover') pickCover();
-		if (value === 'duplicate') duplicateView();
-		if (value === 'confirm-delete') unitKind ? deleteUnit() : deleteView();
-		if (value === 'new-note') newNote();
-		if (value === 'rename') header?.focusTitle();
-		if (value === 'configure') configureSource();
-		if (value === 'reveal') revealUnit();
-		if (value === 'meta' && view.unit) metaDialog.show(view.unit);
-		if (value === 'project' && view.unit)
-			openProjectSetup(editor, { id: view.unit, name: view.slug }, tab);
-		if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));
-	}
+    async function configureSource() {
+        if (!view.unit) return;
+        dialogSource = (await listSources()).find((s) => s.id === folderIdSource(view.unit!)) ?? null;
+        if (dialogSource) sourceDialogOpen = true;
+    }
 
-	async function onOpenUnit(id: string, name: string, newTab = false) {
-		const next = await View.forUnit(id, name);
-		if (tab && !newTab) editor.showViewInTab(tab, next);
-		else editor.openView(next);
-	}
+    async function revealUnit() {
+        if (!view.unit) return;
+        const src = (await listSources()).find((s) => s.id === folderIdSource(view.unit!));
+        if (!src) return;
+        const path = folderIdPath(view.unit);
+        revealItemInDir(path ? `${src.path}/${path}` : src.path).catch(console.error);
+    }
 
-	function onOpenRow(rowId: string, newTab: boolean | 'side' = false) {
-		DocHandle.fromID(rowId)
-			.then((d) => {
-				const content = { type: 'markdown', handle: d } as const;
-				if (newTab === 'side') editor.beside().openDetail(content, view.slug);
-				else if (newTab || !tab) editor.openDoc(d);
-				else if (editor.peer) editor.peer.openDetail(content, view.slug);
-				else editor.showDocInTab(tab, d);
-			})
-			.catch(console.error);
-	}
+    async function deleteUnit() {
+        if (!view.unit) return;
+        if (unitIsRoot) {
+            try {
+                await removeSource(folderIdSource(view.unit));
+                editor.closeTab(view.id, false);
+            } catch (e) {
+                reportError(e, `${mark('source', view.slug)} couldn't be removed.`);
+            }
+            return;
+        }
+        if (unitKind === 'tag') {
+            try {
+                await Tag.delete(await Tag.fromID(view.unit));
+                editor.closeTab(view.id, false);
+            } catch (e) {
+                reportError(e, `${mark('tag', view.slug)} couldn't be deleted.`);
+            }
+        } else {
+            try {
+                await Folder.delete(folderIdSource(view.unit), folderIdPath(view.unit));
+                editor.closeTab(view.id, false);
+            } catch (e) {
+                Folder.reportOpError(e, `${mark('folder', view.slug)} couldn't be deleted.`, deleteUnit);
+            }
+        }
+    }
+
+    function openMore(e: MouseEvent) {
+        moreAnchor = e.currentTarget as HTMLElement;
+        moreOpen = true;
+    }
+
+    async function duplicateView() {
+        try {
+            const json = JSON.parse(JSON.stringify(view.toJSON()));
+            json.id = uuidv4();
+            json.slug = `${view.slug} copy`;
+            json.created_at = new Date();
+            json.updated_at = new Date();
+            json.temporary = false;
+            const copy = new View(json);
+            copy.detachUnit();
+            await copy.save();
+            editor.openView(copy);
+        } catch (e) {
+            console.error('duplicate view failed', e);
+        }
+    }
+
+    async function deleteView() {
+        try {
+            await view.unsave();
+            editor.closeTab(view.id, false);
+        } catch (e) {
+            console.error('delete view failed', e);
+        }
+    }
+
+    function onMoreSelect(value: string) {
+        if (value === 'delete') {
+            confirmingDelete = true;
+            return;
+        }
+        moreOpen = false;
+        if (value === 'add-cover') pickCover();
+        if (value === 'duplicate') duplicateView();
+        if (value === 'confirm-delete') unitKind ? deleteUnit() : deleteView();
+        if (value === 'new-note') newNote();
+        if (value === 'rename') header?.focusTitle();
+        if (value === 'configure') configureSource();
+        if (value === 'reveal') revealUnit();
+        if (value === 'meta' && view.unit) metaDialog.show(view.unit);
+        if (value === 'project' && view.unit)
+            openProjectSetup(editor, {id: view.unit, name: view.slug}, tab);
+        if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));
+    }
+
+    async function onOpenUnit(id: string, name: string, newTab = false) {
+        const next = await View.forUnit(id, name);
+        if (tab && !newTab) editor.showViewInTab(tab, next);
+        else editor.openView(next);
+    }
+
+    function onOpenRow(rowId: string, newTab: boolean | 'side' = false) {
+        DocHandle.fromID(rowId)
+            .then((d) => {
+                const content = {type: 'markdown', handle: d} as const;
+                if (newTab === 'side') editor.beside().openDetail(content, view.slug);
+                else if (newTab || !tab) editor.openDoc(d);
+                else if (editor.peer) editor.peer.openDetail(content, view.slug);
+                else editor.showDocInTab(tab, d);
+            })
+            .catch(console.error);
+    }
 </script>
 
-<svelte:window onkeydown={(e) => undoKey(e, view.id, bodyEl)} />
+<svelte:window onkeydown={(e) => undoKey(e, view.id, bodyEl)}/>
 
 <div class="view-page">
-	{#if gone}
-		<GonePage art={catBox} headline={gone.headline} detail={gone.detail} actions={gone.actions} />
-	{:else}
-		<div
-			class="view-body"
-			class:flow={bodyFlow}
-			class:restoring={restoringScroll}
-			bind:this={bodyEl}
-			onscroll={bodyScroll}
-		>
-			<div class="view-top">
-				{#if view.cover}
-					<div
-						class="view-cover"
-						class:cropping
-						role="presentation"
-						onpointerdown={cropPointerDown}
-						onpointermove={cropPointerMove}
-						onpointerup={cropPointerUp}
-						onpointerleave={cropPointerUp}
-						onwheel={cropWheel}
-					>
-						<div
-							class="cover-img"
-							class:ready={coverReady}
-							style:background-image={coverReady ? `url('${coverUrl}')` : undefined}
-							style:background-position="{geo.x}% {geo.y}%"
-							style:background-size="{geo.z * 100}%"
-						></div>
-						{#if cropping}
-							<div class="crop-frame">
-								<span class="cc tl"></span>
-								<span class="cc tr"></span>
-								<span class="cc bl"></span>
-								<span class="cc br"></span>
-							</div>
-						{:else}
-							<div class="cover-actions top">
-								<button class="cover-btn" type="button" title="More" onclick={openMore}>
-									<EllipsisVertical size={14} />
-								</button>
-							</div>
-						{/if}
-						<div class="cover-actions">
-							{#if cropping}
-								<button class="cover-btn" type="button" title="Confirm" onclick={confirmCrop}>
-									<Check size={14} />
-								</button>
-							{:else}
-								<button class="cover-btn" type="button" title="Crop" onclick={startCrop}>
-									<Crop size={14} />
-								</button>
-								<button class="cover-btn" type="button" title="Replace" onclick={pickCover}>
-									<ImageUp size={14} />
-								</button>
-								<button class="cover-btn" type="button" title="Remove" onclick={removeCover}>
-									<X size={14} />
-								</button>
-							{/if}
-						</div>
-					</div>
-				{/if}
+    {#if gone}
+        <GonePage art={catBox} headline={gone.headline} detail={gone.detail} actions={gone.actions}/>
+    {:else}
+        <div
+                class="view-body"
+                class:flow={bodyFlow}
+                class:restoring={restoringScroll}
+                bind:this={bodyEl}
+                onscroll={bodyScroll}
+        >
+            <div class="view-top">
+                {#if view.cover}
+                    <div
+                            class="view-cover"
+                            class:cropping
+                            role="presentation"
+                            onpointerdown={cropPointerDown}
+                            onpointermove={cropPointerMove}
+                            onpointerup={cropPointerUp}
+                            onpointerleave={cropPointerUp}
+                            onwheel={cropWheel}
+                    >
+                        <div
+                                class="cover-img"
+                                class:ready={coverReady}
+                                style:background-image={coverReady ? `url('${coverUrl}')` : undefined}
+                                style:background-position="{geo.x}% {geo.y}%"
+                                style:background-size="{geo.z * 100}%"
+                        ></div>
+                        {#if cropping}
+                            <div class="crop-frame">
+                                <span class="cc tl"></span>
+                                <span class="cc tr"></span>
+                                <span class="cc bl"></span>
+                                <span class="cc br"></span>
+                            </div>
+                        {:else}
+                            <div class="cover-actions top">
+                                <button class="cover-btn" type="button" title="More" onclick={openMore}>
+                                    <EllipsisVertical size={14}/>
+                                </button>
+                            </div>
+                        {/if}
+                        <div class="cover-actions">
+                            {#if cropping}
+                                <button class="cover-btn" type="button" title="Confirm" onclick={confirmCrop}>
+                                    <Check size={14}/>
+                                </button>
+                            {:else}
+                                <button class="cover-btn" type="button" title="Crop" onclick={startCrop}>
+                                    <Crop size={14}/>
+                                </button>
+                                <button class="cover-btn" type="button" title="Replace" onclick={pickCover}>
+                                    <ImageUp size={14}/>
+                                </button>
+                                <button class="cover-btn" type="button" title="Remove" onclick={removeCover}>
+                                    <X size={14}/>
+                                </button>
+                            {/if}
+                        </div>
+                    </div>
+                {/if}
 
-				<div class="view-chrome" class:has-cover={!!view.cover}>
-					<ViewHeader
-						bind:this={header}
-						{view}
-						{titleProblem}
-						hasCover={!!view.cover}
-						{docPicker}
-						onOpenNewTab={(id, name) => onOpenUnit(id, name, true)}
-						onMore={(anchor) => {
+                <div class="view-chrome" class:has-cover={!!view.cover}>
+                    <ViewHeader
+                            bind:this={header}
+                            {view}
+                            {titleProblem}
+                            hasCover={!!view.cover}
+                            {docPicker}
+                            onOpenNewTab={(id, name) => onOpenUnit(id, name, true)}
+                            onMore={(anchor) => {
 							moreAnchor = anchor;
 							moreOpen = true;
 						}}
-					/>
-				</div>
-			</div>
+                    />
+                </div>
+            </div>
 
-			<div class="view-inner">
-				{#if activeFace?.type === 'journal'}
-					<JournalFace
-						{view}
-						face={activeFace}
-						flow={true}
-						{onOpenRow}
-						{createSignal}
-						{docPicker}
-						{tab}
-						{editor}
-						{settings}
-						{findBarAnchor}
-						{dockTarget}
-					/>
-				{:else if activeFace?.type === 'doc'}
-					<DocFace
-						{view}
-						face={activeFace}
-						flow={bodyFlow}
-						picker={docPicker}
-						{editor}
-						{tab}
-						{settings}
-						{findBarAnchor}
-						{dockTarget}
-					/>
-				{:else if activeFace?.type === 'list'}
-					<ListFace {view} face={activeFace} {onOpenRow} />
-				{:else if activeFace?.type === 'masonry'}
-					<MasonryFace {view} face={activeFace} {onOpenRow} />
-				{:else if activeFace?.type === 'kanban'}
-					<KanbanFace {view} face={activeFace} {onOpenRow} />
-				{:else if activeFace?.type === 'dashboard'}
-					<DashboardFace {view} face={activeFace} {onOpenRow} {onOpenUnit} />
-				{:else if activeFace}
-					<ListFace {view} face={activeFace} {onOpenRow} />
-				{/if}
-			</div>
-		</div>
+            <div class="view-inner">
+                {#if activeFace?.type === 'journal'}
+                    <JournalFace
+                            {view}
+                            face={activeFace}
+                            flow={true}
+                            {onOpenRow}
+                            {createSignal}
+                            {docPicker}
+                            {tab}
+                            {editor}
+                            {settings}
+                            {findBarAnchor}
+                            {dockTarget}
+                    />
+                {:else if activeFace?.type === 'doc'}
+                    <DocFace
+                            {view}
+                            face={activeFace}
+                            flow={bodyFlow}
+                            picker={docPicker}
+                            {editor}
+                            {tab}
+                            {settings}
+                            {findBarAnchor}
+                            {dockTarget}
+                    />
+                {:else if activeFace?.type === 'list'}
+                    <ListFace {view} face={activeFace} {onOpenRow}/>
+                {:else if activeFace?.type === 'masonry'}
+                    <MasonryFace {view} face={activeFace} {onOpenRow}/>
+                {:else if activeFace?.type === 'kanban'}
+                    <KanbanFace {view} face={activeFace} {onOpenRow}/>
+                {:else if activeFace?.type === 'dashboard'}
+                    <DashboardFace {view} face={activeFace} {onOpenRow} {onOpenUnit}/>
+                {:else if activeFace}
+                    <ListFace {view} face={activeFace} {onOpenRow}/>
+                {/if}
+            </div>
+        </div>
 
-		<!-- Where a document on this page draws its find bar. Outside the scroller, so it stays at
-		     the page's top right while the document scrolls under it. -->
-		<div class="find-bar-anchor" bind:this={findBarAnchor}></div>
-		<!-- Where a document on this page docks its mode bars (history), in the page's own frame. -->
-		<div bind:this={dockTarget}></div>
+        <!-- Where a document on this page draws its find bar. Outside the scroller, so it stays at
+             the page's top right while the document scrolls under it. -->
+        <div class="find-bar-anchor" bind:this={findBarAnchor}></div>
+        <!-- Where a document on this page docks its mode bars (history), in the page's own frame. -->
+        <div bind:this={dockTarget}></div>
 
-		<ScrollThumb scroller={bodyEl} top={20} />
+        <ScrollThumb scroller={bodyEl} top={20}/>
 
-		{#if showNewFab && !docked}
-			<NewFab items={fabItems} onSelect={onFabSelect} bind:el={fabEl} />
-		{/if}
-	{/if}
+        {#if showNewFab && !docked}
+            <NewFab items={fabItems} onSelect={onFabSelect} bind:el={fabEl}/>
+        {/if}
+    {/if}
 </div>
 
 <Menu
-	bind:open={moreOpen}
-	anchor={moreAnchor}
-	items={moreItems}
-	onSelect={onMoreSelect}
-	minWidth={170}
+        bind:open={moreOpen}
+        anchor={moreAnchor}
+        items={moreItems}
+        onSelect={onMoreSelect}
+        minWidth={170}
 />
 <NewFolderDialog
-	bind:open={newFolderOpen}
-	onCreate={createFolder}
-	problem={(v) => folderNameProblem(v, unitChildren.has(v.trim().toLowerCase()))}
+        bind:open={newFolderOpen}
+        onCreate={createFolder}
+        problem={(v) => folderNameProblem(v, unitChildren.has(v.trim().toLowerCase()))}
 />
-<SourceDialog bind:open={sourceDialogOpen} mode="edit" source={dialogSource} onSaved={() => {}} />
+<SourceDialog bind:open={sourceDialogOpen} mode="edit" source={dialogSource} onSaved={() => {}}/>
 <CoverSourceDialog
-	bind:open={coverDialogOpen}
-	onPicked={(ref) => {
+        bind:open={coverDialogOpen}
+        sourceId={coverSourceId}
+        stem={`${view.slug} cover`}
+        onPicked={(ref) => {
 		view.cover = ref;
 	}}
 />
 
 <style>
-	/* The page and its scroller run edge to edge so the wheel works anywhere and the
+    /* The page and its scroller run edge to edge so the wheel works anywhere and the
        thumb rides the page's right edge; .view-inner is what holds the reading column. */
-	.view-page {
-		position: relative;
-		display: flex;
-		flex-direction: column;
-		height: 100%;
-		width: 100%;
-		overflow: hidden;
-	}
+    .view-page {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+    }
 
-	.view-body {
-		flex: 1;
-		min-height: 0;
-		display: flex;
-		flex-direction: column;
-		margin: 2px;
-		border-radius: 6px;
-	}
+    .view-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        margin: 2px;
+        border-radius: 6px;
+    }
 
-	.view-body:not(.flow) {
-		overflow: hidden;
-	}
+    .view-body:not(.flow) {
+        overflow: hidden;
+    }
 
-	.view-body.restoring {
-		opacity: 0;
-	}
+    .view-body.restoring {
+        opacity: 0;
+    }
 
-	.view-body.flow {
-		display: block;
-		overflow-y: auto;
-		scrollbar-width: none;
-		/* content swaps (a journal changing day) must not be "kept in place" by the browser */
-		overflow-anchor: none;
-	}
+    .view-body.flow {
+        display: block;
+        overflow-y: auto;
+        scrollbar-width: none;
+        /* content swaps (a journal changing day) must not be "kept in place" by the browser */
+        overflow-anchor: none;
+    }
 
-	.view-body.flow::-webkit-scrollbar {
-		display: none;
-	}
+    .view-body.flow::-webkit-scrollbar {
+        display: none;
+    }
 
-	/* a project page's column: the cover, header and faces share it; a document inside keeps
-	   its own reading width */
-	.view-top {
-		max-width: var(--view-max-width, 1200px);
-		margin: 0 auto;
-		padding: 16px 24px 0;
-	}
+    /* a project page's column: the cover, header and faces share it; a document inside keeps
+       its own reading width */
+    .view-top {
+        max-width: var(--view-max-width, 1200px);
+        margin: 0 auto;
+        padding: 16px 24px 0;
+    }
 
-	.view-inner {
-		max-width: var(--view-max-width, 1200px);
-		margin: 0 auto;
-		padding: 0 24px;
-	}
+    .view-inner {
+        max-width: var(--view-max-width, 1200px);
+        margin: 0 auto;
+        padding: 0 24px;
+    }
 
-	/* No size of its own: the bar hangs off this corner, and an empty box would otherwise sit
-	   over the page swallowing clicks. Clear of the scroll thumb's 14px rail on the right. */
-	.find-bar-anchor {
-		position: absolute;
-		top: 0;
-		right: 8px;
-		z-index: 5;
-		width: 0;
-		height: 0;
-	}
+    /* No size of its own: the bar hangs off this corner, and an empty box would otherwise sit
+       over the page swallowing clicks. Clear of the scroll thumb's 14px rail on the right. */
+    .find-bar-anchor {
+        position: absolute;
+        top: 0;
+        right: 8px;
+        z-index: 5;
+        width: 0;
+        height: 0;
+    }
 
-	.view-chrome {
-		flex-shrink: 0;
-		padding: 29px 0 0 24px;
-	}
+    .view-chrome {
+        flex-shrink: 0;
+        padding: 29px 0 0 24px;
+    }
 
-	.view-chrome.has-cover {
-		padding-top: 0;
-	}
+    .view-chrome.has-cover {
+        padding-top: 0;
+    }
 
-	.view-inner > :global(.list-face) {
-		padding-top: 6px;
-	}
+    .view-inner > :global(.list-face) {
+        padding-top: 6px;
+    }
 
-	.view-cover {
-		position: relative;
-		flex-shrink: 0;
-		box-sizing: border-box;
-		height: 180px;
-		margin: 6px 24px 0 18px;
-		border-radius: 10px 10px 0 0;
-		overflow: hidden;
-		background: var(--chip-bg);
-	}
+    .view-cover {
+        position: relative;
+        flex-shrink: 0;
+        box-sizing: border-box;
+        height: 180px;
+        margin: 6px 24px 0 18px;
+        border-radius: 10px 10px 0 0;
+        overflow: hidden;
+        background: var(--chip-bg);
+    }
 
-	.cover-img {
-		position: absolute;
-		inset: 0;
-		background-repeat: no-repeat;
-		opacity: 0;
-		transition: opacity 50ms ease;
-		pointer-events: none;
-	}
+    .cover-img {
+        position: absolute;
+        inset: 0;
+        background-repeat: no-repeat;
+        opacity: 0;
+        transition: opacity 50ms ease;
+        pointer-events: none;
+    }
 
-	.cover-img.ready {
-		opacity: 1;
-	}
+    .cover-img.ready {
+        opacity: 1;
+    }
 
-	.view-cover.cropping {
-		cursor: grab;
-	}
+    .view-cover.cropping {
+        cursor: grab;
+    }
 
-	.view-cover.cropping:active {
-		cursor: grabbing;
-	}
+    .view-cover.cropping:active {
+        cursor: grabbing;
+    }
 
-	.crop-frame {
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-	}
+    .crop-frame {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+    }
 
-	.cc {
-		position: absolute;
-		width: 18px;
-		height: 18px;
-		border: 2px solid rgba(255, 255, 255, 0.9);
-	}
+    .cc {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.9);
+    }
 
-	.cc.tl {
-		top: 10px;
-		left: 10px;
-		border-right: none;
-		border-bottom: none;
-	}
+    .cc.tl {
+        top: 10px;
+        left: 10px;
+        border-right: none;
+        border-bottom: none;
+    }
 
-	.cc.tr {
-		top: 10px;
-		right: 10px;
-		border-left: none;
-		border-bottom: none;
-	}
+    .cc.tr {
+        top: 10px;
+        right: 10px;
+        border-left: none;
+        border-bottom: none;
+    }
 
-	.cc.bl {
-		bottom: 10px;
-		left: 10px;
-		border-right: none;
-		border-top: none;
-	}
+    .cc.bl {
+        bottom: 10px;
+        left: 10px;
+        border-right: none;
+        border-top: none;
+    }
 
-	.cc.br {
-		bottom: 10px;
-		right: 10px;
-		border-left: none;
-		border-top: none;
-	}
+    .cc.br {
+        bottom: 10px;
+        right: 10px;
+        border-left: none;
+        border-top: none;
+    }
 
-	.cover-actions {
-		position: absolute;
-		bottom: 10px;
-		right: 14px;
-		display: flex;
-		gap: 6px;
-		opacity: 0;
-		transition: opacity 120ms ease;
-	}
+    .cover-actions {
+        position: absolute;
+        bottom: 10px;
+        right: 14px;
+        display: flex;
+        gap: 6px;
+        opacity: 0;
+        transition: opacity 120ms ease;
+    }
 
-	.cover-actions.top {
-		top: 10px;
-		bottom: auto;
-		opacity: 1;
-	}
+    .cover-actions.top {
+        top: 10px;
+        bottom: auto;
+        opacity: 1;
+    }
 
-	.cover-actions.top .cover-btn {
-		width: 26px;
-		height: 26px;
-		background: transparent;
-		box-shadow: none;
-		color: #fff;
-		filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
-	}
+    .cover-actions.top .cover-btn {
+        width: 26px;
+        height: 26px;
+        background: transparent;
+        box-shadow: none;
+        color: #fff;
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+    }
 
-	.view-cover:hover .cover-actions,
-	.view-cover.cropping .cover-actions {
-		opacity: 1;
-	}
+    .view-cover:hover .cover-actions,
+    .view-cover.cropping .cover-actions {
+        opacity: 1;
+    }
 
-	.cover-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		padding: 0;
-		border: none;
-		border-radius: 6px;
-		background: var(--color-bg);
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		box-shadow: var(--menu-shadow);
-	}
+    .cover-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: var(--color-bg);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        box-shadow: var(--menu-shadow);
+    }
 
-	.cover-btn:hover {
-		color: var(--color-text-primary);
-	}
+    .cover-btn:hover {
+        color: var(--color-text-primary);
+    }
 </style>
