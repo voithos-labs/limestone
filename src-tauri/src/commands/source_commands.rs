@@ -5,7 +5,9 @@ use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
 use crate::services::fs::{clean_location, resolve_in_source};
-use crate::services::{self, dot_get, JsonSettingsStore, Source, Sources};
+use crate::services::{
+    self, dot_get, JsonSettingsStore, Source, SourceConfig, SourceRecord, Sources,
+};
 use crate::AppData;
 
 fn sources_store(app: &AppHandle) -> JsonSettingsStore {
@@ -19,11 +21,41 @@ fn load_sources_file(app: &AppHandle) -> Sources {
     let mut data = sources_store(app).load::<Sources>().unwrap_or_default();
     data.sources
         .sort_by_key(|v| std::cmp::Reverse(v.accessed_at));
+    let mut migrated = false;
+    for record in &mut data.sources {
+        if record.legacy.is_default() || !record.path.is_dir() {
+            continue;
+        }
+        if services::source_config_path(&record.path).exists()
+            || services::save_source_config(&record.path, &record.legacy).is_ok()
+        {
+            record.legacy = SourceConfig::default();
+            migrated = true;
+        }
+    }
+    if migrated {
+        let _ = save_sources_file(app, &data);
+    }
     data
 }
 
 pub(crate) fn load_sources(app: &AppHandle) -> Vec<Source> {
-    load_sources_file(app).sources
+    load_sources_file(app)
+        .sources
+        .into_iter()
+        .map(|record| {
+            let config =
+                services::load_source_config(&record.path).unwrap_or_else(|| record.legacy.clone());
+            Source::from_parts(record, config)
+        })
+        .collect()
+}
+
+fn save_source_config(source: &Source) -> Result<(), String> {
+    if !source.path.is_dir() {
+        return Err("source unavailable".to_string());
+    }
+    services::save_source_config(&source.path, &source.config()).map_err(|e| e.to_string())
 }
 
 pub(crate) async fn doc_writes_meta(
@@ -163,7 +195,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 
 /// Check that `candidate` is neither equal to, nor an ancestor of, nor a
 /// descendant of any existing source path.
-fn check_source_conflict(candidate: &Path, existing: &[Source]) -> Result<(), String> {
+fn check_source_conflict(candidate: &Path, existing: &[SourceRecord]) -> Result<(), String> {
     let candidate_norm = normalize_path(candidate);
     for source in existing {
         let existing_norm = normalize_path(&source.path);
@@ -215,7 +247,8 @@ pub fn create_source(
         .asset_protocol_scope()
         .allow_directory(&source.path, true);
 
-    data.sources.push(source.clone());
+    save_source_config(&source)?;
+    data.sources.push(source.record());
     save_sources_file(&app, &data)?;
 
     spawn_reconcile(&app, &source, &app_data);
@@ -258,15 +291,10 @@ pub fn update_source(
     let note_location = clean_location(&note_location).map_err(|e| e.to_string())?;
     let asset_location = clean_location(&asset_location).map_err(|e| e.to_string())?;
 
-    let mut data = load_sources_file(&app);
-    let source = data
-        .sources
-        .iter_mut()
-        .find(|s| s.id == id)
-        .ok_or_else(|| "source not found".to_string())?;
+    let mut source = find_source(&app, id)?;
     source.note_location = note_location;
     source.asset_location = asset_location;
-    save_sources_file(&app, &data)
+    save_source_config(&source)
 }
 
 #[tauri::command]
@@ -277,12 +305,7 @@ pub async fn set_folder_frontmatter(
     dir: String,
     value: Option<bool>,
 ) -> Result<(), String> {
-    let mut data = load_sources_file(&app);
-    let source = data
-        .sources
-        .iter_mut()
-        .find(|s| s.id == id)
-        .ok_or_else(|| "source not found".to_string())?;
+    let mut source = find_source(&app, id)?;
     if dir.is_empty() {
         source.use_frontmatter = value;
     } else if let Some(v) = value {
@@ -290,8 +313,7 @@ pub async fn set_folder_frontmatter(
     } else {
         source.frontmatter_dirs.remove(&dir);
     }
-    let source = source.clone();
-    save_sources_file(&app, &data)?;
+    save_source_config(&source)?;
     services::sync_folder_meta(&app_data.db, &source, git_frontmatter_off(&app_data))
         .await
         .map_err(|e| e.to_string())?;
@@ -306,7 +328,7 @@ pub fn update_source_path(app: AppHandle, id: Uuid, path: String) -> Result<(), 
         return Err("folder not found".to_string());
     }
     let mut data = load_sources_file(&app);
-    let others: Vec<Source> = data
+    let others: Vec<SourceRecord> = data
         .sources
         .iter()
         .filter(|s| s.id != id)
@@ -514,8 +536,7 @@ pub async fn move_folder(
 }
 
 fn rekey_frontmatter_dirs(app: &AppHandle, id: Uuid, old_dir: &str, new_dir: &str) {
-    let mut data = load_sources_file(app);
-    let Some(source) = data.sources.iter_mut().find(|s| s.id == id) else {
+    let Ok(mut source) = find_source(app, id) else {
         return;
     };
     let old_prefix = format!("{old_dir}/");
@@ -534,7 +555,7 @@ fn rekey_frontmatter_dirs(app: &AppHandle, id: Uuid, old_dir: &str, new_dir: &st
             .frontmatter_dirs
             .insert(format!("{new_dir}{}", &k[old_dir.len()..]), v);
     }
-    let _ = save_sources_file(app, &data);
+    let _ = save_source_config(&source);
 }
 
 /// The folder goes to the OS trash, never straight to nothing: a folder holds work the reader

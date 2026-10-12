@@ -136,14 +136,7 @@ pub fn run() {
             });
 
             // Load sources
-            let sources_path = global_data_path.join("sources.json");
-            let sources = services::JsonSettingsStore {
-                path: sources_path,
-                default_json: None,
-            }
-            .load::<services::Sources>()
-            .unwrap_or_default()
-            .sources;
+            let sources = commands::source_commands::load_sources(app.handle());
 
             let assets_path = global_data_path.join("assets");
             std::fs::create_dir_all(&assets_path)?;

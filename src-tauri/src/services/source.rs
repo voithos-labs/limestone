@@ -1,6 +1,6 @@
 //! ── Overview BAF (Big Ass File) ──────────────────────────────────────────────────────────
 //! This contains, broadly:
-//! 1. The source data model definition & associated helpers
+//! 1. The source data model definition, config, & associated helpers
 //! 2. source scanning and reconciliation logic (big and ugly)
 //!
 //! Due to the size of the file, I will give a brief overview here.
@@ -17,7 +17,7 @@
 //! *Scan & Reconciliation*
 //!
 //! Little complicated, but basically:
-//! PER SOURCE, RUN IN PARALLEL
+//! PER SOURCE, IN PARALLEL
 //! 1. Walks source dir, collecting dirs and rel_path (to source) + mtime for *.md documents
 //! 2. Loads all documents from the db (cache)
 //! 3. Diffs source dir to db documents
@@ -35,7 +35,7 @@
 
 use crate::services::body::fold_tag;
 use crate::services::frontmatter;
-use crate::services::fs::clean_location;
+use crate::services::fs::{atomic_write, clean_location};
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -50,34 +50,26 @@ use uuid::Uuid;
 
 // ── Model ────────────────────────────────────────────────────────────────────────────
 
-#[derive(Deserialize, Serialize, Clone)]
-pub struct Source {
-    pub title: String,
-    pub path: PathBuf,
-    pub id: Uuid,
-    pub created_at: DateTime<Utc>,
-    pub accessed_at: DateTime<Utc>,
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
+pub struct SourceConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub use_frontmatter: Option<bool>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub frontmatter_dirs: BTreeMap<String, bool>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note_location: String,
-    #[serde(default = "default_asset_location")]
+    #[serde(
+        default = "default_asset_location",
+        skip_serializing_if = "is_default_asset_location"
+    )]
     pub asset_location: String,
-    #[serde(default = "default_ignore")]
+    #[serde(default = "default_ignore", skip_serializing_if = "is_default_ignore")]
     pub ignore: Vec<String>,
 }
 
-impl Source {
-    pub fn new(title: String, path: PathBuf) -> Self {
-        let now = Utc::now();
+impl Default for SourceConfig {
+    fn default() -> Self {
         Self {
-            title,
-            path,
-            id: Uuid::new_v4(),
-            created_at: now,
-            accessed_at: now,
             use_frontmatter: None,
             frontmatter_dirs: BTreeMap::new(),
             note_location: String::new(),
@@ -85,6 +77,111 @@ impl Source {
             ignore: default_ignore(),
         }
     }
+}
+
+impl SourceConfig {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct SourceRecord {
+    pub title: String,
+    pub path: PathBuf,
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub accessed_at: DateTime<Utc>,
+    #[serde(flatten, default)]
+    pub legacy: SourceConfig,
+}
+
+#[derive(Serialize, Clone)]
+pub struct Source {
+    pub title: String,
+    pub path: PathBuf,
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub accessed_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_frontmatter: Option<bool>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub frontmatter_dirs: BTreeMap<String, bool>,
+    pub note_location: String,
+    pub asset_location: String,
+    pub ignore: Vec<String>,
+}
+
+impl Source {
+    pub fn new(title: String, path: PathBuf) -> Self {
+        let now = Utc::now();
+        let record = SourceRecord {
+            title,
+            path,
+            id: Uuid::new_v4(),
+            created_at: now,
+            accessed_at: now,
+            legacy: SourceConfig::default(),
+        };
+        Self::from_parts(record, SourceConfig::default())
+    }
+
+    pub fn from_parts(record: SourceRecord, config: SourceConfig) -> Self {
+        Self {
+            title: record.title,
+            path: record.path,
+            id: record.id,
+            created_at: record.created_at,
+            accessed_at: record.accessed_at,
+            use_frontmatter: config.use_frontmatter,
+            frontmatter_dirs: config.frontmatter_dirs,
+            note_location: config.note_location,
+            asset_location: config.asset_location,
+            ignore: config.ignore,
+        }
+    }
+
+    pub fn record(&self) -> SourceRecord {
+        SourceRecord {
+            title: self.title.clone(),
+            path: self.path.clone(),
+            id: self.id,
+            created_at: self.created_at,
+            accessed_at: self.accessed_at,
+            legacy: SourceConfig::default(),
+        }
+    }
+
+    pub fn config(&self) -> SourceConfig {
+        SourceConfig {
+            use_frontmatter: self.use_frontmatter,
+            frontmatter_dirs: self.frontmatter_dirs.clone(),
+            note_location: self.note_location.clone(),
+            asset_location: self.asset_location.clone(),
+            ignore: self.ignore.clone(),
+        }
+    }
+}
+
+pub fn source_config_path(source_path: &Path) -> PathBuf {
+    source_path.join(".limestone").join("config.json")
+}
+
+pub fn load_source_config(source_path: &Path) -> Option<SourceConfig> {
+    let text = fs::read_to_string(source_config_path(source_path)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+pub fn save_source_config(source_path: &Path, config: &SourceConfig) -> std::io::Result<()> {
+    let path = source_config_path(source_path);
+    if config.is_default() {
+        return match fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        };
+    }
+    let json = serde_json::to_string_pretty(config)?;
+    atomic_write(&path, json.as_bytes())
 }
 
 // yup
@@ -101,7 +198,7 @@ pub struct Sources {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_source_id: Option<Uuid>,
     #[serde(default)]
-    pub sources: Vec<Source>,
+    pub sources: Vec<SourceRecord>,
 }
 
 impl Default for Sources {
@@ -118,8 +215,16 @@ fn default_asset_location() -> String {
     "assets".to_string()
 }
 
+fn is_default_asset_location(v: &str) -> bool {
+    v == "assets"
+}
+
 fn default_ignore() -> Vec<String> {
     vec![".*".to_string()]
+}
+
+fn is_default_ignore(v: &[String]) -> bool {
+    v == [".*"]
 }
 
 pub fn create_source(
@@ -1297,6 +1402,28 @@ mod tests {
         assert_eq!(d.id, "id-a");
         assert!(d.existing && !d.moved && !d.rewrite_id);
         assert_eq!(p.delete_ids, vec!["id-gone".to_string()]);
+    }
+
+    #[test]
+    fn source_config_round_trips_and_default_removes_the_file() {
+        let tmp = std::env::temp_dir().join(format!("ls-source-config-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        save_source_config(&tmp, &SourceConfig::default()).unwrap();
+        assert!(!source_config_path(&tmp).exists());
+        assert!(load_source_config(&tmp).is_none());
+
+        let mut config = SourceConfig::default();
+        config.frontmatter_dirs.insert("repo".into(), false);
+        save_source_config(&tmp, &config).unwrap();
+        let text = fs::read_to_string(source_config_path(&tmp)).unwrap();
+        assert!(!text.contains("asset_location"));
+        assert_eq!(load_source_config(&tmp), Some(config));
+
+        save_source_config(&tmp, &SourceConfig::default()).unwrap();
+        assert!(!source_config_path(&tmp).exists());
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
