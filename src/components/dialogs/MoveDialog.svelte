@@ -422,8 +422,9 @@
 		gap: 8px;
 		min-width: 0;
 		margin: 0;
-		font-size: 16px;
+		font-size: 15px;
 		font-weight: 600;
+		letter-spacing: -0.01em;
 	}
 
 	.search {
@@ -732,7 +733,7 @@
 	.btn.primary {
 		background: var(--color-accent);
 		font-weight: 600;
-		color: #fff;
+		color: var(--color-accent-contrast);
 	}
 
 	.btn.primary:hover:not(:disabled) {
