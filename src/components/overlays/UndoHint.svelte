@@ -47,7 +47,7 @@
 		height: 34px;
 		padding: 0 6px 0 14px;
 		border-radius: 17px;
-		background: var(--chip-bg);
+		background: linear-gradient(var(--chip-bg), var(--chip-bg)), var(--color-bg);
 		color: var(--color-text-secondary);
 		font-family: var(--font-ui);
 		font-size: 12.5px;

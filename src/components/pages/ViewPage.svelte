@@ -992,7 +992,7 @@
     .view-inner {
         max-width: var(--view-max-width, 1200px);
         margin: 0 auto;
-        padding: 0 24px;
+        padding: 0 24px 72px;
     }
 
     /* No size of its own: the bar hangs off this corner, and an empty box would otherwise sit

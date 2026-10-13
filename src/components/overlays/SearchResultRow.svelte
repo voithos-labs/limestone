@@ -2,7 +2,8 @@
 	import type { SearchResult } from '#lib/services/search.js';
 	import { sourceName, type Source } from '#lib/models/Source.js';
 	import { highlightTitle, highlightSnippet } from '#lib/util/dom.js';
-	import { Folder, FolderInput, Hash, TextAlignStart, Box, Check } from '@lucide/svelte';
+	import { Folder, FolderInput, Hash, TextAlignStart, Box, Check, Trash2 } from '@lucide/svelte';
+	import { DELETED } from '#lib/models/View.svelte.js';
 
 	let {
 		result,
@@ -34,7 +35,9 @@
 	<span class="result-main">
 		<span class="result-line">
 			{#if result.kind === 'view'}
-				{#if result.emoji}
+				{#if result.id === DELETED}
+					<Trash2 size={14} />
+				{:else if result.emoji}
 					<span class="result-emoji">{result.emoji}</span>
 				{:else}
 					<Box size={14} />
@@ -55,7 +58,7 @@
 				<span class="result-path">{parentPath(result.rel_path)}</span>
 			{/if}
 			{#if result.deleted}
-				<span class="result-deleted">Deleted</span>
+				<span class="result-deleted"><Trash2 size={11} />Deleted</span>
 			{/if}
 		</span>
 		{#if result.snippet}
@@ -156,6 +159,9 @@
 	}
 
 	.result-deleted {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
 		flex-shrink: 0;
 		padding: 1px 6px;
 		border-radius: 999px;

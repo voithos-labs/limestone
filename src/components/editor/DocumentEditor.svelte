@@ -1067,6 +1067,7 @@
 		if (!handle) return;
 		const h = handle;
 		const ed = editor;
+		const go = back;
 		const body = instance?.getSource() ?? editorText.text;
 		if (saveTimer) {
 			clearTimeout(saveTimer);
@@ -1078,7 +1079,10 @@
 		deleted = true;
 		try {
 			const kept = await h.delete();
-			ed?.closeTab(tab.id, false);
+			if (go) {
+				go.go();
+				tab.forward.length = 0;
+			} else ed?.closeTab(tab.id, false);
 			if (kept) undoHint.show('Deleted', () => undoDelete(h, ed, body));
 		} catch (e) {
 			deleted = false;
@@ -1236,6 +1240,10 @@
 
 	.unavailable.flow {
 		min-height: 320px;
+	}
+
+	.unavailable :global(.doc-hero) {
+		padding-top: 1rem;
 	}
 
 	.ua-headline {
