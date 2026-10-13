@@ -119,20 +119,34 @@
 		const tags = of('tags');
 		const updated = of('updated_at');
 		const keep = (ids: string[]) => ids.filter(Boolean);
+		const onlyTodo = {
+			op: 'and' as const,
+			children: [{ field_id: tags, op: 'has_any', value: [TODO] }]
+		};
+		const todoList = () =>
+			ViewFace.create(
+				'list',
+				keep([`${TODO}/done`, title, tags, `${TODO}/due`]),
+				onlyTodo,
+				[{ field_id: `${TODO}/due`, direction: 'asc', nulls: 'last' }],
+				{ right: [`${TODO}/due`], hide_tag: TODO, group_by: `${TODO}/done` }
+			);
 		switch (id) {
 			case 'project': {
 				const dash = ViewFace.create('dashboard');
 				dash.config.sections = dashboardSections(dash).map((s) =>
 					s.id === 'done' ? { ...s, hidden: true } : s
 				);
-				const tasks = ViewFace.create(
-					'list',
-					keep([`${TODO}/done`, title, tags, `${TODO}/due`]),
-					{ op: 'and', children: [{ field_id: tags, op: 'has_any', value: [TODO] }] },
-					[{ field_id: `${TODO}/due`, direction: 'asc', nulls: 'last' }],
-					{ right: [tags, `${TODO}/due`], hide_tag: TODO }
+				const tasks = todoList();
+				tasks.name = 'Todo List';
+				const board = ViewFace.create(
+					'kanban',
+					keep([title, tags, `${TODO}/due`, updated]),
+					onlyTodo,
+					[],
+					{ group_by: `${TODO}/status`, right: [`${TODO}/due`, updated], hide_tag: TODO }
 				);
-				tasks.name = 'Tasks';
+				board.name = 'Todo Board';
 				const docs = ViewFace.create(
 					'list',
 					keep([title, tags, updated]),
@@ -141,23 +155,11 @@
 					{ layout: 'grid' }
 				);
 				docs.name = 'Documents';
-				view.faces = [dash, tasks, docs];
+				view.faces = [dash, tasks, board, docs];
 				break;
 			}
 			case 'todo':
-				view.faces = [
-					ViewFace.create(
-						'list',
-						keep([`${TODO}/done`, title, tags, `${TODO}/due`]),
-						{ op: 'and', children: [{ field_id: tags, op: 'has_any', value: [TODO] }] },
-						[{ field_id: `${TODO}/due`, direction: 'asc', nulls: 'last' }],
-						{
-							right: [`${TODO}/due`],
-							hide_tag: TODO,
-							group_by: `${TODO}/done`
-						}
-					)
-				];
+				view.faces = [todoList()];
 				break;
 			case 'journal':
 				view.faces = [ViewFace.create('journal', keep([title, tags, updated]))];
