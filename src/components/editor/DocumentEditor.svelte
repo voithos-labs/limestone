@@ -954,10 +954,15 @@
 		if (!/\.md$/i.test(clean)) return;
 		const dir = handle.relPath.includes('/') ? handle.relPath.replace(/\/[^/]*$/, '') : '';
 		const target = clean.startsWith('.') ? joinRel(dir, clean) : clean.replace(/^\//, '');
-		void openWikiLink(target);
+		void openWikiLink(target, undefined, false, opensNewTab(event.ctrlKey || event.metaKey));
 	}
 
-	async function openWikiLink(target: string, heading?: string, side = false): Promise<void> {
+	async function openWikiLink(
+		target: string,
+		heading?: string,
+		side = false,
+		newTab = false
+	): Promise<void> {
 		const h = handle;
 		if (!h || !editor) return;
 		const hit = await resolveWikiLink(h.source.id, target);
@@ -979,13 +984,15 @@
 		}
 		const state = heading ? { [OPEN_AT_HEADING]: heading } : {};
 		if (side) editor.beside().openDetail({ type: 'markdown', handle: doc }, h.title);
+		else if (newTab) editor.openDoc(doc, state);
 		else editor.showDocInTab(tab, doc, state);
 	}
 
-	async function openTagView(slug: string, side = false): Promise<void> {
+	async function openTagView(slug: string, side = false, newTab = false): Promise<void> {
 		if (!editor) return;
 		const view = await View.forUnit(tagId(slug), slug);
 		if (side) editor.beside().openDetail({ type: 'view', view }, handle?.title ?? slug);
+		else if (newTab) editor.openView(view);
 		else editor.showViewInTab(tab, view);
 	}
 
@@ -998,11 +1005,16 @@
 		return true;
 	}
 
+	function opensNewTab(modified: boolean): boolean {
+		return mode === 'live' && modified;
+	}
+
 	function onActivate(e: Event): void {
-		const { kind, target, fragment, side } = (e as CustomEvent<ActivateDetail>).detail;
-		if (kind === 'wikilink' && target) void openWikiLink(target, fragment, side);
+		const { kind, target, fragment, side, newTab } = (e as CustomEvent<ActivateDetail>).detail;
+		const inNewTab = opensNewTab(!!newTab);
+		if (kind === 'wikilink' && target) void openWikiLink(target, fragment, side, inNewTab);
 		else if (kind === 'wikilink' && fragment) void jumpToHeading(fragment);
-		else if (kind === 'tag') void openTagView(target, side);
+		else if (kind === 'tag') void openTagView(target, side, inNewTab);
 	}
 
 	$effect(() => {

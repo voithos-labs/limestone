@@ -32,7 +32,13 @@
 	function onClick(e: MouseEvent): void {
 		if (!isActivationClick(e)) return;
 		e.preventDefault();
-		const detail: ActivateDetail = { kind: 'wikilink', target, fragment, side: e.shiftKey };
+		const detail: ActivateDetail = {
+			kind: 'wikilink',
+			target,
+			fragment,
+			side: e.shiftKey,
+			newTab: e.ctrlKey || e.metaKey
+		};
 		el?.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { bubbles: true, detail }));
 	}
 </script>
