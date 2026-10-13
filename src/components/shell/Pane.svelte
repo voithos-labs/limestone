@@ -15,12 +15,10 @@
 	let {
 		editor,
 		session,
-		addSourceSignal,
 		onAddSource
 	}: {
 		editor: EditorState;
 		session: Session;
-		addSourceSignal: number;
 		onAddSource: () => void;
 	} = $props();
 
@@ -66,7 +64,7 @@
 			{/if}
 		{/key}
 	{:else if editor.focused?.kind === 'settings'}
-		<SettingsPage viewTab={session.getViewTab('settings')} {session} {addSourceSignal} />
+		<SettingsPage viewTab={session.getViewTab('settings')} {session} />
 	{:else}
 		<div class="panel-placeholder">No document selected</div>
 	{/if}

@@ -1210,6 +1210,7 @@
 			header={flow ? undefined : documentHeader}
 			theme={currentThemeType()}
 			presentationMode={mode}
+			linkClick="plain"
 			selectionToolbar={mode === 'live'}
 			blockDragHandles={true}
 			searchBarAnchor={flow ? findBarAnchor : undefined}
