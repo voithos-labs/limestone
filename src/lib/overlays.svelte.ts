@@ -174,6 +174,7 @@ export interface CtxItem {
 	keepOpen?: boolean; // the menu stays up after this action (toggles, choices)
 	children?: CtxEntry[]; // a flyout instead of an action
 	aux?: { icon: Component; label: string; action: () => void }; // a second way, on the row's right
+	pill?: number; // the label drawn as a pill in this colour
 }
 
 export interface CtxDivider {
@@ -181,10 +182,14 @@ export interface CtxDivider {
 	label?: string; // a titled rule, heading the group under it
 }
 
-export type CtxEntry = CtxItem | CtxDivider;
+export interface CtxSwatches {
+	swatches: { active: number | null; pick: (color: number) => void };
+}
+
+export type CtxEntry = CtxItem | CtxDivider | CtxSwatches;
 
 export function isCtxItem(e: CtxEntry): e is CtxItem {
-	return !('divider' in e);
+	return !('divider' in e) && !('swatches' in e);
 }
 
 type CtxSource = CtxEntry[] | (() => CtxEntry[]);

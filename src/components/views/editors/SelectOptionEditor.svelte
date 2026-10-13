@@ -3,16 +3,7 @@
 	 * todo:
 	 */
 	import { untrack } from 'svelte';
-	import {
-		Check,
-		Plus,
-		Pencil,
-		PaintBucket,
-		Trash2,
-		ArrowLeft,
-		X,
-		EllipsisVertical
-	} from '@lucide/svelte';
+	import { Check, Plus, Pencil, Trash2, ArrowLeft, X, EllipsisVertical } from '@lucide/svelte';
 	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import type { ViewField } from '#lib/models/View.svelte.js';
 	import { isStatusField, saveStatuses, seenOptionValues } from '#lib/models/View.svelte.js';
@@ -57,11 +48,9 @@
 	function rowMenu(opt: TagOption): CtxEntry[] {
 		return [
 			{ label: 'Rename', icon: Pencil, action: () => startRename(opt) },
-			{
-				label: 'Change color',
-				icon: PaintBucket,
-				children: [{ swatches: { active: opt.color, pick: (c) => setColor(opt.value, c) } }]
-			},
+			{ divider: true, label: 'Color' },
+			{ swatches: { active: opt.color, pick: (c) => setColor(opt.value, c) } },
+			{ divider: true },
 			...(status
 				? [
 						{
