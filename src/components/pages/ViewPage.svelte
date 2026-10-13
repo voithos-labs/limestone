@@ -7,7 +7,7 @@
         isSourceRoot
     } from '#lib/models/Folder.js';
     import Tag, {tagId} from '#lib/models/Tag.js';
-    import {isBuiltinUnit} from '#lib/models/View.svelte.js';
+    import {DELETED, isBuiltinUnit} from '#lib/models/View.svelte.js';
     import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
     import {openProjectSetup} from '#lib/views/project.svelte.js';
     import {metaDialog} from '#lib/overlays.svelte.js';
@@ -99,7 +99,9 @@
     // a doc face makes its own entry
     // a journal adds through the day itself (its entry, or the body's inline add row), so the
     // fab would only ask a question it can't answer: new note in which day?
-    const showNewFab = $derived(activeFace?.type !== 'doc' && activeFace?.type !== 'journal');
+    const showNewFab = $derived(
+        activeFace?.type !== 'doc' && activeFace?.type !== 'journal' && view.unit !== DELETED
+    );
 
     // a mode bar docked here (the history scrubber) owns the bottom of the page; the fab steps
     // aside for it rather than sitting on top

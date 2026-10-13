@@ -15,6 +15,7 @@
 
 	let el: HTMLElement | null = $state(null);
 	let unresolved = $state(false);
+	let deleted = $state(false);
 
 	$effect(() => {
 		linkIndex.version;
@@ -22,7 +23,9 @@
 		if (!sourceId || !target) return;
 		let live = true;
 		resolveWikiLink(sourceId, target).then((hit) => {
-			if (live) unresolved = hit === null;
+			if (!live) return;
+			unresolved = hit === null;
+			deleted = !!hit?.deleted;
 		});
 		return () => {
 			live = false;
@@ -38,7 +41,8 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<span bind:this={el} class="wikilink" class:unresolved onclick={onClick}>{label}</span>
+<span bind:this={el} class="wikilink" class:unresolved class:deleted onclick={onClick}>{label}</span
+>
 
 <style>
 	.wikilink {
@@ -52,5 +56,10 @@
 	.wikilink.unresolved {
 		color: var(--md-unresolved-color);
 		text-decoration-style: dashed;
+	}
+
+	.wikilink.deleted {
+		opacity: 0.6;
+		text-decoration-style: dotted;
 	}
 </style>

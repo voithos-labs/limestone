@@ -6,6 +6,9 @@ import wasmUrl from '@automerge/automerge/automerge.wasm?url';
 import { fromBase64, toBase64 } from '#lib/services/assets.js';
 import { getAppInfo } from '#lib/models/Settings.svelte.js';
 import { registerFlush } from '#lib/services/platform.js';
+import { execute, select } from '#lib/services/db.js';
+import { defaultNoteDir, getSource } from '#lib/models/Source.js';
+import { sanitizeSegment } from '#lib/util/paths.js';
 
 // region store
 // ── Per-Doc Automerge Store ──────────────────────────────────────────────────────────
@@ -168,6 +171,51 @@ async function adoptHistory({ doc_id, source_id, holder_source_id }: HistoryOrph
 void listen<HistoryOrphan>('history-orphan', (e) => {
 	adoptHistory(e.payload).catch((err) => console.error('history adopt failed', err));
 });
+
+interface HistoryDeleted {
+	doc_id: string;
+	source_id: string;
+	deleted_at: number;
+}
+
+function titleFromText(text: string): string {
+	const line = text
+		.split('\n')
+		.map((l) => l.trim())
+		.find((l) => l.length > 0);
+	return line?.replace(/^#+\s*/, '').slice(0, 80) || 'Untitled';
+}
+
+async function recordDeleted({ doc_id, source_id, deleted_at }: HistoryDeleted): Promise<void> {
+	const [row] = await select<{ id: string }>('SELECT id FROM documents WHERE id = ?1', [doc_id]);
+	if (row) return;
+	const text = await lastHistoryText({ id: doc_id, source: { id: source_id } });
+	if (text === null) return;
+	const source = await getSource(source_id);
+	const title = titleFromText(text);
+	const dir = defaultNoteDir(source);
+	const base = sanitizeSegment(title) || 'Untitled';
+	const relPath = dir ? `${dir}/${base}.md` : `${base}.md`;
+	await execute(
+		`INSERT OR IGNORE INTO documents (id, source_id, rel_path, title, deleted_at, created_at, updated_at, accessed_at)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?5, ?5)`,
+		[doc_id, source_id, relPath, title, deleted_at || Date.now()]
+	);
+}
+
+void listen<HistoryDeleted>('history-deleted', (e) => {
+	recordDeleted(e.payload).catch((err) => console.error('deleted record failed', err));
+});
+
+export async function lastHistoryText(ref: DocRef): Promise<string | null> {
+	try {
+		const last = (await historyCheckpoints(ref)).at(-1);
+		const text = last ? await historyTextAt(ref, last) : '';
+		return text.trim() ? text : null;
+	} catch {
+		return null;
+	}
+}
 
 export async function moveHistory(
 	docId: string,

@@ -60,6 +60,47 @@ class ToastController {
 
 export const toasts = new ToastController();
 
+export interface UndoHint {
+	label: string;
+	run: () => unknown;
+}
+
+const UNDO_HINT_MS = 3000;
+
+class UndoHintController {
+	current = $state<UndoHint | null>(null);
+	visible = $state(false);
+	private timer: ReturnType<typeof setTimeout> | null = null;
+
+	show(label: string, run: () => unknown): void {
+		this.hide();
+		this.current = { label, run };
+		this.visible = true;
+		this.timer = setTimeout(() => this.hide(), UNDO_HINT_MS);
+	}
+
+	hide(): void {
+		if (this.timer) clearTimeout(this.timer);
+		this.timer = null;
+		this.visible = false;
+	}
+
+	dismiss(): void {
+		this.hide();
+		this.current = null;
+	}
+
+	fire(): boolean {
+		const hint = this.current;
+		if (!hint) return false;
+		this.dismiss();
+		void hint.run();
+		return true;
+	}
+}
+
+export const undoHint = new UndoHintController();
+
 export function errorKind(e: unknown): string {
 	const kind = (e as { kind?: unknown } | null)?.kind;
 	return typeof kind === 'string' ? kind : 'other';

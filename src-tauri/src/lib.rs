@@ -9,7 +9,7 @@ mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 pub async fn create_pool(
     path: &std::path::Path,
@@ -267,6 +267,8 @@ pub fn run() {
             commands::document_commands::read_document_tags,
             commands::document_commands::strip_document_tag,
             commands::document_commands::delete_document,
+            commands::document_commands::restore_document,
+            commands::document_commands::purge_document,
             commands::bulk_ops_commands::bulk_set_view_field,
             commands::bulk_ops_commands::bulk_rename_view_field,
             commands::bulk_ops_commands::bulk_rename_view_option,

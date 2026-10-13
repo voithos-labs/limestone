@@ -575,6 +575,7 @@ pub fn resolve_plan(
     diff: &ReconciliationDiff,
     frontmatter: &[(String, Option<serde_json::Value>)],
     db_docs: &HashMap<String, (String, i64)>,
+    deleted_ids: &HashSet<String>,
     foreign_ids: &HashSet<String>,
 ) -> ReconcilePlan {
     let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
@@ -583,6 +584,7 @@ pub fn resolve_plan(
         .collect();
     let db_path_to_id: HashMap<&str, &str> = db_docs
         .iter()
+        .filter(|(id, _)| !deleted_ids.contains(id.as_str()))
         .map(|(id, (path, _))| (path.as_str(), id.as_str()))
         .collect();
     let unchanged: HashSet<&str> = diff.unchanged.iter().map(|p| p.as_str()).collect();
@@ -683,7 +685,7 @@ pub fn resolve_plan(
         .collect();
     let delete_ids: Vec<String> = db_docs
         .keys()
-        .filter(|id| !keep.contains(id.as_str()))
+        .filter(|id| !keep.contains(id.as_str()) && !deleted_ids.contains(id.as_str()))
         .cloned()
         .collect();
 
@@ -751,8 +753,17 @@ pub async fn apply_plan(
 
     let mut tx = db.begin().await?;
 
+    let now = Utc::now().timestamp_millis();
     let mut unlinked_tags: Vec<String> = Vec::new();
     for id in &plan.delete_ids {
+        if crate::services::fs::history_dir(source_path, id).is_dir() {
+            sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2")
+                .bind(now)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            continue;
+        }
         let tag_ids: Vec<String> =
             sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")
                 .bind(id)
@@ -799,7 +810,8 @@ pub async fn apply_plan(
 
         let wrote = if doc.existing {
             sqlx::query(
-                "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4, updated_at = ?5
+                "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4, updated_at = ?5,
+                     deleted_at = NULL
                  WHERE id = ?6 AND coalesce(mtime, 0) = ?7",
             )
             .bind(&doc.rel_path)
@@ -820,6 +832,10 @@ pub async fn apply_plan(
             sqlx::query(
                 "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT(id) DO UPDATE SET source_id = excluded.source_id, rel_path = excluded.rel_path,
+                     title = excluded.title, mtime = excluded.mtime, properties = excluded.properties,
+                     updated_at = excluded.updated_at, folder_id = NULL, deleted_at = NULL
+                     WHERE documents.deleted_at IS NOT NULL
                  ON CONFLICT DO NOTHING",
             )
             .bind(&doc.id)
@@ -1189,8 +1205,8 @@ pub async fn reconcile_source(
     tx.commit().await?;
     sync_folder_meta(db, source, git_off).await?;
 
-    let db_rows: Vec<(String, String, i64)> = sqlx::query_as(
-        "SELECT id, rel_path, coalesce(mtime, 0) FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
+    let db_rows: Vec<(String, String, i64, bool)> = sqlx::query_as(
+        "SELECT id, rel_path, coalesce(mtime, 0), deleted_at IS NOT NULL FROM documents WHERE source_id = ?1",
     )
     .bind(source_id)
     .fetch_all(db)
@@ -1198,11 +1214,17 @@ pub async fn reconcile_source(
 
     let db_entries: Vec<(String, i64)> = db_rows
         .iter()
-        .map(|(_, path, mtime)| (path.clone(), *mtime))
+        .filter(|(_, _, _, deleted)| !deleted)
+        .map(|(_, path, mtime, _)| (path.clone(), *mtime))
+        .collect();
+    let deleted_ids: HashSet<String> = db_rows
+        .iter()
+        .filter(|(_, _, _, deleted)| *deleted)
+        .map(|(id, _, _, _)| id.clone())
         .collect();
     let db_docs: HashMap<String, (String, i64)> = db_rows
         .into_iter()
-        .map(|(id, path, mtime)| (id, (path, mtime)))
+        .map(|(id, path, mtime, _)| (id, (path, mtime)))
         .collect();
 
     let diff = diff_against_db(&db_entries, &fs_entries);
@@ -1216,14 +1238,14 @@ pub async fn reconcile_source(
     let frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
 
     let foreign_ids: HashSet<String> =
-        sqlx::query_scalar("SELECT id FROM documents WHERE source_id != ?1")
+        sqlx::query_scalar("SELECT id FROM documents WHERE source_id != ?1 AND deleted_at IS NULL")
             .bind(source_id)
             .fetch_all(db)
             .await?
             .into_iter()
             .collect();
 
-    let plan = resolve_plan(&diff, &frontmatter, &db_docs, &foreign_ids);
+    let plan = resolve_plan(&diff, &frontmatter, &db_docs, &deleted_ids, &foreign_ids);
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
@@ -1281,7 +1303,35 @@ mod tests {
             .map(|(id, p)| (id.to_string(), (p.to_string(), 0)))
             .collect();
         let foreign_ids: HashSet<String> = foreign.iter().map(|s| s.to_string()).collect();
-        resolve_plan(&diff, &frontmatter, &db_docs, &foreign_ids)
+        resolve_plan(&diff, &frontmatter, &db_docs, &HashSet::new(), &foreign_ids)
+    }
+
+    #[test]
+    fn deleted_row_is_revived_by_its_id_and_never_counted_missing() {
+        let diff = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![("back/a.md".to_string(), 1)],
+            missing: vec![],
+        };
+        let frontmatter = vec![("back/a.md".to_string(), fm("id-a"))];
+        let db_docs: HashMap<String, (String, i64)> =
+            [("id-a".to_string(), ("a.md".to_string(), 0))].into();
+        let deleted: HashSet<String> = ["id-a".to_string()].into();
+        let p = resolve_plan(&diff, &frontmatter, &db_docs, &deleted, &HashSet::new());
+        let d = doc(&p, "back/a.md");
+        assert_eq!(d.id, "id-a");
+        assert!(d.existing && d.moved && !d.rewrite_id);
+        assert!(p.delete_ids.is_empty());
+
+        let empty = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![],
+            missing: vec![],
+        };
+        let p = resolve_plan(&empty, &[], &db_docs, &deleted, &HashSet::new());
+        assert!(p.docs.is_empty() && p.delete_ids.is_empty());
     }
 
     fn doc<'a>(p: &'a ReconcilePlan, path: &str) -> &'a ResolvedDoc {

@@ -20,6 +20,7 @@ const CONTAINER_MAX_RESULTS = 5;
 export interface SearchScope {
 	sql: string;
 	params: unknown[];
+	includeDeleted?: boolean;
 }
 
 interface DocRow {
@@ -28,6 +29,7 @@ interface DocRow {
 	rel_path: string | null;
 	source_id: string | null;
 	accessed_at: number | null;
+	deleted_at: number | null;
 }
 
 interface FtsRow extends DocRow {
@@ -60,6 +62,12 @@ function scoped(scope?: SearchScope): { and: string; params: unknown[] } {
 		: { and: '', params: [] };
 }
 
+// the global search reveals deleted notes, since a name is what people remember; a scoped one
+// (a view, the link menu) sees only what its scope can hold
+function liveOnly(scope?: SearchScope): string {
+	return !scope || scope.includeDeleted ? '' : ' AND d.deleted_at IS NULL';
+}
+
 function docResult(row: DocRow): SearchResult {
 	return {
 		id: row.id,
@@ -70,14 +78,15 @@ function docResult(row: DocRow): SearchResult {
 		match_indices: [],
 		kind: 'document',
 		group_type: null,
-		snippet: null
+		snippet: null,
+		deleted: !!row.deleted_at
 	};
 }
 
 async function recents(scope?: SearchScope): Promise<SearchResult[]> {
 	const s = scoped(scope);
 	const docs = await select<DocRow>(
-		`SELECT id, title, rel_path, source_id, accessed_at FROM documents d
+		`SELECT id, title, rel_path, source_id, accessed_at, deleted_at FROM documents d
 		 WHERE d.deleted_at IS NULL${s.and} ORDER BY accessed_at DESC LIMIT ?`,
 		[...s.params, MAX_RESULTS]
 	);
@@ -121,8 +130,8 @@ async function titleMatches(q: string, scope?: SearchScope): Promise<DocRow[]> {
 	const s = scoped(scope);
 	const needle = q.toLowerCase();
 	return select<DocRow>(
-		`SELECT id, title, rel_path, source_id, accessed_at FROM documents d
-		 WHERE d.deleted_at IS NULL AND instr(lower(d.title), ?) > 0${s.and}
+		`SELECT id, title, rel_path, source_id, accessed_at, deleted_at FROM documents d
+		 WHERE instr(lower(d.title), ?) > 0${liveOnly(scope)}${s.and}
 		 ORDER BY instr(lower(d.title), ?) ASC, length(d.title) ASC LIMIT ?`,
 		[needle, ...s.params, needle, TITLE_POOL]
 	);
@@ -166,10 +175,10 @@ async function ftsPass(match: string | null, scope?: SearchScope): Promise<FtsRo
 	const s = scoped(scope);
 	try {
 		return await select<FtsRow>(
-			`SELECT d.id, d.title, d.rel_path, d.source_id, d.accessed_at,
+			`SELECT d.id, d.title, d.rel_path, d.source_id, d.accessed_at, d.deleted_at,
 			        snippet(documents_fts, 1, ?, ?, '…', 16) AS snippet, bm25(documents_fts) AS bm25
 			 FROM documents_fts JOIN documents d ON d.rowid = documents_fts.rowid
-			 WHERE documents_fts MATCH ? AND d.deleted_at IS NULL${s.and}
+			 WHERE documents_fts MATCH ?${liveOnly(scope)}${s.and}
 			 ORDER BY bm25(documents_fts) LIMIT ?`,
 			[SNIPPET_MARK_START, SNIPPET_MARK_END, match, ...s.params, FTS_CANDIDATE_POOL]
 		);
@@ -333,4 +342,5 @@ export interface SearchResult {
 	group_type: string | null;
 	snippet?: string | null;
 	emoji?: string;
+	deleted?: boolean;
 }

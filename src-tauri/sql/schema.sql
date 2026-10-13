@@ -76,7 +76,7 @@ create virtual table if not exists documents_fts using fts5(doc_id unindexed, bo
 -- ── Indexes ──────────────────────────────────────────────────────────────────────────
 
 create index if not exists idx_documents_source on documents(source_id);
-create unique index if not exists idx_documents_rel_path on documents(source_id, rel_path);
+create unique index if not exists idx_documents_rel_path on documents(source_id, rel_path) where deleted_at is null;
 create index if not exists idx_documents_updated_at on documents(updated_at);
 create index if not exists idx_documents_folder on documents(folder_id);
 create index if not exists idx_folders_source on folders(source_id);

@@ -491,8 +491,39 @@ class DocHandle {
 	}
 
 	async restore(body: string, overwrite: boolean): Promise<void> {
+		if (this.deletedAt) return this.revive(body);
 		this.hasFile = overwrite;
 		await this.saveContent(body, { rebuildFrontmatter: true });
+	}
+
+	// bring back from the dead!
+	private async revive(body: string): Promise<void> {
+		const wanted = this._relPath;
+		const base = wanted.split('/').pop()!.replace(/\.md$/i, '');
+		const relPath = (await DocHandle.pathTaken(this.source, wanted))
+			? await DocHandle.uniqueRelPath(this.source, dirOf(wanted), base)
+			: wanted;
+		this.place(relPath, relPath.split('/').pop()!.replace(/\.md$/i, ''));
+		await this.refreshMeta();
+		this.updatedAt = new Date();
+		const fm = yaml.dump(this.toFrontmatter(), { lineWidth: -1, sortKeys: false });
+		const contents = `---\n${fm}---\n${body}`;
+		await invoke('restore_document', {
+			sourceId: this.source.id,
+			id: this.id,
+			relPath,
+			contents,
+			updatedAt: this.updatedAt.getTime()
+		});
+		this.deletedAt = undefined;
+		this.hasFile = true;
+		this.idOnDisk = true;
+		this.recordHistory(body);
+	}
+
+	async purge(): Promise<void> {
+		await invoke('purge_document', { id: this.id });
+		await removeHistory(this).catch(() => {});
 	}
 
 	adoptAsDraft(): void {
@@ -504,22 +535,28 @@ class DocHandle {
 	}
 
 	/** Delete the document from disk and the index. */
-	async delete(): Promise<void> {
-		await invoke('delete_document', {
+	async delete(): Promise<boolean> {
+		const kept = await invoke<boolean>('delete_document', {
 			id: this.id,
 			sourceId: this.source.id,
 			relPath: this._relPath
 		});
-		removeHistory(this).catch((e) => console.error('history remove failed', e));
+		if (kept) this.deletedAt = new Date();
+		else removeHistory(this).catch((e) => console.error('history remove failed', e));
+		return kept;
 	}
 
 	static async trashAt(source: Source, relPath: string): Promise<string | null> {
 		const [row] = await select<{ id: string }>(
-			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2`,
+			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2 AND deleted_at IS NULL`,
 			[source.id, relPath]
 		);
-		await invoke('delete_document', { id: row?.id ?? null, sourceId: source.id, relPath });
-		if (row) {
+		const kept = await invoke<boolean>('delete_document', {
+			id: row?.id ?? null,
+			sourceId: source.id,
+			relPath
+		});
+		if (row && !kept) {
 			removeHistory({ id: row.id, source }).catch((e) => console.error('history remove failed', e));
 		}
 		return row?.id ?? null;

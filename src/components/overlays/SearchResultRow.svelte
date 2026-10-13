@@ -23,7 +23,14 @@
 	}
 </script>
 
-<button class="result" class:row={source} class:active type="button" onclick={onSelect}>
+<button
+	class="result"
+	class:row={source}
+	class:active
+	class:deleted={result.deleted}
+	type="button"
+	onclick={onSelect}
+>
 	<span class="result-main">
 		<span class="result-line">
 			{#if result.kind === 'view'}
@@ -46,6 +53,9 @@
 			<span class="result-title">{@html highlightTitle(result.title, result.match_indices)}</span>
 			{#if result.kind === 'document' && parentPath(result.rel_path)}
 				<span class="result-path">{parentPath(result.rel_path)}</span>
+			{/if}
+			{#if result.deleted}
+				<span class="result-deleted">Deleted</span>
 			{/if}
 		</span>
 		{#if result.snippet}
@@ -139,6 +149,19 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.result.deleted .result-title {
+		color: var(--color-text-secondary);
+	}
+
+	.result-deleted {
+		flex-shrink: 0;
+		padding: 1px 6px;
+		border-radius: 999px;
+		background: var(--chip-bg);
+		color: var(--color-ui-muted);
+		font-size: 11px;
 	}
 
 	.result-snippet {

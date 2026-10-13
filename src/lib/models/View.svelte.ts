@@ -292,6 +292,8 @@ export function isBuiltinUnit(unitId: string): boolean {
 	return unitId in BUILTIN_UNITS;
 }
 
+export const DELETED = 'deleted';
+
 export function isBuiltinField(field: Pick<ViewField, 'id'>): boolean {
 	return BUILTIN_FIELD_IDS.has(field.id);
 }
@@ -517,6 +519,7 @@ export function folderPropKey(path: string): string {
 }
 
 function compileUnit(unitId: string): CompiledFilter {
+	if (unitId === DELETED) return { sql: '', params: [] };
 	return unitId.startsWith('tag:')
 		? compileTagsLeaf('has_any', [unitId])
 		: compileFolderLeaf('in', unitId);
@@ -805,6 +808,7 @@ export interface MemberRow {
 	rel_path: string;
 	created_at: number;
 	updated_at: number;
+	deleted_at: number | null;
 	properties: string;
 	source_id: string;
 	writes_meta: number;
@@ -1058,7 +1062,12 @@ class View {
 		view.unit = unitId;
 		view.temporary = true;
 		const builtin = BUILTIN_UNITS[unitId];
-		if (builtin) {
+		if (unitId === DELETED) {
+			const ids = (['title', 'folder', 'updated_at'] as ViewFieldType[]).map(
+				(t) => view.fields.find((f) => f.type === t)!.id
+			);
+			view.faces = [ViewFace.create('list', ids)];
+		} else if (builtin) {
 			if (builtin.emoji) view.emoji = builtin.emoji;
 			const title = view.fields.find((f) => f.type === 'title')!.id;
 			const [done, ...rest] = builtin.display;
@@ -1286,6 +1295,7 @@ class View {
 		const compiled = compileFilter(memberFilter(this.filter, opts?.face, opts?.scope), this.fields);
 		if (!this.unit) return compiled;
 		const unit = compileUnit(this.subfolder ?? this.unit);
+		if (!unit.sql) return compiled;
 		if (!compiled.sql) return unit;
 		return {
 			sql: `(${unit.sql} AND ${compiled.sql})`,
@@ -1314,13 +1324,14 @@ class View {
 		const sort = opts?.face?.sort ?? [];
 		const orderBy = sort.length ? compileSort(sort, this.fields) : '';
 
-		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.properties, d.source_id,
+		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.deleted_at, d.properties, d.source_id,
 				${WRITES_META_SQL} AS writes_meta
 			FROM documents d
-			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
+			WHERE ${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
 
 		if (!idsIn) {
-			sql += ` ORDER BY ${orderBy || 'd.updated_at DESC'}`;
+			const latest = this.unit === DELETED ? 'd.deleted_at DESC' : 'd.updated_at DESC';
+			sql += ` ORDER BY ${orderBy || latest}`;
 		}
 
 		if (opts?.limit !== undefined) {
@@ -1335,13 +1346,23 @@ class View {
 		return select<MemberRow>(sql, params);
 	}
 
+	// the Deleted view is the one place deleted rows are members; everywhere else they are not
+	private liveClause(): string {
+		return this.unit === DELETED ? 'd.deleted_at IS NOT NULL' : 'd.deleted_at IS NULL';
+	}
+
 	// This face's scope (view filter + face filter + any extra scope) as compiled SQL
 	searchScope(opts?: { face?: ViewFace; scope?: FilterNode | null }): {
 		sql: string;
 		params: unknown[];
+		includeDeleted?: boolean;
 	} {
 		const compiled = this.compileScope(opts);
-		return { sql: compiled.sql, params: [...compiled.params] };
+		return {
+			sql: compiled.sql,
+			params: [...compiled.params],
+			includeDeleted: this.unit === DELETED
+		};
 	}
 
 	// total matching members
@@ -1349,7 +1370,7 @@ class View {
 		const compiled = this.compileScope(opts);
 		const sql = `SELECT COUNT(*) AS n
 			FROM documents d
-			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
+			WHERE ${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
 		const [row] = await select<{ n: number }>(sql, [...compiled.params]);
 		return row?.n ?? 0;
 	}

@@ -1,4 +1,5 @@
-import { reportError, addSourceRequest, toasts, mark } from '#lib/overlays.svelte.js';
+import { reportError, addSourceRequest, toasts, mark, undoHint } from '#lib/overlays.svelte.js';
+import { lastHistoryText } from '#lib/services/history.js';
 import View, {
 	type FilterNode,
 	type MemberRow,
@@ -496,11 +497,57 @@ export class FaceRows {
 		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		try {
 			const doc = await DocHandle.fromID(rowId);
-			await doc.delete();
-			this.rows = this.rows.filter((r) => r.id !== rowId);
-			this.total = Math.max(0, this.total - 1);
+			const kept = await doc.delete();
+			this.dropRow(rowId);
+			if (!kept) return;
+			const owner = this.view().id;
+			history.push(owner, {
+				back: () => this.restoreDoc(doc),
+				forward: async () => {
+					try {
+						await doc.delete();
+						this.dropRow(doc.id);
+					} catch (e) {
+						reportError(e, `${mark('note', doc.title)} couldn't be deleted.`);
+					}
+				}
+			});
+			undoHint.show('Deleted', () => history.undo(owner));
 		} catch (e) {
 			reportError(e, `${mark('note', title)} couldn't be deleted.`, () => this.delete(rowId));
+		}
+	}
+
+	private dropRow(rowId: string): void {
+		this.rows = this.rows.filter((r) => r.id !== rowId);
+		this.total = Math.max(0, this.total - 1);
+	}
+
+	private async restoreDoc(doc: DocHandle): Promise<void> {
+		try {
+			const text = await lastHistoryText(doc);
+			if (text === null) throw new Error('nothing to restore');
+			await doc.restore(text, false);
+			await this.load(true);
+		} catch (e) {
+			reportError(e, `${mark('note', doc.title)} couldn't be restored.`, () =>
+				this.restoreDoc(doc)
+			);
+		}
+	}
+
+	async restoreRow(rowId: string): Promise<void> {
+		await this.restoreDoc(await DocHandle.fromID(rowId));
+	}
+
+	async purge(rowId: string): Promise<void> {
+		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
+		try {
+			const doc = await DocHandle.fromID(rowId);
+			await doc.purge();
+			this.dropRow(rowId);
+		} catch (e) {
+			reportError(e, `${mark('note', title)} couldn't be deleted.`, () => this.purge(rowId));
 		}
 	}
 
@@ -890,6 +937,7 @@ class History {
 	private batch: Entry[] | null = null;
 
 	push(owner: string, entry: Entry): void {
+		undoHint.dismiss();
 		if (owner !== this.owner) {
 			this.owner = owner;
 			this.undos = [];

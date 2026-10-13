@@ -3,12 +3,14 @@ use base64::Engine;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
 use crate::commands::source_commands::find_source;
-use crate::services::fs::atomic_write;
+use crate::services::fs::{atomic_write, history_dir, history_root};
 use crate::services::Source;
+
+pub(crate) const DELETED_RETENTION_DAYS: &str = "sources.deleted_retention_days";
 
 const GITIGNORE: &[u8] = b"history/\n";
 
@@ -19,10 +21,6 @@ fn component_ok(c: &str) -> bool {
         && c != ".."
         && c.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-' || b == b'_')
-}
-
-fn history_root(source_path: &Path) -> PathBuf {
-    source_path.join(".limestone").join("history")
 }
 
 fn source_root(app: &AppHandle, source_id: &str) -> Result<PathBuf, String> {
@@ -38,7 +36,7 @@ fn doc_dir(app: &AppHandle, source_id: &str, doc_id: &str) -> Result<PathBuf, St
     if !component_ok(doc_id) {
         return Err(format!("invalid history doc id: {doc_id:?}"));
     }
-    Ok(history_root(&source_root(app, source_id)?).join(doc_id))
+    Ok(history_dir(&source_root(app, source_id)?, doc_id))
 }
 
 fn ensure_writable(source_path: &Path) -> Result<(), String> {
@@ -146,6 +144,89 @@ pub(crate) struct HistoryOrphan {
     pub holder_source_id: String,
 }
 
+#[derive(serde::Serialize, Clone)]
+pub(crate) struct HistoryDeleted {
+    pub doc_id: String,
+    pub source_id: String,
+    pub deleted_at: i64,
+}
+
+fn newest_change_ms(dir: &Path) -> i64 {
+    fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.metadata().ok()?.modified().ok())
+        .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .max()
+        .unwrap_or(0)
+}
+
+fn retention_days(app: &AppHandle) -> i64 {
+    let app_data = app.state::<crate::AppData>();
+    let settings = app_data.settings.read().unwrap();
+    crate::services::dot_get(&settings, DELETED_RETENTION_DAYS)
+        .and_then(|v| v.as_i64())
+        .unwrap_or(30)
+}
+
+pub(crate) async fn sweep_expired(app: &AppHandle, pool: &sqlx::SqlitePool, source: &Source) {
+    let days = retention_days(app);
+    if days <= 0 {
+        return;
+    }
+    let cutoff = chrono::Utc::now().timestamp_millis() - days * 24 * 60 * 60 * 1000;
+    let expired: Vec<String> = match sqlx::query_scalar(
+        "SELECT id FROM documents WHERE source_id = ?1 AND deleted_at < ?2",
+    )
+    .bind(source.id.to_string())
+    .bind(cutoff)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(ids) => ids,
+        Err(e) => {
+            eprintln!("deleted sweep failed: {e}");
+            return;
+        }
+    };
+    for id in expired {
+        if let Err(e) = purge_row(pool, &source.path, &id).await {
+            eprintln!("purge failed for {id}: {e}");
+        }
+    }
+}
+
+pub(crate) async fn purge_row(
+    pool: &sqlx::SqlitePool,
+    source_path: &Path,
+    doc_id: &str,
+) -> Result<(), String> {
+    if !component_ok(doc_id) {
+        return Err(format!("invalid history doc id: {doc_id:?}"));
+    }
+    match fs::remove_dir_all(history_dir(source_path, doc_id)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+    }
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    sqlx::query(
+        "DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = ?1)",
+    )
+    .bind(doc_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM documents WHERE id = ?1 AND deleted_at IS NOT NULL")
+        .bind(doc_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())
+}
+
 pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, source: &Source) {
     let Ok(entries) = fs::read_dir(history_root(&source.path)) else {
         return;
@@ -178,15 +259,28 @@ pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, sour
                 .await
                 .ok()
                 .flatten();
-        if let Some(holder_source_id) = holder {
-            let _ = app.emit(
-                "history-orphan",
-                HistoryOrphan {
-                    doc_id,
-                    source_id: source_id.clone(),
-                    holder_source_id,
-                },
-            );
+        match holder {
+            Some(holder_source_id) => {
+                let _ = app.emit(
+                    "history-orphan",
+                    HistoryOrphan {
+                        doc_id,
+                        source_id: source_id.clone(),
+                        holder_source_id,
+                    },
+                );
+            }
+            None => {
+                let deleted_at = newest_change_ms(&entry.path());
+                let _ = app.emit(
+                    "history-deleted",
+                    HistoryDeleted {
+                        doc_id,
+                        source_id: source_id.clone(),
+                        deleted_at,
+                    },
+                );
+            }
         }
     }
 }

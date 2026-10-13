@@ -47,7 +47,7 @@ pub(crate) async fn doc_writes_meta(
 ) -> Result<bool, String> {
     let writes: Option<bool> = sqlx::query_scalar(
         "SELECT f.writes_meta FROM documents d JOIN folders f ON f.id = d.folder_id
-         WHERE d.source_id = ?1 AND d.rel_path = ?2",
+         WHERE d.source_id = ?1 AND d.rel_path = ?2 AND d.deleted_at IS NULL",
     )
     .bind(source_id)
     .bind(rel_path)
@@ -138,6 +138,7 @@ pub(crate) async fn run_reconcile(
             unreachable: !source.path.is_dir(),
         },
     );
+    crate::commands::history_commands::sweep_expired(&app_handle, &pool, &source).await;
     crate::commands::history_commands::sweep_orphans(&app_handle, &pool, &source).await;
     if let Err(e) = services::index_fts(&pool, &source, changed).await {
         eprintln!("FTS indexing failed: {e}");
