@@ -1,6 +1,7 @@
 import type { Component } from 'svelte';
 import {
 	CaseSensitive,
+	Trash2,
 	Hash,
 	Calendar,
 	SquareCheck,
@@ -25,6 +26,7 @@ import {
 } from '@lucide/svelte';
 import { isSourceRoot } from '#lib/models/Folder.js';
 import View, {
+	DELETED,
 	isBuiltinUnit,
 	VIEW_FIELD_OPS,
 	opTakesValue,
@@ -58,6 +60,7 @@ export function getUnitIcon(unitId: string): Component {
 
 export function getViewIcon(view: View): Component {
 	if (view.unit) {
+		if (view.unit === DELETED) return Trash2;
 		if (isBuiltinUnit(view.unit)) return SquareCheck;
 		if (view.unit.startsWith('tag:')) return Hash;
 		return isSourceRoot(view.unit) ? FolderInput : Folder;

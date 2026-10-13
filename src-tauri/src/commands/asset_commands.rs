@@ -115,12 +115,18 @@ pub async fn import_source_asset(
     app: AppHandle,
     source_id: Uuid,
     src_path: String,
+    stem: Option<String>,
 ) -> Result<String, OpError> {
     let src = Path::new(&src_path);
     let bytes = std::fs::read(src).map_err(OpError::from)?;
-    let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let stem = stem.unwrap_or_else(|| {
+        src.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("file")
+            .to_string()
+    });
     let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("");
-    source_import(&app, source_id, &bytes, stem, ext)
+    source_import(&app, source_id, &bytes, &stem, ext)
 }
 
 #[tauri::command]
@@ -129,11 +135,14 @@ pub async fn import_source_asset_bytes(
     source_id: Uuid,
     data: String,
     ext: String,
+    stem: Option<String>,
 ) -> Result<String, OpError> {
-    let stem = format!(
-        "Pasted image {}",
-        chrono::Local::now().format("%Y%m%d%H%M%S")
-    );
+    let stem = stem.unwrap_or_else(|| {
+        format!(
+            "Pasted image {}",
+            chrono::Local::now().format("%Y%m%d%H%M%S")
+        )
+    });
     source_import(&app, source_id, &decode_base64(&data)?, &stem, &ext)
 }
 

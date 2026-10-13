@@ -2,7 +2,8 @@
 	import type { SearchResult } from '#lib/services/search.js';
 	import { sourceName, type Source } from '#lib/models/Source.js';
 	import { highlightTitle, highlightSnippet } from '#lib/util/dom.js';
-	import { Folder, FolderInput, Hash, TextAlignStart, Box, Check } from '@lucide/svelte';
+	import { Folder, FolderInput, Hash, TextAlignStart, Box, Check, Trash2 } from '@lucide/svelte';
+	import { DELETED } from '#lib/models/View.svelte.js';
 
 	let {
 		result,
@@ -23,11 +24,20 @@
 	}
 </script>
 
-<button class="result" class:row={source} class:active type="button" onclick={onSelect}>
+<button
+	class="result"
+	class:row={source}
+	class:active
+	class:deleted={result.deleted}
+	type="button"
+	onclick={onSelect}
+>
 	<span class="result-main">
 		<span class="result-line">
 			{#if result.kind === 'view'}
-				{#if result.emoji}
+				{#if result.id === DELETED}
+					<Trash2 size={14} />
+				{:else if result.emoji}
 					<span class="result-emoji">{result.emoji}</span>
 				{:else}
 					<Box size={14} />
@@ -46,6 +56,9 @@
 			<span class="result-title">{@html highlightTitle(result.title, result.match_indices)}</span>
 			{#if result.kind === 'document' && parentPath(result.rel_path)}
 				<span class="result-path">{parentPath(result.rel_path)}</span>
+			{/if}
+			{#if result.deleted}
+				<span class="result-deleted"><Trash2 size={11} />Deleted</span>
 			{/if}
 		</span>
 		{#if result.snippet}
@@ -139,6 +152,22 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.result.deleted .result-title {
+		color: var(--color-text-secondary);
+	}
+
+	.result-deleted {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		flex-shrink: 0;
+		padding: 1px 6px;
+		border-radius: 999px;
+		background: var(--chip-bg);
+		color: var(--color-ui-muted);
+		font-size: 11px;
 	}
 
 	.result-snippet {

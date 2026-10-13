@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { describeError, isRetryable, splitMessage } from '#lib/overlays.svelte.js';
+	import {
+		describeError,
+		isRetryable,
+		reportError,
+		splitMessage,
+		undoHint
+	} from '#lib/overlays.svelte.js';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { Editor } from '@voithos-labs/aragonite';
 	import type {
@@ -23,7 +29,7 @@
 	import { registerFlush } from '#lib/services/platform.js';
 	import { onDocChanged, onSourceReconciled, sourceName } from '#lib/models/Source.js';
 	import DocHandle, { readErrorKind, type ReadErrorKind } from '#lib/models/DocHandle.js';
-	import { historyCheckpoints, historyTextAt } from '#lib/services/history.js';
+	import { lastHistoryText } from '#lib/services/history.js';
 	import GonePage from '../pages/GonePage.svelte';
 	import GoneActions, { type GoneAction } from '../pages/GoneActions.svelte';
 	import DocHistory, { type HistoryVersion } from '#lib/models/DocHistory.svelte.js';
@@ -151,10 +157,15 @@
 	async function open(h: DocHandle) {
 		let c = '';
 		try {
-			c = await h.loadContent();
+			c = await h.loadContent().catch(async (e) => {
+				const moved =
+					readErrorKind(e) === 'not_found' && (await h.refreshPath().catch(() => false));
+				if (!moved) throw e;
+				return h.loadContent();
+			});
 		} catch (e) {
 			const kind = readErrorKind(e);
-			const fromHistory = canRestoreKind(kind) && (await lastKnownText(h)) !== null;
+			const fromHistory = canRestoreKind(kind) && (await lastHistoryText(h)) !== null;
 			if (h !== handle) return;
 			if (kind !== 'not_found' || fromHistory) {
 				unavailable = { kind, held: null, fromHistory, settled: true };
@@ -189,16 +200,6 @@
 			canRestoreKind(unavailable.kind) &&
 			(unavailable.held !== null || unavailable.fromHistory)
 	);
-
-	async function lastKnownText(h: DocHandle): Promise<string | null> {
-		try {
-			const last = (await historyCheckpoints(h.id)).at(-1);
-			const text = last ? await historyTextAt(h.id, last) : '';
-			return text.trim() ? text : null;
-		} catch {
-			return null;
-		}
-	}
 
 	async function retry(h: DocHandle, settle = false) {
 		if (!unavailable || restoring) return;
@@ -239,7 +240,7 @@
 		restoring = true;
 		restoreFailed = false;
 		try {
-			const text = u.held ?? (await lastKnownText(h));
+			const text = u.held ?? (await lastHistoryText(h));
 			if (text === null) throw new Error('nothing to restore');
 			await h.restore(text, u.kind === 'invalid_data');
 			if (h !== handle) return;
@@ -272,8 +273,20 @@
 		if (unavailable && unavailable.kind !== 'not_found')
 			out.push({ label: 'Try again', run: () => handle && retry(handle) });
 		if (editor) out.push({ label: 'Close', run: () => editor.closeTab(tab.id, false) });
+		if (handle?.deletedAt) out.push({ label: 'Delete forever', run: purgeDoc, danger: true });
 		return out;
 	});
+
+	async function purgeDoc() {
+		const h = handle;
+		if (!h) return;
+		try {
+			await h.purge();
+			editor?.closeTab(tab.id, false);
+		} catch (e) {
+			reportProblem(e, "This note couldn't be deleted.", purgeDoc);
+		}
+	}
 
 	const restoreNote = $derived(
 		restoreFailed
@@ -333,6 +346,11 @@
 					detail: 'Check that the folder lets Limestone read it, then try again.'
 				};
 			case 'not_found':
+				if (handle?.deletedAt)
+					return {
+						headline: 'this note was deleted',
+						detail: 'Restore puts it back where it was, as you last saw it.'
+					};
 				return u.held !== null
 					? {
 							headline: 'this note was deleted',
@@ -501,7 +519,7 @@
 	// ── History: the slider previews a version in the same editor, read-only ────────────
 
 	// History is the tab's too: it reopens docked at the version you left it on, until closed.
-	let history = $derived(handle ? new DocHistory(handle.id) : null);
+	let history = $derived(handle ? new DocHistory(handle) : null);
 	let historyOpen = $state(untrack(() => tab.state.history_open ?? false));
 	const storedHistoryAt = untrack(
 		() => tab.state.history_at as { heads: string[]; time: number } | null | undefined
@@ -1047,6 +1065,10 @@
 
 	async function deleteDoc() {
 		if (!handle) return;
+		const h = handle;
+		const ed = editor;
+		const go = back;
+		const body = instance?.getSource() ?? editorText.text;
 		if (saveTimer) {
 			clearTimeout(saveTimer);
 			saveTimer = null;
@@ -1056,11 +1078,24 @@
 		// editor's live text and would write the file back after the backend removed it.
 		deleted = true;
 		try {
-			await handle.delete();
-			editor?.closeTab(tab.id, false);
+			const kept = await h.delete();
+			if (go) {
+				go.go();
+				tab.forward.length = 0;
+			} else ed?.closeTab(tab.id, false);
+			if (kept) undoHint.show('Deleted', () => undoDelete(h, ed, body));
 		} catch (e) {
 			deleted = false;
 			reportProblem(e, "This note couldn't be deleted.", deleteDoc);
+		}
+	}
+
+	async function undoDelete(h: DocHandle, ed: EditorStateModel | undefined, body: string) {
+		try {
+			await h.restore(body, false);
+			ed?.openDoc(h);
+		} catch (e) {
+			reportError(e, "This note couldn't be restored.", () => undoDelete(h, ed, body));
 		}
 	}
 
@@ -1206,6 +1241,10 @@
 
 	.unavailable.flow {
 		min-height: 320px;
+	}
+
+	.unavailable :global(.doc-hero) {
+		padding-top: 1rem;
 	}
 
 	.ua-headline {

@@ -1,4 +1,5 @@
-import { reportError, addSourceRequest, toasts, mark } from '#lib/overlays.svelte.js';
+import { reportError, addSourceRequest, toasts, mark, undoHint } from '#lib/overlays.svelte.js';
+import { lastHistoryText } from '#lib/services/history.js';
 import View, {
 	type FilterNode,
 	type MemberRow,
@@ -358,7 +359,8 @@ export class FaceRows {
 		}));
 		history.push(this.view().id, {
 			back: () => this.restore(row, prev),
-			forward: () => this.restore(row, writes)
+			forward: () => this.restore(row, writes),
+			label: writeLabel(field, value)
 		});
 		if (writes.some((w) => this.fieldFiltersView(w.field.id))) this.leaving.add(row.id);
 		const before = row.properties;
@@ -433,7 +435,8 @@ export class FaceRows {
 		if (!row || !this.writable(row)) return null;
 		history.push(this.view().id, {
 			back: async () => void (await this.applyTag(rowId, slug, !on)),
-			forward: async () => void (await this.applyTag(rowId, slug, on))
+			forward: async () => void (await this.applyTag(rowId, slug, on)),
+			label: on ? `#${slug} added` : `#${slug} removed`
 		});
 		return this.applyTag(rowId, slug, on);
 	}
@@ -496,11 +499,56 @@ export class FaceRows {
 		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		try {
 			const doc = await DocHandle.fromID(rowId);
-			await doc.delete();
-			this.rows = this.rows.filter((r) => r.id !== rowId);
-			this.total = Math.max(0, this.total - 1);
+			const kept = await doc.delete();
+			this.dropRow(rowId);
+			if (!kept) return;
+			history.push(this.view().id, {
+				back: () => this.restoreDoc(doc),
+				forward: async () => {
+					try {
+						await doc.delete();
+						this.dropRow(doc.id);
+					} catch (e) {
+						reportError(e, `${mark('note', doc.title)} couldn't be deleted.`);
+					}
+				},
+				label: 'Deleted'
+			});
 		} catch (e) {
 			reportError(e, `${mark('note', title)} couldn't be deleted.`, () => this.delete(rowId));
+		}
+	}
+
+	private dropRow(rowId: string): void {
+		this.rows = this.rows.filter((r) => r.id !== rowId);
+		this.total = Math.max(0, this.total - 1);
+	}
+
+	private async restoreDoc(doc: DocHandle): Promise<void> {
+		try {
+			const text = await lastHistoryText(doc);
+			if (text === null) throw new Error('nothing to restore');
+			await doc.restore(text, false);
+			await this.load(true);
+		} catch (e) {
+			reportError(e, `${mark('note', doc.title)} couldn't be restored.`, () =>
+				this.restoreDoc(doc)
+			);
+		}
+	}
+
+	async restoreRow(rowId: string): Promise<void> {
+		await this.restoreDoc(await DocHandle.fromID(rowId));
+	}
+
+	async purge(rowId: string): Promise<void> {
+		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
+		try {
+			const doc = await DocHandle.fromID(rowId);
+			await doc.purge();
+			this.dropRow(rowId);
+		} catch (e) {
+			reportError(e, `${mark('note', title)} couldn't be deleted.`, () => this.purge(rowId));
 		}
 	}
 
@@ -877,9 +925,20 @@ export function leave(node: HTMLElement, { mode }: { mode: 'row' | 'card' }): Tr
 	};
 }
 
+function writeLabel(field: ViewField, value: unknown): string {
+	if (field.id === TODO_DONE) return value === true ? 'Done' : 'Not done';
+	const name = field.name.charAt(0).toUpperCase() + field.name.slice(1);
+	const empty =
+		value === null ||
+		value === undefined ||
+		value === '' ||
+		(Array.isArray(value) && !value.length);
+	return `${name} ${empty ? 'cleared' : 'changed'}`;
+}
+
 // Undo for view actions: one stack, owned by whichever view last pushed, cleared when its face
 // changes. Entries put the file back (or forward again); the screen follows the file
-export type Entry = { back: () => Promise<void>; forward: () => Promise<void> };
+export type Entry = { back: () => Promise<void>; forward: () => Promise<void>; label?: string };
 
 const MAX = 50;
 
@@ -890,6 +949,7 @@ class History {
 	private batch: Entry[] | null = null;
 
 	push(owner: string, entry: Entry): void {
+		undoHint.dismiss();
 		if (owner !== this.owner) {
 			this.owner = owner;
 			this.undos = [];
@@ -902,6 +962,7 @@ class History {
 		this.redos = [];
 		this.undos.push(entry);
 		if (this.undos.length > MAX) this.undos.shift();
+		if (entry.label) undoHint.show(entry.label, () => this.undo(owner));
 	}
 
 	// everything pushed inside runs as one step, undone in reverse
@@ -923,7 +984,8 @@ class History {
 			},
 			forward: async () => {
 				for (const e of list) await e.forward();
-			}
+			},
+			label: list.find((e) => e.label)?.label
 		});
 	}
 

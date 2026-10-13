@@ -789,6 +789,22 @@
 							</div>
 							<div class="info-row">
 								<div class="item-info">
+									<span class="item-label">Undo hints</span>
+									<p class="item-desc">
+										Show an Undo button for a few seconds after deleting a note.
+									</p>
+								</div>
+								<div class="info-value">
+									<Toggle
+										bind:checked={
+											() => settings.get<boolean>('general.action_hints') ?? true,
+											(v) => settings.set('general.action_hints', v)
+										}
+									/>
+								</div>
+							</div>
+							<div class="info-row">
+								<div class="item-info">
 									<span class="item-label">Open source licenses</span>
 									<p class="item-desc">Third-party components included in Limestone.</p>
 								</div>

@@ -7,7 +7,7 @@
 		isSourceRoot
 	} from '#lib/models/Folder.js';
 	import Tag, { tagId } from '#lib/models/Tag.js';
-	import { isBuiltinUnit } from '#lib/models/View.svelte.js';
+	import { DELETED, isBuiltinUnit } from '#lib/models/View.svelte.js';
 	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
 	import { openProjectSetup } from '#lib/views/project.svelte.js';
 	import { metaDialog } from '#lib/overlays.svelte.js';
@@ -45,6 +45,7 @@
 	import DocFace from '../views/faces/DocFace.svelte';
 	import { DocPicker } from '#lib/views/project.svelte.js';
 	import { convertFileSrc } from '@tauri-apps/api/core';
+	import { getSource } from '#lib/models/Source.js';
 	import Menu from '../ui/Menu.svelte';
 	import CoverSourceDialog from '../dialogs/CoverSourceDialog.svelte';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
@@ -98,7 +99,9 @@
 	// a doc face makes its own entry
 	// a journal adds through the day itself (its entry, or the body's inline add row), so the
 	// fab would only ask a question it can't answer: new note in which day?
-	const showNewFab = $derived(activeFace?.type !== 'doc' && activeFace?.type !== 'journal');
+	const showNewFab = $derived(
+		activeFace?.type !== 'doc' && activeFace?.type !== 'journal' && view.unit !== DELETED
+	);
 
 	// a mode bar docked here (the history scrubber) owns the bottom of the page; the fab steps
 	// aside for it rather than sitting on top
@@ -224,7 +227,8 @@
 		const { ref } = parseCover(cover);
 		let cancelled = false;
 		(async () => {
-			const url = convertFileSrc(ref, 'appasset');
+			const url = await coverUrlFor(ref).catch(() => '');
+			if (!url) return;
 			const img = new Image();
 			img.src = url;
 			try {
@@ -403,6 +407,17 @@
 		sourceRemoved = !sources.some((s) => s.id === sid);
 	});
 
+	// a project's cover is an asset of its source
+	const coverSourceId = $derived(
+		view.unit?.startsWith('folder:') ? folderIdSource(view.unit) : undefined
+	);
+
+	async function coverUrlFor(ref: string): Promise<string> {
+		if (!coverSourceId) return convertFileSrc(ref, 'appasset');
+		const source = await getSource(coverSourceId);
+		return convertFileSrc(`${source.path}/${ref}`);
+	}
+
 	let coverDialogOpen = $state(false);
 
 	function pickCover() {
@@ -474,6 +489,7 @@
 
 	let unitSiblings = $state<Set<string>>(new Set());
 	let unitChildren = $state<Set<string>>(new Set());
+
 	async function loadNeighbours() {
 		const unit = view.unit;
 		if (!unit) return;
@@ -491,6 +507,7 @@
 		unitSiblings = new Set(all.filter((f) => f.parentId === parent && f.id !== unit).map(slugs));
 		unitChildren = new Set(all.filter((f) => f.parentId === unit).map(slugs));
 	}
+
 	$effect(() => {
 		void view.unit;
 		void loadNeighbours();
@@ -504,6 +521,7 @@
 			return folderNameProblem(name, unitSiblings.has(name.trim().toLowerCase()));
 		return null;
 	}
+
 	let header: ViewHeader | null = $state(null);
 
 	// a different face is a different place: what was done on the last one isn't undone here
@@ -650,6 +668,7 @@
 
 	let sourceDialogOpen = $state(false);
 	let dialogSource: Source | null = $state(null);
+
 	async function configureSource() {
 		if (!view.unit) return;
 		dialogSource = (await listSources()).find((s) => s.id === folderIdSource(view.unit!)) ?? null;
@@ -885,7 +904,7 @@
 		</div>
 
 		<!-- Where a document on this page draws its find bar. Outside the scroller, so it stays at
-		     the page's top right while the document scrolls under it. -->
+             the page's top right while the document scrolls under it. -->
 		<div class="find-bar-anchor" bind:this={findBarAnchor}></div>
 		<!-- Where a document on this page docks its mode bars (history), in the page's own frame. -->
 		<div bind:this={dockTarget}></div>
@@ -913,6 +932,8 @@
 <SourceDialog bind:open={sourceDialogOpen} mode="edit" source={dialogSource} onSaved={() => {}} />
 <CoverSourceDialog
 	bind:open={coverDialogOpen}
+	sourceId={coverSourceId}
+	stem={`${view.slug} cover`}
 	onPicked={(ref) => {
 		view.cover = ref;
 	}}
@@ -960,7 +981,7 @@
 	}
 
 	/* a project page's column: the cover, header and faces share it; a document inside keeps
-	   its own reading width */
+       its own reading width */
 	.view-top {
 		max-width: var(--view-max-width, 1200px);
 		margin: 0 auto;
@@ -970,11 +991,11 @@
 	.view-inner {
 		max-width: var(--view-max-width, 1200px);
 		margin: 0 auto;
-		padding: 0 24px;
+		padding: 0 24px 72px;
 	}
 
 	/* No size of its own: the bar hangs off this corner, and an empty box would otherwise sit
-	   over the page swallowing clicks. Clear of the scroll thumb's 14px rail on the right. */
+       over the page swallowing clicks. Clear of the scroll thumb's 14px rail on the right. */
 	.find-bar-anchor {
 		position: absolute;
 		top: 0;

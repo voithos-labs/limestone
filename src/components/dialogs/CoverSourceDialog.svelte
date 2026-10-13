@@ -1,15 +1,24 @@
 <script lang="ts">
 	import { describeError } from '#lib/overlays.svelte.js';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
-	import { importGlobalAsset, importGlobalAssetBytes } from '#lib/services/assets.js';
+	import {
+		importGlobalAsset,
+		importGlobalAssetBytes,
+		importSourceAsset,
+		importSourceAssetBytes
+	} from '#lib/services/assets.js';
 	import { ImageUp, FolderOpen } from '@lucide/svelte';
 
 	let {
 		open = $bindable(false),
-		onPicked
+		onPicked,
+		sourceId,
+		stem
 	}: {
 		open: boolean;
 		onPicked: (ref: string) => void;
+		sourceId?: string;
+		stem?: string;
 	} = $props();
 
 	const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg'];
@@ -36,7 +45,11 @@
 		try {
 			const buf = await blob.arrayBuffer();
 			const ext = name?.split('.').pop()?.toLowerCase() || extOfMime(blob.type);
-			finish(await importGlobalAssetBytes(buf, ext));
+			finish(
+				sourceId
+					? await importSourceAssetBytes(sourceId, buf, ext, stem)
+					: await importGlobalAssetBytes(buf, ext)
+			);
 		} catch (e) {
 			error = describeError(e, "That image couldn't be added.");
 			busy = false;
@@ -47,7 +60,9 @@
 		busy = true;
 		error = '';
 		try {
-			finish(await importGlobalAsset(path));
+			finish(
+				sourceId ? await importSourceAsset(sourceId, path, stem) : await importGlobalAsset(path)
+			);
 		} catch (e) {
 			error = describeError(e, "That image couldn't be added.");
 			busy = false;

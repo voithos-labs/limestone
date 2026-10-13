@@ -2,14 +2,14 @@ use serde::Serialize;
 use serde_json::Value;
 use sqlx::{AssertSqlSafe, SqlitePool};
 use std::sync::RwLock;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri_plugin_fs::FsExt;
 
 mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 7;
 
 pub async fn create_pool(
     path: &std::path::Path,
@@ -25,6 +25,7 @@ pub async fn create_pool(
         // rebuild db on schema version change
         sqlx::raw_sql(
             "DROP TABLE IF EXISTS documents_fts;
+             DROP TABLE IF EXISTS asset_refs;
              DROP TABLE IF EXISTS document_tags;
              DROP TABLE IF EXISTS document_groups;
              DROP TABLE IF EXISTS documents;
@@ -135,14 +136,7 @@ pub fn run() {
             });
 
             // Load sources
-            let sources_path = global_data_path.join("sources.json");
-            let sources = services::JsonSettingsStore {
-                path: sources_path,
-                default_json: None,
-            }
-            .load::<services::Sources>()
-            .unwrap_or_default()
-            .sources;
+            let sources = commands::source_commands::load_sources(app.handle());
 
             let assets_path = global_data_path.join("assets");
             std::fs::create_dir_all(&assets_path)?;
@@ -213,34 +207,15 @@ pub fn run() {
                     for source in sources {
                         let app_handle = app_handle.clone();
                         let pool = pool.clone();
-                        tasks.push(tauri::async_runtime::spawn(async move {
-                            let source_id = source.id.to_string();
-                            // reconcile returns changes for deep indexing (FTS, in-body tags, etc.)
-                            let (changed, skipped) = services::reconcile_source(
-                                &source,
-                                &pool,
-                                &["md"],
+                        tasks.push(tauri::async_runtime::spawn(
+                            commands::source_commands::run_reconcile(
+                                app_handle,
+                                source,
+                                pool,
                                 fm_buf_size,
                                 git_off,
-                            )
-                            .await
-                            .unwrap_or_else(|e| {
-                                eprintln!("Reconciliation failed: {e}");
-                                Default::default()
-                            });
-                            let _ = app_handle.emit(
-                                "source-reconciled",
-                                Reconciled {
-                                    source_id: &source_id,
-                                    skipped,
-                                    unreachable: !source.path.is_dir(),
-                                },
-                            );
-                            if let Err(e) = services::index_fts(&pool, &source, changed).await {
-                                eprintln!("FTS indexing failed: {e}");
-                            }
-                            let _ = app_handle.emit("source-indexed", &source_id);
-                        }));
+                            ),
+                        ));
                     }
                     for task in tasks {
                         let _ = task.await;
@@ -292,6 +267,8 @@ pub fn run() {
             commands::document_commands::read_document_tags,
             commands::document_commands::strip_document_tag,
             commands::document_commands::delete_document,
+            commands::document_commands::restore_document,
+            commands::document_commands::purge_document,
             commands::bulk_ops_commands::bulk_set_view_field,
             commands::bulk_ops_commands::bulk_rename_view_field,
             commands::bulk_ops_commands::bulk_rename_view_option,
@@ -310,6 +287,13 @@ pub fn run() {
             commands::history_commands::history_load,
             commands::history_commands::history_append,
             commands::history_commands::history_remove,
+            commands::history_commands::history_move,
+            commands::view_commands::view_file_read,
+            commands::view_commands::view_file_write,
+            commands::view_commands::view_file_remove,
+            commands::view_commands::app_views_read,
+            commands::view_commands::app_view_write,
+            commands::view_commands::app_view_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

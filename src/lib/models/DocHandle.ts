@@ -30,7 +30,7 @@ import * as yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '#lib/services/db.js';
-import { addChangeHistory, removeHistory } from '#lib/services/history.js';
+import { addChangeHistory, moveHistory, removeHistory } from '#lib/services/history.js';
 import { LinkRewriteFailure, rewriteLinksForMove } from '#lib/services/links.svelte.js';
 import { isRetryable, toasts, mark } from '#lib/overlays.svelte.js';
 import { sanitizeSegment } from '#lib/util/paths.js';
@@ -159,6 +159,7 @@ class DocHandle {
 	frontmatterError: string | null = null;
 	writesMeta = true;
 	inRepo = false;
+	idOnDisk = false;
 	private fence = '';
 
 	private constructor(row: DocumentRow, source: Source) {
@@ -408,6 +409,7 @@ class DocHandle {
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 		this.fence = raw.slice(0, raw.length - body.length);
+		this.idOnDisk = frontmatter?.id === this.id;
 
 		if (frontmatter) {
 			const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
@@ -432,7 +434,8 @@ class DocHandle {
 	}
 
 	private recordHistory(body: string): void {
-		addChangeHistory(this.id, body).catch((e) => console.error('history record failed', e));
+		if (!this.idOnDisk) return;
+		addChangeHistory(this, body).catch((e) => console.error('history record failed', e));
 	}
 
 	/**
@@ -454,6 +457,7 @@ class DocHandle {
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 		this.fence = raw.slice(0, raw.length - body.length);
+		this.idOnDisk = frontmatter?.id === this.id;
 		if (!frontmatter) return;
 		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
 		this.properties = remaining;
@@ -473,6 +477,7 @@ class DocHandle {
 			create: !this.hasFile
 		});
 		this.hasFile = true;
+		this.idOnDisk = DocHandle.deserialize(contents).frontmatter?.id === this.id;
 		this.recordHistory(body);
 	}
 
@@ -486,8 +491,39 @@ class DocHandle {
 	}
 
 	async restore(body: string, overwrite: boolean): Promise<void> {
+		if (this.deletedAt) return this.revive(body);
 		this.hasFile = overwrite;
 		await this.saveContent(body, { rebuildFrontmatter: true });
+	}
+
+	// bring back from the dead!
+	private async revive(body: string): Promise<void> {
+		const wanted = this._relPath;
+		const base = wanted.split('/').pop()!.replace(/\.md$/i, '');
+		const relPath = (await DocHandle.pathTaken(this.source, wanted))
+			? await DocHandle.uniqueRelPath(this.source, dirOf(wanted), base)
+			: wanted;
+		this.place(relPath, relPath.split('/').pop()!.replace(/\.md$/i, ''));
+		await this.refreshMeta();
+		this.updatedAt = new Date();
+		const fm = yaml.dump(this.toFrontmatter(), { lineWidth: -1, sortKeys: false });
+		const contents = `---\n${fm}---\n${body}`;
+		await invoke('restore_document', {
+			sourceId: this.source.id,
+			id: this.id,
+			relPath,
+			contents,
+			updatedAt: this.updatedAt.getTime()
+		});
+		this.deletedAt = undefined;
+		this.hasFile = true;
+		this.idOnDisk = true;
+		this.recordHistory(body);
+	}
+
+	async purge(): Promise<void> {
+		await invoke('purge_document', { id: this.id });
+		await removeHistory(this).catch(() => {});
 	}
 
 	adoptAsDraft(): void {
@@ -499,22 +535,30 @@ class DocHandle {
 	}
 
 	/** Delete the document from disk and the index. */
-	async delete(): Promise<void> {
-		await invoke('delete_document', {
+	async delete(): Promise<boolean> {
+		const kept = await invoke<boolean>('delete_document', {
 			id: this.id,
 			sourceId: this.source.id,
 			relPath: this._relPath
 		});
-		removeHistory(this.id).catch((e) => console.error('history remove failed', e));
+		if (kept) this.deletedAt = new Date();
+		else removeHistory(this).catch((e) => console.error('history remove failed', e));
+		return kept;
 	}
 
 	static async trashAt(source: Source, relPath: string): Promise<string | null> {
 		const [row] = await select<{ id: string }>(
-			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2`,
+			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2 AND deleted_at IS NULL`,
 			[source.id, relPath]
 		);
-		await invoke('delete_document', { id: row?.id ?? null, sourceId: source.id, relPath });
-		if (row) removeHistory(row.id).catch((e) => console.error('history remove failed', e));
+		const kept = await invoke<boolean>('delete_document', {
+			id: row?.id ?? null,
+			sourceId: source.id,
+			relPath
+		});
+		if (row && !kept) {
+			removeHistory({ id: row.id, source }).catch((e) => console.error('history remove failed', e));
+		}
 		return row?.id ?? null;
 	}
 
@@ -540,13 +584,19 @@ class DocHandle {
 	}
 
 	async refreshPath(): Promise<boolean> {
-		const [row] = await select<{ rel_path: string; title: string }>(
-			`SELECT rel_path, title
+		const [row] = await select<{ source_id: string; rel_path: string; title: string }>(
+			`SELECT source_id, rel_path, title
              FROM documents
              WHERE id = ?1`,
 			[this.id]
 		);
-		if (!row || (row.rel_path === this._relPath && row.title === this._title)) return false;
+		if (!row) return false;
+		const movedSource = row.source_id !== this.source.id;
+		if (!movedSource && row.rel_path === this._relPath && row.title === this._title) return false;
+		if (movedSource) {
+			(this as { source: Source }).source = await getSource(row.source_id);
+			await this.refreshMeta();
+		}
 		this.place(row.rel_path, row.title);
 		return true;
 	}
@@ -584,13 +634,17 @@ class DocHandle {
 	 */
 	async moveToSource(newSource: Source, newRelPath: string): Promise<void> {
 		await this.ensureFile();
+		const oldSourceId = this.source.id;
 		await invoke('move_document', {
-			sourceId: this.source.id,
+			sourceId: oldSourceId,
 			relPath: this._relPath,
 			newRelPath,
 			newSourceId: newSource.id
 		});
 		(this as { source: Source }).source = newSource;
+		moveHistory(this.id, oldSourceId, newSource.id).catch((e) =>
+			console.error('history move failed', e)
+		);
 		this.place(newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
 	}

@@ -53,9 +53,8 @@ import Folder, {
 	folderIdSource,
 	isSourceRoot
 } from '#lib/models/Folder.js';
-import { listSources, sourceName, type Source } from '#lib/models/Source.js';
-import { select } from '#lib/services/db.js';
-import { load, type Store } from '@tauri-apps/plugin-store';
+import { listSources, onSourceReconciled, sourceName, type Source } from '#lib/models/Source.js';
+import { execute, select } from '#lib/services/db.js';
 import { toasts } from '#lib/overlays.svelte.js';
 import { resolveRelativeDate, wallClockToMs } from '#lib/views/dateFormat.js';
 import { appSettings } from '#lib/models/Settings.svelte.js';
@@ -293,6 +292,8 @@ export function isBuiltinUnit(unitId: string): boolean {
 	return unitId in BUILTIN_UNITS;
 }
 
+export const DELETED = 'deleted';
+
 export function isBuiltinField(field: Pick<ViewField, 'id'>): boolean {
 	return BUILTIN_FIELD_IDS.has(field.id);
 }
@@ -518,6 +519,7 @@ export function folderPropKey(path: string): string {
 }
 
 function compileUnit(unitId: string): CompiledFilter {
+	if (unitId === DELETED) return { sql: '', params: [] };
 	return unitId.startsWith('tag:')
 		? compileTagsLeaf('has_any', [unitId])
 		: compileFolderLeaf('in', unitId);
@@ -806,6 +808,7 @@ export interface MemberRow {
 	rel_path: string;
 	created_at: number;
 	updated_at: number;
+	deleted_at: number | null;
 	properties: string;
 	source_id: string;
 	writes_meta: number;
@@ -827,49 +830,118 @@ interface ViewJSON {
 	accessed_at?: Date;
 }
 
-// ── Saved views store (views.json) ───────────────────────────────────────────────────
+// ── Saved views (one file per view) ──────────────────────────────────────────────────
 
-const VIEWS_VERSION = 1;
+type ViewHome = { kind: 'folder'; sourceId: string; relDir: string } | { kind: 'app'; id: string };
 
-let viewStore: Store | null = null;
-async function getViewStore(): Promise<Store> {
-	if (!viewStore) {
-		viewStore = await load('views.json');
-		if ((await viewStore.get<number>('version')) !== VIEWS_VERSION) {
-			await viewStore.set('version', VIEWS_VERSION);
-			await viewStore.save();
-		}
-	}
-	return viewStore;
+export function isFolderView(json: Pick<ViewJSON, 'unit'>): boolean {
+	return !!json.unit?.startsWith('folder:');
 }
 
+function homeOf(json: Pick<ViewJSON, 'id' | 'unit'>): ViewHome {
+	if (json.unit && isFolderView(json))
+		return { kind: 'folder', sourceId: folderIdSource(json.unit), relDir: folderIdPath(json.unit) };
+	return { kind: 'app', id: json.id };
+}
+
+async function writeHome(home: ViewHome, json: ViewJSON): Promise<void> {
+	if (home.kind === 'folder') {
+		const { accessed_at: _a, temporary: _t, ...rest } = json;
+		await invoke('view_file_write', {
+			sourceId: home.sourceId,
+			relDir: home.relDir,
+			text: JSON.stringify(rest, null, 2)
+		});
+	} else {
+		await invoke('app_view_write', { id: home.id, text: JSON.stringify(json, null, 2) });
+	}
+}
+
+async function removeHome(home: ViewHome): Promise<void> {
+	if (home.kind === 'folder')
+		await invoke('view_file_remove', { sourceId: home.sourceId, relDir: home.relDir });
+	else await invoke('app_view_remove', { id: home.id });
+}
+
+function parseView(text: string): ViewJSON | null {
+	try {
+		const json = JSON.parse(text);
+		return json && typeof json.id === 'string' && Array.isArray(json.faces) ? json : null;
+	} catch {
+		return null;
+	}
+}
+
+async function loadViews(): Promise<Map<string, ViewJSON>> {
+	const all = new Map<string, ViewJSON>();
+	for (const text of await invoke<string[]>('app_views_read')) {
+		const json = parseView(text);
+		if (json) all.set(json.id, json);
+	}
+	const rows = await select<{ id: string; accessed_at: number }>(
+		`SELECT id, accessed_at FROM folders WHERE view = 1`
+	);
+	await Promise.all(
+		rows.map(async (row) => {
+			const home: ViewHome = {
+				kind: 'folder',
+				sourceId: folderIdSource(row.id),
+				relDir: folderIdPath(row.id)
+			};
+			const text = await invoke<string | null>('view_file_read', {
+				sourceId: home.sourceId,
+				relDir: home.relDir
+			}).catch(() => null);
+			const json = text ? parseView(text) : null;
+			if (!json) return;
+			// the folder is the location, the ids inside follow a move made outside the app
+			const moved = !!json.unit && json.unit !== row.id;
+			const adopted = moved ? (remapIds(json, json.unit!, row.id, true) as ViewJSON) : json;
+			adopted.unit = row.id;
+			adopted.accessed_at = new Date(row.accessed_at);
+			if (moved || !json.unit) void writeHome(home, adopted);
+			all.set(adopted.id, adopted);
+		})
+	);
+	return all;
+}
+
+let views: Promise<Map<string, ViewJSON>> | null = null;
+
+function getViews(): Promise<Map<string, ViewJSON>> {
+	return (views ??= loadViews());
+}
+
+onSourceReconciled(() => {
+	views = null;
+});
+
 export async function listSavedViewJSON(): Promise<ViewJSON[]> {
-	const s = await getViewStore();
-	return (await s.get<ViewJSON[]>('views')) ?? [];
+	return [...(await getViews()).values()];
 }
 
 export async function saveViewJSON(json: ViewJSON): Promise<void> {
-	const s = await getViewStore();
-	const all = (await s.get<ViewJSON[]>('views')) ?? [];
-	const idx = all.findIndex((v) => v.id === json.id);
-	if (idx >= 0) all[idx] = json;
-	else all.push(json);
-	await s.set('views', all);
-	await s.save();
+	const all = await getViews();
+	const prev = all.get(json.id);
+	const home = homeOf(json);
+	if (prev) {
+		const old = homeOf(prev);
+		if (JSON.stringify(old) !== JSON.stringify(home)) await removeHome(old);
+	}
+	all.set(json.id, json);
+	await writeHome(home, json);
 }
 
 export async function deleteSavedView(id: string): Promise<void> {
-	const s = await getViewStore();
-	const all = (await s.get<ViewJSON[]>('views')) ?? [];
-	await s.set(
-		'views',
-		all.filter((v) => v.id !== id)
-	);
-	await s.save();
+	const all = await getViews();
+	const prev = all.get(id);
+	if (!prev) return;
+	all.delete(id);
+	await removeHome(homeOf(prev));
 }
 
 export async function isViewSaved(id: string): Promise<boolean> {
-	return (await listSavedViewJSON()).some((v) => v.id === id);
+	return (await getViews()).has(id);
 }
 
 export function remapIds(v: unknown, oldId: string, newId: string, subpaths = false): unknown {
@@ -892,10 +964,10 @@ export async function remapIdsInSavedViews(
 	newId: string,
 	subpaths = false
 ): Promise<void> {
-	const s = await getViewStore();
-	const all = (await s.get<ViewJSON[]>('views')) ?? [];
-	await s.set('views', remapIds(all, oldId, newId, subpaths));
-	await s.save();
+	for (const json of await listSavedViewJSON()) {
+		const next = remapIds(json, oldId, newId, subpaths) as ViewJSON;
+		if (JSON.stringify(next) !== JSON.stringify(json)) await saveViewJSON(next);
+	}
 }
 
 class View {
@@ -990,7 +1062,12 @@ class View {
 		view.unit = unitId;
 		view.temporary = true;
 		const builtin = BUILTIN_UNITS[unitId];
-		if (builtin) {
+		if (unitId === DELETED) {
+			const ids = (['title', 'folder', 'updated_at'] as ViewFieldType[]).map(
+				(t) => view.fields.find((f) => f.type === t)!.id
+			);
+			view.faces = [ViewFace.create('list', ids)];
+		} else if (builtin) {
 			if (builtin.emoji) view.emoji = builtin.emoji;
 			const title = view.fields.find((f) => f.type === 'title')!.id;
 			const [done, ...rest] = builtin.display;
@@ -1152,19 +1229,29 @@ class View {
 		this.unit = null;
 	}
 
-	/** Persist this view to views.json and mark it as a saved (non-temporary) view. */
+	/** Persist this view to its file and mark it as a saved (non-temporary) view. */
 	async save() {
 		this.temporary = false;
 		await saveViewJSON(this.toJSON());
 	}
 
+	// a folder view's file is the user's; its access time lives on the folder row instead
 	async touchAccessed() {
 		if (this.temporary) return;
 		this.accessedAt = new Date();
-		await saveViewJSON(this.toJSON());
+		if (this.unit && isFolderView(this)) {
+			await execute(`UPDATE folders SET accessed_at = ?2 WHERE id = ?1`, [
+				this.unit,
+				this.accessedAt.getTime()
+			]);
+			const cached = (await getViews()).get(this.id);
+			if (cached) cached.accessed_at = this.accessedAt;
+		} else {
+			await saveViewJSON(this.toJSON());
+		}
 	}
 
-	/** Remove this view from views.json; it becomes a temporary view again. */
+	/** Remove this view's file; it becomes a temporary view again. */
 	async unsave() {
 		this.temporary = true;
 		await deleteSavedView(this.id);
@@ -1208,6 +1295,7 @@ class View {
 		const compiled = compileFilter(memberFilter(this.filter, opts?.face, opts?.scope), this.fields);
 		if (!this.unit) return compiled;
 		const unit = compileUnit(this.subfolder ?? this.unit);
+		if (!unit.sql) return compiled;
 		if (!compiled.sql) return unit;
 		return {
 			sql: `(${unit.sql} AND ${compiled.sql})`,
@@ -1236,13 +1324,14 @@ class View {
 		const sort = opts?.face?.sort ?? [];
 		const orderBy = sort.length ? compileSort(sort, this.fields) : '';
 
-		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.properties, d.source_id,
+		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.deleted_at, d.properties, d.source_id,
 				${WRITES_META_SQL} AS writes_meta
 			FROM documents d
-			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
+			WHERE ${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
 
 		if (!idsIn) {
-			sql += ` ORDER BY ${orderBy || 'd.updated_at DESC'}`;
+			const latest = this.unit === DELETED ? 'd.deleted_at DESC' : 'd.updated_at DESC';
+			sql += ` ORDER BY ${orderBy || latest}`;
 		}
 
 		if (opts?.limit !== undefined) {
@@ -1257,13 +1346,23 @@ class View {
 		return select<MemberRow>(sql, params);
 	}
 
+	// the Deleted view is the one place deleted rows are members; everywhere else they are not
+	private liveClause(): string {
+		return this.unit === DELETED ? 'd.deleted_at IS NOT NULL' : 'd.deleted_at IS NULL';
+	}
+
 	// This face's scope (view filter + face filter + any extra scope) as compiled SQL
 	searchScope(opts?: { face?: ViewFace; scope?: FilterNode | null }): {
 		sql: string;
 		params: unknown[];
+		includeDeleted?: boolean;
 	} {
 		const compiled = this.compileScope(opts);
-		return { sql: compiled.sql, params: [...compiled.params] };
+		return {
+			sql: compiled.sql,
+			params: [...compiled.params],
+			includeDeleted: this.unit === DELETED
+		};
 	}
 
 	// total matching members
@@ -1271,7 +1370,7 @@ class View {
 		const compiled = this.compileScope(opts);
 		const sql = `SELECT COUNT(*) AS n
 			FROM documents d
-			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
+			WHERE ${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
 		const [row] = await select<{ n: number }>(sql, [...compiled.params]);
 		return row?.n ?? 0;
 	}

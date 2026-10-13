@@ -200,7 +200,7 @@
 		return {
 			id: r.id,
 			label: r.title,
-			hint: where,
+			hint: r.deleted ? [where, 'deleted'].filter(Boolean).join(' · ') : where,
 			icon: TextAlignStart,
 			kind: 'doc',
 			match: r.match_indices,

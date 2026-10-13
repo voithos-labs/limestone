@@ -2,7 +2,7 @@ use crate::commands::source_commands::{doc_writes_meta, source_root};
 use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
 use crate::services::fs::{
-    atomic_write, is_taken, move_file, resolve_in_source, validate_file_name,
+    atomic_write, history_dir, is_taken, move_file, resolve_in_source, validate_file_name,
 };
 use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
 use crate::AppData;
@@ -126,7 +126,7 @@ pub async fn write_document(
             "UPDATE documents
              SET mtime = ?1, updated_at = ?2, properties = ?3,
                  created_at = COALESCE(?4, created_at)
-             WHERE source_id = ?5 AND rel_path = ?6",
+             WHERE source_id = ?5 AND rel_path = ?6 AND deleted_at IS NULL",
         )
         .bind(mtime)
         .bind(updated_at)
@@ -139,7 +139,8 @@ pub async fn write_document(
         .map_err(OpError::from)?;
     } else {
         sqlx::query(
-            "UPDATE documents SET mtime = ?1, updated_at = ?2 WHERE source_id = ?3 AND rel_path = ?4",
+            "UPDATE documents SET mtime = ?1, updated_at = ?2
+             WHERE source_id = ?3 AND rel_path = ?4 AND deleted_at IS NULL",
         )
         .bind(mtime)
         .bind(updated_at)
@@ -150,42 +151,129 @@ pub async fn write_document(
         .map_err(OpError::from)?;
     }
 
-    let doc_id: Option<String> =
-        sqlx::query_scalar("SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2")
-            .bind(&source_id)
-            .bind(&rel_path)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(OpError::from)?;
+    let doc_id: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2 AND deleted_at IS NULL",
+    )
+    .bind(&source_id)
+    .bind(&rel_path)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(OpError::from)?;
     if let Some(doc_id) = doc_id {
-        let mut tags = fm_tags(fm.as_ref());
-        merge_body_tags(&mut tags, body);
-        sync_tags(&mut tx, &doc_id, &tags)
-            .await
-            .map_err(OpError::from)?;
-        sync_folders(&mut tx, &source_id, &doc_id, &rel_path)
-            .await
-            .map_err(OpError::from)?;
-        sqlx::query(
-            "DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = ?1)",
-        )
-        .bind(&doc_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(OpError::from)?;
-        sqlx::query(
-            "INSERT INTO documents_fts (rowid, doc_id, body)
-             SELECT rowid, id, ?2 FROM documents WHERE id = ?1",
-        )
-        .bind(&doc_id)
-        .bind(body)
-        .execute(&mut *tx)
-        .await
-        .map_err(OpError::from)?;
+        index_body(&mut tx, &source_id, &doc_id, &rel_path, fm.as_ref(), body).await?;
     }
 
     tx.commit().await.map_err(OpError::from)?;
     Ok(())
+}
+
+async fn index_body(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    source_id: &str,
+    doc_id: &str,
+    rel_path: &str,
+    fm: Option<&Value>,
+    body: &str,
+) -> Result<(), OpError> {
+    let mut tags = fm_tags(fm);
+    merge_body_tags(&mut tags, body);
+    sync_tags(tx, doc_id, &tags).await.map_err(OpError::from)?;
+    sync_folders(tx, source_id, doc_id, rel_path)
+        .await
+        .map_err(OpError::from)?;
+    sqlx::query(
+        "DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = ?1)",
+    )
+    .bind(doc_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(OpError::from)?;
+    sqlx::query(
+        "INSERT INTO documents_fts (rowid, doc_id, body)
+         SELECT rowid, id, ?2 FROM documents WHERE id = ?1",
+    )
+    .bind(doc_id)
+    .bind(body)
+    .execute(&mut **tx)
+    .await
+    .map_err(OpError::from)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn restore_document(
+    app_data: State<'_, AppData>,
+    app: AppHandle,
+    source_id: String,
+    id: String,
+    rel_path: String,
+    contents: String,
+    updated_at: i64,
+) -> Result<(), OpError> {
+    let root = root_of(&app, &source_id)?;
+    let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
+    if full_path.exists() {
+        return Err(OpError::named("already_exists", &rel_path));
+    }
+    atomic_write(&full_path, contents.as_bytes()).map_err(OpError::from)?;
+
+    let mtime = mtime(&full_path);
+    let (fm, body) = frontmatter::split_content(&contents);
+    let properties = fm
+        .as_ref()
+        .map(fm_properties)
+        .unwrap_or_else(|| "{}".to_string());
+    let title = Path::new(&rel_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Untitled");
+
+    let mut tx = app_data.db.begin().await.map_err(OpError::from)?;
+    let revived = sqlx::query(
+        "UPDATE documents
+         SET rel_path = ?1, title = ?2, mtime = ?3, updated_at = ?4, properties = ?5,
+             folder_id = NULL, deleted_at = NULL
+         WHERE id = ?6 AND source_id = ?7 AND deleted_at IS NOT NULL",
+    )
+    .bind(&rel_path)
+    .bind(title)
+    .bind(mtime)
+    .bind(updated_at)
+    .bind(&properties)
+    .bind(&id)
+    .bind(&source_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(OpError::from)?
+    .rows_affected();
+    if revived == 0 {
+        return Err(OpError::new("not_found"));
+    }
+    index_body(&mut tx, &source_id, &id, &rel_path, fm.as_ref(), body).await?;
+    tx.commit().await.map_err(OpError::from)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn purge_document(
+    app_data: State<'_, AppData>,
+    app: AppHandle,
+    id: String,
+) -> Result<(), OpError> {
+    let source_id: Option<String> = sqlx::query_scalar(
+        "SELECT source_id FROM documents WHERE id = ?1 AND deleted_at IS NOT NULL",
+    )
+    .bind(&id)
+    .fetch_optional(&app_data.db)
+    .await
+    .map_err(OpError::from)?;
+    let Some(source_id) = source_id else {
+        return Err(OpError::new("not_found"));
+    };
+    let root = root_of(&app, &source_id)?;
+    crate::commands::history_commands::purge_row(&app_data.db, &root, &id)
+        .await
+        .map_err(OpError::from)
 }
 
 #[tauri::command]
@@ -302,7 +390,8 @@ pub async fn rename_document(
         .unwrap_or(&new_name);
 
     sqlx::query(
-        "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3 WHERE source_id = ?4 AND rel_path = ?5",
+        "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3
+         WHERE source_id = ?4 AND rel_path = ?5 AND deleted_at IS NULL",
     )
     .bind(&new_rel)
     .bind(title)
@@ -375,6 +464,12 @@ pub async fn save_document_meta(
     Ok(())
 }
 
+/// moves a doc within or between sources
+///
+/// if the move occurs between sources, it rounds ups its refs
+/// and moves/copies them over:
+/// `if dest_source_id != source_id`
+///
 #[tauri::command]
 pub async fn move_document(
     app_data: State<'_, AppData>,
@@ -399,16 +494,29 @@ pub async fn move_document(
         _ => OpError::from(e),
     })?;
 
-    let doc_id: Option<String> =
-        sqlx::query_scalar("SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2")
-            .bind(&source_id)
-            .bind(&rel_path)
-            .fetch_optional(&app_data.db)
-            .await
-            .map_err(OpError::from)?;
+    let doc_id: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2 AND deleted_at IS NULL",
+    )
+    .bind(&source_id)
+    .bind(&rel_path)
+    .fetch_optional(&app_data.db)
+    .await
+    .map_err(OpError::from)?;
 
     if let Some(doc_id) = doc_id {
+        let mut assets: Vec<(String, bool)> = Vec::new();
         if dest_source_id != source_id {
+            assets = sqlx::query_as(
+                "SELECT a.rel_path, EXISTS(
+                    SELECT 1 FROM asset_refs o JOIN documents d ON d.id = o.document_id
+                    WHERE o.rel_path = a.rel_path AND d.source_id = ?1 AND o.document_id != ?2
+                 ) FROM asset_refs a WHERE a.document_id = ?2",
+            )
+            .bind(&source_id)
+            .bind(&doc_id)
+            .fetch_all(&app_data.db)
+            .await
+            .map_err(OpError::from)?;
             sqlx::query("UPDATE documents SET source_id = ?1 WHERE id = ?2")
                 .bind(&dest_source_id)
                 .bind(&doc_id)
@@ -426,8 +534,33 @@ pub async fn move_document(
         )
         .await
         .map_err(OpError::from)?;
+        carry_assets(&root, &dest_source, &assets).map_err(OpError::from)?;
     }
 
+    Ok(())
+}
+
+fn carry_assets(root: &Path, dest_root: &Path, assets: &[(String, bool)]) -> std::io::Result<()> {
+    for (rel_path, shared) in assets {
+        let Ok(src) = resolve_in_source(root, rel_path) else {
+            continue;
+        };
+        if !src.is_file() {
+            continue;
+        }
+        let dest = resolve_in_source(dest_root, rel_path)?;
+        if dest.exists() {
+            continue;
+        }
+        if *shared {
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(&src, &dest)?;
+        } else {
+            move_file(&src, &dest)?;
+        }
+    }
     Ok(())
 }
 
@@ -438,7 +571,7 @@ pub async fn delete_document(
     id: Option<String>,
     source_id: String,
     rel_path: String,
-) -> Result<(), OpError> {
+) -> Result<bool, OpError> {
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
 
@@ -446,8 +579,19 @@ pub async fn delete_document(
         super::to_trash(&full_path)?;
     }
     let Some(id) = id else {
-        return Ok(());
+        return Ok(false);
     };
+
+    if history_dir(&root, &id).is_dir() {
+        sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2 AND source_id = ?3")
+            .bind(chrono::Utc::now().timestamp_millis())
+            .bind(&id)
+            .bind(&source_id)
+            .execute(&app_data.db)
+            .await
+            .map_err(OpError::from)?;
+        return Ok(true);
+    }
 
     let tag_ids: Vec<String> =
         sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")
@@ -486,5 +630,45 @@ pub async fn delete_document(
         .map_err(OpError::from)?;
     }
 
-    Ok(())
+    Ok(false)
+}
+
+#[cfg(test)]
+mod carry_assets_tests {
+    use super::carry_assets;
+    use std::fs;
+
+    #[test]
+    fn moves_sole_refs_and_copies_shared_ones() {
+        let tmp = std::env::temp_dir().join(format!("ls-carry-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let a = tmp.join("a");
+        let b = tmp.join("b");
+        fs::create_dir_all(a.join("assets")).unwrap();
+        fs::create_dir_all(b.join("assets")).unwrap();
+        fs::write(a.join("assets/sole.png"), b"sole").unwrap();
+        fs::write(a.join("assets/shared.png"), b"shared").unwrap();
+        fs::write(a.join("assets/taken.png"), b"mine").unwrap();
+        fs::write(b.join("assets/taken.png"), b"theirs").unwrap();
+
+        carry_assets(
+            &a,
+            &b,
+            &[
+                ("assets/sole.png".into(), false),
+                ("assets/shared.png".into(), true),
+                ("assets/taken.png".into(), false),
+                ("assets/missing.png".into(), false),
+            ],
+        )
+        .unwrap();
+
+        assert!(!a.join("assets/sole.png").exists());
+        assert_eq!(fs::read(b.join("assets/sole.png")).unwrap(), b"sole");
+        assert_eq!(fs::read(a.join("assets/shared.png")).unwrap(), b"shared");
+        assert_eq!(fs::read(b.join("assets/shared.png")).unwrap(), b"shared");
+        assert_eq!(fs::read(a.join("assets/taken.png")).unwrap(), b"mine");
+        assert_eq!(fs::read(b.join("assets/taken.png")).unwrap(), b"theirs");
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }

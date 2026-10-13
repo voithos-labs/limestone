@@ -218,6 +218,15 @@ export const actions: Action[] = [
 		run: (session) => session.active.openHome()
 	},
 	{
+		id: 'nav.deleted',
+		title: 'Open deleted notes',
+		category: 'navigation',
+		run: async (session) => {
+			const { default: View, DELETED } = await import('#lib/models/View.svelte.js');
+			session.active.openView(await View.forUnit(DELETED, 'Deleted'));
+		}
+	},
+	{
 		id: 'nav.settings',
 		title: 'Open settings',
 		category: 'navigation',

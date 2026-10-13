@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Component } from 'svelte';
-import { GitBranch } from '@lucide/svelte';
+import { GitBranch, Trash2 } from '@lucide/svelte';
 
 export type SettingValue =
 	string | number | boolean | null | SettingValue[] | { [key: string]: SettingValue };
@@ -183,6 +183,19 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				icon: GitBranch,
 				description:
 					"Git repos, and everything inside them, don't get metadata written to their files unless you turn it on for that folder."
+			},
+			{
+				key: 'sources.deleted_retention_days',
+				type: 'number',
+				control: 'stepper',
+				label: 'Keep Deleted Notes',
+				icon: Trash2,
+				description:
+					'Days a deleted note stays restorable before its history is cleared. 0 keeps them forever.',
+				min: 0,
+				max: 3650,
+				step: 1,
+				unit: 'days'
 			}
 		]
 	}

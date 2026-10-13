@@ -19,10 +19,14 @@
 		"frontmatter_read_buffer_size": 1024
 	},
 	"sources": {
-		"git_frontmatter_off": true
+		"git_frontmatter_off": true,
+		"deleted_retention_days": 30
 	},
 	"updates": {
 		"auto_install": false
+	},
+	"general": {
+		"action_hints": true
 	},
 	"todo": {
 		"statuses": [
