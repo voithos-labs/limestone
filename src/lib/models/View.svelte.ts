@@ -53,7 +53,13 @@ import Folder, {
 	folderIdSource,
 	isSourceRoot
 } from '#lib/models/Folder.js';
-import { listSources, onSourceReconciled, sourceName, type Source } from '#lib/models/Source.js';
+import {
+	getSource,
+	listSources,
+	onSourceReconciled,
+	sourceName,
+	type Source
+} from '#lib/models/Source.js';
 import { execute, select } from '#lib/services/db.js';
 import { toasts } from '#lib/overlays.svelte.js';
 import { resolveRelativeDate, wallClockToMs } from '#lib/views/dateFormat.js';
@@ -509,6 +515,14 @@ function resolveColumn(field: ViewField): string {
  * their bare slug, folders on their source-relative path wrapped in slashes (root is "/"). A tag
  * never ends with a slash and is never only slashes, so the two can't collide
  */
+export async function unitDisplayName(unitId: string): Promise<string> {
+	if (unitId === DELETED) return 'Deleted';
+	if (unitId.startsWith('tag:')) return unitId.slice('tag:'.length);
+	const path = folderIdPath(unitId);
+	if (path) return path.split('/').pop()!;
+	return sourceName(await getSource(folderIdSource(unitId)));
+}
+
 export function unitPropKey(unitId: string): string {
 	if (unitId.startsWith('tag:')) return unitId.slice('tag:'.length);
 	return folderPropKey(folderIdPath(unitId));
@@ -899,6 +913,18 @@ async function loadViews(): Promise<Map<string, ViewJSON>> {
 			const adopted = moved ? (remapIds(json, json.unit!, row.id, true) as ViewJSON) : json;
 			adopted.unit = row.id;
 			adopted.accessed_at = new Date(row.accessed_at);
+			if (moved) {
+				const oldPrefix = folderPropKey(folderIdPath(json.unit!));
+				const newPrefix = folderPropKey(home.relDir);
+				if (oldPrefix !== newPrefix) {
+					const result = await invoke<BulkResult>('bulk_rename_view_prefix', {
+						sourceId: home.sourceId,
+						oldPrefix,
+						newPrefix
+					}).catch(() => null);
+					if (result) toastBulkFailures([result]);
+				}
+			}
 			if (moved || !json.unit) void writeHome(home, adopted);
 			all.set(adopted.id, adopted);
 		})
