@@ -15,8 +15,8 @@
 	} from '@lucide/svelte';
 	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import type { ViewField } from '#lib/models/View.svelte.js';
-	import { isStatusField, saveStatuses } from '#lib/models/View.svelte.js';
-	import { statusKind } from '#lib/views/fieldValue.js';
+	import { isStatusField, saveStatuses, seenOptionValues } from '#lib/models/View.svelte.js';
+	import { hashColor, statusKind } from '#lib/views/fieldValue.js';
 	import StatusIcon from '../StatusIcon.svelte';
 
 	interface TagOption {
@@ -49,7 +49,6 @@
 	let searchEl: HTMLInputElement | null = $state(null);
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
 	let query = $state('');
-	let colorEditFor: string | null = $state(null);
 	let confirmDeleteFor: string | null = $state(null);
 	let renamingFor: string | null = $state(null);
 	let renameDraft = $state('');
@@ -61,11 +60,7 @@
 			{
 				label: 'Change color',
 				icon: PaintBucket,
-				action: () => {
-					renamingFor = null;
-					confirmDeleteFor = null;
-					colorEditFor = opt.value;
-				}
+				children: [{ swatches: { active: opt.color, pick: (c) => setColor(opt.value, c) } }]
 			},
 			...(status
 				? [
@@ -84,7 +79,6 @@
 				danger: true,
 				action: () => {
 					renamingFor = null;
-					colorEditFor = null;
 					confirmDeleteFor = opt.value;
 				}
 			}
@@ -100,7 +94,6 @@
 	function startRename(opt: TagOption) {
 		renamingFor = opt.value;
 		renameDraft = opt.value;
-		colorEditFor = null;
 		confirmDeleteFor = null;
 		queueMicrotask(() => {
 			renameInput?.focus();
@@ -136,6 +129,15 @@
 			saveStatuses(
 				((vf.config.options ?? []) as TagOption[]).map((o) => ({ ...o, done: !!o.done }))
 			);
+	}
+
+	async function adoptSeenValues() {
+		if (status) return;
+		const seen = await seenOptionValues(vf);
+		const known = new Set(options.map((o) => o.value));
+		const missing = seen.filter((v) => !known.has(v));
+		if (missing.length === 0) return;
+		vf.config.options = [...options, ...missing.map((v) => ({ value: v, color: hashColor(v) }))];
 	}
 
 	function toggleDone(opt: TagOption) {
@@ -218,7 +220,6 @@
 			o.value === optValue ? { ...o, color } : o
 		);
 		persist();
-		colorEditFor = null;
 	}
 
 	function removeOption(optValue: string) {
@@ -232,7 +233,6 @@
 		}
 		vf.config.options = vf.config.options.filter((o: TagOption) => o.value !== optValue);
 		persist();
-		colorEditFor = null;
 		confirmDeleteFor = null;
 		// Drop the value from the current selection if present
 		if (selectedValues.includes(optValue)) {
@@ -256,13 +256,7 @@
 	function onDocPointerDown(e: PointerEvent) {
 		if (!open) return;
 		const t = e.target as Node;
-		if (popEl?.contains(t)) {
-			// Clicking inside the menu but outside the open color panel dismisses it
-			if (colorEditFor && !(e.target as HTMLElement).closest?.('.color-panel, .more')) {
-				colorEditFor = null;
-			}
-			return;
-		}
+		if (popEl?.contains(t)) return;
 		if (anchor?.contains(t)) return;
 		if ((t as HTMLElement).closest?.('.ctx-menu')) return;
 		open = false;
@@ -280,7 +274,6 @@
 		if (!open || contextMenu.open) return;
 		if (e.key === 'Escape') {
 			if (confirmDeleteFor) confirmDeleteFor = null;
-			else if (colorEditFor) colorEditFor = null;
 			else open = false;
 			e.preventDefault();
 		} else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
@@ -311,6 +304,7 @@
 			wasOpen = true;
 			untrack(() => {
 				query = '';
+				adoptSeenValues().catch(console.error);
 			});
 			queueMicrotask(() => {
 				position();
@@ -436,22 +430,6 @@
 						</button>
 					{/if}
 				</div>
-				{#if colorEditFor === opt.value}
-					<div class="color-panel">
-						<div class="swatch-grid">
-							{#each Array(16) as _, ci}
-								<button
-									class="swatch tag-c{ci}"
-									class:active={opt.color === ci}
-									type="button"
-									tabindex="-1"
-									aria-label="Color {ci}"
-									onclick={() => setColor(opt.value, ci)}
-								></button>
-							{/each}
-						</div>
-					</div>
-				{/if}
 			{/each}
 
 			{#if showCreate}
@@ -667,29 +645,6 @@
 
 	.clear-row :global(svg) {
 		flex-shrink: 0;
-	}
-
-	.color-panel {
-		padding: 4px 8px 8px 10px;
-	}
-
-	.swatch-grid {
-		display: grid;
-		grid-template-columns: repeat(8, 1fr);
-		gap: 5px;
-	}
-
-	.swatch {
-		aspect-ratio: 1 / 1;
-		padding: 0;
-		border: 1.5px solid transparent;
-		border-radius: 5px;
-		cursor: pointer;
-		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
-	}
-
-	.swatch.active {
-		border-color: var(--color-text-primary);
 	}
 
 	.opt.create:hover,

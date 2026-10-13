@@ -95,10 +95,13 @@ export function sourceName(sources: Source[], id: string): string {
 export function tagClass(field: ViewField, value: string): string {
 	const opts = (field.config?.options ?? []) as { value: string; color: number }[];
 	const opt = opts.find((o) => o.value === value);
-	if (opt) return `tag-c${opt.color}`;
+	return `tag-c${opt ? opt.color : hashColor(value)}`;
+}
+
+export function hashColor(value: string): number {
 	let h = 0;
 	for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) >>> 0;
-	return `tag-c${h % 16}`;
+	return h % 16;
 }
 
 // plain-text value for a field on a row (used for titles, search, sort previews)

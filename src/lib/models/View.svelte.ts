@@ -492,6 +492,10 @@ export function sanitizeName(raw: string): string {
 		.trim();
 }
 
+function propPath(field: ViewField): string {
+	return `'$.views."${pathSeg(fieldKey(field), 'unit key')}"."${pathSeg(field.name, 'field name')}"'`;
+}
+
 function resolveColumn(field: ViewField): string {
 	switch (field.type) {
 		case 'title':
@@ -505,7 +509,7 @@ function resolveColumn(field: ViewField): string {
 		case 'tags':
 			throw new Error(`tags field has no scalar column; handle separately`);
 		default:
-			return `json_extract(d.properties, '$.views."${pathSeg(fieldKey(field), 'unit key')}"."${pathSeg(field.name, 'field name')}"')`;
+			return `json_extract(d.properties, ${propPath(field)})`;
 	}
 }
 
@@ -530,6 +534,18 @@ export function unitPropKey(unitId: string): string {
 
 export function folderPropKey(path: string): string {
 	return path ? `/${path}/` : '/';
+}
+
+export async function seenOptionValues(field: ViewField): Promise<string[]> {
+	const path = propPath(field);
+	const sql =
+		field.type === 'multiselect'
+			? `SELECT DISTINCT j.value AS v FROM documents d, json_each(d.properties, ${path}) j
+				WHERE d.deleted_at IS NULL AND json_type(d.properties, ${path}) = 'array' AND j.type = 'text'`
+			: `SELECT DISTINCT json_extract(d.properties, ${path}) AS v FROM documents d
+				WHERE d.deleted_at IS NULL AND json_type(d.properties, ${path}) = 'text'`;
+	const rows = await select<{ v: string }>(sql, []);
+	return rows.map((r) => r.v).filter((v) => v !== '');
 }
 
 function compileUnit(unitId: string): CompiledFilter {
