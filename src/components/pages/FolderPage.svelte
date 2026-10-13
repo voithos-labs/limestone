@@ -433,9 +433,7 @@
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
 		...(here ? [metaItem(here)] : []),
 		{ kind: 'divider' as const },
-		view.temporary
-			? { value: 'project', label: 'Turn into project', icon: Bookmark }
-			: { value: 'unproject', label: 'Stop being a project', icon: Bookmark },
+		{ value: 'project', label: 'Turn into project', icon: Bookmark },
 		{ kind: 'divider' as const },
 		confirmingDelete
 			? {
@@ -495,9 +493,6 @@
 				break;
 			case 'project':
 				openProjectSetup(editor, { id: unitId, name: crumbs.at(-1)?.slug ?? view.slug }, tab);
-				break;
-			case 'unproject':
-				await view.unsave();
 				break;
 			case 'confirm-delete':
 				if (isRoot) await removeThisSource();

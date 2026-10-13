@@ -758,7 +758,19 @@
 		if (value === 'meta' && view.unit) metaDialog.show(view.unit);
 		if (value === 'project' && view.unit)
 			openProjectSetup(editor, { id: view.unit, name: view.slug }, tab);
-		if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));
+		if (value === 'unproject') unproject();
+	}
+
+	async function unproject() {
+		if (!view.unit) return;
+		try {
+			await view.unsave();
+			const plain = View.createForUnit(view.unit, view.slug);
+			if (tab) editor.replaceViewInTab(tab, plain);
+			else editor.openView(plain);
+		} catch (e) {
+			reportError(e, `${subject} couldn't stop being a project.`);
+		}
 	}
 
 	async function onOpenUnit(id: string, name: string, newTab = false) {
