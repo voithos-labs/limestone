@@ -107,12 +107,15 @@
 	});
 
 	function onSearchKey(e: KeyboardEvent) {
-		if (!picking) return;
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			if (view.state.search) view.state.search = '';
-			else picking.open = false;
-		} else if (e.key === 'Enter') {
+			else if (picking?.open) picking.open = false;
+			else (e.currentTarget as HTMLInputElement).blur();
+			return;
+		}
+		if (!picking) return;
+		if (e.key === 'Enter') {
 			e.preventDefault();
 			const first = picking.results[0];
 			if (first) picking.pick(first.id);

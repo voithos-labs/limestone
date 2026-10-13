@@ -700,7 +700,11 @@
 					type="text"
 					placeholder="Search settings"
 					bind:value={searchQuery}
-					onkeydown={(e) => e.key === 'Escape' && (searchQuery = '')}
+					onkeydown={(e) => {
+						if (e.key !== 'Escape') return;
+						if (searchQuery) searchQuery = '';
+						else e.currentTarget.blur();
+					}}
 				/>
 				{#if searchQuery}
 					<button
