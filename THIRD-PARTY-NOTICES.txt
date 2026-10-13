@@ -11,8 +11,8 @@ license for a component is the one on its own License line.
 This file is generated. To refresh it, run: npm run notices
 
 Rust crates:   583
-npm packages:  170
-License texts: 92
+npm packages:  150
+License texts: 91
 
 ==============================================================================
 RUST CRATES
@@ -3471,48 +3471,10 @@ NPM PACKAGES
   Copyright 2022, Ink & Switch LLC
   Full text: [L-750260c3]
 
-@automerge/automerge-repo 2.5.6
-  License: MIT
-  Source:  https://github.com/automerge/automerge-repo/tree/master/packages/automerge-repo
-  Copyright (c) 2019-2023, Ink & Switch LLC
-  Full text: [L-d64f3bb4]
-
 @braintree/sanitize-url 7.1.2
   License: MIT
   Source:  https://github.com/braintree/sanitize-url
   Copyright (c) 2017 Braintree
-  Full text: [L-750260c3]
-
-@cbor-extract/cbor-extract-darwin-arm64 2.2.2
-  License: MIT
-  Source:  https://registry.npmjs.org/@cbor-extract/cbor-extract-darwin-arm64/-/cbor-extract-darwin-arm64-2.2.2.tgz
-  Full text: [L-750260c3]
-
-@cbor-extract/cbor-extract-darwin-x64 2.2.2
-  License: MIT
-  Source:  https://registry.npmjs.org/@cbor-extract/cbor-extract-darwin-x64/-/cbor-extract-darwin-x64-2.2.2.tgz
-  Full text: [L-750260c3]
-
-@cbor-extract/cbor-extract-linux-arm 2.2.2
-  License: MIT
-  Source:  https://registry.npmjs.org/@cbor-extract/cbor-extract-linux-arm/-/cbor-extract-linux-arm-2.2.2.tgz
-  Full text: [L-750260c3]
-
-@cbor-extract/cbor-extract-linux-arm64 2.2.2
-  License: MIT
-  Source:  https://registry.npmjs.org/@cbor-extract/cbor-extract-linux-arm64/-/cbor-extract-linux-arm64-2.2.2.tgz
-  Full text: [L-750260c3]
-
-@cbor-extract/cbor-extract-linux-x64 2.2.2
-  License: MIT
-  Source:  http://github.com/kriszyp/cbor-extract
-  Copyright (c) Kris Zyp
-  Full text: [L-750260c3]
-
-@cbor-extract/cbor-extract-win32-x64 2.2.2
-  License: MIT
-  Source:  http://github.com/kriszyp/cbor-extract
-  Copyright (c) Kris Zyp
   Full text: [L-750260c3]
 
 @chevrotain/types 11.1.2
@@ -3567,7 +3529,7 @@ NPM PACKAGES
   Copyright 2019 Justin Ridgewell <jridgewell@google.com>
   Full text: [L-d64f3bb4]
 
-@jridgewell/sourcemap-codec 1.5.5
+@jridgewell/sourcemap-codec 1.6.0
   License: MIT
   Source:  https://github.com/jridgewell/sourcemaps
   Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
@@ -3592,13 +3554,7 @@ NPM PACKAGES
   Copyright (c) 2023 Yokozuna59
   Full text: [L-fb278496]
 
-@noble/hashes 1.8.0
-  License: MIT
-  Source:  https://github.com/paulmillr/noble-hashes
-  Copyright (c) 2022 Paul Miller (https://paulmillr.com)
-  Full text: [L-c20601ef]
-
-@sveltejs/acorn-typescript 1.0.11
+@sveltejs/acorn-typescript 1.0.13
   License: MIT
   Source:  https://github.com/sveltejs/acorn-typescript
   Copyright (c) 2022 Tyreal Hu
@@ -3852,7 +3808,7 @@ NPM PACKAGES
   Copyright (c) 2021 Samuel Gratzl
   Full text: [L-750260c3]
 
-@voithos-labs/aragonite 0.10.7
+@voithos-labs/aragonite 0.10.9
   License: AGPL-3.0-or-later
   Source:  https://github.com/voithos-labs/aragonite
   Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
@@ -3882,37 +3838,6 @@ axobject-query 4.1.0
   Source:  https://github.com/A11yance/axobject-query
   Copyright 2020 A11yance
   Full text: [L-5eda687a]
-
-base-x 4.0.1
-  License: MIT
-  Source:  https://github.com/cryptocoinjs/base-x
-  Copyright (c) 2018 base-x contributors
-  Copyright (c) 2014-2018 The Bitcoin Core developers
-  Full text: [L-fb278496]
-
-bs58 5.0.0
-  License: MIT
-  Source:  https://github.com/cryptocoinjs/bs58
-  Copyright (c) 2018 cryptocoinjs
-  Full text: [L-750260c3]
-
-bs58check 3.0.1
-  License: MIT
-  Source:  https://github.com/bitcoinjs/bs58check
-  Copyright (c) 2017 Daniel Cousens
-  Full text: [L-fb278496]
-
-cbor-extract 2.2.2
-  License: MIT
-  Source:  http://github.com/kriszyp/cbor-extract
-  Copyright (c) 2020 Kris Zyp
-  Full text: [L-750260c3]
-
-cbor-x 1.6.4
-  License: MIT
-  Source:  http://github.com/kriszyp/cbor-x
-  Copyright (c) 2020 Kris Zyp
-  Full text: [L-750260c3]
 
 clsx 2.1.1
   License: MIT
@@ -4188,23 +4113,11 @@ dayjs 1.11.21
   Copyright (c) 2018-present, iamkun
   Full text: [L-750260c3]
 
-debug 4.4.3
-  License: MIT
-  Source:  git://github.com/debug-js/debug
-  Copyright (c) 2014-2017 TJ Holowaychuk <tj@vision-media.ca>
-  Copyright (c) 2018-2021 Josh Junon
-  Full text: [L-ab439137]
-
 delaunator 5.1.0
   License: ISC
   Source:  https://github.com/mapbox/delaunator
   Copyright (c) 2026, Mapbox
   Full text: [L-50136223]
-
-detect-libc 2.1.2
-  License: Apache-2.0
-  Source:  git://github.com/lovell/detect-libc
-  Full text: [L-ee9409fe]
 
 devalue 5.9.4
   License: MIT
@@ -4229,22 +4142,11 @@ esm-env 1.2.2
   Copyright 2022 Benjamin McCann
   Full text: [L-9a83cace]
 
-esrap 2.3.0
+esrap 2.4.0
   License: MIT
   Source:  https://github.com/sveltejs/esrap
   Copyright (c) 2023-2025 [these people](https://github.com/sveltejs/esrap/graphs/contributors)
   Full text: [L-d64f3bb4]
-
-eventemitter3 5.0.4
-  License: MIT
-  Source:  git://github.com/primus/eventemitter3
-  Copyright (c) 2014 Arnout Kazemier
-  Full text: [L-fb278496]
-
-fast-sha256 1.3.0
-  License: Unlicense
-  Source:  https://github.com/dchest/fast-sha256-js
-  Full text: [L-94b939b6]
 
 fastdom 1.0.12
   License: MIT
@@ -4360,18 +4262,6 @@ mermaid 11.17.2
   Copyright (c) 2014 - 2022 Knut Sveidqvist
   Full text: [L-fb278496]
 
-ms 2.1.3
-  License: MIT
-  Source:  vercel/ms
-  Copyright (c) 2020 Vercel, Inc.
-  Full text: [L-fb278496]
-
-node-gyp-build-optional-packages 5.1.1
-  License: MIT
-  Source:  https://github.com/prebuild/node-gyp-build
-  Copyright (c) 2017 Mathias Buus
-  Full text: [L-fb278496]
-
 package-manager-detector 1.8.0
   License: MIT
   Source:  https://github.com/antfu-collective/package-manager-detector
@@ -4431,7 +4321,7 @@ stylis 4.4.0
   Copyright (c) 2016-present Sultan Tarimo
   Full text: [L-750260c3]
 
-svelte 5.56.10
+svelte 5.57.2
   License: MIT
   Source:  https://github.com/sveltejs/svelte
   Copyright (c) 2016-2025 [Svelte Contributors](https://github.com/sveltejs/svelte/graphs/contributors)
@@ -4459,12 +4349,6 @@ uuid 14.0.2
   License: MIT
   Source:  https://github.com/uuidjs/uuid
   Copyright (c) 2010-2020 Robert Kieffer and other contributors
-  Full text: [L-fb278496]
-
-xstate 5.32.5
-  License: MIT
-  Source:  https://github.com/statelyai/xstate
-  Copyright (c) 2015 David Khourshid
   Full text: [L-fb278496]
 
 zimmerframe 1.1.4
@@ -10831,30 +10715,6 @@ The above copyright notice and this permission notice shall be included in
 all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-------------------------------------------------------------------------------
-[L-c20601ef]  MIT
-------------------------------------------------------------------------------
-
-The MIT License (MIT)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the “Software”), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
