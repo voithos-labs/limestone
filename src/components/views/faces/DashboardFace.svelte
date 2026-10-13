@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import View, { ViewFace, VIEW_FIELD_SORTABLE } from '#lib/models/View.svelte.js';
-	import { fieldLabel } from '#lib/views/fieldValue.js';
+	import { fieldLabel, fieldSections } from '#lib/views/fieldValue.js';
 	import { getFieldIcon } from '#lib/views/filterDisplay.js';
 	import type { FilterNode, ViewField } from '#lib/models/View.svelte.js';
 	import { onSourceReconciled } from '#lib/models/Source.js';
@@ -201,16 +201,20 @@
 				action: () => set({ field_id: MANUAL, direction: 'asc' })
 			},
 			{ divider: true },
-			...view.fields
-				.filter((f) => VIEW_FIELD_SORTABLE.has(f.type))
-				.filter((f) => (key === 'docs_sort' ? f.unit !== TODO : f.id !== doneId))
-				.map((f): CtxEntry => ({
+			...fieldSections(
+				view.fields
+					.filter((f) => VIEW_FIELD_SORTABLE.has(f.type))
+					.filter((f) => (key === 'docs_sort' ? f.unit !== TODO : f.id !== doneId))
+			).flatMap((s): CtxEntry[] => [
+				...(s.label ? [{ divider: true as const, label: s.label }] : []),
+				...s.fields.map((f) => ({
 					label: fieldLabel(f),
 					icon: getFieldIcon(f.type),
 					checked: cur.field_id === f.id,
 					keepOpen: true,
 					action: () => set({ field_id: f.id, direction: cur.direction })
-				})),
+				}))
+			]),
 			{ divider: true },
 			{
 				label: 'Ascending',

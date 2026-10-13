@@ -164,6 +164,17 @@ const PRETTY_FIELD: Record<string, string> = {
 };
 
 // built-ins show a pretty label until renamed then the user's name wins
+export function fieldSections(
+	fields: ViewField[]
+): { label: string | null; fields: ViewField[] }[] {
+	const own = { label: null, fields: fields.filter((f) => !isBuiltinField(f)) };
+	const units = Object.values(BUILTIN_UNITS).map((u) => ({
+		label: '#' + u.unit.replace(/^tag:/, ''),
+		fields: fields.filter((f) => f.unit === u.unit && isBuiltinField(f))
+	}));
+	return [own, ...units].filter((s) => s.fields.length > 0);
+}
+
 export function fieldLabel(field: ViewField): string {
 	if (field.name === field.type && PRETTY_FIELD[field.type]) return PRETTY_FIELD[field.type];
 	// registry names are lowercase keys; they read like the derived fields do

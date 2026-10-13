@@ -13,7 +13,7 @@
 	import EmojiPicker from './editors/EmojiPicker.svelte';
 	import DocPickerPanel from './DocPicker.svelte';
 	import type { DocPicker } from '#lib/views/project.svelte.js';
-	import { getFaceIcon, getFieldIcon } from '#lib/views/filterDisplay.js';
+	import { getFaceIcon, fieldMenuEntries } from '#lib/views/filterDisplay.js';
 	import { fieldLabel } from '#lib/views/fieldValue.js';
 	import { VIEW_FIELD_SORTABLE } from '#lib/models/View.svelte.js';
 	import type { MenuEntry } from '#lib/overlays.svelte.js';
@@ -145,9 +145,7 @@
 	let sortOpen = $state(false);
 	const sortItems = $derived.by((): MenuEntry[] => [
 		{ value: '', label: 'Default', icon: ArrowDownUp },
-		...view.fields
-			.filter((f) => VIEW_FIELD_SORTABLE.has(f.type))
-			.map((f) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }))
+		...fieldMenuEntries(view.fields.filter((f) => VIEW_FIELD_SORTABLE.has(f.type)))
 	]);
 
 	// a hand-made order (rows dragged in the list) overrides the sort until the sort is

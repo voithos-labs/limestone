@@ -27,8 +27,8 @@
 	import type View from '#lib/models/View.svelte.js';
 	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '#lib/models/View.svelte.js';
 	import { isStatusField } from '#lib/models/View.svelte.js';
-	import type { MenuEntry } from '#lib/overlays.svelte.js';
-	import { getFaceIcon, getFieldIcon } from '#lib/views/filterDisplay.js';
+	import { isMenuItem, type MenuEntry } from '#lib/overlays.svelte.js';
+	import { getFaceIcon, getFieldIcon, fieldMenuEntries } from '#lib/views/filterDisplay.js';
 	import { fieldLabel } from '#lib/views/fieldValue.js';
 	import Menu from '../ui/Menu.svelte';
 	import { dashboardSections, DASH_SECTION_LABEL } from '#lib/views/project.svelte.js';
@@ -77,15 +77,13 @@
 	let dateFieldOpen = $state(false);
 
 	const dateFieldKey = $derived((face.config.date_field as string) ?? 'created_at');
-	const dateFieldItems = $derived([
+	const dateFieldItems = $derived.by((): MenuEntry[] => [
 		{ value: 'created_at', label: 'Created', icon: getFieldIcon('created_at') },
 		{ value: 'updated_at', label: 'Updated', icon: getFieldIcon('updated_at') },
-		...view.fields
-			.filter((f: ViewField) => f.type === 'date')
-			.map((f: ViewField) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }))
+		...fieldMenuEntries(view.fields.filter((f: ViewField) => f.type === 'date'))
 	]);
 	const dateFieldLabel = $derived(
-		dateFieldItems.find((i) => i.value === dateFieldKey)?.label ?? 'Created'
+		dateFieldItems.filter(isMenuItem).find((i) => i.value === dateFieldKey)?.label ?? 'Created'
 	);
 
 	function setDateField(v: string) {
@@ -139,12 +137,12 @@
 	});
 
 	// a board's columns come from a select or a boolean; a list groups by anything, or nothing
-	const groupItems = $derived.by(() => {
-		const fields = (
+	const groupItems = $derived.by((): MenuEntry[] => {
+		const fields = fieldMenuEntries(
 			target.type === 'kanban'
 				? groupable.filter((f: ViewField) => f.type === 'select' || f.type === 'boolean')
 				: groupable
-		).map((f: ViewField) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }));
+		);
 		return target.type === 'kanban' ? fields : [{ value: '', label: 'None' }, ...fields];
 	});
 

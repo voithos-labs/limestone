@@ -20,6 +20,7 @@
 		opsFor
 	} from '#lib/views/filterDisplay.js';
 	import { fieldLabel } from '#lib/views/fieldValue.js';
+	import { fieldMenuEntries } from '#lib/views/filterDisplay.js';
 	import { Tags, Folder as FolderIcon } from '@lucide/svelte';
 	import FilterChipIsland from './FilterChipIsland.svelte';
 	import Menu from '../ui/Menu.svelte';
@@ -194,13 +195,7 @@
 		pendingFocusLeaf = filter.children[filter.children.length - 1] as FilterLeaf;
 	}
 
-	const fieldPickerItems = $derived(
-		filterFields.map((f: ViewField) => ({
-			value: f.id,
-			label: fieldLabel(f),
-			icon: getFieldIcon(f.type)
-		}))
-	);
+	const fieldPickerItems = $derived(fieldMenuEntries(filterFields));
 
 	let addEl: HTMLButtonElement | null = $state(null);
 	let addOpen = $state(false);
