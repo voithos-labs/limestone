@@ -131,8 +131,65 @@
 
 	function toggleDone(opt: TagOption) {
 		if (options.filter((o) => !!o.done === !!opt.done).length <= 1) return;
-		vf.config.options = options.map((o) => (o.value === opt.value ? { ...o, done: !o.done } : o));
+		const flipped = { ...opt, done: !opt.done };
+		const rest = options.filter((o) => o.value !== opt.value);
+		const firstDone = rest.findIndex((o) => o.done);
+		rest.splice(flipped.done || firstDone < 0 ? rest.length : firstDone, 0, flipped);
+		vf.config.options = rest;
 		persist();
+	}
+
+	const DRAG_PX = 4;
+	let listEl: HTMLDivElement | null = $state(null);
+	let arm: { value: string; x: number; y: number } | null = null;
+	let dragId: string | null = $state(null);
+	let dragged = false;
+
+	function armDrag(e: PointerEvent, opt: TagOption) {
+		if (e.button !== 0 || query.trim() !== '' || renamingFor || confirmDeleteFor) return;
+		if ((e.target as HTMLElement).closest('.more, input')) return;
+		arm = { value: opt.value, x: e.clientX, y: e.clientY };
+		window.addEventListener('pointermove', onDragMove);
+		window.addEventListener('pointerup', onDragUp);
+	}
+
+	function onDragMove(e: PointerEvent) {
+		if (!arm) return;
+		if (!dragId) {
+			if (Math.hypot(e.clientX - arm.x, e.clientY - arm.y) < DRAG_PX) return;
+			dragId = arm.value;
+		}
+		const me = options.find((o) => o.value === dragId);
+		if (!me || !listEl) return;
+		const rows = Array.from(listEl.querySelectorAll<HTMLElement>('[data-opt]')).filter(
+			(r) => r.dataset.opt !== dragId
+		);
+		let at = 0;
+		for (const r of rows) {
+			const b = r.getBoundingClientRect();
+			if (e.clientY > b.top + b.height / 2) at++;
+		}
+		const rest = options.filter((o) => o.value !== dragId);
+		rest.splice(at, 0, me);
+		if (rest.some((o, i) => o !== options[i])) vf.config.options = rest;
+	}
+
+	function onDragUp() {
+		if (dragId) {
+			dragged = true;
+			persist();
+		}
+		arm = null;
+		dragId = null;
+		window.removeEventListener('pointermove', onDragMove);
+		window.removeEventListener('pointerup', onDragUp);
+	}
+
+	function swallowDragClick(e: MouseEvent) {
+		if (!dragged) return;
+		dragged = false;
+		e.stopPropagation();
+		e.preventDefault();
 	}
 
 	const selectedValues = $derived(
@@ -337,13 +394,23 @@
 				placeholder="Search or create…"
 			/>
 		</div>
-		<div class="list" onmouseleave={() => (activeIndex = -1)} role="presentation">
+		<div
+			class="list"
+			class:dragging={!!dragId}
+			bind:this={listEl}
+			onmouseleave={() => (activeIndex = -1)}
+			onclickcapture={swallowDragClick}
+			role="presentation"
+		>
 			{#each filtered as opt, i (opt.value)}
 				<div
 					class="opt-row"
 					class:active={i === activeIndex}
 					class:confirming={confirmDeleteFor === opt.value}
+					class:dragging={dragId === opt.value}
+					data-opt={opt.value}
 					onmouseenter={() => (activeIndex = i)}
+					onpointerdown={(e) => armDrag(e, opt)}
 					use:ctxMenu={() => rowMenu(opt)}
 					role="presentation"
 				>
@@ -506,6 +573,16 @@
 
 	.opt-row.active {
 		background: var(--menu-item-hover);
+	}
+
+	.opt-row.dragging {
+		opacity: 0.5;
+	}
+
+	.list.dragging,
+	.list.dragging * {
+		cursor: grabbing;
+		user-select: none;
 	}
 
 	.opt-row.confirming .pill {

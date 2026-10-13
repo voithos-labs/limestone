@@ -311,7 +311,6 @@ export interface MenuItem {
 	value: string;
 	label: string;
 	icon?: Component;
-	children?: MenuItem[];
 	keepOpen?: boolean;
 	danger?: boolean;
 	hint?: string; // its current state, trailing in muted text

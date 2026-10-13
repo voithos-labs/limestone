@@ -215,6 +215,8 @@
 	// the float point. Bar in the page: nothing moves. One day's depth never carries to another
 	let entryEl: HTMLElement | null = $state(null);
 	let journalEl: HTMLElement | null = $state(null);
+	let journalW = $state(0);
+	const pageMax = $derived(settings.get<number>('appearance.max_page_width') || 1200);
 	let wasStuck = false;
 	$effect.pre(() => {
 		void selected;
@@ -647,6 +649,7 @@
 	class:flow
 	class:sticky={face.config.sticky_days !== false}
 	bind:this={journalEl}
+	bind:clientWidth={journalW}
 >
 	{#if searching}
 		<div class="hits">
@@ -749,7 +752,11 @@
 
 		<div class="entry" bind:this={entryEl}>
 			{#if bodyFace}
-				<div class="body-face" class:doc={bodyFace.type === 'doc'}>
+				<div
+					class="body-face"
+					class:doc={bodyFace.type === 'doc'}
+					class:roomy={bodyFace.type === 'doc' && journalW >= pageMax}
+				>
 					{#key bodyFace.id}
 						{#if bodyFace.type === 'doc'}
 							<DocFace
@@ -919,7 +926,11 @@
 
 	/* a document body is narrower than the strip, so it needs room to read as its own thing */
 	.body-face.doc {
-		margin-top: 40px;
+		margin-top: 8px;
+	}
+
+	.body-face.roomy {
+		margin-top: 20px;
 	}
 
 	.controls {
