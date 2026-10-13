@@ -63,7 +63,8 @@
 		Eye,
 		ArrowUp,
 		RotateCw,
-		Scale
+		Scale,
+		Plus
 	} from '@lucide/svelte';
 
 	let { viewTab, session }: { viewTab: ViewTab; session: Session } = $props();
@@ -90,7 +91,7 @@
 	let contentEl: HTMLElement | null = $state(null);
 	let themes: string[] = $state([]);
 	let customKeys: string[] = $state([]);
-	let resetDialogOpen = $state(false);
+	let confirmingReset = $state(false);
 	let resetBusy = $state(false);
 	function openNotices() {
 		session.editors[0]?.openLicenses();
@@ -111,23 +112,26 @@
 
 	const appearanceCategory = SETTINGS_REGISTRY.find((c) => c.id === 'appearance') ?? null;
 
-	let searchResults = $derived.by((): { category: SettingCategory; def: SettingDef }[] => {
-		if (!searchQuery.trim()) return [];
-		const results: { category: SettingCategory; def: SettingDef }[] = [];
-		for (const category of SETTINGS_REGISTRY) {
-			for (const def of category.settings) {
-				if (matchesQuery(`${category.label} ${def.label} ${def.key} ${def.description ?? ''}`)) {
-					results.push({ category, def });
-				}
-			}
-		}
-		return results;
-	});
-
 	let themeMatches = $derived(
 		searchQuery.trim().length > 0 && matchesQuery('Appearance Theme Active color theme accent')
 	);
-	let resultCount = $derived(searchResults.length + (themeMatches ? 1 : 0));
+
+	let searchGroups = $derived.by((): { category: SettingCategory; defs: SettingDef[] }[] => {
+		if (!searchQuery.trim()) return [];
+		const groups: { category: SettingCategory; defs: SettingDef[] }[] = [];
+		for (const category of SETTINGS_REGISTRY) {
+			const defs = category.settings.filter((def) =>
+				matchesQuery(`${category.label} ${def.label} ${def.key} ${def.description ?? ''}`)
+			);
+			const themed = themeMatches && category === appearanceCategory;
+			if (defs.length > 0 || themed) groups.push({ category, defs });
+		}
+		return groups;
+	});
+
+	let resultCount = $derived(
+		searchGroups.reduce((n, g) => n + g.defs.length, 0) + (themeMatches ? 2 : 0)
+	);
 
 	const sectionItems: MenuItem[] = [
 		{ value: GENERAL, label: 'General', icon: SlidersHorizontal },
@@ -140,14 +144,7 @@
 		{ value: SOURCES, label: 'Sources', icon: FolderInput }
 	];
 
-	function sectionLabel(id: string): string {
-		if (id === GENERAL) return 'General';
-		if (id === SOURCES) return 'Sources';
-		if (id === SHORTCUTS) return 'Shortcuts';
-		return SETTINGS_REGISTRY.find((c) => c.id === id)?.label ?? id;
-	}
-
-	let currentLabel = $derived(sectionLabel(activeSection));
+	let currentItem = $derived(sectionItems.find((i) => i.value === activeSection));
 
 	let sectionMenuOpen = $state(false);
 	let sectionAnchor: HTMLElement | null = $state(null);
@@ -326,7 +323,8 @@
 	function selectSection(section: string) {
 		activeSection = section;
 		searchQuery = '';
-		closeBindingDialog();
+		confirmingReset = false;
+		stopCapture();
 		saveTabState();
 	}
 
@@ -373,13 +371,13 @@
 		settings.set('shortcuts', map);
 	}
 
-	function openBindingDialog(action: Action, index: number) {
+	function startCapture(action: Action, index: number) {
 		editing = { action, index };
 		draftSpec = keysFor(action, settings)[index] ?? null;
 		keyCapture.active = true;
 	}
 
-	function closeBindingDialog() {
+	function stopCapture() {
 		editing = null;
 		draftSpec = null;
 		keyCapture.active = false;
@@ -391,7 +389,7 @@
 			keys[editing.index] = draftSpec;
 			setActionKeys(editing.action, keys);
 		}
-		closeBindingDialog();
+		stopCapture();
 	}
 
 	function removeBinding() {
@@ -400,14 +398,14 @@
 			keys.splice(editing.index, 1);
 			setActionKeys(editing.action, keys);
 		}
-		closeBindingDialog();
+		stopCapture();
 	}
 
-	onDestroy(closeBindingDialog);
+	onDestroy(stopCapture);
 
-	function onDialogKey(e: KeyboardEvent) {
+	function onCaptureKey(e: KeyboardEvent) {
 		if (!editing) return;
-		if (e.key === 'Escape') return closeBindingDialog();
+		if (e.key === 'Escape') return stopCapture();
 		const bare = !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey;
 		if (e.key === 'Enter' && bare) return saveBinding();
 		e.preventDefault();
@@ -498,7 +496,7 @@
 			await resetAllSettings();
 			await settings.load();
 			customKeys = [];
-			resetDialogOpen = false;
+			confirmingReset = false;
 		} catch (e) {
 			reportError(e, "Settings couldn't be reset.", confirmResetAll);
 		}
@@ -506,48 +504,50 @@
 	}
 </script>
 
-{#snippet themeItem(category: SettingCategory | null)}
-	<div class="setting-item">
-		<div class="item-info">
-			<div class="item-head">
-				<span class="item-label">
-					{#if category}<span class="item-cat">{category.label}:</span>
-					{/if}Theme
-				</span>
-			</div>
-			<p class="item-desc">Active color theme.</p>
+{#snippet groupHead(label: string, icon?: Component, trailing?: import('svelte').Snippet)}
+	{@const Icon = icon}
+	<div class="group-head">
+		<span class="group-label">
+			{#if Icon}<Icon size={12} strokeWidth={1.75} />{/if}
+			{label}
+		</span>
+		<span class="rule"></span>
+		{#if trailing}{@render trailing()}{/if}
+	</div>
+{/snippet}
+
+{#snippet themeItem()}
+	<div class="row">
+		<div class="row-info">
+			<span class="row-label">Theme</span>
+			<span class="row-desc">Active color theme.</span>
 		</div>
-		<div class="item-control">
-			<div class="select-field">
-				<button
-					class="input-select select-trigger"
-					bind:this={themeAnchor}
-					onclick={() => (themeMenuOpen = !themeMenuOpen)}
-				>
-					<span class="select-value">{session.activeTheme}</span>
-				</button>
-				<span class="select-chevron"><ChevronDown size={14} strokeWidth={2} /></span>
-			</div>
+		<div class="row-control">
+			<button
+				class="chip-select"
+				type="button"
+				bind:this={themeAnchor}
+				onclick={() => (themeMenuOpen = !themeMenuOpen)}
+			>
+				<span class="chip-select-value">{session.activeTheme}</span>
+				<ChevronDown size={13} strokeWidth={2} />
+			</button>
 		</div>
 	</div>
 {/snippet}
 
-{#snippet accentItem(category: SettingCategory | null)}
-	<div class="setting-item">
-		<div class="item-info">
-			<div class="item-head">
-				<span class="item-label">
-					{#if category}<span class="item-cat">{category.label}:</span>
-					{/if}Accent
-				</span>
-			</div>
-			<p class="item-desc">Accent color, applied over the active theme.</p>
+{#snippet accentItem()}
+	<div class="row">
+		<div class="row-info">
+			<span class="row-label">Accent</span>
+			<span class="row-desc">Accent color, applied over the active theme.</span>
 		</div>
-		<div class="item-control">
+		<div class="row-control">
 			<div class="accent-row">
 				<button
 					class="accent-swatch default-swatch"
 					class:active={accentSetting === 'default'}
+					type="button"
 					title="Theme default"
 					onclick={() => setAccent('default')}
 				></button>
@@ -555,6 +555,7 @@
 					<button
 						class="accent-swatch"
 						class:active={accentSetting === key}
+						type="button"
 						title={preset.name}
 						style:background={swatchColor(key)}
 						onclick={() => setAccent(key)}
@@ -564,14 +565,14 @@
 					class="accent-swatch custom"
 					class:active={accentIsCustom}
 					title="Custom"
-					style:background={accentIsCustom ? accentSetting : 'transparent'}
+					style:background={accentIsCustom ? accentSetting : undefined}
 				>
 					<input
 						type="color"
 						value={accentIsCustom ? accentSetting : '#C56836'}
 						oninput={onCustomAccent}
 					/>
-					{#if !accentIsCustom}<span class="custom-mark">+</span>{/if}
+					{#if !accentIsCustom}<Plus size={11} strokeWidth={2.25} />{/if}
 				</label>
 			</div>
 		</div>
@@ -579,10 +580,8 @@
 {/snippet}
 
 {#snippet numberField(def: SettingDef)}
-	<div class="num-field">
+	<span class="chip-input" class:has-unit={def.unit}>
 		<input
-			class="input-number"
-			class:has-unit={def.unit}
 			type="number"
 			min={def.min}
 			max={def.max}
@@ -590,31 +589,33 @@
 			value={settings.get<number>(def.key)}
 			onchange={(e) => commitNumber(def, e)}
 		/>
-		{#if def.unit}<span class="num-unit">{def.unit}</span>{/if}
-	</div>
+		{#if def.unit}<span class="unit">{def.unit}</span>{/if}
+	</span>
 {/snippet}
 
-{#snippet settingItem(def: SettingDef, category: SettingCategory | null)}
+{#snippet settingItem(def: SettingDef)}
 	{@const modified = settings.isModified(def.key)}
-	<div class="setting-item" class:modified>
-		<div class="item-info">
-			<div class="item-head">
-				<span class="item-label">
-					{#if def.icon}<def.icon size={13} strokeWidth={1.75} />{/if}
-					{#if category}<span class="item-cat">{category.label}:</span>
-					{/if}{def.label}
-				</span>
+	<div class="row">
+		<div class="row-info">
+			<span class="row-label">
+				{#if def.icon}<def.icon size={13} strokeWidth={1.75} />{/if}
+				{def.label}
 				{#if modified}
-					<button class="item-reset" title="Reset to default" onclick={() => resetOne(def)}>
-						<RotateCcw size={12} />
+					<button
+						class="row-reset"
+						type="button"
+						title="Reset to default"
+						onclick={() => resetOne(def)}
+					>
+						<RotateCcw size={11} strokeWidth={2} />
 					</button>
 				{/if}
-			</div>
+			</span>
 			{#if def.description}
-				<p class="item-desc">{def.description}</p>
+				<span class="row-desc">{def.description}</span>
 			{/if}
 		</div>
-		<div class="item-control">
+		<div class="row-control">
 			{#if def.control === 'toggle'}
 				<Toggle
 					bind:checked={() => settings.get<boolean>(def.key) ?? false, (v) => setValue(def, v)}
@@ -625,41 +626,52 @@
 				{@const value = settings.get(def.key)}
 				{@const inOptions = (def.options ?? []).some((o) => o.value === value)}
 				{@const showCustom = def.allowCustom && (customKeys.includes(def.key) || !inOptions)}
-				<div class="select-control">
-					<div class="select-field">
-						<button class="input-select select-trigger" onclick={(e) => openSelect(def, e)}>
-							<span class="select-value">
-								{showCustom
-									? 'Custom…'
-									: ((def.options ?? []).find((o) => o.value === value)?.label ?? String(value))}
-							</span>
-						</button>
-						<span class="select-chevron"><ChevronDown size={14} strokeWidth={2} /></span>
-					</div>
-					{#if showCustom}
-						{@render numberField(def)}
-					{/if}
-				</div>
+				{#if showCustom}
+					{@render numberField(def)}
+				{/if}
+				<button class="chip-select" type="button" onclick={(e) => openSelect(def, e)}>
+					<span class="chip-select-value">
+						{showCustom
+							? 'Custom'
+							: ((def.options ?? []).find((o) => o.value === value)?.label ?? String(value))}
+					</span>
+					<ChevronDown size={13} strokeWidth={2} />
+				</button>
 			{/if}
 		</div>
 	</div>
 {/snippet}
 
-<svelte:window onkeydowncapture={onDialogKey} />
+{#snippet combo(spec: string)}
+	{#each keyTokens(spec) as tok, t (t)}
+		{#if t > 0}<span class="key-plus">+</span>{/if}
+		<kbd class="keycap">{tok}</kbd>
+	{/each}
+{/snippet}
+
+{#snippet addSourceButton()}
+	<button class="chip-btn" type="button" onclick={addSource}>
+		<FolderPlus size={13} strokeWidth={1.75} />
+		<span>Add source</span>
+	</button>
+{/snippet}
+
+<svelte:window onkeydowncapture={onCaptureKey} />
 
 <div class="settings-page">
-	<div
-		class="settings-header"
-		class:narrow={headerWidth > 0 && headerWidth < 720}
-		bind:clientWidth={headerWidth}
-	>
-		<div class="section-nav">
+	<div class="settings-top">
+		<div
+			class="bar"
+			class:narrow={headerWidth > 0 && headerWidth < 760}
+			bind:clientWidth={headerWidth}
+		>
 			<div class="section-tabs">
 				{#each sectionItems as item (item.value)}
 					{@const Icon = item.icon}
 					<button
 						class="section-tab"
-						class:active={activeSection === item.value}
+						class:active={activeSection === item.value && !isSearching}
+						type="button"
 						onclick={() => selectSection(item.value)}
 					>
 						{#if Icon}<Icon size={14} strokeWidth={1.75} />{/if}
@@ -669,16 +681,20 @@
 			</div>
 			<button
 				class="section-select"
+				type="button"
 				bind:this={sectionAnchor}
 				onclick={() => (sectionMenuOpen = !sectionMenuOpen)}
 			>
-				<span class="section-select-label">{currentLabel}</span>
-				<ChevronDown size={14} strokeWidth={2} />
+				{#if currentItem?.icon}
+					{@const Icon = currentItem.icon}
+					<Icon size={14} strokeWidth={1.75} />
+				{/if}
+				<span>{currentItem?.label ?? ''}</span>
+				<ChevronDown size={13} strokeWidth={2} />
 			</button>
-		</div>
-		<div class="header-actions">
-			<div class="search-bar">
-				<Search size={14} />
+
+			<label class="search-chip">
+				<Search size={14} strokeWidth={1.75} />
 				<input
 					class="search-input"
 					type="text"
@@ -687,261 +703,310 @@
 					onkeydown={(e) => e.key === 'Escape' && (searchQuery = '')}
 				/>
 				{#if searchQuery}
-					<button class="search-clear" title="Clear search" onclick={() => (searchQuery = '')}>
-						<X size={12} />
+					<button
+						class="search-clear"
+						type="button"
+						aria-label="Clear search"
+						onclick={() => (searchQuery = '')}
+					>
+						<X size={12} strokeWidth={2} />
 					</button>
 				{/if}
-			</div>
+			</label>
 		</div>
 	</div>
 
-	<div class="settings-scroll">
-		<div class="settings-content" bind:this={contentEl}>
-			<div class="settings-inner">
-				{#if isSearching}
-					<p class="results-count">
-						{resultCount}
-						{resultCount === 1 ? 'setting' : 'settings'} found
-					</p>
-					<div class="settings-list">
-						{#if themeMatches}
-							{@render themeItem(appearanceCategory)}
-							{@render accentItem(appearanceCategory)}
-						{/if}
-						{#each searchResults as { category, def } (def.key)}
-							{@render settingItem(def, category)}
-						{/each}
-						{#if resultCount === 0}
-							<p class="empty">No matching settings</p>
-						{/if}
+	<div class="settings-body" bind:this={contentEl}>
+		<div class="settings-inner">
+			{#if isSearching}
+				{#if resultCount === 0}
+					<p class="empty">Nothing matches “{searchQuery.trim()}”</p>
+				{:else}
+					{#each searchGroups as group (group.category.id)}
+						<section class="group">
+							{@render groupHead(group.category.label)}
+							{#if themeMatches && group.category === appearanceCategory}
+								{@render themeItem()}
+								{@render accentItem()}
+							{/if}
+							{#each group.defs as def (def.key)}
+								{@render settingItem(def)}
+							{/each}
+						</section>
+					{/each}
+				{/if}
+			{:else if activeSection === GENERAL}
+				<section class="group">
+					{@render groupHead('Limestone')}
+					<div class="row">
+						<div class="row-info">
+							<span class="row-label">Version</span>
+							<span class="row-desc">{updateStatus}</span>
+							{#if updater.phase === 'downloading'}
+								<span class="progress">
+									<span class="progress-bar" style:width="{Math.round(updater.progress * 100)}%"
+									></span>
+								</span>
+							{/if}
+						</div>
+						<div class="row-control">
+							<code class="mono">{appInfo?.version ?? '…'}</code>
+							{#if updater.phase === 'available'}
+								<button class="chip-btn primary" type="button" onclick={() => updater.install()}>
+									<ArrowUp size={13} strokeWidth={2.25} />
+									Install {updater.version}
+								</button>
+							{:else if updater.phase === 'downloading' || updater.phase === 'installing'}
+								<button class="chip-btn" type="button" disabled>
+									{updater.phase === 'installing' ? 'Installing…' : 'Downloading…'}
+								</button>
+							{:else}
+								<button
+									class="chip-btn"
+									type="button"
+									disabled={updater.busy}
+									onclick={() => updater.check()}
+								>
+									<RotateCw size={13} strokeWidth={2} />
+									Check for updates
+								</button>
+							{/if}
+						</div>
 					</div>
-				{:else if activeSection === GENERAL}
-					<div class="settings-list">
-						<!-- prettier-ignore -->
-						<!--						<div class="general-banner">-->
-						<!--<pre class="ascii-logo">              ,,-->
-						<!--`7MMF'        db                                      mm-->
-						<!--  MM                                                  MM-->
-						<!--  MM        `7MM  `7MMpMMMb.pMMMb.  .gP"Ya  ,pP"Ybd mmMMmm ,pW"Wq.`7MMpMMMb.  .gP"Ya-->
-						<!--  MM          MM    MM    MM    MM ,M'   Yb 8I   `"   MM  6W'   `Wb MM    MM ,M'   Yb-->
-						<!--  MM      ,   MM    MM    MM    MM 8M"""""" `YMMMa.   MM  8M     M8 MM    MM 8M""""""-->
-						<!--  MM     ,M   MM    MM    MM    MM YM.    , L.   I8   MM  YA.   ,A9 MM    MM YM.    ,-->
-						<!--.JMMmmmmMMM .JMML..JMML  JMML  JMML.`Mbmmd' M9mmmP'   `Mbmo`Ybmd9'.JMML  JMML.`Mbmmd'</pre>-->
-						<!--				</div>-->
-						<div class="info-list">
-							<div class="info-row">
-								<div class="item-info">
-									<span class="item-label">Version</span>
-									<p class="item-desc">Installed application version.</p>
-								</div>
-								<div class="info-value">
-									<code class="info-mono">{appInfo?.version ?? '…'}</code>
-								</div>
-							</div>
-							<div class="info-row">
-								<div class="item-info">
-									<span class="item-label">Updates</span>
-									<p class="item-desc">{updateStatus}</p>
-									{#if updater.phase === 'downloading'}
-										<div class="update-progress">
-											<div
-												class="update-progress-bar"
-												style="width: {Math.round(updater.progress * 100)}%"
-											></div>
-										</div>
+					<div class="row">
+						<div class="row-info">
+							<span class="row-label">Automatic updates</span>
+							<span class="row-desc">Download and install new versions on launch.</span>
+						</div>
+						<div class="row-control">
+							<Toggle
+								bind:checked={
+									() => settings.get<boolean>('updates.auto_install') ?? false,
+									(v) => settings.set('updates.auto_install', v)
+								}
+							/>
+						</div>
+					</div>
+					<div class="row">
+						<div class="row-info">
+							<span class="row-label">Open source licenses</span>
+							<span class="row-desc">Third-party components included in Limestone.</span>
+						</div>
+						<div class="row-control">
+							<button class="chip-btn" type="button" onclick={openNotices}>
+								<Scale size={13} strokeWidth={2} />
+								View licenses
+							</button>
+						</div>
+					</div>
+				</section>
+
+				<section class="group">
+					{@render groupHead('Behavior')}
+					<div class="row">
+						<div class="row-info">
+							<span class="row-label">Undo hints</span>
+							<span class="row-desc">
+								Show an Undo button for a few seconds after deleting a note.
+							</span>
+						</div>
+						<div class="row-control">
+							<Toggle
+								bind:checked={
+									() => settings.get<boolean>('general.action_hints') ?? true,
+									(v) => settings.set('general.action_hints', v)
+								}
+							/>
+						</div>
+					</div>
+				</section>
+
+				<section class="group">
+					{@render groupHead('This device')}
+					<div class="row">
+						<div class="row-info">
+							<span class="row-label">Device key</span>
+							<span class="row-desc">Local identifier for this device.</span>
+						</div>
+						<div class="row-control">
+							<code class="mono">{appInfo?.device_key ?? '…'}</code>
+							<button
+								class="icon-btn"
+								type="button"
+								title="Copy device key"
+								onclick={copyDeviceKey}
+							>
+								{#if keyCopied}
+									<Check size={13} strokeWidth={2} />
+								{:else}
+									<Copy size={13} strokeWidth={1.75} />
+								{/if}
+							</button>
+						</div>
+					</div>
+				</section>
+
+				<div class="foot">
+					{#if confirmingReset}
+						<span class="foot-text"
+							>Restore every setting to its default? Sources and themes stay.</span
+						>
+						<button class="chip-btn quiet" type="button" onclick={() => (confirmingReset = false)}>
+							Cancel
+						</button>
+						<button
+							class="chip-btn danger"
+							type="button"
+							disabled={resetBusy}
+							onclick={confirmResetAll}
+						>
+							Reset all
+						</button>
+					{:else}
+						<button class="text-btn" type="button" onclick={() => (confirmingReset = true)}>
+							<RotateCcw size={12} strokeWidth={2} />
+							Reset all settings
+						</button>
+					{/if}
+				</div>
+			{:else if activeSection === SHORTCUTS}
+				{#each groupedShortcuts as group (group.cat.id)}
+					<section class="group">
+						{@render groupHead(group.cat.label, CATEGORY_ICON[group.cat.id])}
+						{#each group.items as action (action.id)}
+							{@const keys = keysFor(action, settings)}
+							{@const live = editing?.action.id === action.id ? editing : null}
+							<div class="row shortcut" class:listening={!!live}>
+								<div class="row-info">
+									<span class="row-label">{action.title}</span>
+									{#if live && draftConflict}
+										<span class="row-desc conflict">
+											{#if draftConflict.id === action.id}
+												This command already has that binding.
+											{:else}
+												Also used by “{draftConflict.title}”.
+											{/if}
+										</span>
+									{:else if live}
+										<span class="row-desc"
+											>Press the keys you want. Enter saves, Escape cancels.</span
+										>
 									{/if}
 								</div>
-								<div class="info-value">
-									{#if updater.phase === 'available'}
-										<button class="update-btn primary" onclick={() => updater.install()}>
-											<ArrowUp size={13} strokeWidth={2.25} />
-											Install {updater.version}
-										</button>
-									{:else if updater.phase === 'downloading' || updater.phase === 'installing'}
-										<button class="update-btn" disabled>
-											{updater.phase === 'installing' ? 'Installing…' : 'Downloading…'}
+								<div class="row-control keys">
+									{#if live}
+										<span class="capture" class:empty={!draftSpec}>
+											{#if draftSpec}
+												{@render combo(draftSpec)}
+											{:else}
+												Press keys…
+											{/if}
+										</span>
+										{#if editingExisting}
+											<button class="chip-btn quiet remove" type="button" onclick={removeBinding}>
+												Remove
+											</button>
+										{/if}
+										<button class="chip-btn quiet" type="button" onclick={stopCapture}
+											>Cancel</button
+										>
+										<button
+											class="chip-btn primary"
+											type="button"
+											disabled={!draftSpec}
+											onclick={saveBinding}
+										>
+											Save
 										</button>
 									{:else}
 										<button
-											class="update-btn"
-											disabled={updater.busy}
-											onclick={() => updater.check()}
+											class="chip-btn quiet add-bind"
+											type="button"
+											title="Add a binding"
+											onclick={() => startCapture(action, keys.length)}
 										>
-											<RotateCw size={13} strokeWidth={2.25} />
-											Check for updates
+											<Plus size={12} strokeWidth={2} />
+											bind
 										</button>
+										{#each keys as key, i (i)}
+											{#if i > 0}<span class="key-sep"></span>{/if}
+											<button
+												class="combo"
+												type="button"
+												title="Edit binding"
+												onclick={() => startCapture(action, i)}
+											>
+												{@render combo(key)}
+											</button>
+										{/each}
 									{/if}
 								</div>
 							</div>
-							<div class="info-row">
-								<div class="item-info">
-									<span class="item-label">Automatic updates</span>
-									<p class="item-desc">Download and install new versions on launch.</p>
-								</div>
-								<div class="info-value">
-									<Toggle
-										bind:checked={
-											() => settings.get<boolean>('updates.auto_install') ?? false,
-											(v) => settings.set('updates.auto_install', v)
-										}
-									/>
-								</div>
-							</div>
-							<div class="info-row">
-								<div class="item-info">
-									<span class="item-label">Undo hints</span>
-									<p class="item-desc">
-										Show an Undo button for a few seconds after deleting a note.
-									</p>
-								</div>
-								<div class="info-value">
-									<Toggle
-										bind:checked={
-											() => settings.get<boolean>('general.action_hints') ?? true,
-											(v) => settings.set('general.action_hints', v)
-										}
-									/>
-								</div>
-							</div>
-							<div class="info-row">
-								<div class="item-info">
-									<span class="item-label">Open source licenses</span>
-									<p class="item-desc">Third-party components included in Limestone.</p>
-								</div>
-								<div class="info-value">
-									<button class="update-btn" onclick={openNotices}>
-										<Scale size={13} strokeWidth={2.25} />
-										View licenses
-									</button>
-								</div>
-							</div>
-							<div class="info-row">
-								<div class="item-info">
-									<span class="item-label">Device key</span>
-									<p class="item-desc">Local identifier for this device.</p>
-								</div>
-								<div class="info-value">
-									<code class="info-mono">{appInfo?.device_key ?? '…'}</code>
-									<button class="copy-btn" title="Copy device key" onclick={copyDeviceKey}>
-										{#if keyCopied}
-											<Check size={13} />
-										{:else}
-											<Copy size={13} />
-										{/if}
-									</button>
-								</div>
-							</div>
-						</div>
-
-						<button class="reset-settings-btn" onclick={() => (resetDialogOpen = true)}>
-							<RotateCcw size={14} />
-							Reset all settings to defaults
-						</button>
-					</div>
-				{:else if activeSection === SHORTCUTS}
-					<div class="shortcuts">
-						{#each groupedShortcuts as group (group.cat.id)}
-							{@const CatIcon = CATEGORY_ICON[group.cat.id]}
-							<div class="shortcut-group">
-								<div class="shortcut-head">
-									{#if CatIcon}<CatIcon size={13} strokeWidth={1.75} />{/if}
-									<span>{group.cat.label}</span>
-								</div>
-								{#each group.items as action (action.id)}
-									{@const keys = keysFor(action, settings)}
-									<div class="shortcut-row">
-										<span class="shortcut-label">{action.title}</span>
-										<span class="shortcut-keys">
-											<button
-												class="new-bind"
-												title="Add binding"
-												onclick={() => openBindingDialog(action, keys.length)}
-											>
-												new bind
-											</button>
-											{#each keys as key, i (i)}
-												{#if i > 0}<span class="key-sep">,</span>{/if}
-												<button
-													class="combo"
-													title="Edit binding"
-													onclick={() => openBindingDialog(action, i)}
-												>
-													{#each keyTokens(key) as tok, t (t)}
-														{#if t > 0}<span class="key-plus">+</span>{/if}
-														<kbd class="keycap">{tok}</kbd>
-													{/each}
-												</button>
-											{/each}
-										</span>
-									</div>
-								{/each}
-							</div>
 						{/each}
-					</div>
-				{:else if activeSection === SOURCES}
-					{#if sourcesCategory}
-						<div class="settings-list sources-settings">
-							{#each sourcesCategory.settings as def (def.key)}
-								{@render settingItem(def, null)}
-							{/each}
-						</div>
-					{/if}
+					</section>
+				{/each}
+			{:else if activeSection === SOURCES}
+				<section class="group">
+					{@render groupHead('Sources', undefined, addSourceButton)}
 					{#if sourceError}
 						<p class="source-error">{sourceError}</p>
 					{/if}
-					<div class="sources-list">
-						<button class="source-card add-source-card" onclick={addSource}>
-							<FolderPlus size={14} />
-							<span>Add source</span>
-							<span class="add-ghost" aria-hidden="true">
-								<span class="src-title">&nbsp;</span>
-								<span class="src-path">&nbsp;</span>
-							</span>
-						</button>
-						{#each sources as s (s.id)}
-							<div class="source-card" class:unavailable={session.missingSources.has(s.id)}>
-								<div class="src-main">
-									<div class="src-title-row">
-										<FolderInput size={13} />
-										<span class="src-title">{sourceName(s)}</span>
-										{#if s.id === defaultSourceId}
-											<span class="src-default">Default</span>
-										{/if}
-									</div>
-									<span class="src-path" title={s.path}>{s.path}</span>
-								</div>
-								<div class="src-right">
-									<span class="src-count">
-										{#if sourceCounts[s.id] === undefined}
-											…
-										{:else}
-											{sourceCounts[s.id]} {sourceCounts[s.id] === 1 ? 'doc' : 'docs'}
-										{/if}
-									</span>
-									<button class="src-btn" title="More" onclick={(e) => openSourceMenu(s, e)}>
-										<EllipsisVertical size={14} />
-									</button>
-								</div>
+					{#each sources as s (s.id)}
+						<div class="row source" class:unavailable={session.missingSources.has(s.id)}>
+							<span class="source-icon"><FolderInput size={14} strokeWidth={1.75} /></span>
+							<div class="row-info">
+								<span class="row-label">
+									{sourceName(s)}
+									{#if s.id === defaultSourceId}
+										<span class="default-pill">Default</span>
+									{/if}
+								</span>
+								<span class="row-desc path" title={s.path}>{s.path}</span>
 							</div>
-						{:else}
-							<p class="sources-empty">No sources yet</p>
+							<div class="row-control">
+								<span class="count">
+									{#if sourceCounts[s.id] === undefined}
+										…
+									{:else}
+										{sourceCounts[s.id]} {sourceCounts[s.id] === 1 ? 'doc' : 'docs'}
+									{/if}
+								</span>
+								<button
+									class="icon-btn"
+									type="button"
+									title="More"
+									onclick={(e) => openSourceMenu(s, e)}
+								>
+									<EllipsisVertical size={14} strokeWidth={1.75} />
+								</button>
+							</div>
+						</div>
+					{:else}
+						<p class="empty">No sources yet</p>
+					{/each}
+				</section>
+				{#if sourcesCategory}
+					<section class="group">
+						{@render groupHead('Behavior')}
+						{#each sourcesCategory.settings as def (def.key)}
+							{@render settingItem(def)}
 						{/each}
-					</div>
-				{:else if activeCategory}
-					<div class="settings-list">
-						{#if activeCategory.id === 'appearance'}
-							{@render themeItem(null)}
-							{@render accentItem(null)}
-						{/if}
-						{#each activeCategory.settings as def (def.key)}
-							{@render settingItem(def, null)}
-						{/each}
-					</div>
+					</section>
 				{/if}
-			</div>
+			{:else if activeCategory}
+				<section class="group">
+					{#if activeCategory.id === 'appearance'}
+						{@render themeItem()}
+						{@render accentItem()}
+					{/if}
+					{#each activeCategory.settings as def (def.key)}
+						{@render settingItem(def)}
+					{/each}
+				</section>
+			{/if}
 		</div>
-		<ScrollThumb scroller={contentEl} top={12} />
 	</div>
+	<ScrollThumb scroller={contentEl} top={12} />
 </div>
 
 <Menu
@@ -950,9 +1015,7 @@
 	items={sectionItems}
 	selected={activeSection}
 	onSelect={onSectionSelect}
-	searchable
-	minWidth={220}
-	placeholder="Search sections…"
+	minWidth={200}
 />
 
 <Menu
@@ -975,66 +1038,6 @@
 	onSelect={onSelectMenu}
 	minWidth={148}
 />
-
-{#if resetDialogOpen}
-	<div class="overlay" onclick={() => (resetDialogOpen = false)} role="presentation">
-		<div
-			class="dialog"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.key === 'Escape' && (resetDialogOpen = false)}
-			role="dialog"
-			tabindex="-1"
-		>
-			<h3 class="dialog-title">Reset settings</h3>
-			<p class="dialog-text">
-				Restore every setting to its default value? Sources and themes are not affected.
-			</p>
-			<div class="dialog-actions">
-				<button class="btn" onclick={() => (resetDialogOpen = false)}>Cancel</button>
-				<button class="btn danger" disabled={resetBusy} onclick={confirmResetAll}>
-					Reset all
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
-
-{#if editing}
-	<div class="overlay" onclick={closeBindingDialog} role="presentation">
-		<div class="dialog" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
-			<h3 class="dialog-title">{editing.action.title}</h3>
-			<p class="dialog-text">Press the keys you want, then Enter to save. Escape to cancel.</p>
-			<div class="capture" class:empty={!draftSpec}>
-				{#if draftSpec}
-					<span class="combo">
-						{#each keyTokens(draftSpec) as tok, t (t)}
-							{#if t > 0}<span class="key-plus">+</span>{/if}
-							<kbd class="keycap">{tok}</kbd>
-						{/each}
-					</span>
-				{:else}
-					<span class="capture-ph">Press desired keys…</span>
-				{/if}
-			</div>
-			{#if draftConflict}
-				<p class="conflict">
-					{#if draftConflict.id === editing.action.id}
-						This command already has that binding.
-					{:else}
-						Also used by “{draftConflict.title}”.
-					{/if}
-				</p>
-			{/if}
-			<div class="dialog-actions">
-				{#if editingExisting}
-					<button class="btn remove" onclick={removeBinding}>Remove</button>
-				{/if}
-				<button class="btn" onclick={closeBindingDialog}>Cancel</button>
-				<button class="btn danger" disabled={!draftSpec} onclick={saveBinding}>Save</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 <SourceMenu
 	bind:open={srcMenuOpen}
@@ -1059,52 +1062,51 @@
 
 <style>
 	.settings-page {
-		--control-w: 148px;
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		height: 100%;
 		font-family: var(--font-ui);
+		color: var(--color-text-primary);
 	}
 
-	/* ── Header (section tabs / dropdown) ── */
-	.settings-header {
-		position: relative;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
+	/* ── Top bar ── */
+	.settings-top {
+		flex-shrink: 0;
 		width: 100%;
 		max-width: var(--view-max-width, 1200px);
 		margin: 0 auto;
-		padding: 24px 32px 14px;
-		box-sizing: border-box;
+		padding: 47px 24px 0;
 	}
 
-	.section-nav {
+	.bar {
 		display: flex;
 		align-items: center;
-		flex: 0 0 auto;
+		gap: 8px;
+		margin: 0 24px 16px 14px;
 	}
 
-	/* Wide: a row of tabs. Narrow: collapses to the dropdown (see .narrow below). */
 	.section-tabs {
 		display: flex;
 		align-items: center;
 		gap: 2px;
-		margin-left: -6px;
+		min-width: 0;
 	}
 
-	.section-tab {
+	.section-tab,
+	.section-select {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		padding: 7px 12px;
+		gap: 7px;
+		height: 32px;
+		padding: 0 11px 0 10px;
+		flex-shrink: 0;
 		border: none;
-		border-radius: var(--radius-ui);
+		border-radius: 8px;
 		background: transparent;
 		color: var(--color-ui-muted);
 		font-family: var(--font-ui);
-		font-size: 14px;
+		font-size: 13px;
 		font-weight: 500;
 		white-space: nowrap;
 		cursor: pointer;
@@ -1113,105 +1115,72 @@
 			color 120ms ease;
 	}
 
-	.section-tab :global(svg) {
-		color: var(--color-ui-muted);
-		transition: color 120ms ease;
-	}
-
 	.section-tab:hover {
 		background: var(--chip-bg);
 		color: var(--color-text-secondary);
 	}
 
-	.section-tab.active {
+	.section-tab.active,
+	.section-select {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
-		font-weight: 600;
-	}
-
-	.section-tab.active :global(svg) {
-		color: var(--color-text-primary);
-	}
-
-	.section-select {
-		display: none;
-	}
-
-	.settings-header.narrow .section-tabs {
-		display: none;
-	}
-
-	.settings-header.narrow .section-select {
-		display: inline-flex;
-	}
-
-	.settings-header::after {
-		content: '';
-		position: absolute;
-		left: 32px;
-		right: 32px;
-		bottom: 0;
-		height: 1px;
-		background: var(--color-border);
-	}
-
-	/* Visibility is owned by the header's measured width above; matches an active tab. */
-	.section-select {
-		align-items: center;
-		gap: 6px;
-		margin-left: -6px;
-		padding: 7px 12px;
-		border: none;
-		border-radius: var(--radius-ui);
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-		font-family: var(--font-ui);
-		font-size: 14px;
-		font-weight: 600;
-		cursor: pointer;
 	}
 
 	.section-select:hover {
 		background: var(--chip-bg-hover);
 	}
 
-	.section-select :global(svg) {
+	.section-select :global(svg:last-child) {
 		color: var(--color-ui-muted);
 	}
 
-	.header-actions {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		min-width: 0;
+	.section-select {
+		display: none;
 	}
 
-	.search-bar {
-		display: flex;
+	.bar.narrow .section-tabs {
+		display: none;
+	}
+
+	.bar.narrow .section-select {
+		display: inline-flex;
+	}
+
+	.search-chip {
+		display: inline-flex;
 		align-items: center;
-		gap: 8px;
-		flex: 1 1 240px;
-		min-width: 140px;
-		max-width: 240px;
-		padding: 7px 12px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-ui);
+		gap: 7px;
+		height: 32px;
+		margin-left: auto;
+		padding: 0 13px;
+		flex: 0 1 260px;
+		min-width: 120px;
+		background: var(--chip-bg);
+		border-radius: 999px;
 		color: var(--color-ui-muted);
+		font-size: 13px;
+		cursor: text;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
-	.search-bar:focus-within {
-		border-color: var(--focus-border);
+	.search-chip:hover,
+	.search-chip:focus-within,
+	.search-chip:has(.search-input:not(:placeholder-shown)) {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-secondary);
 	}
 
 	.search-input {
 		flex: 1;
 		min-width: 0;
-		background: transparent;
-		border: none;
+		padding: 0;
+		border: 0;
 		outline: none;
+		background: transparent;
+		font: inherit;
 		color: var(--color-text-primary);
-		font-family: var(--font-ui);
-		font-size: 13px;
 	}
 
 	.search-input::placeholder {
@@ -1219,12 +1188,15 @@
 	}
 
 	.search-clear {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		padding: 2px;
+		flex-shrink: 0;
+		width: 16px;
+		height: 16px;
+		padding: 0;
 		border: none;
-		border-radius: var(--radius-ui);
+		border-radius: 50%;
 		background: transparent;
 		color: var(--color-ui-muted);
 		cursor: pointer;
@@ -1232,440 +1204,374 @@
 
 	.search-clear:hover {
 		color: var(--color-text-primary);
+		background: var(--chip-bg-hover);
 	}
 
-	.results-count {
-		margin: 0 0 18px;
-		font-size: 13px;
+	/* ── Body ── */
+	.settings-body {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		scrollbar-width: none;
+	}
+
+	.settings-body::-webkit-scrollbar {
+		display: none;
+	}
+
+	.settings-inner {
+		max-width: var(--view-max-width, 1200px);
+		margin: 0 auto;
+		padding: 6px 48px 72px;
+	}
+
+	.group {
+		margin-top: 22px;
+	}
+
+	.group:first-child {
+		margin-top: 4px;
+	}
+
+	.group-head {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		height: 28px;
+		margin-bottom: 2px;
+	}
+
+	.group-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
 		color: var(--color-ui-muted);
+	}
+
+	.rule {
+		flex: 1;
+		height: 1px;
+		margin: 0 14px 0 10px;
+		background: var(--chip-divider);
+	}
+
+	.rule:last-child {
+		margin-right: 0;
 	}
 
 	.empty {
 		padding: 12px 0;
+		font-size: 13px;
 		color: var(--color-ui-muted);
-		font-size: 14px;
 	}
 
-	.reset-settings-btn {
+	/* ── Rows ── */
+	.row {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		margin-top: 36px;
-		padding: 8px 12px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-ui);
-		background: transparent;
-		color: var(--color-ui-dulled);
-		font-family: var(--font-ui);
-		font-size: 12px;
-		cursor: pointer;
-		align-self: flex-end;
+		gap: 16px;
+		min-height: 44px;
+		margin: 0 -10px;
+		padding: 7px 10px;
+		border-radius: 8px;
+		transition: background-color 80ms ease;
 	}
 
-	.reset-settings-btn:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
+	.row:hover {
+		background: var(--row-hover-bg, rgba(127, 127, 127, 0.06));
 	}
 
-	/* ── Content ── */
-	.settings-scroll {
-		position: relative;
-		display: flex;
-		flex: 1;
-		min-height: 0;
-		width: 100%;
-		max-width: var(--view-max-width, 1200px);
-		margin-left: auto;
-		margin-right: auto;
-	}
-
-	.settings-content {
-		flex: 1;
-		min-width: 0;
-		padding: 24px 32px 48px;
-		box-sizing: border-box;
-		overflow-y: auto;
-		scrollbar-width: none;
-		mask-image: linear-gradient(
-			to bottom,
-			transparent,
-			black 12px,
-			black calc(100% - 28px),
-			transparent
-		);
-		-webkit-mask-image: linear-gradient(
-			to bottom,
-			transparent,
-			black 12px,
-			black calc(100% - 28px),
-			transparent
-		);
-	}
-
-	.settings-content::-webkit-scrollbar {
-		display: none;
-	}
-
-	/* ── General tab ── */
-	.general-banner {
-		width: 100%;
-		padding: 12px 0 40px;
-		text-align: center;
-	}
-
-	.ascii-logo {
-		display: inline-block;
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: 13px;
-		line-height: 1.15;
-		white-space: pre;
-		text-align: left;
-		color: var(--color-ui-muted);
-	}
-
-	.info-list {
+	.row-info {
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		margin-bottom: 20px;
-	}
-
-	.info-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 24px;
-		padding: 12px 16px;
-		margin: 0 -16px;
-		border-radius: var(--radius-ui);
-	}
-
-	.info-row:hover {
-		background: var(--chip-bg);
-	}
-
-	.info-value {
-		display: flex;
-		align-items: center;
-		gap: 8px;
+		flex: 1;
 		min-width: 0;
 	}
 
-	.info-mono {
-		font-family: var(--font-mono);
-		font-size: 12px;
-		color: var(--color-text-secondary);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.copy-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		padding: 4px;
-		border: none;
-		border-radius: var(--radius-ui);
-		background: transparent;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-	}
-
-	.copy-btn:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-	}
-
-	.update-btn {
+	.row-label {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		flex-shrink: 0;
-		padding: 5px 10px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-ui);
-		background: transparent;
+		min-height: 18px;
+		font-size: 13px;
+		font-weight: 500;
 		color: var(--color-text-primary);
+	}
+
+	.row-label :global(svg) {
+		color: var(--color-ui-muted);
+	}
+
+	.row-desc {
+		font-size: 12px;
+		line-height: 1.4;
+		color: var(--color-ui-muted);
+	}
+
+	.row-desc.conflict {
+		color: var(--error-fg);
+	}
+
+	.row-reset {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: none;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		opacity: 0;
+		cursor: pointer;
+		transition: opacity 80ms ease;
+	}
+
+	.row:hover .row-reset {
+		opacity: 1;
+	}
+
+	.row-reset:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.row-control {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 8px;
+		flex-shrink: 0;
+	}
+
+	/* ── Controls ── */
+	.chip-select,
+	.chip-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 28px;
+		padding: 0 10px;
+		border: 0;
+		border-radius: 6px;
+		background: var(--chip-bg);
 		font-family: var(--font-ui);
 		font-size: 12px;
+		font-weight: 500;
 		line-height: 1;
+		color: var(--color-text-primary);
+		white-space: nowrap;
 		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease,
+			opacity 120ms ease;
 	}
 
-	.update-btn:hover:not(:disabled) {
-		background: var(--chip-bg);
+	.chip-select {
+		gap: 4px;
+		min-width: 110px;
+		padding-right: 7px;
 	}
 
-	.update-btn:disabled {
-		opacity: 0.6;
+	.chip-select-value {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		text-align: left;
+	}
+
+	.chip-select :global(svg) {
+		flex-shrink: 0;
+		color: var(--color-ui-muted);
+	}
+
+	.chip-select:hover,
+	.chip-btn:hover:not(:disabled) {
+		background: var(--chip-bg-hover);
+	}
+
+	.chip-btn:disabled {
+		opacity: 0.5;
 		cursor: default;
 	}
 
-	.update-btn.primary {
-		border-color: var(--color-accent);
+	.chip-btn :global(svg) {
+		flex-shrink: 0;
+		color: var(--color-ui-muted);
+	}
+
+	.chip-btn.quiet {
+		background: transparent;
+		color: var(--color-ui-muted);
+	}
+
+	.chip-btn.quiet:hover:not(:disabled) {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
+	}
+
+	.chip-btn.primary,
+	.chip-btn.primary :global(svg) {
 		background: var(--color-accent);
 		color: var(--color-accent-contrast);
 	}
 
-	.update-progress {
-		margin-top: 8px;
-		width: 180px;
-		height: 4px;
-		border-radius: 2px;
-		background: var(--color-border);
-		overflow: hidden;
-	}
-
-	.update-progress-bar {
-		height: 100%;
+	.chip-btn.primary:hover:not(:disabled) {
 		background: var(--color-accent);
-		transition: width 0.12s linear;
+		opacity: 0.9;
 	}
 
-	.settings-list {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
+	.chip-btn.danger {
+		background: var(--error-bg);
+		color: var(--error-fg);
 	}
 
-	/* ── Setting item ── */
-	.setting-item {
+	.chip-btn.danger:hover:not(:disabled) {
+		background: var(--error-bg);
+		opacity: 0.85;
+	}
+
+	.chip-btn.remove {
+		margin-right: auto;
+		color: var(--error-fg);
+	}
+
+	.chip-btn.remove:hover:not(:disabled) {
+		background: var(--error-bg);
+		color: var(--error-fg);
+	}
+
+	.chip-input {
 		position: relative;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 24px;
-		padding: 14px 16px;
-		margin: 0 -16px;
-		border-radius: var(--radius-ui);
-	}
-
-	.item-info {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		min-width: 0;
-	}
-
-	.setting-item:hover {
-		background: var(--chip-bg);
-	}
-
-	.item-head {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.item-label {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		font-size: 13px;
-		font-weight: 600;
+		height: 28px;
+		width: 88px;
+		border-radius: 6px;
+		background: var(--chip-bg);
+		transition: background-color 120ms ease;
+	}
+
+	.chip-input:hover,
+	.chip-input:focus-within {
+		background: var(--chip-bg-hover);
+	}
+
+	.chip-input input {
+		width: 100%;
+		height: 100%;
+		padding: 0 10px;
+		border: 0;
+		outline: none;
+		background: transparent;
+		font-family: var(--font-ui);
+		font-size: 12px;
+		font-weight: 500;
 		color: var(--color-text-primary);
 	}
 
-	.item-cat {
-		color: var(--color-ui-muted);
+	.chip-input.has-unit input {
+		padding-right: 34px;
 	}
 
-	.item-reset {
-		display: flex;
+	.unit {
+		position: absolute;
+		right: 10px;
+		font-size: 11px;
+		color: var(--color-ui-muted);
+		pointer-events: none;
+	}
+
+	.icon-btn {
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		padding: 2px;
+		width: 28px;
+		height: 28px;
+		padding: 0;
 		border: none;
-		border-radius: var(--radius-ui);
+		border-radius: 6px;
 		background: transparent;
 		color: var(--color-ui-muted);
 		cursor: pointer;
-		opacity: 0;
-	}
-
-	.setting-item:hover .item-reset {
-		opacity: 1;
-	}
-
-	.item-reset:hover {
-		color: var(--color-text-primary);
-	}
-
-	.item-desc {
-		margin: 0;
-		font-size: 12px;
-		color: var(--color-text-secondary);
-	}
-
-	.item-control {
-		display: flex;
-		flex-shrink: 0;
-		justify-content: flex-end;
-		min-width: var(--control-w);
-	}
-
-	.select-control {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	/* ── Inputs ── */
-	.input-number,
-	.input-select {
-		width: var(--control-w);
-		box-sizing: border-box;
-		height: 32px;
-		padding: 0 10px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-ui);
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-		font-family: var(--font-ui);
-		font-size: 13px;
-		outline: none;
 		transition:
 			background-color 120ms ease,
-			border-color 120ms ease;
+			color 120ms ease;
 	}
 
-	.input-select {
-		appearance: none;
-		-webkit-appearance: none;
-		width: 100%;
-		padding-right: 30px;
+	.icon-btn:hover {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
+	}
+
+	.text-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 0;
+		border: none;
+		background: none;
+		font-family: var(--font-ui);
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--color-ui-muted);
 		cursor: pointer;
 	}
 
-	.select-field {
-		position: relative;
-		display: inline-flex;
-		align-items: center;
-		width: var(--control-w);
+	.text-btn:hover {
+		color: var(--color-text-primary);
+		text-decoration: underline;
 	}
 
-	.select-trigger {
-		display: inline-flex;
-		align-items: center;
-		text-align: left;
-	}
-
-	.select-value {
-		flex: 1;
-		min-width: 0;
+	.mono {
+		max-width: 260px;
+		font-family: var(--font-mono);
+		font-size: 12px;
+		color: var(--color-text-secondary);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
-	.select-chevron {
-		position: absolute;
-		right: 11px;
-		top: 50%;
-		transform: translateY(-50%);
-		display: inline-flex;
-		color: var(--color-ui-dulled);
-		pointer-events: none;
+	.progress {
+		display: block;
+		width: 180px;
+		height: 3px;
+		margin-top: 6px;
+		border-radius: 2px;
+		background: var(--chip-divider);
+		overflow: hidden;
 	}
 
-	.input-number::-webkit-inner-spin-button,
-	.input-number::-webkit-outer-spin-button {
-		-webkit-appearance: none;
-		margin: 0;
+	.progress-bar {
+		display: block;
+		height: 100%;
+		background: var(--color-accent);
+		transition: width 120ms linear;
 	}
 
-	.num-field {
-		position: relative;
-		display: inline-flex;
-		align-items: center;
-	}
-
-	.input-number.has-unit {
-		padding-right: 30px;
-	}
-
-	.num-unit {
-		position: absolute;
-		right: 11px;
-		top: 50%;
-		transform: translateY(-50%);
-		font-size: 12px;
-		color: var(--color-ui-dulled);
-		pointer-events: none;
-	}
-
-	.input-number:hover,
-	.input-select:hover {
-		background: var(--chip-bg-hover);
-	}
-
-	.input-number:focus,
-	.input-select:focus {
-		border-color: var(--focus-border);
-		background: var(--chip-bg-hover);
-	}
-
-	/* ── Reset dialog ── */
-	.overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 1500;
+	.foot {
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		background: rgba(0, 0, 0, 0.4);
-	}
-
-	.dialog {
-		width: 380px;
-		max-width: calc(100vw - 32px);
-		padding: 20px;
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: 12px;
-		box-shadow: var(--menu-shadow);
-		font-family: var(--font-ui);
-	}
-
-	.dialog-title {
-		margin: 0 0 10px;
-		font-size: 16px;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.dialog-text {
-		margin: 0 0 18px;
-		font-size: 13px;
-		color: var(--color-text-secondary);
-		line-height: 1.5;
-	}
-
-	.dialog-actions {
-		display: flex;
 		justify-content: flex-end;
 		gap: 8px;
+		margin-top: 36px;
 	}
 
-	.btn {
-		padding: 6px 14px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-ui);
-		background: transparent;
-		color: var(--color-text-secondary);
-		font-family: var(--font-ui);
-		font-size: 13px;
-		cursor: pointer;
+	.foot-text {
+		font-size: 12px;
+		color: var(--color-ui-muted);
 	}
 
-	.btn:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-	}
-
+	/* ── Accent ── */
 	.accent-row {
 		display: flex;
 		align-items: center;
@@ -1674,15 +1580,17 @@
 
 	.accent-swatch {
 		position: relative;
-		width: 20px;
-		height: 20px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
 		padding: 0;
-		border: 1px solid var(--color-border);
+		border: none;
 		border-radius: 50%;
 		cursor: pointer;
 	}
 
-	/* Theme-default accent: the base accent with a small surface dot in the center. */
 	.default-swatch {
 		background: var(--color-accent-default);
 	}
@@ -1695,7 +1603,7 @@
 		width: 5px;
 		height: 5px;
 		border-radius: 50%;
-		background: var(--color-surface);
+		background: var(--color-bg);
 		transform: translate(-50%, -50%);
 	}
 
@@ -1705,11 +1613,13 @@
 	}
 
 	.accent-swatch.custom {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		border-style: dashed;
+		background: var(--chip-bg);
 		color: var(--color-ui-muted);
+	}
+
+	.accent-swatch.custom:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
 	}
 
 	.accent-swatch.custom input {
@@ -1719,269 +1629,85 @@
 		cursor: pointer;
 	}
 
-	.custom-mark {
-		font-size: 13px;
-		line-height: 1;
+	.accent-swatch.custom :global(svg) {
 		pointer-events: none;
 	}
 
-	.btn.danger {
-		border-color: transparent;
-		background: var(--color-accent);
-		color: var(--color-accent-contrast);
-	}
-
-	.btn.danger:hover {
-		opacity: 0.9;
-		color: var(--color-accent-contrast);
-	}
-
-	.btn:disabled {
-		opacity: 0.6;
-		cursor: default;
-	}
-
-	.btn.remove {
-		margin-right: auto;
-		border-color: transparent;
-		color: var(--error-fg);
-	}
-
-	.btn.remove:hover {
-		background: var(--error-bg);
-		color: var(--error-fg);
-	}
-
-	.capture {
-		display: flex;
+	/* ── Sources ── */
+	.source-icon {
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		min-height: 54px;
-		margin: 2px 0 16px;
-		padding: 12px;
-		border: 1px dashed var(--color-border);
-		border-radius: 8px;
-		background: var(--chip-bg);
-	}
-
-	.capture-ph {
-		font-size: 12px;
-		color: var(--color-ui-muted);
-	}
-
-	.conflict {
-		margin: -8px 0 14px;
-		font-size: 12px;
-		color: var(--error-fg);
-	}
-
-	/* ── Sources tab ── */
-	.source-card.add-source-card {
-		justify-content: center;
-		gap: 8px;
-		width: 100%;
-		border-style: dashed;
-		background: transparent;
-		color: var(--color-ui-muted);
-		font-family: var(--font-ui);
-		font-size: 13px;
-		cursor: pointer;
-	}
-
-	.add-source-card :global(svg) {
 		flex-shrink: 0;
+		width: 28px;
+		height: 28px;
+		border-radius: 6px;
+		background: var(--chip-bg);
 		color: var(--color-ui-muted);
 	}
 
-	.add-ghost {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		width: 0;
-		margin-left: -8px;
-		overflow: hidden;
-	}
-
-	.source-card.add-source-card:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-	}
-
-	.source-error {
-		margin: 0 0 12px;
-		padding: 8px 12px;
-		font-size: 12px;
-		color: var(--color-accent);
-		background: var(--error-bg);
-		border-radius: var(--radius-ui);
-	}
-
-	.sources-settings {
-		margin-bottom: 16px;
-	}
-
-	.sources-settings .setting-item {
-		margin: 0;
-		padding: 12px 14px;
-		background: var(--chip-bg);
-	}
-
-	.sources-list {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.source-card {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 10px 14px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-ui);
-	}
-
-	.src-main {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
-	}
-
-	.src-main :global(svg) {
-		flex-shrink: 0;
-		color: var(--color-ui-muted);
-	}
-
-	.src-title-row {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
-	}
-
-	.src-title {
-		font-size: 14px;
-		color: var(--color-text-primary);
-	}
-
-	.src-default {
+	.default-pill {
 		padding: 1px 7px;
 		border-radius: 999px;
 		background: var(--accent-a14);
 		color: var(--color-accent);
 		font-size: 11px;
+		font-weight: 500;
 		white-space: nowrap;
 	}
 
-	.src-path {
-		font-size: 12px;
-		color: var(--color-ui-muted);
+	.row-desc.path {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
-	.src-right {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		flex-shrink: 0;
-	}
-
-	.src-count {
+	.count {
 		font-size: 12px;
 		color: var(--color-ui-muted);
 		white-space: nowrap;
 	}
 
-	.src-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 26px;
-		height: 26px;
-		padding: 0 8px;
-		border: none;
-		border-radius: var(--radius-ui);
-		background: transparent;
-		color: var(--color-ui-muted);
-		font-family: var(--font-ui);
+	.row.source .icon-btn {
+		opacity: 0;
+	}
+
+	.row.source:hover .icon-btn {
+		opacity: 1;
+	}
+
+	.row.unavailable .source-icon,
+	.row.unavailable .row-label,
+	.row.unavailable .count {
+		opacity: 0.45;
+	}
+
+	.source-error {
+		margin: 4px 0 8px;
+		padding: 8px 12px;
+		border-radius: 6px;
+		background: var(--error-bg);
+		color: var(--error-fg);
 		font-size: 12px;
-		cursor: pointer;
 	}
 
-	.src-btn:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-	}
-
-	.source-card.unavailable .src-title-row,
-	.source-card.unavailable .src-btn {
-		opacity: 0.4;
-	}
-
-	.sources-empty {
-		padding: 12px 4px;
-		color: var(--color-ui-muted);
-		font-size: 13px;
-	}
-
-	/* ── Shortcuts tab ── */
-	.shortcuts {
-		display: flex;
-		flex-direction: column;
-		gap: 22px;
-	}
-
-	.shortcut-group {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.shortcut-head {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		margin-bottom: 4px;
-		padding: 0 2px;
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--color-ui-muted);
-	}
-
-	.shortcut-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 24px;
+	/* ── Shortcuts ── */
+	.row.shortcut {
 		min-height: 40px;
-		padding: 4px 2px;
-		border-bottom: 1px solid var(--color-border);
 	}
 
-	.shortcut-row:last-child {
-		border-bottom: none;
+	.row.listening {
+		background: var(--chip-bg);
 	}
 
-	.shortcut-label {
-		font-size: 13px;
-		color: var(--color-text-primary);
-	}
-
-	.shortcut-keys {
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
+	.keys {
 		gap: 6px;
-		flex-shrink: 0;
 	}
 
 	.combo {
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
+		gap: 3px;
 		padding: 0;
 		border: none;
 		background: transparent;
@@ -1996,19 +1722,20 @@
 		min-width: 22px;
 		height: 22px;
 		padding: 0 6px;
-		border: 1px solid var(--color-border);
-		border-bottom-width: 2px;
 		border-radius: 5px;
-		background: var(--color-surface);
-		box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
+		background: var(--chip-bg);
+		box-shadow: inset 0 -1.5px 0 var(--chip-divider);
 		font-family: var(--font-ui);
 		font-size: 11px;
 		font-weight: 500;
 		color: var(--color-text-secondary);
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
 	.combo:hover .keycap {
-		border-color: var(--focus-border);
+		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
 
@@ -2018,30 +1745,44 @@
 	}
 
 	.key-sep {
-		color: var(--color-ui-muted);
-		font-size: 12px;
+		flex-shrink: 0;
+		width: 1px;
+		height: 14px;
+		margin: 0 4px;
+		border-radius: 999px;
+		background: var(--color-border);
 	}
 
-	.new-bind {
+	.add-bind {
 		height: 22px;
-		padding: 0 8px;
-		border: 1px solid var(--color-border);
-		border-radius: 5px;
-		background: transparent;
-		font-family: var(--font-ui);
+		padding: 0 7px 0 5px;
 		font-size: 11px;
-		color: var(--color-ui-muted);
-		white-space: nowrap;
-		cursor: pointer;
 		opacity: 0;
 	}
 
-	.shortcut-row:hover .new-bind {
+	.row.shortcut:hover .add-bind {
 		opacity: 1;
 	}
 
-	.new-bind:hover {
-		border-color: var(--focus-border);
+	.capture {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		min-width: 110px;
+		height: 28px;
+		padding: 0 10px;
+		border-radius: 6px;
+		background: var(--accent-a14);
+		font-size: 12px;
+		color: var(--color-accent);
+	}
+
+	.capture.empty {
+		justify-content: center;
+	}
+
+	.capture .keycap {
+		background: var(--color-bg);
 		color: var(--color-text-primary);
 	}
 </style>
