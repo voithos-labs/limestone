@@ -177,9 +177,8 @@
 		const options = (f.config?.options ?? []) as { value: string; [k: string]: unknown }[];
 		const present = new Set(order.filter((k) => options.some((o) => o.value === k)));
 		const queue = order.filter((k) => present.has(k));
-		const next = options.map((o) =>
-			present.has(o.value) ? options.find((x) => x.value === queue.shift())! : o
-		);
+		const byValue = new Map(options.map((o) => [o.value, o]));
+		const next = options.map((o) => (present.has(o.value) ? byValue.get(queue.shift()!)! : o));
 		if (next.some((o, i) => o !== options[i])) {
 			if (isStatusField(f))
 				saveStatuses(next.map((o) => ({ ...o, done: !!o.done }) as StatusOption));
