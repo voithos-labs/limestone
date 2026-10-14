@@ -428,6 +428,9 @@
 	let boardEl: HTMLDivElement | null = $state(null);
 	let boardH = $state(0);
 	let wide = $state(false);
+	let avail = $state(Infinity);
+	const need = $derived(columns.reduce((w, c) => w + (collapsed.has(c.key) ? 36 : 220) + 12, -12));
+	const tight = $derived(need > avail);
 	let bodyEls: Record<string, HTMLElement> = $state({});
 
 	// a column with more above or below fades at that edge; one that fits shows no fade
@@ -482,7 +485,10 @@
 		boardH = Math.max(240, h - top - 16);
 		const box = boardEl.parentElement;
 		const column = box?.parentElement?.parentElement;
-		if (box && column) wide = box.offsetWidth > column.clientWidth - 96 + 1;
+		if (box && column) {
+			wide = box.getBoundingClientRect().left < column.getBoundingClientRect().left + 47;
+			avail = Math.max(column.clientWidth - 96, s.clientWidth - 48);
+		}
 	}
 
 	onMount(() => {
@@ -847,7 +853,7 @@
 	<p class="error">{rows.error}</p>
 {/if}
 
-<div class="board-wrap">
+<div class="board-wrap" class:tight>
 	<div class="board-box">
 		{#if wide}
 			<div class="rule"></div>
@@ -1052,6 +1058,10 @@
 		}
 	}
 
+	.board-wrap.tight {
+		margin-right: calc(-24px - max(0px, var(--ext) - 24px));
+	}
+
 	.board-box {
 		position: relative;
 		width: fit-content;
@@ -1124,7 +1134,7 @@
 		min-height: 0;
 		max-height: 100%;
 		border-radius: 12px;
-		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%) / 0.4);
+		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%) / var(--area-alpha, 0.4));
 	}
 
 	.col.collapsed {
