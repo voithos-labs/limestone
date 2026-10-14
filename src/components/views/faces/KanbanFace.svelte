@@ -487,7 +487,8 @@
 		const column = box?.parentElement?.parentElement;
 		if (box && column) {
 			wide = box.getBoundingClientRect().left < column.getBoundingClientRect().left + 47;
-			avail = Math.max(column.clientWidth - 96, s.clientWidth - 48);
+			const max = parseFloat(getComputedStyle(column).maxWidth) || column.clientWidth;
+			avail = column.clientWidth - 96 + 2 * Math.max(0, (s.clientWidth - max) / 2 + 24);
 		}
 	}
 
@@ -506,6 +507,9 @@
 			if (drag) cancelAnimationFrame(drag.frame);
 			drag = null;
 			stopListening();
+			if (colDrag) cancelAnimationFrame(colDrag.frame);
+			colDrag = null;
+			stopColListening();
 		};
 	});
 
@@ -744,6 +748,131 @@
 		finishDrag(false);
 	}
 
+	type ColDrag = { key: string; el: HTMLElement; grab: number; x: number; frame: number };
+	let colPress: { key: string; el: HTMLElement; x: number; y: number } | null = null;
+	let colDrag: ColDrag | null = null;
+	let colDragKey: string | null = $state(null);
+	let colHole: number | null = $state(null);
+	let colHoleW = $state(0);
+	let colHoleH = $state(0);
+
+	type Slot = { key: string; col: Col | null };
+	const colSlots = $derived.by((): Slot[] => {
+		const slots: Slot[] = columns.map((c) => ({ key: c.key, col: c }));
+		if (colDragKey === null || colHole === null) return slots;
+		const me = slots.find((s) => s.key === colDragKey);
+		const rest = slots.filter((s) => s.key !== colDragKey);
+		rest.splice(Math.min(colHole, rest.length), 0, { key: '\0hole', col: null });
+		return me ? [...rest, me] : rest;
+	});
+
+	function armColDrag(e: PointerEvent, col: Col) {
+		if (e.button !== 0 || dragId || colDrag || colField?.type !== 'select' || !optionOf(col))
+			return;
+		const el = (e.currentTarget as HTMLElement).closest<HTMLElement>('.col');
+		if (!el) return;
+		colPress = { key: col.key, el, x: e.clientX, y: e.clientY };
+		window.addEventListener('pointermove', onColMove);
+		window.addEventListener('pointerup', onColUp);
+		window.addEventListener('pointercancel', onColCancel);
+		window.addEventListener('keydown', onColKey, true);
+	}
+
+	function stopColListening() {
+		colPress = null;
+		window.removeEventListener('pointermove', onColMove);
+		window.removeEventListener('pointerup', onColUp);
+		window.removeEventListener('pointercancel', onColCancel);
+		window.removeEventListener('keydown', onColKey, true);
+	}
+
+	function onColMove(e: PointerEvent) {
+		if (colDrag) {
+			colDrag.x = e.clientX;
+			return;
+		}
+		const p = colPress;
+		if (!p) return;
+		if (Math.max(Math.abs(e.clientX - p.x), Math.abs(e.clientY - p.y)) < DRAG_PX) return;
+		const r = p.el.getBoundingClientRect();
+		colDrag = { key: p.key, el: p.el, grab: p.x - r.left, x: e.clientX, frame: 0 };
+		colHoleW = r.width;
+		colHoleH = r.height;
+		colHole = columns.findIndex((c) => c.key === p.key);
+		colDragKey = p.key;
+		const s = p.el.style;
+		s.position = 'fixed';
+		s.zIndex = '5';
+		s.width = `${r.width}px`;
+		s.height = `${r.height}px`;
+		s.maxHeight = 'none';
+		s.left = `${r.left}px`;
+		s.top = `${r.top}px`;
+		s.pointerEvents = 'none';
+		s.boxShadow = 'var(--menu-shadow)';
+		(document.activeElement as HTMLElement | null)?.blur();
+		document.body.style.cursor = 'grabbing';
+		colDrag.frame = requestAnimationFrame(colFrame);
+	}
+
+	function colFrame() {
+		const d = colDrag;
+		if (!d || !boardEl) return;
+		d.el.style.left = `${d.x - d.grab}px`;
+		const br = boardEl.getBoundingClientRect();
+		scrollToward(boardEl, d.x, br.left, br.right, 'x');
+		let idx = 0;
+		for (const el of boardEl.querySelectorAll<HTMLElement>('.col[data-col]')) {
+			if (el.dataset.col === d.key) continue;
+			const r = el.getBoundingClientRect();
+			if (r.left + r.width / 2 < d.x) idx++;
+		}
+		if (colHole !== idx) colHole = idx;
+		d.frame = requestAnimationFrame(colFrame);
+	}
+
+	function finishColDrag(commit: boolean) {
+		stopColListening();
+		const d = colDrag;
+		if (!d) return;
+		colDrag = null;
+		cancelAnimationFrame(d.frame);
+		document.body.style.cursor = '';
+		swallowClick = true;
+		const s = d.el.style;
+		for (const k of [
+			'position',
+			'zIndex',
+			'width',
+			'height',
+			'maxHeight',
+			'left',
+			'top',
+			'pointerEvents',
+			'boxShadow'
+		] as const)
+			s[k] = '';
+		const at = colHole;
+		colHole = null;
+		colDragKey = null;
+		if (!commit || at === null) return;
+		const order = columns.filter((c) => c.key !== d.key).map((c) => c.key);
+		order.splice(Math.min(at, order.length), 0, d.key);
+		const rank = new Map(order.map((k, i) => [k, i]));
+		const next = [...options].sort((a, b) => (rank.get(a.value) ?? 0) - (rank.get(b.value) ?? 0));
+		if (next.some((o, i) => o !== options[i])) setOptions(next);
+	}
+
+	const onColUp = () => finishColDrag(true);
+	const onColCancel = () => finishColDrag(false);
+
+	function onColKey(e: KeyboardEvent) {
+		if (e.key !== 'Escape' || !colDrag) return;
+		e.stopPropagation();
+		e.preventDefault();
+		finishColDrag(false);
+	}
+
 	function onBoardPointerDown(e: PointerEvent) {
 		swallowClick = false;
 		downAt = { x: e.clientX, y: e.clientY };
@@ -860,7 +989,7 @@
 		{/if}
 		<div
 			class="board"
-			class:dragging={!!dragId}
+			class:dragging={!!dragId || !!colDragKey}
 			bind:this={boardEl}
 			style:height="{boardH}px"
 			role="list"
@@ -874,142 +1003,158 @@
 				<div class="empty">Pick a select field for the columns under Options.</div>
 			{:else}
 				<div class="cols">
-					{#each columns as col (col.key)}
-						{@const n = col.items.length}
-						{#if collapsed.has(col.key)}
-							<section
-								class="col collapsed {areaClass(col)}"
-								data-col={col.key}
-								role="presentation"
-								oncontextmenu={(e) => openColMenu(e, col)}
-							>
-								<button class="strip" type="button" onclick={() => toggleCol(col.key)}>
-									<span class="strip-label">
-										{#if colField.type === 'select' && col.key}
-											<Pill field={colField} value={col.key} />
-										{:else}
-											<span class="title">{col.label}</span>
-										{/if}
-									</span>
-									<span class="count">{n}</span>
-								</button>
-							</section>
+					{#each colSlots as slot (slot.key)}
+						{#if !slot.col}
+							<div class="col-hole" style:width="{colHoleW}px" style:height="{colHoleH}px"></div>
 						{:else}
-							<section class="col {areaClass(col)}" data-col={col.key}>
-								<header
-									class="col-head"
+							{@const col = slot.col}
+							{@const n = col.items.length}
+							{#if collapsed.has(col.key)}
+								<section
+									class="col collapsed {areaClass(col)}"
+									data-col={col.key}
 									role="presentation"
 									oncontextmenu={(e) => openColMenu(e, col)}
 								>
-									{#if renamingKey === col.key}
-										<input
-											class="rename-input"
-											type="text"
-											bind:this={renameEl}
-											bind:value={renameDraft}
-											use:nameGuard
-											onblur={commitRename}
-											onkeydown={onRenameKey}
-										/>
-									{:else}
-										<button class="head" type="button" onclick={() => toggleCol(col.key)}>
+									<button
+										class="strip"
+										type="button"
+										onpointerdown={(e) => armColDrag(e, col)}
+										onclick={() => toggleCol(col.key)}
+									>
+										<span class="strip-label">
 											{#if colField.type === 'select' && col.key}
 												<Pill field={colField} value={col.key} />
 											{:else}
 												<span class="title">{col.label}</span>
 											{/if}
-											<span class="count">{n}</span>
-											<span class="caret"><ChevronDown size={12} strokeWidth={2} /></span>
-										</button>
-									{/if}
-									<span class="grow"></span>
-									<button
-										class="col-more"
-										class:open={menuFor === col.key}
-										type="button"
-										tabindex="-1"
-										aria-label="Column options"
-										onclick={(e) => {
-											e.stopPropagation();
-											showColMenu(e.currentTarget as HTMLElement, col);
-										}}
-									>
-										<Ellipsis size={14} strokeWidth={1.75} />
+										</span>
+										<span class="count">{n}</span>
 									</button>
-								</header>
-								<div
-									class="col-body"
-									role="presentation"
-									bind:this={bodyEls[col.key]}
-									use:edgeFade
-									onpointerdown={armDrag}
-								>
-									{#each cells(col) as cell (cell.key)}
-										{#if cell.row}
-											<NoteCard
-												row={cell.row}
-												{rows}
-												{editors}
-												{checkField}
-												inline={lanes.inline}
-												meta={lanes.meta}
-												editMode={editable}
-												body="brief"
-												preview={previews[cell.row.id]}
-												onOpen={onOpenRow}
+								</section>
+							{:else}
+								<section class="col {areaClass(col)}" data-col={col.key}>
+									<header
+										class="col-head"
+										role="presentation"
+										oncontextmenu={(e) => openColMenu(e, col)}
+									>
+										{#if renamingKey === col.key}
+											<input
+												class="rename-input"
+												type="text"
+												bind:this={renameEl}
+												bind:value={renameDraft}
+												use:nameGuard
+												onblur={commitRename}
+												onkeydown={onRenameKey}
 											/>
 										{:else}
-											<div class="hole" style:height="{holeH}px"></div>
+											<button
+												class="head"
+												type="button"
+												onpointerdown={(e) => armColDrag(e, col)}
+												onclick={() => toggleCol(col.key)}
+											>
+												{#if colField.type === 'select' && col.key}
+													<Pill field={colField} value={col.key} />
+												{:else}
+													<span class="title">{col.label}</span>
+												{/if}
+												<span class="count">{n}</span>
+												<span class="caret"><ChevronDown size={12} strokeWidth={2} /></span>
+											</button>
 										{/if}
-									{/each}
-									{#if summoned === col.key && !rows.loading}
-										{@const values = seedFor(col)}
-										<label class="card new">
-											<span class="new-mark">
-												{#if makesTodo}<span class="dashed"></span>{:else}<Plus
-														size={16}
-														strokeWidth={1.75}
-													/>{/if}
-											</span>
-											<span class="new-field">
-												<span class="new-ghost"
-													>{newTitle || (makesTodo ? 'New todo' : 'New note')}</span
-												>
-												<input
-													class="new-input"
-													class:taken={titleTaken}
-													type="text"
-													placeholder={makesTodo ? 'New todo' : 'New note'}
-													bind:value={newTitle}
-													bind:this={newEl}
-													use:nameGuard
-													onkeydown={(e) => onNewKey(e, values)}
-													onblur={() => {
-														if (!newTitle.trim()) summoned = null;
-													}}
-												/>
-											</span>
-											{#if newTitle.trim() && !titleTaken}
-												<span class="new-hint"><CornerDownLeft size={12} strokeWidth={1.75} /></span
-												>
-											{/if}
-										</label>
-									{/if}
-								</div>
-								{#if !rows.loading}
-									<button
-										class="new-row"
-										class:open={summoned === col.key}
-										type="button"
-										tabindex="-1"
-										onclick={() => summon(col.key)}
+										<span class="grow"></span>
+										<button
+											class="col-more"
+											class:open={menuFor === col.key}
+											type="button"
+											tabindex="-1"
+											aria-label="Column options"
+											onclick={(e) => {
+												e.stopPropagation();
+												showColMenu(e.currentTarget as HTMLElement, col);
+											}}
+										>
+											<Ellipsis size={14} strokeWidth={1.75} />
+										</button>
+									</header>
+									<div
+										class="col-body"
+										role="presentation"
+										bind:this={bodyEls[col.key]}
+										use:edgeFade
+										onpointerdown={armDrag}
 									>
-										<Plus size={14} strokeWidth={2} />
-										<span>New</span>
-									</button>
-								{/if}
-								<ScrollThumb scroller={bodyEls[col.key]} top={40} />
-							</section>
+										{#each cells(col) as cell (cell.key)}
+											{#if cell.row}
+												<NoteCard
+													row={cell.row}
+													{rows}
+													{editors}
+													{checkField}
+													inline={lanes.inline}
+													meta={lanes.meta}
+													editMode={editable}
+													body="brief"
+													preview={previews[cell.row.id]}
+													onOpen={onOpenRow}
+												/>
+											{:else}
+												<div class="hole" style:height="{holeH}px"></div>
+											{/if}
+										{/each}
+										{#if summoned === col.key && !rows.loading}
+											{@const values = seedFor(col)}
+											<label class="card new">
+												<span class="new-mark">
+													{#if makesTodo}<span class="dashed"></span>{:else}<Plus
+															size={16}
+															strokeWidth={1.75}
+														/>{/if}
+												</span>
+												<span class="new-field">
+													<span class="new-ghost"
+														>{newTitle || (makesTodo ? 'New todo' : 'New note')}</span
+													>
+													<input
+														class="new-input"
+														class:taken={titleTaken}
+														type="text"
+														placeholder={makesTodo ? 'New todo' : 'New note'}
+														bind:value={newTitle}
+														bind:this={newEl}
+														use:nameGuard
+														onkeydown={(e) => onNewKey(e, values)}
+														onblur={() => {
+															if (!newTitle.trim()) summoned = null;
+														}}
+													/>
+												</span>
+												{#if newTitle.trim() && !titleTaken}
+													<span class="new-hint"
+														><CornerDownLeft size={12} strokeWidth={1.75} /></span
+													>
+												{/if}
+											</label>
+										{/if}
+									</div>
+									{#if !rows.loading}
+										<button
+											class="new-row"
+											class:open={summoned === col.key}
+											type="button"
+											tabindex="-1"
+											onclick={() => summon(col.key)}
+										>
+											<Plus size={14} strokeWidth={2} />
+											<span>New</span>
+										</button>
+									{/if}
+									<ScrollThumb scroller={bodyEls[col.key]} top={40} />
+								</section>
+							{/if}
 						{/if}
 					{/each}
 				</div>
@@ -1141,6 +1286,12 @@
 		flex-shrink: 0;
 		width: 36px;
 		min-width: 0;
+	}
+
+	.col-hole {
+		flex: 0 0 auto;
+		border: 1.5px dashed var(--color-border);
+		border-radius: 12px;
 	}
 
 	.col-head {
@@ -1346,6 +1497,7 @@
 
 	.strip-label :global(.pill) {
 		writing-mode: vertical-rl;
+		padding: 8px 1px;
 	}
 
 	/* the draft card: a card-shaped row with a dashed mark and a bare input */
