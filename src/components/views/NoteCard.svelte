@@ -98,11 +98,11 @@
 		e.stopPropagation();
 		if (e.key === 'Enter') {
 			e.preventDefault();
-			(e.currentTarget as HTMLInputElement).blur();
+			(e.currentTarget as HTMLTextAreaElement).blur();
 		} else if (e.key === 'Escape') renaming = false;
 	}
 
-	function renameFocus(node: HTMLInputElement) {
+	function renameFocus(node: HTMLTextAreaElement) {
 		restoreSelection(node, renameRange);
 	}
 
@@ -174,17 +174,17 @@
 		{#if renaming}
 			<span class="name rename-wrap" role="presentation" onclick={(e) => e.stopPropagation()}>
 				<span class="rename-ghost">{draft || ' '}</span>
-				<input
+				<textarea
 					class="rename"
 					class:invalid={renameTaken}
 					title={renameTaken ? 'A note with this name is already in this folder.' : undefined}
+					rows="1"
 					bind:value={draft}
 					use:renameFocus
 					use:nameGuard
 					onblur={commitRename}
 					onkeydown={onRenameKey}
-					spellcheck="false"
-				/>
+					spellcheck="false"></textarea>
 			</span>
 		{:else}
 			<span class="name" class:editable={editMode} role="presentation" onclick={startRename}>
@@ -285,13 +285,14 @@
 
 	.head {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 10px;
 		min-height: 22px;
 	}
 
 	.check {
 		flex: 0 0 auto;
+		margin-top: 2px;
 		display: inline-flex;
 		padding: 0;
 		border: 0;
@@ -349,17 +350,19 @@
 	.name {
 		flex: 0 1 auto;
 		min-width: 0;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3;
 		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
+		overflow-wrap: anywhere;
 		font-size: 14px;
+		line-height: 20px;
 		letter-spacing: -0.005em;
 		color: var(--color-text-primary);
 	}
 
 	/* the same slack the list gives its titles: a hit area that runs a little past the text */
 	.name.editable {
-		line-height: 20px;
 		padding: 6px 12px 6px 0;
 		margin: -6px -12px -6px 0;
 		cursor: text;
@@ -375,10 +378,8 @@
 	/* the same box as the editable title, so the swap to an input doesn't move the text */
 	.name.rename-wrap {
 		display: inline-grid;
-		grid-template-columns: max-content;
+		grid-template-columns: minmax(0, max-content);
 		max-width: 100%;
-		overflow: visible;
-		line-height: 20px;
 		padding: 6px 12px 6px 0;
 		margin: -6px -12px -6px 0;
 		cursor: text;
@@ -391,11 +392,13 @@
 		font-size: 14px;
 		line-height: 20px;
 		letter-spacing: -0.005em;
-		white-space: pre;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
 	}
 
 	.rename-ghost {
 		visibility: hidden;
+		overflow: hidden;
 	}
 
 	.rename.invalid {
@@ -407,22 +410,27 @@
 	.rename {
 		width: 0;
 		min-width: 100%;
+		height: 100%;
 		box-sizing: border-box;
 		border: 0;
 		padding: 0;
 		background: transparent;
 		color: var(--color-text-primary);
 		outline: none;
+		resize: none;
+		overflow: hidden;
 	}
 
 	.card-btn {
 		flex: 0 0 auto;
 		margin-left: auto;
+		margin-top: 0;
+		margin-right: -4px;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 22px;
-		height: 22px;
+		width: 20px;
+		height: 20px;
 		padding: 0;
 		border: 0;
 		border-radius: 6px;

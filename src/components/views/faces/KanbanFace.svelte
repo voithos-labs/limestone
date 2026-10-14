@@ -1110,7 +1110,9 @@
 												<div class="hole" style:height="{holeH}px"></div>
 											{/if}
 										{/each}
-										{#if summoned === col.key && !rows.loading}
+									</div>
+									{#if !rows.loading}
+										{#if summoned === col.key}
 											{@const values = seedFor(col)}
 											<label class="card new">
 												<span class="new-mark">
@@ -1143,19 +1145,17 @@
 													>
 												{/if}
 											</label>
+										{:else}
+											<button
+												class="new-row"
+												type="button"
+												tabindex="-1"
+												onclick={() => summon(col.key)}
+											>
+												<Plus size={14} strokeWidth={2} />
+												<span>New</span>
+											</button>
 										{/if}
-									</div>
-									{#if !rows.loading}
-										<button
-											class="new-row"
-											class:open={summoned === col.key}
-											type="button"
-											tabindex="-1"
-											onclick={() => summon(col.key)}
-										>
-											<Plus size={14} strokeWidth={2} />
-											<span>New</span>
-										</button>
 									{/if}
 									<ScrollThumb scroller={bodyEls[col.key]} top={40} />
 								</section>
@@ -1445,8 +1445,7 @@
 			color 80ms ease;
 	}
 
-	.new-row:hover,
-	.new-row.open {
+	.new-row:hover {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
 	}
@@ -1507,12 +1506,14 @@
 
 	/* the draft card: a card-shaped row with a dashed mark and a bare input */
 	.card.new {
+		flex: 0 0 auto;
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		min-height: 48px;
-		padding: 0 14px;
-		border-radius: 10px;
+		gap: 8px;
+		min-height: 32px;
+		margin: 6px 8px 8px;
+		padding: 0 10px;
+		border-radius: 8px;
 		background: var(--chip-bg);
 		cursor: text;
 	}

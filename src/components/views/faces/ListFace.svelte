@@ -1533,8 +1533,8 @@
 	   and nothing after it moves while you type */
 	.name.rename-wrap {
 		display: inline-grid;
-		grid-template-columns: max-content;
-		overflow: visible;
+		grid-template-columns: minmax(0, max-content);
+		max-width: 100%;
 		cursor: text;
 	}
 
@@ -1549,6 +1549,7 @@
 
 	.rename-ghost {
 		visibility: hidden;
+		overflow: hidden;
 	}
 
 	.rename {

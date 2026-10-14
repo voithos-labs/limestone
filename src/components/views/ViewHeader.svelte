@@ -935,15 +935,14 @@
 	.sort-list {
 		display: flex;
 		flex-direction: column;
-		align-items: flex-start;
+		align-items: stretch;
 		gap: 5px;
 		padding: 2px 2px 4px;
 	}
 
 	.sort-chip {
-		display: inline-flex;
+		display: flex;
 		align-items: stretch;
-		max-width: 100%;
 		height: 28px;
 		border-radius: 6px;
 		background: var(--chip-bg);
@@ -984,8 +983,18 @@
 	}
 
 	.seg-field {
+		flex: 1 1 auto;
+		min-width: 0;
 		font-weight: 500;
 		color: var(--color-text-secondary);
+	}
+
+	.seg-field .seg-label {
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		text-align: left;
 	}
 
 	.seg-field :global(svg) {

@@ -59,8 +59,12 @@ const BLOCKED: Record<NameKind, RegExp> = {
 
 const SHAKE = [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` }));
 
-export function nameGuard(node: HTMLInputElement, kind: NameKind | null = 'file') {
-	function onBeforeInput(e: InputEvent) {
+export function nameGuard(
+	node: HTMLInputElement | HTMLTextAreaElement,
+	kind: NameKind | null = 'file'
+) {
+	function onBeforeInput(ev: Event) {
+		const e = ev as InputEvent;
 		if (!kind || e.isComposing) return;
 		const text = e.data ?? e.dataTransfer?.getData('text/plain');
 		if (!text) return;
