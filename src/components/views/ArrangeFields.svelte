@@ -61,10 +61,12 @@
 		const isRight = (f: ViewField) =>
 			rightIds ? rightIds.includes(f.id) : !listInlineByDefault(f.type);
 		const shownSet = new Set(shown.map((f) => f.id));
+		// a card stacks its fields in display order, so it has one lane; the row's right-hand
+		// membership rides along untouched for when the face is drawn as rows again
 		return {
 			check,
-			left: rest.filter((f) => !isRight(f)).map((f) => f.id),
-			right: rest.filter(isRight).map((f) => f.id),
+			left: (cards ? rest : rest.filter((f) => !isRight(f))).map((f) => f.id),
+			right: cards ? [] : rest.filter(isRight).map((f) => f.id),
 			hidden: view.fields.filter((f) => f.type !== 'title' && !shownSet.has(f.id)).map((f) => f.id)
 		};
 	}
@@ -78,7 +80,7 @@
 			...m.left,
 			...m.right
 		];
-		face.config.right = [...m.right];
+		if (!cards) face.config.right = [...m.right];
 	}
 
 	// ── Drag ───────────────────────────────────────────────────────────────────
@@ -127,16 +129,18 @@
 		return null;
 	}
 
-	// where in a horizontal lane the pointer would insert, by chip midpoints
-	function indexAt(lane: Lane, x: number, exclude: string): number {
+	// where in a lane the pointer would insert, by chip midpoints: along x in a row's lane,
+	// along y in a card's stack
+	function indexAt(lane: Lane, x: number, y: number, exclude: string): number {
 		if (!popEl) return 0;
 		const chips = Array.from(
 			popEl.querySelectorAll<HTMLElement>(`[data-lane="${lane}"] [data-id]`)
 		).filter((c) => c.dataset.id !== exclude);
+		const stacked = cards && lane === 'left';
 		let i = 0;
 		for (const c of chips) {
 			const r = c.getBoundingClientRect();
-			if (x > r.left + r.width / 2) i++;
+			if (stacked ? y > r.top + r.height / 2 : x > r.left + r.width / 2) i++;
 		}
 		return i;
 	}
@@ -169,7 +173,7 @@
 			if (base.check && base.check !== id) next.hidden.unshift(base.check);
 			next.check = id;
 		} else {
-			next[lane].splice(indexAt(lane, e.clientX, id), 0, id);
+			next[lane].splice(indexAt(lane, e.clientX, e.clientY, id), 0, id);
 		}
 		model = next;
 	}
@@ -380,14 +384,9 @@
 					</div>
 					<div class="card-preview"><span></span><span></span><span class="short"></span></div>
 					<div class="card-foot">
-						<div class="lane left" class:over={overLane === 'left'} data-lane="left">
+						<div class="lane stack" class:over={overLane === 'left'} data-lane="left">
 							{#each fieldsIn(model.left) as f (f.id)}
 								{@render chip(f, 'left')}
-							{/each}
-						</div>
-						<div class="lane right" class:over={overLane === 'right'} data-lane="right">
-							{#each fieldsIn(model.right) as f (f.id)}
-								{@render chip(f, 'right')}
 							{/each}
 						</div>
 					</div>
@@ -515,7 +514,7 @@
 	.dialog {
 		width: 560px;
 		max-width: calc(100vw - 32px);
-		padding: 24px 20px 20px;
+		padding: 20px;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-radius: 12px;
@@ -532,19 +531,19 @@
 	}
 
 	.title-h {
-		margin: 0 4px 20px;
-		font-size: 16px;
+		margin: 0 0 16px;
+		font-size: 15px;
 		font-weight: 600;
+		letter-spacing: -0.01em;
 	}
 
 	/* the schematic row: a real list row, just labelled */
 	.mock {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		height: 56px;
-		margin: 0 4px;
-		padding: 0 12px;
+		gap: 12px;
+		height: 44px;
+		padding: 0 10px;
 		border-radius: 8px;
 		background: var(--row-hover-bg, rgba(127, 127, 127, 0.06));
 	}
@@ -554,7 +553,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		min-height: 32px;
+		min-height: 28px;
 		border: 1.5px dashed transparent;
 		border-radius: 7px;
 		transition:
@@ -563,8 +562,8 @@
 	}
 
 	.slot.check {
-		width: 32px;
-		height: 32px;
+		width: 28px;
+		height: 28px;
 		justify-content: center;
 		flex: 0 0 auto;
 	}
@@ -600,18 +599,20 @@
 
 	.title {
 		flex: 0 0 auto;
-		font-size: 15px;
+		font-size: 14px;
+		letter-spacing: -0.005em;
 	}
 
-	/* the card variant: a tile with the head, a preview window and a two-lane foot */
+	/* the card variant: the tile as the faces draw it, head, a preview and the fields stacked */
 	.mock.card {
 		flex-direction: column;
 		align-items: stretch;
-		gap: 10px;
+		gap: 8px;
 		height: auto;
-		width: 300px;
+		width: 272px;
 		margin: 0 auto;
-		padding: 14px;
+		padding: 14px 14px 12px;
+		border-radius: 10px;
 		background: var(--chip-bg);
 	}
 
@@ -619,6 +620,7 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
+		min-height: 22px;
 	}
 
 	.card-preview {
@@ -641,8 +643,19 @@
 
 	.card-foot {
 		display: flex;
-		align-items: center;
-		gap: 8px;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 5px;
+	}
+
+	.lane.stack {
+		flex: 0 0 auto;
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: flex-start;
+		gap: 5px;
+		min-height: 36px;
+		padding: 4px 6px;
 	}
 
 	.legend.card {
@@ -692,18 +705,21 @@
 		gap: 4px;
 		height: 22px;
 		padding: 0 8px 0 6px;
-		border: 1px dashed var(--color-border);
+		border: 0;
 		border-radius: 6px;
-		background: transparent;
+		background: var(--chip-bg);
 		font: inherit;
 		font-size: 12px;
 		color: var(--color-ui-muted);
 		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
 	.add:hover {
 		color: var(--color-text-primary);
-		border-color: var(--color-ui-muted);
+		background: var(--chip-bg-hover);
 	}
 
 	/* chips drawn as the list draws them */
@@ -771,17 +787,18 @@
 
 	.legend {
 		display: flex;
-		gap: 10px;
-		margin: 6px 4px 0;
-		padding: 0 12px;
-		font-family: var(--font-mono);
+		gap: 12px;
+		margin: 6px 0 0;
+		padding: 0 10px;
 		font-size: 10px;
-		letter-spacing: 0.02em;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
 		color: var(--color-ui-muted);
 	}
 
 	.lg.check {
-		width: 32px;
+		width: 28px;
 		text-align: center;
 		flex: 0 0 auto;
 	}
@@ -801,7 +818,7 @@
 	}
 
 	.hint {
-		margin: 10px 16px 0;
+		margin: 10px 10px 0;
 		font-size: 12px;
 	}
 
@@ -840,8 +857,8 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 8px;
-		margin: 12px 4px 0;
-		padding: 12px;
+		margin: 14px 0 0;
+		padding: 10px;
 		min-height: 56px;
 		border: 1.5px dashed transparent;
 		border-radius: 8px;
@@ -861,12 +878,23 @@
 	}
 
 	.shelf-label {
+		display: flex;
+		align-items: center;
+		gap: 10px;
 		width: 100%;
 		margin-bottom: 2px;
 		font-size: 10px;
+		font-weight: 600;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		color: var(--color-ui-muted);
+	}
+
+	.shelf-label::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: var(--chip-divider);
 	}
 
 	.shelf-empty {

@@ -1,3 +1,9 @@
+<script module lang="ts">
+	import { SvelteSet } from 'svelte/reactivity';
+
+	const failedImages = new SvelteSet<string>();
+</script>
+
 <script lang="ts">
 	import { Check, PanelRight } from '@lucide/svelte';
 	import { openHow } from '#lib/views/FaceRows.svelte.js';
@@ -39,12 +45,17 @@
 		meta?: ViewField[];
 		editMode?: boolean;
 		preview?: Preview;
-		body?: 'fixed' | 'flow' | 'none'; // grid: a fixed window; masonry: as tall as it is; board: none
+		body?: 'fixed' | 'flow' | 'brief' | 'none'; // grid: a fixed window; masonry: as tall as it is; board: a couple of lines, only when there are some
 		onOpen?: (rowId: string, newTab?: boolean | 'side') => void;
 		moveable?: boolean;
 		onFocus?: () => void;
 	} = $props();
 
+	// a card stacks its fields in the face's display order, whichever lane a row would put them in
+	const fields = $derived.by(() => {
+		const ids = new Set([...inline, ...meta].map((f) => f.id));
+		return rows.shown.filter((f) => ids.has(f.id));
+	});
 	const member = $derived(checkField ? rows.memberOf(row, checkField) : false);
 	const done = $derived(member && checkField ? checkDone(row, checkField) : false);
 	const hit = $derived(rows.searchHits[row.id]);
@@ -95,11 +106,7 @@
 		restoreSelection(node, renameRange);
 	}
 
-	let imgOk = $state(true);
-	$effect(() => {
-		void preview?.image;
-		imgOk = true;
-	});
+	const imgOk = $derived(!!preview?.image && !failedImages.has(preview.image));
 </script>
 
 <div
@@ -199,10 +206,16 @@
 		</button>
 	</div>
 
-	{#if body === 'fixed' || (body === 'flow' && (snippet || preview?.text || (preview?.image && imgOk)))}
-		<div class="body" class:flow={body === 'flow'}>
+	{#if body === 'fixed' || (body !== 'none' && (snippet || preview?.text || (preview?.image && imgOk)))}
+		<div class="body" class:flow={body === 'flow'} class:brief={body === 'brief'}>
 			{#if preview?.image && imgOk}
-				<img class="image" src={preview.image} alt="" onerror={() => (imgOk = false)} />
+				<img
+					class="image"
+					src={preview.image}
+					alt=""
+					draggable="false"
+					onerror={() => preview?.image && failedImages.add(preview.image)}
+				/>
 			{:else if snippet}
 				<p class="text">{@html snippet}</p>
 			{:else if preview?.text}
@@ -213,31 +226,33 @@
 		</div>
 	{/if}
 
-	{#if inline.length || meta.length}
+	{#if editMode && fields.length}
+		<div class="empties">
+			<RowChips
+				{row}
+				{fields}
+				{rows}
+				{editMode}
+				compact
+				pick="empty"
+				onEdit={(r, f, a) => editors.edit(r, f, a)}
+				onTags={(r, a) => editors.tags(r, a)}
+			/>
+		</div>
+	{/if}
+
+	{#if fields.length}
 		<div class="foot">
-			<span class="inline">
-				<RowChips
-					{row}
-					fields={inline}
-					{rows}
-					{editMode}
-					compact
-					onEdit={(r, f, a) => editors.edit(r, f, a)}
-					onTags={(r, a) => editors.tags(r, a)}
-				/>
-			</span>
-			<span class="spacer"></span>
-			<span class="values">
-				<RowChips
-					{row}
-					fields={meta}
-					{rows}
-					{editMode}
-					compact
-					onEdit={(r, f, a) => editors.edit(r, f, a)}
-					onTags={(r, a) => editors.tags(r, a)}
-				/>
-			</span>
+			<RowChips
+				{row}
+				{fields}
+				{rows}
+				{editMode}
+				compact
+				pick="filled"
+				onEdit={(r, f, a) => editors.edit(r, f, a)}
+				onTags={(r, a) => editors.tags(r, a)}
+			/>
 		</div>
 	{/if}
 </div>
@@ -329,8 +344,10 @@
 		text-decoration-color: var(--color-border);
 	}
 
+	/* the title is only as wide as its text, so a click beside it opens the note instead of
+	   starting a rename */
 	.name {
-		flex: 1 1 auto;
+		flex: 0 1 auto;
 		min-width: 0;
 		overflow: hidden;
 		white-space: nowrap;
@@ -340,7 +357,11 @@
 		color: var(--color-text-primary);
 	}
 
+	/* the same slack the list gives its titles: a hit area that runs a little past the text */
 	.name.editable {
+		line-height: 20px;
+		padding: 6px 12px 6px 0;
+		margin: -6px -12px -6px 0;
 		cursor: text;
 	}
 
@@ -351,11 +372,15 @@
 		border-radius: 2px;
 	}
 
+	/* the same box as the editable title, so the swap to an input doesn't move the text */
 	.name.rename-wrap {
 		display: inline-grid;
 		grid-template-columns: max-content;
 		max-width: 100%;
 		overflow: visible;
+		line-height: 20px;
+		padding: 6px 12px 6px 0;
+		margin: -6px -12px -6px 0;
 		cursor: text;
 	}
 
@@ -364,6 +389,7 @@
 		grid-area: 1 / 1;
 		font: inherit;
 		font-size: 14px;
+		line-height: 20px;
 		letter-spacing: -0.005em;
 		white-space: pre;
 	}
@@ -391,6 +417,7 @@
 
 	.card-btn {
 		flex: 0 0 auto;
+		margin-left: auto;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -429,6 +456,8 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+		pointer-events: none;
+		user-select: none;
 	}
 
 	/* masonry: the window opens up to what the note has, an image at its own shape */
@@ -444,6 +473,21 @@
 	.body.flow .text {
 		-webkit-line-clamp: 6;
 		line-clamp: 6;
+	}
+
+	/* board: a glance at the prose, the image kept short so the column still reads as a list */
+	.body.brief {
+		height: auto;
+	}
+
+	.body.brief .image {
+		height: auto;
+		max-height: 120px;
+	}
+
+	.body.brief .text {
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
 	}
 
 	.text {
@@ -464,42 +508,32 @@
 		font-style: italic;
 	}
 
-	/* a card has no title to give way, so the foot wraps instead of clipping: pills flow onto
-	   more lines and the right-hand values land at the end of the last one */
+	/* one field per line, read top to bottom; the fields still unset share one wrapping row
+	   under the preview, so the card gives up a single line for them, not one each */
 	.foot {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		row-gap: 6px;
-		column-gap: 8px;
-		min-height: 22px;
-	}
-
-	.inline {
-		flex: 1 1 auto;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
-	}
-
-	.inline:empty {
-		display: none;
-	}
-
-	.spacer {
-		display: none;
-	}
-
-	.values {
-		flex: 0 1 auto;
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		gap: 8px;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 5px;
 		min-width: 0;
 		max-width: 100%;
-		margin-left: auto;
+	}
+
+	.empties {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 5px 6px;
+		max-width: 100%;
+	}
+
+	.foot:empty,
+	.empties:empty {
+		display: none;
+	}
+
+	.foot :global(.value.date:not(.chip)) {
+		min-width: 0;
+		justify-content: flex-start;
 	}
 </style>

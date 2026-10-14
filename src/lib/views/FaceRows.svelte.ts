@@ -70,6 +70,31 @@ function orderTags(tags: RowTag[]): RowTag[] {
 	return [...tags].sort((a, b) => Number(isBuiltinUnit(b.id)) - Number(isBuiltinUnit(a.id)));
 }
 
+function sameRow(a: MemberRow, b: MemberRow): boolean {
+	return (
+		a.title === b.title &&
+		a.rel_path === b.rel_path &&
+		a.created_at === b.created_at &&
+		a.updated_at === b.updated_at &&
+		a.deleted_at === b.deleted_at &&
+		a.properties === b.properties &&
+		a.source_id === b.source_id &&
+		a.writes_meta === b.writes_meta
+	);
+}
+
+function sameTags(a: Record<string, RowTag[]>, b: Record<string, RowTag[]>): boolean {
+	const ak = Object.keys(a);
+	if (ak.length !== Object.keys(b).length) return false;
+	return ak.every((id) => {
+		const x = a[id];
+		const y = b[id];
+		return (
+			!!y && x.length === y.length && x.every((t, i) => t.id === y[i].id && t.slug === y[i].slug)
+		);
+	});
+}
+
 export class FaceRows {
 	rows: MemberRow[] = $state([]);
 	total = $state(0);
@@ -170,8 +195,18 @@ export class FaceRows {
 				out = [...known, ...out.filter((r) => !rank.has(r.id))];
 			}
 
-			this.rows = out;
-			this.rowTags = tags;
+			// a reload that finds nothing changed changes nothing: rows that match the ones on
+			// screen stay the same objects, and an identical set is not reassigned, so a background
+			// reconcile never redraws a face that is already right
+			const prev = new Map(this.rows.map((r) => [r.id, r]));
+			out = out.map((r) => {
+				const p = prev.get(r.id);
+				return p && sameRow(p, r) ? p : r;
+			});
+			if (out.length !== this.rows.length || out.some((r, i) => r !== this.rows[i])) {
+				this.rows = out;
+			}
+			if (!sameTags(this.rowTags, tags)) this.rowTags = tags;
 			this.searchHits = hits;
 			this.total = out.length;
 			// rows still here after all weren't leaving; the ones gone keep their mark while
@@ -856,7 +891,13 @@ function firstImage(body: string, source: Source): string {
 	if (!m) return '';
 	const target = (m[1] ? m[1].split('|')[0] : m[3]).trim();
 	if (/^(https?|data|asset):/i.test(target)) return target;
-	const clean = target.replace(/\\/g, '/').replace(/^\.?\//, '');
+	let decoded = target;
+	try {
+		decoded = decodeURIComponent(target);
+	} catch {
+		decoded = target;
+	}
+	const clean = decoded.replace(/\\/g, '/').replace(/^\.?\//, '');
 	const ext = clean.split('.').pop()?.toLowerCase() ?? '';
 	if (!IMAGE_EXTS.has(ext)) return '';
 	const loc = (source.asset_location ?? '').replace(/^\/+|\/+$/g, '');

@@ -976,6 +976,11 @@
 		overflow: hidden;
 	}
 
+	/* a face that wants more than the column (the board) measures the pane through this */
+	.view-body {
+		container-type: inline-size;
+	}
+
 	.view-body.restoring {
 		opacity: 0;
 	}
