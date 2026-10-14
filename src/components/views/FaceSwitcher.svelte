@@ -7,7 +7,6 @@
 		List,
 		Layers,
 		Rows3,
-		Tags,
 		Pencil,
 		Copy,
 		Trash2,
@@ -547,16 +546,6 @@
 		</div>
 
 		{#if target.type === 'dashboard'}
-			<button
-				class="action group-toggle"
-				type="button"
-				data-nav
-				onclick={() => (target.config.hide_chips = !target.config.hide_chips)}
-			>
-				<Tags size={14} strokeWidth={1.75} />
-				<span>Quick filters</span>
-				<span class="trailing">{target.config.hide_chips ? 'Off' : 'On'}</span>
-			</button>
 			<button
 				class="action group-toggle"
 				type="button"

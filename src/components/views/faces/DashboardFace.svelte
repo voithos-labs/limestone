@@ -1,18 +1,16 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import View, { ViewFace, VIEW_FIELD_SORTABLE } from '#lib/models/View.svelte.js';
+	import View, { ViewFace, VIEW_FIELD_SORTABLE, type SortKey } from '#lib/models/View.svelte.js';
 	import { fieldLabel, fieldSections } from '#lib/views/fieldValue.js';
 	import { getFieldIcon } from '#lib/views/filterDisplay.js';
-	import type { FilterNode, ViewField } from '#lib/models/View.svelte.js';
+	import type { FilterLeaf, FilterNode, ViewField } from '#lib/models/View.svelte.js';
 	import { onSourceReconciled } from '#lib/models/Source.js';
 	import { folderIdPath, folderIdSource } from '#lib/models/Folder.js';
-	import { select } from '#lib/services/db.js';
 	import ListFace from './ListFace.svelte';
 	import SectionHead from '../SectionHead.svelte';
 	import {
 		ArrowDown,
 		ArrowUp,
-		Hash,
 		ChevronDown,
 		ChevronUp,
 		ChevronRight,
@@ -31,9 +29,9 @@
 	import { LayoutArrowDown, Settings2, ArrowDownUp, ArrowUpAZ, ArrowDownAZ } from '@lucide/svelte';
 	import ArrangeFields from '../ArrangeFields.svelte';
 
-	// A project at a glance: its tags as a chip row that scopes everything below, its todos as a
-	// checklist, and its other notes most recent first. Each section is an ordinary list face
-	// over this view, built here and never saved, so it inherits the view's fields and scope
+	// A project at a glance: its upcoming todos as a checklist and its other notes most recent
+	// first, each capped. Each section is an ordinary list face over this view, built here and
+	// never saved, so it inherits the view's fields and scope
 	let {
 		view,
 		face,
@@ -51,70 +49,34 @@
 	const titleId = $derived(byType('title')?.id ?? '');
 	const tagsId = $derived(byType('tags')?.id ?? '');
 	const updatedId = $derived(byType('updated_at')?.id ?? '');
+	const createdId = $derived(byType('created_at')?.id ?? '');
 	const folderId = $derived(byType('folder')?.id ?? '');
 	const doneId = `${TODO}/done`;
 	const dueId = `${TODO}/due`;
-
-	// ── Chips: what this project's notes are tagged ──
-	type Chip = { id: string; slug: string; n: number };
-	let chips: Chip[] = $state([]);
-	const selectedTag = $derived(
-		face.config.hide_chips ? null : ((view.state.dash_tag as string | undefined) ?? null)
-	);
-
-	async function loadChips() {
-		try {
-			const scope = view.searchScope();
-			const where = `d.deleted_at IS NULL${scope.sql ? ` AND ${scope.sql}` : ''}`;
-			const tags = await select<{ id: string; slug: string; n: number }>(
-				`SELECT t.id, t.slug, COUNT(*) AS n
-                 FROM document_tags dt
-                          JOIN tags t ON t.id = dt.tag_id
-                          JOIN documents d ON d.id = dt.document_id
-                 WHERE ${where}
-                 GROUP BY t.id
-                 ORDER BY n DESC, t.slug ASC`,
-				scope.params
-			);
-			chips = tags.filter((r) => r.id !== TODO);
-			if (selectedTag && !chips.some((c) => c.id === selectedTag)) view.state.dash_tag = null;
-		} catch (e) {
-			console.error('load project chips failed', e);
-		}
-	}
-
-	$effect(() => {
-		void view.subfolder;
-		untrack(loadChips);
-	});
-	$effect(() => onSourceReconciled(loadChips));
-
-	const tagScope: FilterNode | null = $derived.by(() =>
-		selectedTag && tagsId ? { field_id: tagsId, op: 'has_any', value: [selectedTag] } : null
-	);
-
-	// the row stays one line; vertical wheel scrolls it sideways, no bar drawn
-	function onChipsWheel(e: WheelEvent) {
-		const el = e.currentTarget as HTMLElement;
-		if (el.scrollWidth <= el.clientWidth || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-		el.scrollLeft += e.deltaY;
-		e.preventDefault();
-	}
+	const LIMIT = 7;
 
 	// ── The sections, as list faces that live only here ────────────────────
 	const todoFace = ViewFace.create('list');
-	const doneFace = ViewFace.create('list');
 	const notesFace = ViewFace.create('list');
 
-	// each section sorts on its own key, chosen from the section menu or the header
+	// each section sorts on its own key, chosen from the section menu; unset means the default
 	type Sort = { field_id: string; direction: 'asc' | 'desc' };
 	const MANUAL = 'manual';
-	function sortFor(key: string, def: Sort): Sort {
+	function sortFor(key: string): Sort | null {
 		const saved = face.config[key] as Sort | undefined;
-		if (!saved?.field_id) return def;
+		if (!saved?.field_id) return null;
 		if (saved.field_id === MANUAL) return saved;
-		return view.fields.some((f) => f.id === saved.field_id) ? saved : def;
+		return view.fields.some((f) => f.id === saved.field_id) ? saved : null;
 	}
+	const todoDefault = $derived(
+		(
+			[
+				{ field_id: dueId, direction: 'asc', nulls: 'last' },
+				{ field_id: createdId, direction: 'desc' }
+			] as SortKey[]
+		).filter((k) => k.field_id)
+	);
+	const docsDefault = $derived<SortKey[]>([{ field_id: updatedId, direction: 'desc' }]);
 
 	// each section's arrangement lives on the dashboard face; the section faces are rebuilt
 	// from it, and an arrangement made in the dialog is written back
@@ -144,24 +106,10 @@
 				{ field_id: doneId, op: 'eq', value: false }
 			]
 		};
-		const sort = sortFor('todo_sort', { field_id: dueId, direction: 'asc' });
-		const manual = sort.field_id === MANUAL;
-		todoFace.sort = [
-			{ ...(manual ? { field_id: dueId, direction: 'asc' as const } : sort), nulls: 'last' }
-		];
+		const sort = sortFor('todo_sort');
+		const manual = sort?.field_id === MANUAL;
+		todoFace.sort = sort && !manual ? [{ ...sort, nulls: 'last' }] : [...todoDefault];
 		todoFace.config.order = manual ? [...((face.config.todo_order as string[]) ?? [])] : undefined;
-
-		doneFace.display_field_ids = [...l.display];
-		doneFace.config.right = [...l.right];
-		doneFace.config.hide_tag = TODO;
-		doneFace.additive_filter = {
-			op: 'and',
-			children: [
-				{ field_id: tagsId, op: 'has_any', value: [TODO] },
-				{ field_id: doneId, op: 'eq', value: true }
-			]
-		};
-		doneFace.sort = [{ field_id: updatedId, direction: 'desc' }];
 	});
 
 	$effect.pre(() => {
@@ -175,9 +123,9 @@
 			op: 'and',
 			children: [{ field_id: tagsId, op: 'has_none', value: [TODO] }]
 		};
-		const sort = sortFor('docs_sort', { field_id: updatedId, direction: 'desc' });
-		const manual = sort.field_id === MANUAL;
-		notesFace.sort = [manual ? { field_id: updatedId, direction: 'desc' } : sort];
+		const sort = sortFor('docs_sort');
+		const manual = sort?.field_id === MANUAL;
+		notesFace.sort = sort && !manual ? [sort] : [...docsDefault];
 		notesFace.config.order = manual ? [...((face.config.docs_order as string[]) ?? [])] : undefined;
 	});
 
@@ -191,12 +139,22 @@
 	}
 	function sortEntries(key: 'todo_sort' | 'docs_sort'): CtxEntry[] {
 		const cur = sorts[key];
-		const set = (next: Sort) => (face.config[key] = next);
+		const def = (key === 'todo_sort' ? todoDefault : docsDefault)[0];
+		const set = (next: Sort | null) => (face.config[key] = next ?? undefined);
+		const dir = cur?.direction ?? def?.direction ?? 'desc';
+		const fid = cur && cur.field_id !== MANUAL ? cur.field_id : (def?.field_id ?? '');
 		return [
+			{
+				label: 'Default',
+				icon: ArrowDownUp,
+				checked: !cur,
+				keepOpen: true,
+				action: () => set(null)
+			},
 			{
 				label: 'Manual',
 				icon: GripVertical,
-				checked: cur.field_id === MANUAL,
+				checked: cur?.field_id === MANUAL,
 				keepOpen: true,
 				action: () => set({ field_id: MANUAL, direction: 'asc' })
 			},
@@ -210,36 +168,61 @@
 				...s.fields.map((f) => ({
 					label: fieldLabel(f),
 					icon: getFieldIcon(f.type),
-					checked: cur.field_id === f.id,
+					checked: cur?.field_id === f.id,
 					keepOpen: true,
-					action: () => set({ field_id: f.id, direction: cur.direction })
+					action: () => set({ field_id: f.id, direction: dir })
 				}))
 			]),
 			{ divider: true },
 			{
 				label: 'Ascending',
 				icon: ArrowUpAZ,
-				checked: cur.direction === 'asc',
+				checked: dir === 'asc',
+				disabled: !fid,
 				keepOpen: true,
-				action: () => set({ field_id: cur.field_id, direction: 'asc' })
+				action: () => set({ field_id: fid, direction: 'asc' })
 			},
 			{
 				label: 'Descending',
 				icon: ArrowDownAZ,
-				checked: cur.direction === 'desc',
+				checked: dir === 'desc',
+				disabled: !fid,
 				keepOpen: true,
-				action: () => set({ field_id: cur.field_id, direction: 'desc' })
+				action: () => set({ field_id: fid, direction: 'desc' })
 			}
 		];
 	}
 	const sorts = $derived({
-		todo_sort: sortFor('todo_sort', { field_id: dueId, direction: 'asc' }),
-		docs_sort: sortFor('docs_sort', { field_id: updatedId, direction: 'desc' })
+		todo_sort: sortFor('todo_sort'),
+		docs_sort: sortFor('docs_sort')
 	});
-	function sortLabel(sort: Sort): string {
-		const f = view.fields.find((x) => x.id === sort.field_id);
-		return f ? fieldLabel(f).toLowerCase() : 'manual';
+
+	// "See all" lands on the face that shows the section's rows in full: matched by what it
+	// filters on, never by name, so renamed or re-arranged faces still count. The broadest
+	// match wins, lists before boards
+	const TYPE_RANK: Record<string, number> = { list: 0, kanban: 1, masonry: 2 };
+	function hasLeaf(n: FilterNode, ok: (l: FilterLeaf) => boolean): boolean {
+		return 'children' in n ? n.children.some((c) => hasLeaf(c, ok)) : ok(n);
 	}
+	const todoLeaf = (op: string) => (l: FilterLeaf) =>
+		l.field_id === tagsId && l.op === op && Array.isArray(l.value) && l.value.includes(TODO);
+	function seeAllTarget(section: 'todo' | 'docs'): ViewFace | null {
+		const faces = view.faces.filter((f) => f.id !== face.id && f.type in TYPE_RANK);
+		const pick = (ok: (f: ViewFace) => boolean) =>
+			faces
+				.filter(ok)
+				.sort(
+					(a, b) =>
+						a.additive_filter.children.length - b.additive_filter.children.length ||
+						TYPE_RANK[a.type] - TYPE_RANK[b.type]
+				)[0] ?? null;
+		if (section === 'todo') return pick((f) => hasLeaf(f.additive_filter, todoLeaf('has_any')));
+		return (
+			pick((f) => hasLeaf(f.additive_filter, todoLeaf('has_none'))) ??
+			pick((f) => !hasLeaf(f.additive_filter, todoLeaf('has_any')))
+		);
+	}
+	const seeAll = $derived({ todo: seeAllTarget('todo'), docs: seeAllTarget('docs') });
 
 	$effect(() => persistLayout('todo_layout', todoFace));
 	$effect(() => persistLayout('docs_layout', notesFace));
@@ -249,24 +232,18 @@
 
 	// counts for the section headers
 	let openCount = $state(0);
-	let doneCount = $state(0);
 	let notesCount = $state(0);
 	let recount = $state(0);
 	$effect(() => onSourceReconciled(() => recount++));
 	$effect(() => {
-		void tagScope;
 		void view.filter;
 		void recount;
 		view
-			.countMembers({ face: todoFace, scope: tagScope })
+			.countMembers({ face: todoFace })
 			.then((n) => (openCount = n))
 			.catch(() => {});
 		view
-			.countMembers({ face: doneFace, scope: tagScope })
-			.then((n) => (doneCount = n))
-			.catch(() => {});
-		view
-			.countMembers({ face: notesFace, scope: tagScope })
+			.countMembers({ face: notesFace })
 			.then((n) => (notesCount = n))
 			.catch(() => {});
 	});
@@ -319,7 +296,6 @@
 			return allFolders
 				.filter((f) => underBase(f) && f.slug.toLowerCase().includes(query))
 				.sort((a, b) => a.slug.localeCompare(b.slug));
-		if (selectedTag) return [];
 		return allFolders.filter((f) => f.parentId === folderBase);
 	});
 	const relDir = (f: Folder) => {
@@ -330,18 +306,13 @@
 	};
 
 	// ── Sections: order, collapsed, hidden, all on the face ─────────────────────
-	// under a search or a chip, a section with nothing to show steps aside; the lists report
-	// what's left
+	// under a search, a section with nothing to show steps aside; the lists report what's left
 	const searching = $derived(!!query);
-	const narrowed = $derived(searching || !!selectedTag);
 	let todoTotal = $state(-1);
-	let doneTotal = $state(-1);
 	let notesTotal = $state(-1);
 	$effect(() => {
 		void view.state.search;
-		void selectedTag;
 		todoTotal = -1;
-		doneTotal = -1;
 		notesTotal = -1;
 	});
 	const sections = $derived(dashboardSections(face));
@@ -349,10 +320,8 @@
 		sections.filter((s) => {
 			if (s.hidden) return false;
 			if (s.id === 'folders') return subfolders.length > 0;
-			if (s.id === 'done' && !searching && doneCount === 0) return false;
-			if (!narrowed) return true;
-			const total = s.id === 'todo' ? todoTotal : s.id === 'done' ? doneTotal : notesTotal;
-			return total !== 0;
+			if (!searching) return true;
+			return (s.id === 'todo' ? todoTotal : notesTotal) !== 0;
 		})
 	);
 
@@ -394,11 +363,6 @@
 				? []
 				: [
 						{
-							label: 'Sort by',
-							icon: ArrowDownUp,
-							children: sortEntries(s.id === 'docs' ? 'docs_sort' : 'todo_sort')
-						},
-						{
 							label: 'Arrange fields',
 							icon: LayoutArrowDown,
 							action: () => {
@@ -408,7 +372,13 @@
 						},
 						{ divider: true } as CtxEntry
 					]),
-			{ label: 'Hide section', icon: EyeOff, action: () => patch(s.id, { hidden: true }) }
+			{ label: 'Hide section', icon: EyeOff, action: () => patch(s.id, { hidden: true }) },
+			...(s.id === 'folders'
+				? []
+				: [
+						{ divider: true, label: 'Sort' } as CtxEntry,
+						...sortEntries(s.id === 'docs' ? 'docs_sort' : 'todo_sort')
+					])
 		];
 	}
 
@@ -472,39 +442,6 @@
 </script>
 
 <div class="dash" bind:this={dashEl}>
-	{#if !face.config.hide_chips && chips.length > 0}
-		<div class="chips" onwheel={onChipsWheel}>
-			<button
-				class="chip"
-				class:on={!selectedTag}
-				type="button"
-				onclick={() => (view.state.dash_tag = null)}
-			>
-				all
-			</button>
-			{#each chips as c (c.id)}
-				<button
-					class="chip"
-					class:on={selectedTag === c.id}
-					type="button"
-					onclick={() => (view.state.dash_tag = selectedTag === c.id ? null : c.id)}
-				>
-					<Hash size={11} strokeWidth={2} />{c.slug}
-					<span class="n">{c.n}</span>
-				</button>
-			{/each}
-			<button
-				class="chips-hide"
-				type="button"
-				title="Hide quick filters"
-				aria-label="Hide quick filters"
-				onclick={() => (face.config.hide_chips = true)}
-			>
-				<EyeOff size={13} strokeWidth={1.75} />
-			</button>
-		</div>
-	{/if}
-
 	{#each visible as sec (sec.id)}
 		<section data-id={sec.id} class:dragging={dragId === sec.id}>
 			<div class="sec">
@@ -514,15 +451,11 @@
 						? searching && todoTotal >= 0
 							? todoTotal
 							: `${openCount} open`
-						: sec.id === 'done'
-							? searching && doneTotal >= 0
-								? doneTotal
-								: doneCount
-							: sec.id === 'docs'
-								? searching && notesTotal >= 0
-									? notesTotal
-									: notesCount
-								: subfolders.length}
+						: sec.id === 'docs'
+							? searching && notesTotal >= 0
+								? notesTotal
+								: notesCount
+							: subfolders.length}
 					collapsed={sec.collapsed}
 					onToggle={() => patch(sec.id, { collapsed: !sec.collapsed })}
 					menu={() => sectionMenu(sec)}
@@ -565,20 +498,15 @@
 										strokeWidth={2}
 									/>{/if}
 							</button>
-						{:else if sec.id === 'docs' || sec.id === 'todo'}
-							{@const key = sec.id === 'docs' ? 'docs_sort' : 'todo_sort'}
-							{@const sort = sorts[key]}
+						{:else if sec.id !== 'folders' && !sec.collapsed && seeAll[sec.id]}
+							{@const target = seeAll[sec.id]!}
 							<button
 								class="sec-action"
 								type="button"
-								onclick={(e) =>
-									contextMenu.showAt(e.currentTarget as HTMLElement, () => sortEntries(key))}
+								onclick={() => (view.state.active_face_id = target.id)}
 							>
-								{sortLabel(sort)}
-								{#if sort.field_id !== MANUAL}{#if sort.direction === 'asc'}<ArrowUp
-											size={12}
-											strokeWidth={2}
-										/>{:else}<ArrowDown size={12} strokeWidth={2} />{/if}{/if}
+								See all
+								<ChevronRight size={12} strokeWidth={2} />
 							</button>
 						{/if}
 					{/snippet}
@@ -605,27 +533,18 @@
 						{view}
 						face={todoFace}
 						{onOpenRow}
-						scope={tagScope}
 						autoFocus={false}
+						limit={LIMIT}
 						onTotal={(n) => (todoTotal = n)}
 						onReorder={(ids) => onReorder('todo', ids)}
-					/>
-				{:else if sec.id === 'done'}
-					<ListFace
-						{view}
-						face={doneFace}
-						{onOpenRow}
-						scope={tagScope}
-						autoFocus={false}
-						onTotal={(n) => (doneTotal = n)}
 					/>
 				{:else}
 					<ListFace
 						{view}
 						face={notesFace}
 						{onOpenRow}
-						scope={tagScope}
 						autoFocus={false}
+						limit={LIMIT}
 						onTotal={(n) => (notesTotal = n)}
 						onReorder={(ids) => onReorder('docs', ids)}
 					/>
@@ -645,84 +564,6 @@
 		padding-top: 8px;
 		padding-bottom: 48px;
 		font-family: var(--font-ui);
-	}
-
-	.chips {
-		display: flex;
-		flex-wrap: nowrap;
-		gap: 6px;
-		margin: 0 24px;
-		overflow-x: auto;
-		scrollbar-width: none;
-	}
-
-	.chips-hide {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		width: 24px;
-		height: 24px;
-		padding: 0;
-		border: none;
-		border-radius: 6px;
-		background: transparent;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-	}
-
-	.chips-hide:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-	}
-
-	.chips::-webkit-scrollbar {
-		display: none;
-	}
-
-	.chip {
-		flex-shrink: 0;
-	}
-
-	.chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
-		height: 24px;
-		padding: 0 9px;
-		border: 1px solid var(--color-border);
-		border-radius: 6px;
-		background: transparent;
-		font: inherit;
-		font-size: 12px;
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		transition:
-			background-color 100ms ease,
-			color 100ms ease,
-			border-color 100ms ease;
-	}
-
-	.chip:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-	}
-
-	.chip.on {
-		border-color: transparent;
-		background: var(--accent-a14);
-		color: var(--color-accent);
-	}
-
-	.chip .n {
-		margin-left: 4px;
-		font-size: 10.5px;
-		color: var(--color-ui-muted);
-	}
-
-	.chip.on .n {
-		color: inherit;
-		opacity: 0.7;
 	}
 
 	section {

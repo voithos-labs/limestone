@@ -114,7 +114,8 @@ export class FaceRows {
 	constructor(
 		private readonly view: () => View,
 		private readonly face: () => ViewFace,
-		private readonly scope: () => FilterNode | null = () => null
+		private readonly scope: () => FilterNode | null = () => null,
+		private readonly limit: () => number | undefined = () => undefined
 	) {}
 
 	get query(): string {
@@ -155,6 +156,7 @@ export class FaceRows {
 		const view = this.view();
 		const face = this.face();
 		const scope = this.scope();
+		const page = Math.min(PAGE, this.limit() ?? PAGE);
 		if (!silent) this.loading = true;
 		this.error = '';
 		try {
@@ -179,7 +181,7 @@ export class FaceRows {
 					}
 				}
 			} else {
-				out = await view.getMembers({ face, scope, limit: PAGE });
+				out = await view.getMembers({ face, scope, limit: page });
 			}
 			if (token !== this.token) return;
 			const tags = await this.fetchTags(out);
@@ -214,7 +216,7 @@ export class FaceRows {
 			const gone = [...this.leaving].filter((id) => !out.some((r) => r.id === id));
 			for (const id of this.leaving) if (!gone.includes(id)) this.leaving.delete(id);
 			if (gone.length) setTimeout(() => gone.forEach((id) => this.leaving.delete(id)), 400);
-			if (!q && out.length === PAGE) {
+			if (!q && out.length === page) {
 				view
 					.countMembers({ face, scope })
 					.then((n) => {

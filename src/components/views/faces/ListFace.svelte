@@ -33,7 +33,8 @@
 		autoFocus = true,
 		onReorder,
 		moveable = false,
-		editable = true
+		editable = true,
+		limit
 	}: {
 		view: View;
 		face: ViewFace;
@@ -45,12 +46,14 @@
 		onReorder?: (ids: string[]) => void; // rows drag into an order; the face keeps it unless told otherwise
 		moveable?: boolean; // rows drag out as documents to drop on a folder (no in-list reorder then)
 		editable?: boolean;
+		limit?: number;
 	} = $props();
 
 	const rows = new FaceRows(
 		() => view,
 		() => face,
-		() => scope
+		() => scope,
+		() => limit
 	);
 	let editors: RowEditors = $state()!;
 
@@ -875,7 +878,7 @@
 	</div>
 	{#if !rows.loading && rows.rows.length === 0 && rows.query}
 		<div class="empty">No matches</div>
-	{:else if !rows.loading && rows.total > rows.rows.length}
+	{:else if !limit && !rows.loading && rows.total > rows.rows.length}
 		<button class="more" type="button" disabled={rows.loadingMore} onclick={() => rows.loadMore()}>
 			<ChevronDown size={14} strokeWidth={1.75} />
 			<span>{rows.loadingMore ? 'Loading' : `${rows.total - rows.rows.length} more`}</span>
@@ -1085,7 +1088,7 @@
 
 		{#if !rows.loading && rows.rows.length === 0 && rows.query}
 			<div class="empty">No matches</div>
-		{:else if !rows.loading && rows.total > rows.rows.length}
+		{:else if !limit && !rows.loading && rows.total > rows.rows.length}
 			<button
 				class="more"
 				type="button"

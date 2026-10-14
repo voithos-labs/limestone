@@ -7,7 +7,7 @@ import type { SearchResult } from '#lib/services/search.js';
 
 // The project face's sections: which are shown, in what order, folded or not. Kept on the
 // face so a project remembers how it was left
-export type DashSectionId = 'folders' | 'todo' | 'done' | 'docs';
+export type DashSectionId = 'folders' | 'todo' | 'docs';
 export interface DashSection {
 	id: DashSectionId;
 	hidden?: boolean;
@@ -16,17 +16,11 @@ export interface DashSection {
 
 export const DASH_SECTION_LABEL: Record<DashSectionId, string> = {
 	folders: 'Folders',
-	todo: 'Todo',
-	done: 'Done',
-	docs: 'Documents'
+	todo: 'Upcoming',
+	docs: 'Recent'
 };
 
-const DEFAULT: DashSection[] = [
-	{ id: 'folders' },
-	{ id: 'todo' },
-	{ id: 'done', collapsed: true },
-	{ id: 'docs' }
-];
+const DEFAULT: DashSection[] = [{ id: 'folders' }, { id: 'todo' }, { id: 'docs' }];
 
 export function dashboardSections(face: ViewFace): DashSection[] {
 	const saved = face.config.sections as DashSection[] | undefined;
