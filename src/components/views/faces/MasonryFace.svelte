@@ -37,6 +37,7 @@
 	const previewCache = new PreviewCache();
 	let previews: Record<string, Preview> = $state({});
 	$effect(() => {
+		if (face.config.no_preview) return;
 		const list = rows.rows;
 		const sources = rows.sources;
 		if (list.length === 0 || sources.length === 0) return;
@@ -190,7 +191,7 @@
 						inline={lanes.inline}
 						meta={lanes.meta}
 						editMode={editable}
-						preview={previews[row.id]}
+						preview={face.config.no_preview ? undefined : previews[row.id]}
 						body="flow"
 						onOpen={onOpenRow}
 					/>

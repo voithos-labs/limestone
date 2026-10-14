@@ -15,7 +15,7 @@
 	import type { DocPicker } from '#lib/views/project.svelte.js';
 	import { getFaceIcon, fieldMenuEntries } from '#lib/views/filterDisplay.js';
 	import { fieldLabel } from '#lib/views/fieldValue.js';
-	import { VIEW_FIELD_SORTABLE } from '#lib/models/View.svelte.js';
+	import { VIEW_FIELD_SORTABLE, MANUAL_SORT } from '#lib/models/View.svelte.js';
 	import type { MenuEntry } from '#lib/overlays.svelte.js';
 	import Menu from '../ui/Menu.svelte';
 	import {
@@ -28,7 +28,7 @@
 		ArrowDownUp,
 		ArrowUpAZ,
 		ArrowDownAZ,
-		RotateCcw,
+		GripVertical,
 		Globe,
 		ChevronRight,
 		SquareArrowOutUpRight
@@ -145,31 +145,23 @@
 	let sortOpen = $state(false);
 	const sortItems = $derived.by((): MenuEntry[] => [
 		{ value: '', label: 'Default', icon: ArrowDownUp },
+		{ value: MANUAL_SORT, label: 'Manual', icon: GripVertical },
 		...fieldMenuEntries(view.fields.filter((f) => VIEW_FIELD_SORTABLE.has(f.type)))
 	]);
 
-	// a hand-made order (rows dragged in the list) overrides the sort until the sort is
-	// touched again or reset here
-	const manualOrder = $derived(
-		((sortTarget?.config.order as string[] | undefined) ?? []).length > 0
-	);
+	// under the manual sort, rows go where they were dragged; any other sort snaps them back
+	const manualOrder = $derived(sortFieldId === MANUAL_SORT);
 
 	function setSortField(v: string) {
 		sortOpen = false;
 		if (!sortTarget) return;
-		sortTarget.config.order = undefined;
 		sortTarget.sort = v ? [{ field_id: v, direction: sortDir }] : [];
 	}
 
 	function flipSort() {
-		if (!sortTarget) return;
-		sortTarget.config.order = undefined;
+		if (!sortTarget || manualOrder) return;
 		const fid = sortFieldId || view.fields.find((f) => f.type === 'updated_at')?.id;
 		if (fid) sortTarget.sort = [{ field_id: fid, direction: sortDir === 'asc' ? 'desc' : 'asc' }];
-	}
-
-	function resetOrder() {
-		if (sortTarget) sortTarget.config.order = undefined;
 	}
 
 	let filtersPos: { top: number; left: number } = $state({ top: 0, left: 0 });
@@ -500,23 +492,20 @@
 						{manualOrder ? 'Manual' : sortField ? fieldLabel(sortField) : 'Default'}
 						<ChevronDown size={12} strokeWidth={2} />
 					</button>
-					{#if manualOrder}
-						<button class="sort-dir" type="button" title="Reset order" onclick={resetOrder}>
-							<RotateCcw size={13} strokeWidth={1.75} />
+					{#if !manualOrder}
+						<button
+							class="sort-dir"
+							type="button"
+							title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
+							onclick={flipSort}
+						>
+							{#if sortDir === 'asc'}
+								<ArrowUpAZ size={14} strokeWidth={1.75} />
+							{:else}
+								<ArrowDownAZ size={14} strokeWidth={1.75} />
+							{/if}
 						</button>
 					{/if}
-					<button
-						class="sort-dir"
-						type="button"
-						title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
-						onclick={flipSort}
-					>
-						{#if sortDir === 'asc'}
-							<ArrowUpAZ size={14} strokeWidth={1.75} />
-						{:else}
-							<ArrowDownAZ size={14} strokeWidth={1.75} />
-						{/if}
-					</button>
 				</div>
 			{/if}
 		</div>

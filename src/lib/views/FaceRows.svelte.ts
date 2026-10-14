@@ -8,6 +8,7 @@ import View, {
 	describeBulkFailure,
 	isBuiltinUnit,
 	isLeafActive,
+	isManualSort,
 	isStatusField,
 	TODO_DONE,
 	ViewFace,
@@ -189,7 +190,7 @@ export class FaceRows {
 
 			// a hand-ordered face: rows it knows go in that order, the rest follow as sorted
 			const order = face.config.order as string[] | undefined;
-			if (order?.length && !q) {
+			if (order?.length && !q && isManualSort(face)) {
 				const rank = new Map(order.map((id, i) => [id, i]));
 				const known = out
 					.filter((r) => rank.has(r.id))

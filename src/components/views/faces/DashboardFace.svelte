@@ -61,11 +61,9 @@
 
 	// each section sorts on its own key, chosen from the section menu; unset means the default
 	type Sort = { field_id: string; direction: 'asc' | 'desc' };
-	const MANUAL = 'manual';
 	function sortFor(key: string): Sort | null {
 		const saved = face.config[key] as Sort | undefined;
 		if (!saved?.field_id) return null;
-		if (saved.field_id === MANUAL) return saved;
 		return view.fields.some((f) => f.id === saved.field_id) ? saved : null;
 	}
 	const todoDefault = $derived(
@@ -107,9 +105,7 @@
 			]
 		};
 		const sort = sortFor('todo_sort');
-		const manual = sort?.field_id === MANUAL;
-		todoFace.sort = sort && !manual ? [{ ...sort, nulls: 'last' }] : [...todoDefault];
-		todoFace.config.order = manual ? [...((face.config.todo_order as string[]) ?? [])] : undefined;
+		todoFace.sort = sort ? [{ ...sort, nulls: 'last' }] : [...todoDefault];
 	});
 
 	$effect.pre(() => {
@@ -124,25 +120,14 @@
 			children: [{ field_id: tagsId, op: 'has_none', value: [TODO] }]
 		};
 		const sort = sortFor('docs_sort');
-		const manual = sort?.field_id === MANUAL;
-		notesFace.sort = sort && !manual ? [sort] : [...docsDefault];
-		notesFace.config.order = manual ? [...((face.config.docs_order as string[]) ?? [])] : undefined;
+		notesFace.sort = sort ? [sort] : [...docsDefault];
 	});
-
-	// a drag writes the section's order and makes it the sort; newcomers land at the end
-	function onReorder(section: 'todo' | 'docs', ids: string[]) {
-		face.config[`${section}_order`] = ids;
-		const cur = face.config[`${section}_sort`] as Sort | undefined;
-		if (cur?.field_id !== MANUAL) {
-			face.config[`${section}_sort`] = { field_id: MANUAL, direction: 'asc' };
-		}
-	}
 	function sortEntries(key: 'todo_sort' | 'docs_sort'): CtxEntry[] {
 		const cur = sorts[key];
 		const def = (key === 'todo_sort' ? todoDefault : docsDefault)[0];
 		const set = (next: Sort | null) => (face.config[key] = next ?? undefined);
 		const dir = cur?.direction ?? def?.direction ?? 'desc';
-		const fid = cur && cur.field_id !== MANUAL ? cur.field_id : (def?.field_id ?? '');
+		const fid = cur?.field_id ?? def?.field_id ?? '';
 		return [
 			{
 				label: 'Default',
@@ -150,13 +135,6 @@
 				checked: !cur,
 				keepOpen: true,
 				action: () => set(null)
-			},
-			{
-				label: 'Manual',
-				icon: GripVertical,
-				checked: cur?.field_id === MANUAL,
-				keepOpen: true,
-				action: () => set({ field_id: MANUAL, direction: 'asc' })
 			},
 			{ divider: true },
 			...fieldSections(
@@ -197,9 +175,6 @@
 		docs_sort: sortFor('docs_sort')
 	});
 
-	// "See all" lands on the face that shows the section's rows in full: matched by what it
-	// filters on, never by name, so renamed or re-arranged faces still count. The broadest
-	// match wins, lists before boards
 	const TYPE_RANK: Record<string, number> = { list: 0, kanban: 1, masonry: 2 };
 	function hasLeaf(n: FilterNode, ok: (l: FilterLeaf) => boolean): boolean {
 		return 'children' in n ? n.children.some((c) => hasLeaf(c, ok)) : ok(n);
@@ -363,6 +338,11 @@
 				? []
 				: [
 						{
+							label: 'Sort by',
+							icon: ArrowDownUp,
+							children: sortEntries(s.id === 'docs' ? 'docs_sort' : 'todo_sort')
+						},
+						{
 							label: 'Arrange fields',
 							icon: LayoutArrowDown,
 							action: () => {
@@ -372,13 +352,7 @@
 						},
 						{ divider: true } as CtxEntry
 					]),
-			{ label: 'Hide section', icon: EyeOff, action: () => patch(s.id, { hidden: true }) },
-			...(s.id === 'folders'
-				? []
-				: [
-						{ divider: true, label: 'Sort' } as CtxEntry,
-						...sortEntries(s.id === 'docs' ? 'docs_sort' : 'todo_sort')
-					])
+			{ label: 'Hide section', icon: EyeOff, action: () => patch(s.id, { hidden: true }) }
 		];
 	}
 
@@ -534,9 +508,9 @@
 						face={todoFace}
 						{onOpenRow}
 						autoFocus={false}
+						reorderable={false}
 						limit={LIMIT}
 						onTotal={(n) => (todoTotal = n)}
-						onReorder={(ids) => onReorder('todo', ids)}
 					/>
 				{:else}
 					<ListFace
@@ -544,9 +518,9 @@
 						face={notesFace}
 						{onOpenRow}
 						autoFocus={false}
+						reorderable={false}
 						limit={LIMIT}
 						onTotal={(n) => (notesTotal = n)}
-						onReorder={(ids) => onReorder('docs', ids)}
 					/>
 				{/if}
 			{/if}

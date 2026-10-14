@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type View from '#lib/models/View.svelte.js';
 	import type { FilterNode, MemberRow, ViewFace } from '#lib/models/View.svelte.js';
-	import { isStatusField, saveStatuses } from '#lib/models/View.svelte.js';
+	import { isStatusField, isManualSort, saveStatuses } from '#lib/models/View.svelte.js';
 	import { contextMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import { statusOf } from '#lib/views/fieldValue.js';
 	import { history, PreviewCache, type Preview } from '#lib/views/FaceRows.svelte.js';
@@ -124,6 +124,7 @@
 	const previewCache = new PreviewCache();
 	let previews: Record<string, Preview> = $state({});
 	$effect(() => {
+		if (face.config.no_preview) return;
 		const list = rows.rows;
 		const sources = rows.sources;
 		if (list.length === 0 || sources.length === 0) return;
@@ -681,13 +682,17 @@
 			rows.reorder(list);
 			face.config.order = order;
 		};
+		const manual = isManualSort(face);
+		if (!manual && to.col === d.home) return;
 		history.group(view.id, () => {
-			history.push(view.id, {
-				back: () => apply(prevIds, prevOrder),
-				forward: () => apply(ids, ids)
-			});
-			rows.reorder(ids);
-			face.config.order = ids;
+			if (manual) {
+				history.push(view.id, {
+					back: () => apply(prevIds, prevOrder),
+					forward: () => apply(ids, ids)
+				});
+				rows.reorder(ids);
+				face.config.order = ids;
+			}
 			if (to.col !== d.home) {
 				const row = rows.rows.find((r) => r.id === d.row.id) ?? d.row;
 				rows.writeCell(row, colField, col.value);
@@ -1098,7 +1103,7 @@
 													meta={lanes.meta}
 													editMode={editable}
 													body="brief"
-													preview={previews[cell.row.id]}
+													preview={face.config.no_preview ? undefined : previews[cell.row.id]}
 													onOpen={onOpenRow}
 												/>
 											{:else}

@@ -112,6 +112,8 @@ export class ViewFace {
 		this.additive_filter = json.additive_filter;
 		this.sort = json.sort;
 		this.config = json.config;
+		if (!this.sort.length && ((this.config.order as string[] | undefined)?.length ?? 0) > 0)
+			this.sort = [{ field_id: MANUAL_SORT, direction: 'asc' }];
 		this.body = json.body
 			? new ViewFace({ ...json.body, additive_filter: { op: 'and', children: [] } })
 			: json.type === 'journal'
@@ -476,6 +478,12 @@ export interface SortKey {
 	field_id: string;
 	direction: 'asc' | 'desc';
 	nulls?: 'first' | 'last';
+}
+
+export const MANUAL_SORT = 'manual';
+
+export function isManualSort(face: ViewFace): boolean {
+	return face.sort[0]?.field_id === MANUAL_SORT;
 }
 
 // ── SQL Compilation ──────────────────────────────────────────────────────────────────

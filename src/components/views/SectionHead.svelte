@@ -9,6 +9,7 @@
 		collapsed = false,
 		onToggle,
 		menu = () => null,
+		heading,
 		lead,
 		tools,
 		trail
@@ -18,6 +19,7 @@
 		collapsed?: boolean;
 		onToggle: () => void;
 		menu?: () => CtxEntry[] | null;
+		heading?: Snippet;
 		lead?: Snippet;
 		tools?: Snippet;
 		trail?: Snippet;
@@ -27,7 +29,7 @@
 <header class="section-head" use:ctxMenu={menu}>
 	{@render lead?.()}
 	<button class="head" type="button" onclick={onToggle}>
-		<span class="title">{title}</span>
+		{#if heading}{@render heading()}{:else}<span class="title">{title}</span>{/if}
 		<span class="count">{count}</span>
 		<span class="caret" class:collapsed>
 			<ChevronDown size={12} strokeWidth={2} />

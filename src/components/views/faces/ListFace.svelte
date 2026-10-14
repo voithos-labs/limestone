@@ -1,11 +1,17 @@
 <script lang="ts">
 	import type View from '#lib/models/View.svelte.js';
-	import type { FilterNode, MemberRow, ViewFace, ViewField } from '#lib/models/View.svelte.js';
+	import type {
+		FilterNode,
+		MemberRow,
+		StatusOption,
+		ViewFace,
+		ViewField
+	} from '#lib/models/View.svelte.js';
 	import { onSourceReconciled } from '#lib/models/Source.js';
 	import { FaceRows } from '#lib/views/FaceRows.svelte.js';
 	import { PreviewCache, type Preview } from '#lib/views/FaceRows.svelte.js';
 	import { rawStatefulValue, valueFor, fieldLabel } from '#lib/views/fieldValue.js';
-	import { isStatusField } from '#lib/models/View.svelte.js';
+	import { isStatusField, isManualSort, saveStatuses } from '#lib/models/View.svelte.js';
 	import { checkDone, statusOf, statusKind, statusColor } from '#lib/views/fieldValue.js';
 	import StatusIcon from '../StatusIcon.svelte';
 	import { leave } from '#lib/views/FaceRows.svelte.js';
@@ -16,7 +22,14 @@
 	import RowEditors from '../editors/RowEditors.svelte';
 	import NoteCard from '../NoteCard.svelte';
 	import Pill from '../Pill.svelte';
-	import { Check, PanelRight, Plus, ChevronDown, CornerDownLeft } from '@lucide/svelte';
+	import {
+		Check,
+		PanelRight,
+		Plus,
+		ChevronDown,
+		CornerDownLeft,
+		GripVertical
+	} from '@lucide/svelte';
 	import { openHow } from '#lib/views/FaceRows.svelte.js';
 	import { onMount, tick } from 'svelte';
 	import { startMove, endMove } from '#lib/views/move.svelte.js';
@@ -31,9 +44,9 @@
 		scope = null,
 		onTotal,
 		autoFocus = true,
-		onReorder,
 		moveable = false,
 		editable = true,
+		reorderable = true,
 		limit
 	}: {
 		view: View;
@@ -43,9 +56,9 @@
 		scope?: FilterNode | null;
 		onTotal?: (n: number) => void; // how many rows the current search and scope leave
 		autoFocus?: boolean; // the first row takes focus once loaded, if nothing else has it
-		onReorder?: (ids: string[]) => void; // rows drag into an order; the face keeps it unless told otherwise
 		moveable?: boolean; // rows drag out as documents to drop on a folder (no in-list reorder then)
 		editable?: boolean;
+		reorderable?: boolean;
 		limit?: number;
 	} = $props();
 
@@ -97,13 +110,83 @@
 			const i = options.indexOf(key);
 			return i < 0 ? options.length : i;
 		};
-		return [...map.values()].sort(
+		const out = [...map.values()].sort(
 			(a, b) =>
 				Number(a.key === '') - Number(b.key === '') ||
 				rank(a.key) - rank(b.key) ||
 				a.key.localeCompare(b.key)
 		);
+		const live = groupOrder;
+		return live ? out.sort((a, b) => live.indexOf(a.key) - live.indexOf(b.key)) : out;
 	});
+
+	let groupOrder: string[] | null = $state(null);
+	let groupDragKey: string | null = $state(null);
+	let groupArm: { key: string; y: number; grab: number; height: number } | null = null;
+
+	function armGroupDrag(e: PointerEvent, key: string) {
+		if (e.button !== 0 || groupField?.type !== 'select') return;
+		e.preventDefault();
+		const el = (e.currentTarget as HTMLElement).closest<HTMLElement>('.group');
+		const r = el?.getBoundingClientRect();
+		groupArm = { key, y: e.clientY, grab: r ? e.clientY - r.top : 0, height: r?.height ?? 0 };
+		window.addEventListener('pointermove', onGroupMove);
+		window.addEventListener('pointerup', onGroupUp);
+	}
+
+	function onGroupMove(e: PointerEvent) {
+		const a = groupArm;
+		if (!a) return;
+		if (!groupDragKey) {
+			if (Math.abs(e.clientY - a.y) < DRAG_PX) return;
+			groupDragKey = a.key;
+			groupOrder = groups.map((g) => g.key);
+		}
+		const els = Array.from(listEl?.querySelectorAll<HTMLElement>('.group[data-group]') ?? []);
+		const cur = els.findIndex((el) => el.dataset.group === groupDragKey);
+		if (cur < 0 || !groupOrder) return;
+		const top = e.clientY - a.grab;
+		const bottom = top + a.height;
+		let next = cur;
+		for (let i = cur + 1; i < els.length; i++) {
+			const r = els[i].getBoundingClientRect();
+			if (bottom > r.top + r.height / 2) next = i;
+			else break;
+		}
+		for (let i = cur - 1; i >= 0; i--) {
+			const r = els[i].getBoundingClientRect();
+			if (top < r.top + r.height / 2) next = i;
+			else break;
+		}
+		if (next === cur) return;
+		const order = [...groupOrder];
+		const [moved] = order.splice(cur, 1);
+		order.splice(next, 0, moved);
+		groupOrder = order;
+	}
+
+	function onGroupUp() {
+		window.removeEventListener('pointermove', onGroupMove);
+		window.removeEventListener('pointerup', onGroupUp);
+		groupArm = null;
+		const f = groupField;
+		const order = groupOrder;
+		groupDragKey = null;
+		if (!order || !f) return;
+		swallowClick = true;
+		const options = (f.config?.options ?? []) as { value: string; [k: string]: unknown }[];
+		const present = new Set(order.filter((k) => options.some((o) => o.value === k)));
+		const queue = order.filter((k) => present.has(k));
+		const next = options.map((o) =>
+			present.has(o.value) ? options.find((x) => x.value === queue.shift())! : o
+		);
+		if (next.some((o, i) => o !== options[i])) {
+			if (isStatusField(f))
+				saveStatuses(next.map((o) => ({ ...o, done: !!o.done }) as StatusOption));
+			else f.config.options = next;
+		}
+		groupOrder = null;
+	}
 
 	const crossGroup = $derived(groupField?.type === 'boolean' || groupField?.type === 'select');
 
@@ -144,7 +227,7 @@
 	const previewCache = new PreviewCache();
 	let previews: Record<string, Preview> = $state({});
 	$effect(() => {
-		if (layout !== 'grid') return;
+		if (layout !== 'grid' || face.config.no_preview) return;
 		const list = rows.rows;
 		const sources = rows.sources;
 		if (list.length === 0 || sources.length === 0) return;
@@ -347,7 +430,7 @@
 	let downAt: { x: number; y: number } | null = null;
 
 	function armReorder(e: PointerEvent, row: MemberRow) {
-		if (moveable || dragId || e.button !== 0 || layout === 'grid') return;
+		if (!reorderable || moveable || dragId || e.button !== 0 || layout === 'grid') return;
 		if ((e.target as HTMLElement).closest('button, input, a, .value, .rename-wrap')) return;
 		press = {
 			row,
@@ -501,8 +584,7 @@
 	function pushOrder(prevIds: string[], prevOrder: string[] | undefined, ids: string[]) {
 		const apply = async (list: string[], order: string[] | undefined) => {
 			rows.reorder(list);
-			if (onReorder) onReorder(order ?? list);
-			else face.config.order = order;
+			face.config.order = order;
 		};
 		history.push(view.id, {
 			back: () => apply(prevIds, prevOrder),
@@ -521,11 +603,14 @@
 		ids.splice(at, 0, d.row.id);
 		const prevIds = rows.rows.map((r) => r.id);
 		const prevOrder = face.config.order ? [...(face.config.order as string[])] : undefined;
+		const manual = isManualSort(face);
+		if (!manual && target === d.group) return;
 		history.group(view.id, () => {
-			pushOrder(prevIds, prevOrder, ids);
-			rows.reorder(ids);
-			if (onReorder) onReorder(ids);
-			else face.config.order = ids;
+			if (manual) {
+				pushOrder(prevIds, prevOrder, ids);
+				rows.reorder(ids);
+				face.config.order = ids;
+			}
 			if (target !== d.group) writeGroup(rows.rows.find((r) => r.id === d.row.id) ?? d.row, target);
 		});
 	}
@@ -783,6 +868,14 @@
 	{/if}
 {/snippet}
 
+{#snippet groupTitle(g: { key: string; label: string })}
+	{#if groupField && groupField.type === 'select' && g.key}
+		<Pill field={groupField} value={g.key} />
+	{:else}
+		<span class="group-title">{g.label}</span>
+	{/if}
+{/snippet}
+
 {#snippet newRow(g: { key: string } | null)}
 	{#if !rows.loading && openTodos}
 		{@const values = g ? seedFor(g.key) : {}}
@@ -847,6 +940,7 @@
 						collapsed={collapsedGroups.has(g.key)}
 						onToggle={() => toggleGroup(g.key)}
 					>
+						{#snippet heading()}{@render groupTitle(g)}{/snippet}
 						{#snippet trail()}{@render addTo(g)}{/snippet}
 					</SectionHead>
 				</div>
@@ -862,7 +956,8 @@
 						inline={lanes.inline}
 						meta={lanes.meta}
 						{editMode}
-						preview={previews[row.id]}
+						body={face.config.no_preview ? 'none' : 'fixed'}
+						preview={face.config.no_preview ? undefined : previews[row.id]}
 						onOpen={onOpenRow}
 						{moveable}
 					/>
@@ -888,6 +983,7 @@
 	<div
 		class="list-face"
 		class:reordering={!!dragId}
+		class:grouping={!!groupDragKey}
 		bind:this={listEl}
 		role="list"
 		tabindex="-1"
@@ -898,7 +994,12 @@
 	>
 		{#each groups as g (g.key)}
 			{@const open = !collapsedGroups.has(g.key)}
-			<div class="group" class:slotted={open && selectGroups && openSlot !== g.key}>
+			<div
+				class="group"
+				class:slotted={open && selectGroups && openSlot !== g.key}
+				class:dragging={groupDragKey === g.key}
+				data-group={g.key}
+			>
 				{#if groupField}
 					<div class="group-head" data-group={g.key}>
 						<SectionHead
@@ -906,7 +1007,21 @@
 							count={g.items.length}
 							collapsed={!open}
 							onToggle={() => toggleGroup(g.key)}
-						/>
+						>
+							{#snippet heading()}{@render groupTitle(g)}{/snippet}
+							{#snippet lead()}
+								{#if selectGroups && reorderable}
+									<span
+										class="grip"
+										role="presentation"
+										title="Drag to reorder"
+										onpointerdown={(e) => armGroupDrag(e, g.key)}
+									>
+										<GripVertical size={14} strokeWidth={1.75} />
+									</span>
+								{/if}
+							{/snippet}
+						</SectionHead>
 					</div>
 				{/if}
 				{#if open}
@@ -1178,6 +1293,45 @@
 
 	.slotted + .group .group-head {
 		margin-top: 6px;
+	}
+
+	.group-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.grip {
+		display: inline-flex;
+		align-items: center;
+		width: 14px;
+		margin-left: -18px;
+		color: var(--color-ui-muted);
+		opacity: 0;
+		cursor: grab;
+		transition: opacity 80ms ease;
+	}
+
+	.group-head:hover .grip {
+		opacity: 0.7;
+	}
+
+	.group-head .grip:hover {
+		opacity: 1;
+	}
+
+	.list-face.grouping,
+	.list-face.grouping .grip {
+		cursor: grabbing;
+		user-select: none;
+	}
+
+	.group {
+		transition: opacity 100ms ease;
+	}
+
+	.group.dragging {
+		opacity: 0.6;
 	}
 
 	.grid .group-head {

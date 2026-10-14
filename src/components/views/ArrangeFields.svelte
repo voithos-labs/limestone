@@ -16,6 +16,7 @@
 	import { listInlineByDefault, listPrefixed } from '#lib/views/fieldValue.js';
 	import { ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import Menu from '../ui/Menu.svelte';
+	import Toggle from '../ui/Toggle.svelte';
 	import { nameGuard } from '#lib/util/paths.js';
 
 	// Arranging and managing a list's fields in one place: drag chips between the lanes of a
@@ -382,7 +383,9 @@
 						{@render checkSlot()}
 						<span class="title">Title</span>
 					</div>
-					<div class="card-preview"><span></span><span></span><span class="short"></span></div>
+					{#if !face.config.no_preview}
+						<div class="card-preview"><span></span><span></span><span class="short"></span></div>
+					{/if}
 					<div class="card-foot">
 						<div class="lane stack" class:over={overLane === 'left'} data-lane="left">
 							{#each fieldsIn(model.left) as f (f.id)}
@@ -405,6 +408,17 @@
 					</div>
 				{/if}
 			</div>
+
+			{#if cards}
+				<label class="opt">
+					<span>Preview contents</span>
+					<Toggle
+						bind:checked={
+							() => !face.config.no_preview, (v) => (face.config.no_preview = v ? undefined : true)
+						}
+					/>
+				</label>
+			{/if}
 
 			<div class="legend" class:card={cards}>
 				<span class="lg check">check</span>
@@ -820,6 +834,17 @@
 	.hint {
 		margin: 10px 10px 0;
 		font-size: 12px;
+	}
+
+	.opt {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin: 10px 10px 0;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+		cursor: pointer;
 	}
 
 	.note {
