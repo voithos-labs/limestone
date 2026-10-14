@@ -427,11 +427,36 @@
 	// ── Fit: the board fills what's left of the page, and its columns scroll ────
 	let boardEl: HTMLDivElement | null = $state(null);
 	let boardH = $state(0);
+	let wide = $state(false);
+	let bodyEls: Record<string, HTMLElement> = $state({});
 
-	// a plain wheel over the board runs it sideways, unless there is more below to show
+	// a column with more above or below fades at that edge; one that fits shows no fade
+	function edgeFade(node: HTMLElement) {
+		const update = () => {
+			const more = node.scrollHeight - node.clientHeight;
+			node.style.setProperty('--fade-top', node.scrollTop > 1 ? '20px' : '0px');
+			node.style.setProperty('--fade-bottom', more - node.scrollTop > 1 ? '20px' : '0px');
+		};
+		node.addEventListener('scroll', update, { passive: true });
+		const ro = new ResizeObserver(update);
+		ro.observe(node);
+		const mo = new MutationObserver(update);
+		mo.observe(node, { childList: true, subtree: true });
+		update();
+		return {
+			destroy() {
+				node.removeEventListener('scroll', update);
+				ro.disconnect();
+				mo.disconnect();
+			}
+		};
+	}
+
+	// a plain wheel over the board runs it sideways, unless it's over a column with more to show
 	function onWheel(e: WheelEvent) {
 		if (!boardEl || e.deltaX !== 0 || e.shiftKey || e.ctrlKey) return;
-		if (boardEl.scrollHeight > boardEl.clientHeight) return;
+		const body = (e.target as HTMLElement).closest<HTMLElement>('.col-body');
+		if (body && body.scrollHeight > body.clientHeight) return;
 		if (boardEl.scrollWidth <= boardEl.clientWidth) return;
 		e.preventDefault();
 		boardEl.scrollLeft += e.deltaY;
@@ -455,6 +480,9 @@
 				: r.top - s.getBoundingClientRect().top + s.scrollTop;
 		const h = s === document.scrollingElement ? window.innerHeight : s.clientHeight;
 		boardH = Math.max(240, h - top - 16);
+		const box = boardEl.parentElement;
+		const column = box?.parentElement?.parentElement;
+		if (box && column) wide = box.offsetWidth > column.clientWidth - 96 + 1;
 	}
 
 	onMount(() => {
@@ -558,6 +586,11 @@
 		s.pointerEvents = 'none';
 		s.boxShadow = 'var(--menu-shadow)';
 		s.background = 'var(--chip-bg-hover)';
+		const body = p.el.closest<HTMLElement>('.col-body');
+		if (body) {
+			body.style.setProperty('mask-image', 'none');
+			body.style.setProperty('-webkit-mask-image', 'none');
+		}
 		(document.activeElement as HTMLElement | null)?.blur();
 		window.getSelection()?.removeAllRanges();
 		document.body.style.cursor = 'grabbing';
@@ -597,7 +630,6 @@
 
 		const br = boardEl.getBoundingClientRect();
 		scrollToward(boardEl, d.x, br.left, br.right, 'x');
-		scrollToward(boardEl, d.y, br.top, br.bottom, 'y');
 
 		for (const colEl of boardEl.querySelectorAll<HTMLElement>('.col[data-col]')) {
 			const r = colEl.getBoundingClientRect();
@@ -608,6 +640,8 @@
 				if (hole?.col !== key) hole = { col: key, index: -1 };
 				break;
 			}
+			const b = body.getBoundingClientRect();
+			scrollToward(body, d.y, b.top, b.bottom, 'y');
 			let idx = 0;
 			for (const c of body.querySelectorAll<HTMLElement>('.card[data-id]')) {
 				if (c.dataset.id === d.row.id) continue;
@@ -660,6 +694,9 @@
 		document.body.style.cursor = '';
 		swallowClick = true;
 		const from = d.el.getBoundingClientRect();
+		const body = d.el.closest<HTMLElement>('.col-body');
+		body?.style.removeProperty('mask-image');
+		body?.style.removeProperty('-webkit-mask-image');
 		const to = commit ? hole : null;
 		hole = null;
 		const s = d.el.style;
@@ -812,6 +849,9 @@
 
 <div class="board-wrap">
 	<div class="board-box">
+		{#if wide}
+			<div class="rule"></div>
+		{/if}
 		<div
 			class="board"
 			class:dragging={!!dragId}
@@ -891,7 +931,13 @@
 										<Ellipsis size={14} strokeWidth={1.75} />
 									</button>
 								</header>
-								<div class="col-body" role="presentation" onpointerdown={armDrag}>
+								<div
+									class="col-body"
+									role="presentation"
+									bind:this={bodyEls[col.key]}
+									use:edgeFade
+									onpointerdown={armDrag}
+								>
 									{#each cells(col) as cell (cell.key)}
 										{#if cell.row}
 											<NoteCard
@@ -956,6 +1002,7 @@
 										<span>New</span>
 									</button>
 								{/if}
+								<ScrollThumb scroller={bodyEls[col.key]} top={40} />
 							</section>
 						{/if}
 					{/each}
@@ -977,7 +1024,6 @@
 			{/if}
 		</div>
 		<ScrollThumb scroller={boardEl} axis="x" top={0} />
-		<ScrollThumb scroller={boardEl} top={0} />
 	</div>
 </div>
 
@@ -996,22 +1042,28 @@
 	/* the board sits in the page's column like any face, but once the pane is wider than the
 	   column it may grow out past the header on both sides, up to the pane's own padding */
 	.board-wrap {
-		--board-ext: 0px;
-		margin: 0 calc(24px - var(--board-ext));
+		--ext: 0px;
+		margin: 0 calc(24px - var(--ext));
 	}
 
 	@supports (width: 1cqw) {
 		.board-wrap {
-			--board-ext: max(0px, (100cqw - var(--view-max-width, 1200px)) / 2 + 24px);
+			--ext: max(0px, (100cqw - var(--view-max-width, 1200px)) / 2 + 24px);
 		}
 	}
 
 	.board-box {
 		position: relative;
 		width: fit-content;
-		min-width: calc(100% - 2 * var(--board-ext));
+		min-width: calc(100% - 2 * var(--ext));
 		max-width: 100%;
 		margin: 0 auto;
+	}
+
+	.rule {
+		height: 1px;
+		margin: 4px 0 20px;
+		background: var(--chip-divider);
 	}
 
 	/* native bars are hidden; each column and the board's bottom edge draw a hairline thumb */
@@ -1020,11 +1072,13 @@
 		flex-direction: column;
 		font-family: var(--font-ui);
 		outline: none;
-		overflow: auto;
+		overflow-x: auto;
+		overflow-y: hidden;
 		scrollbar-width: none;
 	}
 
-	.board::-webkit-scrollbar {
+	.board::-webkit-scrollbar,
+	.col-body::-webkit-scrollbar {
 		display: none;
 	}
 
@@ -1048,30 +1102,35 @@
 		color: var(--color-ui-muted);
 	}
 
+	/* columns start at the top and grow with their cards, up to the board's height; past that
+	   a column's body scrolls inside its area while its head and New row stay put */
 	.cols {
 		flex: 0 0 auto;
 		display: flex;
 		align-items: flex-start;
+		height: 100%;
 		gap: 12px;
-		width: max-content;
-		min-width: 100%;
 		padding-bottom: 14px;
 	}
 
 	/* each column is an area in its option's colour, cards on the page colour inside it */
 	.col {
 		position: relative;
-		flex: 0 0 auto;
+		flex: 0 1 auto;
 		display: flex;
 		flex-direction: column;
 		width: 272px;
+		min-width: 220px;
 		min-height: 0;
+		max-height: 100%;
 		border-radius: 12px;
 		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%) / 0.4);
 	}
 
 	.col.collapsed {
+		flex-shrink: 0;
 		width: 36px;
+		min-width: 0;
 	}
 
 	.col-head {
@@ -1171,11 +1230,28 @@
 	}
 
 	.col-body {
-		flex: 0 0 auto;
+		flex: 0 1 auto;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
 		padding: 2px 8px 0;
+		overflow-y: auto;
+		scrollbar-width: none;
+		-webkit-mask-image: linear-gradient(
+			to bottom,
+			transparent,
+			#000 var(--fade-top, 0px),
+			#000 calc(100% - var(--fade-bottom, 0px)),
+			transparent
+		);
+		mask-image: linear-gradient(
+			to bottom,
+			transparent,
+			#000 var(--fade-top, 0px),
+			#000 calc(100% - var(--fade-bottom, 0px)),
+			transparent
+		);
 	}
 
 	.col-body:empty {

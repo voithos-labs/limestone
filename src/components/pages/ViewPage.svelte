@@ -874,7 +874,7 @@
 				</div>
 			</div>
 
-			<div class="view-inner">
+			<div class="view-inner" class:board={activeFace?.type === 'kanban'}>
 				{#if activeFace?.type === 'journal'}
 					<JournalFace
 						{view}
@@ -1029,6 +1029,10 @@
 
 	.view-chrome.has-cover {
 		padding-top: 0;
+	}
+
+	.view-inner.board {
+		padding-bottom: 0;
 	}
 
 	.view-inner > :global(.list-face) {
