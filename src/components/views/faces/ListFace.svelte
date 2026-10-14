@@ -111,19 +111,10 @@
 
 	const newGroup = $derived(groupField?.type === 'boolean' ? '0' : null);
 
-	// a select group's header summons a draft row at its top, seeded with the group's value
-	const canSummon = $derived(groupField?.type === 'select');
-	let summoned: string | null = $state(null);
+	const selectGroups = $derived(groupField?.type === 'select');
 
 	function seedFor(key: string): Record<string, unknown> {
-		return canSummon && key ? { [groupField!.name]: key } : {};
-	}
-
-	async function summon(key: string) {
-		if (collapsedGroups.has(key)) toggleGroup(key);
-		summoned = key;
-		await tick();
-		newEl?.focus();
+		return selectGroups && key ? { [groupField!.name]: key } : {};
 	}
 
 	function toggleGroup(key: string) {
@@ -707,7 +698,14 @@
 	// ── Create: an inline row at the bottom, Enter to add ───────────────────────
 	let newTitle = $state('');
 	let newEl: HTMLInputElement | null = $state(null);
+	let openSlot: string | null = $state(null);
 	let creating = false;
+
+	async function expandSlot(key: string) {
+		openSlot = key;
+		await tick();
+		newEl?.focus();
+	}
 
 	async function createNote(title: string, open: boolean, values: Record<string, unknown> = {}) {
 		if (creating) return;
@@ -767,16 +765,15 @@
 	});
 </script>
 
-{#snippet addTo(g: { key: string; label: string }, open: boolean)}
-	{#if canSummon && !rows.loading && openTodos}
+{#snippet addTo(g: { key: string; label: string })}
+	{#if selectGroups && !rows.loading && openTodos}
 		<button
 			class="add"
-			class:open={summoned === g.key}
 			type="button"
 			tabindex="-1"
 			aria-label="New todo in {g.label}"
 			title="New todo"
-			onclick={() => (open ? createNote('', true, seedFor(g.key)) : summon(g.key))}
+			onclick={() => createNote('', true, seedFor(g.key))}
 		>
 			<Plus size={14} strokeWidth={2} />
 		</button>
@@ -805,7 +802,7 @@
 					use:nameGuard
 					onkeydown={(e) => onNewKey(e, values)}
 					onblur={() => {
-						if (!newTitle.trim()) summoned = null;
+						if (!newTitle.trim()) openSlot = null;
 					}}
 				/>
 			</span>
@@ -847,7 +844,7 @@
 						collapsed={collapsedGroups.has(g.key)}
 						onToggle={() => toggleGroup(g.key)}
 					>
-						{#snippet trail()}{@render addTo(g, true)}{/snippet}
+						{#snippet trail()}{@render addTo(g)}{/snippet}
 					</SectionHead>
 				</div>
 			{/if}
@@ -897,179 +894,192 @@
 		onpointerdowncapture={onListPointerDown}
 	>
 		{#each groups as g (g.key)}
-			{#if groupField}
-				<div class="group-head" data-group={g.key}>
-					<SectionHead
-						title={g.label}
-						count={g.items.length}
-						collapsed={collapsedGroups.has(g.key)}
-						onToggle={() => toggleGroup(g.key)}
-					>
-						{#snippet trail()}{@render addTo(g, false)}{/snippet}
-					</SectionHead>
-				</div>
-			{/if}
-			{#if !collapsedGroups.has(g.key)}
-				{#if summoned === g.key}
-					{@render newRow(g)}
-				{/if}
-				{#each g.items as row (row.id)}
-					{@const member = checkField ? rows.memberOf(row, checkField) : false}
-					{@const done = member && checkField ? checkDone(row, checkField) : false}
-					<div
-						class="row"
-						class:done
-						class:editable={editMode}
-						class:lifted={dragId === row.id}
-						role="listitem"
-						data-id={row.id}
-						data-group={g.key}
-						data-leaving={rows.leaving.has(row.id) ? '' : undefined}
-						tabindex="-1"
-						draggable={moveable}
-						out:leave={{ mode: 'row' }}
-						ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
-						ondragend={endMove}
-						onpointerdown={(e) => armReorder(e, row)}
-						onclick={(e) => onOpenRow?.(row.id, openHow(e))}
-						onauxclick={(e) => {
-							if (e.button === 1) onOpenRow?.(row.id, true);
-						}}
-						onfocus={(e) => (focusIdx = items().indexOf(e.currentTarget))}
-						oncontextmenu={(e) => editors.menu(e, row.id)}
-					>
-						{#if checkField && isStatusField(checkField)}
-							{@const sv = statusOf(row, checkField)}
-							<button
-								class="check status"
-								type="button"
-								tabindex="-1"
-								aria-label="Change status"
-								title={sv}
-								onclick={(e) => {
-									e.stopPropagation();
-									if (rows.writable(row))
-										editors.edit(row, checkField, e.currentTarget as HTMLElement);
-								}}
-							>
-								<StatusIcon
-									kind={statusKind(checkField, sv)}
-									color={statusColor(checkField, sv)}
-									size={18}
-								/>
-							</button>
-						{:else if checkField && member && rows.writable(row)}
-							<button
-								class="check"
-								class:done
-								type="button"
-								tabindex="-1"
-								role="checkbox"
-								aria-checked={done}
-								aria-label={done ? 'Mark not done' : 'Mark done'}
-								onclick={(e) => {
-									e.stopPropagation();
-									rows.toggle(row, checkField);
-								}}
-							>
-								<span class="box"><Check size={12} strokeWidth={3} /></span>
-							</button>
-						{:else if checkField}
-							<span
-								class="check inert"
-								title={member ? "This folder doesn't store metadata in its files" : 'Not a todo'}
-								><span class="box"></span></span
-							>
-						{/if}
-						{#if renamingId === row.id}
-							<span
-								class="name rename-wrap"
-								role="presentation"
-								onclick={(e) => e.stopPropagation()}
-								onmousedown={caretToEnd}
-							>
-								<span class="rename-ghost">{renameDraft || ' '}</span>
-								<input
-									class="rename"
-									class:invalid={renameTaken}
-									title={renameTaken
-										? 'A note with this name is already in this folder.'
-										: undefined}
-									bind:value={renameDraft}
-									use:renameFocus
-									use:nameGuard
-									onblur={commitRename}
-									onkeydown={onRenameKey}
-									spellcheck="false"
-								/>
-							</span>
-						{:else}
-							<span
-								class="name"
-								class:editable={editMode}
-								role="presentation"
-								onclick={(e) => startRename(e, row)}
-							>
-								{@html highlightTitle(
-									row.title || 'untitled',
-									rows.searchHits[row.id]?.match_indices ?? []
-								)}
-							</span>
-						{/if}
-						<span
-							class="inline"
-							role="presentation"
-							onclick={onLaneClick}
-							onpointermove={onLaneMove}
-						>
-							<RowChips
-								{row}
-								fields={lanes.inline}
-								{rows}
-								{editMode}
-								onEdit={(r, f, a) => editors.edit(r, f, a)}
-								onTags={(r, a) => editors.tags(r, a)}
-							/>
-						</span>
-						<span class="spacer"></span>
-						<span
-							class="values"
-							role="presentation"
-							onclick={onLaneClick}
-							onpointermove={onLaneMove}
-						>
-							<RowChips
-								{row}
-								fields={lanes.meta}
-								{rows}
-								{editMode}
-								onEdit={(r, f, a) => editors.edit(r, f, a)}
-								onTags={(r, a) => editors.tags(r, a)}
-							/>
-						</span>
-						<button
-							class="row-btn"
-							type="button"
-							tabindex="-1"
-							aria-label="Open to the side"
-							title="Open to the side"
-							onclick={(e) => {
-								e.stopPropagation();
-								e.currentTarget.closest<HTMLElement>('.row')?.focus();
-								onOpenRow?.(row.id, 'side');
-							}}
-						>
-							<PanelRight size={14} strokeWidth={1.75} />
-						</button>
+			{@const open = !collapsedGroups.has(g.key)}
+			<div class="group" class:slotted={open && selectGroups && openSlot !== g.key}>
+				{#if groupField}
+					<div class="group-head" data-group={g.key}>
+						<SectionHead
+							title={g.label}
+							count={g.items.length}
+							collapsed={!open}
+							onToggle={() => toggleGroup(g.key)}
+						/>
 					</div>
-				{/each}
-				{#if g.key === newGroup}
-					{@render newRow(null)}
 				{/if}
-			{/if}
+				{#if open}
+					{#each g.items as row (row.id)}
+						{@const member = checkField ? rows.memberOf(row, checkField) : false}
+						{@const done = member && checkField ? checkDone(row, checkField) : false}
+						<div
+							class="row"
+							class:done
+							class:editable={editMode}
+							class:lifted={dragId === row.id}
+							role="listitem"
+							data-id={row.id}
+							data-group={g.key}
+							data-leaving={rows.leaving.has(row.id) ? '' : undefined}
+							tabindex="-1"
+							draggable={moveable}
+							out:leave={{ mode: 'row' }}
+							ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
+							ondragend={endMove}
+							onpointerdown={(e) => armReorder(e, row)}
+							onclick={(e) => onOpenRow?.(row.id, openHow(e))}
+							onauxclick={(e) => {
+								if (e.button === 1) onOpenRow?.(row.id, true);
+							}}
+							onfocus={(e) => (focusIdx = items().indexOf(e.currentTarget))}
+							oncontextmenu={(e) => editors.menu(e, row.id)}
+						>
+							{#if checkField && isStatusField(checkField)}
+								{@const sv = statusOf(row, checkField)}
+								<button
+									class="check status"
+									type="button"
+									tabindex="-1"
+									aria-label="Change status"
+									title={sv}
+									onclick={(e) => {
+										e.stopPropagation();
+										if (rows.writable(row))
+											editors.edit(row, checkField, e.currentTarget as HTMLElement);
+									}}
+								>
+									<StatusIcon
+										kind={statusKind(checkField, sv)}
+										color={statusColor(checkField, sv)}
+										size={18}
+									/>
+								</button>
+							{:else if checkField && member && rows.writable(row)}
+								<button
+									class="check"
+									class:done
+									type="button"
+									tabindex="-1"
+									role="checkbox"
+									aria-checked={done}
+									aria-label={done ? 'Mark not done' : 'Mark done'}
+									onclick={(e) => {
+										e.stopPropagation();
+										rows.toggle(row, checkField);
+									}}
+								>
+									<span class="box"><Check size={12} strokeWidth={3} /></span>
+								</button>
+							{:else if checkField}
+								<span
+									class="check inert"
+									title={member ? "This folder doesn't store metadata in its files" : 'Not a todo'}
+									><span class="box"></span></span
+								>
+							{/if}
+							{#if renamingId === row.id}
+								<span
+									class="name rename-wrap"
+									role="presentation"
+									onclick={(e) => e.stopPropagation()}
+									onmousedown={caretToEnd}
+								>
+									<span class="rename-ghost">{renameDraft || ' '}</span>
+									<input
+										class="rename"
+										class:invalid={renameTaken}
+										title={renameTaken
+											? 'A note with this name is already in this folder.'
+											: undefined}
+										bind:value={renameDraft}
+										use:renameFocus
+										use:nameGuard
+										onblur={commitRename}
+										onkeydown={onRenameKey}
+										spellcheck="false"
+									/>
+								</span>
+							{:else}
+								<span
+									class="name"
+									class:editable={editMode}
+									role="presentation"
+									onclick={(e) => startRename(e, row)}
+								>
+									{@html highlightTitle(
+										row.title || 'untitled',
+										rows.searchHits[row.id]?.match_indices ?? []
+									)}
+								</span>
+							{/if}
+							<span
+								class="inline"
+								role="presentation"
+								onclick={onLaneClick}
+								onpointermove={onLaneMove}
+							>
+								<RowChips
+									{row}
+									fields={lanes.inline}
+									{rows}
+									{editMode}
+									onEdit={(r, f, a) => editors.edit(r, f, a)}
+									onTags={(r, a) => editors.tags(r, a)}
+								/>
+							</span>
+							<span class="spacer"></span>
+							<span
+								class="values"
+								role="presentation"
+								onclick={onLaneClick}
+								onpointermove={onLaneMove}
+							>
+								<RowChips
+									{row}
+									fields={lanes.meta}
+									{rows}
+									{editMode}
+									onEdit={(r, f, a) => editors.edit(r, f, a)}
+									onTags={(r, a) => editors.tags(r, a)}
+								/>
+							</span>
+							<button
+								class="row-btn"
+								type="button"
+								tabindex="-1"
+								aria-label="Open to the side"
+								title="Open to the side"
+								onclick={(e) => {
+									e.stopPropagation();
+									e.currentTarget.closest<HTMLElement>('.row')?.focus();
+									onOpenRow?.(row.id, 'side');
+								}}
+							>
+								<PanelRight size={14} strokeWidth={1.75} />
+							</button>
+						</div>
+					{/each}
+					{#if g.key === newGroup}
+						{@render newRow(null)}
+					{:else if selectGroups && !rows.loading && openTodos}
+						{#if openSlot === g.key}
+							{@render newRow(g)}
+						{:else}
+							<button
+								class="slot"
+								type="button"
+								tabindex="-1"
+								aria-label="New todo in {g.label}"
+								title="New todo"
+								onclick={() => expandSlot(g.key)}
+							>
+								<Plus size={14} strokeWidth={2} />
+							</button>
+						{/if}
+					{/if}
+				{/if}
+			</div>
 		{/each}
 
-		{#if newGroup === null && (!canSummon || groups.length === 0)}
+		{#if newGroup === null && (!selectGroups || groups.length === 0)}
 			{@render newRow(null)}
 		{/if}
 
@@ -1159,8 +1169,12 @@
 		margin-top: 22px;
 	}
 
-	.group-head:first-child {
+	.group:first-child .group-head {
 		margin-top: 4px;
+	}
+
+	.slotted + .group .group-head {
+		margin-top: 6px;
 	}
 
 	.grid .group-head {
@@ -1168,8 +1182,8 @@
 		margin-top: 8px;
 	}
 
-	/* the header's add: hidden like the caret until the head is hovered or its draft is open,
-	   and pulled in so the rule runs up close to it */
+	/* the grid header's add: hidden like the caret until the head is hovered, and pulled in
+	   so the rule runs up close to it */
 	.add {
 		display: inline-flex;
 		align-items: center;
@@ -1189,8 +1203,7 @@
 			color 80ms ease;
 	}
 
-	.group-head:hover .add,
-	.add.open {
+	.group-head:hover .add {
 		opacity: 1;
 	}
 
@@ -1476,6 +1489,31 @@
 
 	.row.new:focus-within .dashed {
 		border-color: var(--color-ui-muted);
+	}
+
+	.slot {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		height: 26px;
+		margin-top: 2px;
+		padding: 0;
+		border: 0;
+		border-radius: 7px;
+		background: var(--chip-bg);
+		color: var(--color-ui-muted);
+		opacity: 0;
+		cursor: pointer;
+		transition: opacity 80ms ease;
+	}
+
+	.slot:hover {
+		opacity: 1;
+	}
+
+	.list-face.reordering .slot {
+		opacity: 0;
 	}
 
 	/* the draft's group pill is row-sized, like the pills RowChips draws */
