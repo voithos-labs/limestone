@@ -18,7 +18,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
 	import View from '#lib/models/View.svelte.js';
-	import type { ViewFace, FilterLeaf } from '#lib/models/View.svelte.js';
+	import type { ViewFace, FilterLeaf, FilterNode } from '#lib/models/View.svelte.js';
 	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import type { TabState } from '#lib/models/EditorState.svelte.js';
@@ -81,6 +81,16 @@
 	const activeFace: ViewFace = $derived(
 		view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
 	);
+
+	const quickField = $derived(view.quickFilterField(activeFace));
+	const quickScope = $derived.by((): FilterNode | null => {
+		const v = view.state.quick_value as string | undefined;
+		const f = quickField;
+		if (!f || !v) return null;
+		if (f.type === 'tags') return { field_id: f.id, op: 'has_any', value: [v] };
+		if (f.type === 'boolean') return { field_id: f.id, op: 'eq', value: v === '1' };
+		return { field_id: f.id, op: 'eq', value: v };
+	});
 
 	const bodyFlow = true;
 	let bodyEl: HTMLDivElement | null = $state(null);
@@ -902,15 +912,15 @@
 						{dockTarget}
 					/>
 				{:else if activeFace?.type === 'list'}
-					<ListFace {view} face={activeFace} {onOpenRow} />
+					<ListFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{:else if activeFace?.type === 'masonry'}
-					<MasonryFace {view} face={activeFace} {onOpenRow} />
+					<MasonryFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{:else if activeFace?.type === 'kanban'}
-					<KanbanFace {view} face={activeFace} {onOpenRow} />
+					<KanbanFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{:else if activeFace?.type === 'dashboard'}
-					<DashboardFace {view} face={activeFace} {onOpenRow} {onOpenUnit} />
+					<DashboardFace {view} face={activeFace} scope={quickScope} {onOpenRow} {onOpenUnit} />
 				{:else if activeFace}
-					<ListFace {view} face={activeFace} {onOpenRow} />
+					<ListFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{/if}
 			</div>
 		</div>

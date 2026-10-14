@@ -35,11 +35,13 @@
 	let {
 		view,
 		face,
+		scope = null,
 		onOpenRow,
 		onOpenUnit
 	}: {
 		view: View;
 		face: ViewFace;
+		scope?: FilterNode | null;
 		onOpenRow?: (rowId: string, newTab?: boolean | 'side') => void;
 		onOpenUnit?: (id: string, name: string, newTab?: boolean) => void;
 	} = $props();
@@ -214,11 +216,11 @@
 		void view.filter;
 		void recount;
 		view
-			.countMembers({ face: todoFace })
+			.countMembers({ face: todoFace, scope })
 			.then((n) => (openCount = n))
 			.catch(() => {});
 		view
-			.countMembers({ face: notesFace })
+			.countMembers({ face: notesFace, scope })
 			.then((n) => (notesCount = n))
 			.catch(() => {});
 	});
@@ -507,6 +509,7 @@
 						{view}
 						face={todoFace}
 						{onOpenRow}
+						{scope}
 						autoFocus={false}
 						reorderable={false}
 						limit={LIMIT}
@@ -517,6 +520,7 @@
 						{view}
 						face={notesFace}
 						{onOpenRow}
+						{scope}
 						autoFocus={false}
 						reorderable={false}
 						limit={LIMIT}

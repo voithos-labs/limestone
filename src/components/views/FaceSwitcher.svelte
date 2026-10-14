@@ -21,7 +21,9 @@
 		ScanLine,
 		Pin,
 		ScanBarcode,
-		ChevronRight
+		ChevronRight,
+		Funnel,
+		EyeOff
 	} from '@lucide/svelte';
 	import type View from '#lib/models/View.svelte.js';
 	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '#lib/models/View.svelte.js';
@@ -156,7 +158,7 @@
 	function onPopLeave() {
 		if (dragId) return;
 		if (!closeOnSwapLeave) return;
-		if (groupOpen || addFaceOpen || renamingId || confirmFor) return;
+		if (groupOpen || quickOpen || addFaceOpen || renamingId || confirmFor) return;
 		if (bodyOpen || dateFieldOpen) return;
 		open = false;
 	}
@@ -305,6 +307,28 @@
 		groupOpen = false;
 	}
 
+	let quickEl: HTMLButtonElement | null = $state(null);
+	let quickOpen = $state(false);
+	const quickable = $derived(
+		view.fields.filter(
+			(f: ViewField) => f.type === 'tags' || f.type === 'select' || f.type === 'boolean'
+		)
+	);
+	const quickId = $derived((target.config.quick_filter ?? null) as string | null);
+	const quickLabel = $derived.by(() => {
+		const f = quickId ? view.fields.find((ff) => ff.id === quickId) : null;
+		return f ? fieldLabel(f) : 'Hidden';
+	});
+	const quickItems = $derived.by((): MenuEntry[] => [
+		{ value: '', label: 'Hidden', icon: EyeOff },
+		...fieldMenuEntries(quickable)
+	]);
+	function setQuick(id: string) {
+		target.config.quick_filter = id || undefined;
+		view.state.quick_value = null;
+		quickOpen = false;
+	}
+
 	function position() {
 		if (!anchorEl || !popEl) return;
 		const a = anchorEl.getBoundingClientRect();
@@ -330,6 +354,7 @@
 			addFaceOpen ||
 			sectionsOpen ||
 			groupOpen ||
+			quickOpen ||
 			bodyOpen ||
 			dateFieldOpen ||
 			!!renamingId ||
@@ -384,6 +409,7 @@
 				confirmFor = null;
 				renamingId = null;
 				groupOpen = false;
+				quickOpen = false;
 				addFaceOpen = false;
 				sectionsOpen = false;
 				closeOnSwapLeave = false;
@@ -582,6 +608,22 @@
 			</button>
 		{/if}
 
+		{#if target.type !== 'journal' && target.type !== 'doc'}
+			<button
+				class="action group-toggle"
+				type="button"
+				data-nav
+				data-flyout
+				bind:this={quickEl}
+				onclick={() => (quickOpen = !quickOpen)}
+			>
+				<Funnel size={14} strokeWidth={1.75} />
+				<span>Quick filter</span>
+				<span class="trailing">{quickLabel}</span>
+				<ChevronRight size={13} strokeWidth={2} />
+			</button>
+		{/if}
+
 		{#if face.type === 'journal'}
 			<button
 				class="action group-toggle"
@@ -653,6 +695,18 @@
 			items={groupItems}
 			selected={groupById ?? ''}
 			onSelect={setGroup}
+			minWidth={170}
+			placement="right"
+		/>
+	{/if}
+
+	{#if target.type !== 'journal' && target.type !== 'doc'}
+		<Menu
+			bind:open={quickOpen}
+			anchor={quickEl}
+			items={quickItems}
+			selected={quickId ?? ''}
+			onSelect={setQuick}
 			minWidth={170}
 			placement="right"
 		/>

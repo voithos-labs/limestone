@@ -36,6 +36,7 @@
 	import { tick, untrack } from 'svelte';
 	import { ctxMenu } from '#lib/overlays.svelte.js';
 	import { nameGuard, type NameKind } from '#lib/util/paths.js';
+	import QuickFilterBar from './QuickFilterBar.svelte';
 
 	let {
 		view,
@@ -56,6 +57,7 @@
 	const activeFace = $derived(
 		view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
 	);
+	const quickField = $derived(view.quickFilterField(activeFace));
 
 	// ── Fields (columns shown in the active face; a journal's body is the face) ───
 	const fieldTarget = $derived(
@@ -563,6 +565,12 @@
 	{/if}
 </div>
 
+{#if quickField && activeFace && activeFace.type !== 'journal' && activeFace.type !== 'doc'}
+	<div class="quick" class:covered={hasCover}>
+		<QuickFilterBar {view} face={activeFace} field={quickField} />
+	</div>
+{/if}
+
 {#if fieldTarget}
 	<ArrangeFields
 		bind:open={arrangeOpen}
@@ -782,6 +790,15 @@
 
 	.filter-bar::-webkit-scrollbar {
 		display: none;
+	}
+
+	.quick {
+		margin-left: -6px;
+		padding-left: 6px;
+	}
+
+	.quick.covered {
+		padding-left: 0;
 	}
 
 	/* under a cover the title sits in its own block above; the bar's leading room for the

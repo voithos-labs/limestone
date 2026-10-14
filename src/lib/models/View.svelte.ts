@@ -1427,6 +1427,42 @@ class View {
 		};
 	}
 
+	// the field a face's quick filter bar offers, if it set one that still exists
+	quickFilterField(face: ViewFace | undefined): ViewField | null {
+		const id = face?.config.quick_filter as string | undefined;
+		return id ? (this.fields.find((f) => f.id === id) ?? null) : null;
+	}
+
+	// how many members carry each value of a field, within this scope
+	async countValues(
+		field: ViewField,
+		opts?: { face?: ViewFace; scope?: FilterNode | null }
+	): Promise<{ value: string; label: string; n: number }[]> {
+		const compiled = this.compileScope(opts);
+		const where = `${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
+		const params = [...compiled.params];
+		if (field.type === 'tags') {
+			const rows = await select<{ value: string; label: string; n: number }>(
+				`SELECT t.id AS value, t.slug AS label, COUNT(*) AS n
+				 FROM document_tags dt
+				 JOIN tags t ON t.id = dt.tag_id
+				 JOIN documents d ON d.id = dt.document_id
+				 WHERE ${where}
+				 GROUP BY t.id`,
+				params
+			);
+			return rows;
+		}
+		const rows = await select<{ value: unknown; n: number }>(
+			`SELECT ${resolveColumn(field)} AS value, COUNT(*) AS n
+			 FROM documents d
+			 WHERE ${where} AND ${resolveColumn(field)} IS NOT NULL
+			 GROUP BY 1`,
+			params
+		);
+		return rows.map((r) => ({ value: String(r.value), label: String(r.value), n: r.n }));
+	}
+
 	// total matching members
 	async countMembers(opts?: { face?: ViewFace; scope?: FilterNode | null }): Promise<number> {
 		const compiled = this.compileScope(opts);
