@@ -6,7 +6,12 @@
 	import { Check, Plus, Pencil, Trash2, ArrowLeft, X, EllipsisVertical } from '@lucide/svelte';
 	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import type { ViewField } from '#lib/models/View.svelte.js';
-	import { isStatusField, saveStatuses, seenOptionValues } from '#lib/models/View.svelte.js';
+	import {
+		isStatusField,
+		saveStatuses,
+		seenOptionValues,
+		statusOptions
+	} from '#lib/models/View.svelte.js';
 	import { hashColor, statusKind } from '#lib/views/fieldValue.js';
 	import StatusIcon from '../StatusIcon.svelte';
 
@@ -114,10 +119,9 @@
 	// the todo status list lives in settings, and each side of done keeps at least one option
 	const status = $derived(isStatusField(vf));
 	function persist() {
-		if (status)
-			saveStatuses(
-				((vf.config.options ?? []) as TagOption[]).map((o) => ({ ...o, done: !!o.done }))
-			);
+		if (!status) return;
+		saveStatuses(((vf.config.options ?? []) as TagOption[]).map((o) => ({ ...o, done: !!o.done })));
+		vf.config.options = statusOptions();
 	}
 
 	async function adoptSeenValues() {

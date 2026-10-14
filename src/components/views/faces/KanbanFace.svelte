@@ -151,8 +151,8 @@
 
 	function setOptions(next: Opt[]) {
 		if (!colField) return;
-		colField.config.options = next;
 		if (status) saveStatuses(next.map((o) => ({ ...o, done: !!o.done })));
+		else colField.config.options = next;
 	}
 
 	let menuFor: string | null = $state(null);

@@ -258,10 +258,23 @@ export function isStatusField(field: Pick<ViewField, 'id'>): boolean {
 	return field.id === TODO_STATUS;
 }
 
+const liveStatuses: StatusOption[] = $state([]);
+
+export function statusOptions(): StatusOption[] {
+	return liveStatuses;
+}
+
+export function loadStatuses(): void {
+	const saved = appSettings?.get<StatusOption[]>('todo.statuses') ?? DEFAULT_STATUSES;
+	liveStatuses.splice(0, liveStatuses.length, ...saved.map((o) => ({ ...o })));
+}
+
 export function saveStatuses(options: StatusOption[]): void {
+	const next = options.map((o) => ({ value: o.value, color: o.color, done: !!o.done }));
+	liveStatuses.splice(0, liveStatuses.length, ...next);
 	void appSettings?.set(
 		'todo.statuses',
-		options.map((o) => ({ value: o.value, color: o.color, done: !!o.done }))
+		next.map((o) => ({ ...o }))
 	);
 }
 
@@ -285,11 +298,10 @@ const BUILTIN_FIELD_IDS = new Set(
 
 // fresh copies: views hold their fields in $state and write config in place
 function builtinFields(): ViewField[] {
-	const statuses = appSettings?.get<StatusOption[]>('todo.statuses') ?? DEFAULT_STATUSES;
 	return Object.values(BUILTIN_UNITS).flatMap((u) =>
 		u.fields.map((f) => ({
 			...f,
-			config: isStatusField(f) ? { options: statuses.map((o) => ({ ...o })) } : { ...f.config }
+			config: isStatusField(f) ? { options: liveStatuses } : { ...f.config }
 		}))
 	);
 }
