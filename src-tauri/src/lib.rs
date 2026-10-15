@@ -182,6 +182,21 @@ pub fn run() {
             });
             app.manage(commands::watch_commands::Watchers::default());
 
+            #[cfg(all(windows, not(debug_assertions)))]
+            if let Some(main) = app.get_webview_window("main") {
+                main.with_webview(|webview| {
+                    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+                    use windows_core::Interface;
+                    let settings = unsafe {
+                        webview.controller().CoreWebView2().and_then(|core| core.Settings())
+                    }
+                    .and_then(|s| s.cast::<ICoreWebView2Settings3>());
+                    if let Ok(settings) = settings {
+                        let _ = unsafe { settings.SetAreBrowserAcceleratorKeysEnabled(false) };
+                    }
+                })?;
+            }
+
             // ── Not Blocking!1 ───────────────────────────────────────────────────────
 
             let source_paths: std::collections::HashMap<String, std::path::PathBuf> = sources

@@ -27,6 +27,7 @@
 		rows,
 		editMode = false,
 		compact = false,
+		pick = 'all',
 		onEdit,
 		onTags
 	}: {
@@ -35,6 +36,7 @@
 		rows: FaceRows;
 		editMode?: boolean;
 		compact?: boolean; // cards: dates without a time of day
+		pick?: 'all' | 'filled' | 'empty'; // cards draw the two apart
 		onEdit?: (row: MemberRow, field: ViewField, anchor: HTMLElement) => void;
 		onTags?: (row: MemberRow, anchor: HTMLElement) => void;
 	} = $props();
@@ -79,7 +81,7 @@
 
 {#each fields as f (f.id)}
 	{@const has = hasValue(f)}
-	{#if rows.memberOf(row, f) && (has || editable(f))}
+	{#if rows.memberOf(row, f) && (has || editable(f)) && (pick === 'all' || (pick === 'filled') === has)}
 		{@const Icon = getFieldIcon(f.type)}
 		{@const due = has ? dueState(row, f) : null}
 		<span

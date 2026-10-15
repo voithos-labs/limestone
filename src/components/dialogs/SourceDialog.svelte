@@ -203,7 +203,7 @@
 				</div>
 			{/if}
 
-			<label class="field">
+			<div class="field">
 				<span class="label">Folder</span>
 				{#if mode === 'create'}
 					<button
@@ -220,9 +220,9 @@
 				{:else}
 					<div class="folder-static" title={folderPath}>{folderPath}</div>
 				{/if}
-			</label>
+			</div>
 
-			<label class="field">
+			<div class="field">
 				<span class="label">Default note location</span>
 				<button
 					class="folder-pick"
@@ -235,9 +235,9 @@
 					<span class="folder-text grow">{noteLocation || '(source root)'}</span>
 					<ChevronDown size={14} />
 				</button>
-			</label>
+			</div>
 
-			<label class="field">
+			<div class="field">
 				<span class="label">Asset location</span>
 				<button
 					class="folder-pick"
@@ -250,7 +250,7 @@
 					<span class="folder-text grow">{assetLocation}</span>
 					<ChevronDown size={14} />
 				</button>
-			</label>
+			</div>
 
 			{#if mode === 'create' && folderPath}
 				<div class="options" transition:slide={{ duration: 160 }}>
@@ -349,8 +349,9 @@
 
 	.title {
 		margin: 0 0 16px;
-		font-size: 16px;
+		font-size: 15px;
 		font-weight: 600;
+		letter-spacing: -0.01em;
 		color: var(--color-text-primary);
 	}
 
@@ -360,8 +361,8 @@
 		gap: 10px;
 		margin-bottom: 16px;
 		padding: 10px 12px;
-		border: 1px solid var(--color-border);
 		border-radius: 8px;
+		background: var(--chip-bg);
 		color: var(--color-ui-muted);
 	}
 
@@ -391,6 +392,7 @@
 	.mc-btn {
 		align-self: flex-start;
 		margin-top: 6px;
+		background: var(--color-bg);
 	}
 
 	.field {
@@ -402,29 +404,36 @@
 
 	.label {
 		font-size: 12px;
+		font-weight: 500;
 		color: var(--color-ui-muted);
 	}
 
 	.folder-pick,
 	.folder-static {
+		display: flex;
+		align-items: center;
 		width: 100%;
+		height: 32px;
 		box-sizing: border-box;
-		padding: 8px 10px;
-		border: 1px solid var(--color-border);
+		padding: 0 10px;
+		border: none;
 		border-radius: 8px;
-		background: var(--color-bg);
+		background: var(--chip-bg);
 		color: var(--color-text-primary);
 		font-family: var(--font-ui);
 		font-size: 13px;
+		transition: background-color 120ms ease;
 	}
 
 	.folder-pick {
-		display: flex;
-		align-items: center;
 		gap: 8px;
 		text-align: left;
 		cursor: pointer;
 		color: var(--color-ui-muted);
+	}
+
+	.folder-pick:hover:not(:disabled) {
+		background: var(--chip-bg-hover);
 	}
 
 	.folder-text {
@@ -440,10 +449,6 @@
 
 	.folder-pick.empty {
 		color: var(--color-text-primary);
-	}
-
-	.folder-pick.empty:hover {
-		background: var(--chip-bg);
 	}
 
 	.folder-text.grow {
@@ -493,6 +498,7 @@
 
 	.oc-title {
 		font-size: 13px;
+		font-weight: 500;
 		color: var(--color-text-primary);
 	}
 
@@ -504,7 +510,7 @@
 	.err {
 		margin: 0 0 12px;
 		font-size: 12px;
-		color: var(--color-accent);
+		color: var(--error-fg);
 	}
 
 	.actions {
@@ -515,27 +521,38 @@
 	}
 
 	.btn {
-		padding: 7px 14px;
-		border: 1px solid var(--color-border);
+		height: 32px;
+		padding: 0 14px;
+		border: none;
 		border-radius: 8px;
 		background: transparent;
 		color: var(--color-text-secondary);
 		font-family: var(--font-ui);
 		font-size: 13px;
 		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
-	.btn:hover {
+	.btn:hover:not(:disabled) {
+		background: var(--chip-bg);
 		color: var(--color-text-primary);
 	}
 
 	.btn.primary {
-		border-color: transparent;
 		background: var(--color-accent);
 		color: var(--color-accent-contrast);
+		font-weight: 600;
 	}
 
-	.btn.primary:disabled {
+	.btn.primary:hover:not(:disabled) {
+		background: var(--color-accent);
+		color: var(--color-accent-contrast);
+		filter: brightness(1.08);
+	}
+
+	.btn:disabled {
 		opacity: 0.5;
 		cursor: default;
 	}

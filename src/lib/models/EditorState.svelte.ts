@@ -444,6 +444,10 @@ class EditorState {
 		this.showInTab(tab, { type: 'view', view });
 	}
 
+	replaceViewInTab(tab: TabState, view: View) {
+		this.swapContent(tab, { type: 'view', view }, tab.state);
+	}
+
 	showDocInTab(tab: TabState, doc: DocHandle, state: Record<string, any> = {}) {
 		this.showInTab(tab, { type: 'markdown', handle: doc }, state);
 	}

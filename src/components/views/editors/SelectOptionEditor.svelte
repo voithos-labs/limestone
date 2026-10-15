@@ -3,20 +3,16 @@
 	 * todo:
 	 */
 	import { untrack } from 'svelte';
-	import {
-		Check,
-		Plus,
-		Pencil,
-		PaintBucket,
-		Trash2,
-		ArrowLeft,
-		X,
-		EllipsisVertical
-	} from '@lucide/svelte';
+	import { Check, Plus, Pencil, Trash2, ArrowLeft, X, EllipsisVertical } from '@lucide/svelte';
 	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import type { ViewField } from '#lib/models/View.svelte.js';
-	import { isStatusField, saveStatuses } from '#lib/models/View.svelte.js';
-	import { statusKind } from '#lib/views/fieldValue.js';
+	import {
+		isStatusField,
+		saveStatuses,
+		seenOptionValues,
+		statusOptions
+	} from '#lib/models/View.svelte.js';
+	import { hashColor, statusKind } from '#lib/views/fieldValue.js';
 	import StatusIcon from '../StatusIcon.svelte';
 
 	interface TagOption {
@@ -49,7 +45,6 @@
 	let searchEl: HTMLInputElement | null = $state(null);
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
 	let query = $state('');
-	let colorEditFor: string | null = $state(null);
 	let confirmDeleteFor: string | null = $state(null);
 	let renamingFor: string | null = $state(null);
 	let renameDraft = $state('');
@@ -58,15 +53,9 @@
 	function rowMenu(opt: TagOption): CtxEntry[] {
 		return [
 			{ label: 'Rename', icon: Pencil, action: () => startRename(opt) },
-			{
-				label: 'Change color',
-				icon: PaintBucket,
-				action: () => {
-					renamingFor = null;
-					confirmDeleteFor = null;
-					colorEditFor = opt.value;
-				}
-			},
+			{ divider: true, label: 'Color' },
+			{ swatches: { active: opt.color, pick: (c) => setColor(opt.value, c) } },
+			{ divider: true },
 			...(status
 				? [
 						{
@@ -84,7 +73,6 @@
 				danger: true,
 				action: () => {
 					renamingFor = null;
-					colorEditFor = null;
 					confirmDeleteFor = opt.value;
 				}
 			}
@@ -100,7 +88,6 @@
 	function startRename(opt: TagOption) {
 		renamingFor = opt.value;
 		renameDraft = opt.value;
-		colorEditFor = null;
 		confirmDeleteFor = null;
 		queueMicrotask(() => {
 			renameInput?.focus();
@@ -132,16 +119,81 @@
 	// the todo status list lives in settings, and each side of done keeps at least one option
 	const status = $derived(isStatusField(vf));
 	function persist() {
-		if (status)
-			saveStatuses(
-				((vf.config.options ?? []) as TagOption[]).map((o) => ({ ...o, done: !!o.done }))
-			);
+		if (!status) return;
+		saveStatuses(((vf.config.options ?? []) as TagOption[]).map((o) => ({ ...o, done: !!o.done })));
+		vf.config.options = statusOptions();
+	}
+
+	async function adoptSeenValues() {
+		if (status) return;
+		const seen = await seenOptionValues(vf);
+		const known = new Set(options.map((o) => o.value));
+		const missing = seen.filter((v) => !known.has(v));
+		if (missing.length === 0) return;
+		vf.config.options = [...options, ...missing.map((v) => ({ value: v, color: hashColor(v) }))];
 	}
 
 	function toggleDone(opt: TagOption) {
 		if (options.filter((o) => !!o.done === !!opt.done).length <= 1) return;
-		vf.config.options = options.map((o) => (o.value === opt.value ? { ...o, done: !o.done } : o));
+		const flipped = { ...opt, done: !opt.done };
+		const rest = options.filter((o) => o.value !== opt.value);
+		const firstDone = rest.findIndex((o) => o.done);
+		rest.splice(flipped.done || firstDone < 0 ? rest.length : firstDone, 0, flipped);
+		vf.config.options = rest;
 		persist();
+	}
+
+	const DRAG_PX = 4;
+	let listEl: HTMLDivElement | null = $state(null);
+	let arm: { value: string; x: number; y: number } | null = null;
+	let dragId: string | null = $state(null);
+	let dragged = false;
+
+	function armDrag(e: PointerEvent, opt: TagOption) {
+		if (e.button !== 0 || query.trim() !== '' || renamingFor || confirmDeleteFor) return;
+		if ((e.target as HTMLElement).closest('.more, input')) return;
+		arm = { value: opt.value, x: e.clientX, y: e.clientY };
+		window.addEventListener('pointermove', onDragMove);
+		window.addEventListener('pointerup', onDragUp);
+	}
+
+	function onDragMove(e: PointerEvent) {
+		if (!arm) return;
+		if (!dragId) {
+			if (Math.hypot(e.clientX - arm.x, e.clientY - arm.y) < DRAG_PX) return;
+			dragId = arm.value;
+		}
+		const me = options.find((o) => o.value === dragId);
+		if (!me || !listEl) return;
+		const rows = Array.from(listEl.querySelectorAll<HTMLElement>('[data-opt]')).filter(
+			(r) => r.dataset.opt !== dragId
+		);
+		let at = 0;
+		for (const r of rows) {
+			const b = r.getBoundingClientRect();
+			if (e.clientY > b.top + b.height / 2) at++;
+		}
+		const rest = options.filter((o) => o.value !== dragId);
+		rest.splice(at, 0, me);
+		if (rest.some((o, i) => o !== options[i])) vf.config.options = rest;
+	}
+
+	function onDragUp() {
+		if (dragId) {
+			dragged = true;
+			persist();
+		}
+		arm = null;
+		dragId = null;
+		window.removeEventListener('pointermove', onDragMove);
+		window.removeEventListener('pointerup', onDragUp);
+	}
+
+	function swallowDragClick(e: MouseEvent) {
+		if (!dragged) return;
+		dragged = false;
+		e.stopPropagation();
+		e.preventDefault();
 	}
 
 	const selectedValues = $derived(
@@ -218,7 +270,6 @@
 			o.value === optValue ? { ...o, color } : o
 		);
 		persist();
-		colorEditFor = null;
 	}
 
 	function removeOption(optValue: string) {
@@ -232,7 +283,6 @@
 		}
 		vf.config.options = vf.config.options.filter((o: TagOption) => o.value !== optValue);
 		persist();
-		colorEditFor = null;
 		confirmDeleteFor = null;
 		// Drop the value from the current selection if present
 		if (selectedValues.includes(optValue)) {
@@ -256,13 +306,7 @@
 	function onDocPointerDown(e: PointerEvent) {
 		if (!open) return;
 		const t = e.target as Node;
-		if (popEl?.contains(t)) {
-			// Clicking inside the menu but outside the open color panel dismisses it
-			if (colorEditFor && !(e.target as HTMLElement).closest?.('.color-panel, .more')) {
-				colorEditFor = null;
-			}
-			return;
-		}
+		if (popEl?.contains(t)) return;
 		if (anchor?.contains(t)) return;
 		if ((t as HTMLElement).closest?.('.ctx-menu')) return;
 		open = false;
@@ -280,7 +324,6 @@
 		if (!open || contextMenu.open) return;
 		if (e.key === 'Escape') {
 			if (confirmDeleteFor) confirmDeleteFor = null;
-			else if (colorEditFor) colorEditFor = null;
 			else open = false;
 			e.preventDefault();
 		} else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
@@ -311,6 +354,7 @@
 			wasOpen = true;
 			untrack(() => {
 				query = '';
+				adoptSeenValues().catch(console.error);
 			});
 			queueMicrotask(() => {
 				position();
@@ -354,13 +398,23 @@
 				placeholder="Search or create…"
 			/>
 		</div>
-		<div class="list" onmouseleave={() => (activeIndex = -1)} role="presentation">
+		<div
+			class="list"
+			class:dragging={!!dragId}
+			bind:this={listEl}
+			onmouseleave={() => (activeIndex = -1)}
+			onclickcapture={swallowDragClick}
+			role="presentation"
+		>
 			{#each filtered as opt, i (opt.value)}
 				<div
 					class="opt-row"
 					class:active={i === activeIndex}
 					class:confirming={confirmDeleteFor === opt.value}
+					class:dragging={dragId === opt.value}
+					data-opt={opt.value}
 					onmouseenter={() => (activeIndex = i)}
+					onpointerdown={(e) => armDrag(e, opt)}
 					use:ctxMenu={() => rowMenu(opt)}
 					role="presentation"
 				>
@@ -436,22 +490,6 @@
 						</button>
 					{/if}
 				</div>
-				{#if colorEditFor === opt.value}
-					<div class="color-panel">
-						<div class="swatch-grid">
-							{#each Array(16) as _, ci}
-								<button
-									class="swatch tag-c{ci}"
-									class:active={opt.color === ci}
-									type="button"
-									tabindex="-1"
-									aria-label="Color {ci}"
-									onclick={() => setColor(opt.value, ci)}
-								></button>
-							{/each}
-						</div>
-					</div>
-				{/if}
 			{/each}
 
 			{#if showCreate}
@@ -539,6 +577,16 @@
 
 	.opt-row.active {
 		background: var(--menu-item-hover);
+	}
+
+	.opt-row.dragging {
+		opacity: 0.5;
+	}
+
+	.list.dragging,
+	.list.dragging * {
+		cursor: grabbing;
+		user-select: none;
 	}
 
 	.opt-row.confirming .pill {
@@ -667,29 +715,6 @@
 
 	.clear-row :global(svg) {
 		flex-shrink: 0;
-	}
-
-	.color-panel {
-		padding: 4px 8px 8px 10px;
-	}
-
-	.swatch-grid {
-		display: grid;
-		grid-template-columns: repeat(8, 1fr);
-		gap: 5px;
-	}
-
-	.swatch {
-		aspect-ratio: 1 / 1;
-		padding: 0;
-		border: 1.5px solid transparent;
-		border-radius: 5px;
-		cursor: pointer;
-		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
-	}
-
-	.swatch.active {
-		border-color: var(--color-text-primary);
 	}
 
 	.opt.create:hover,

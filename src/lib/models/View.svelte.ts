@@ -112,6 +112,8 @@ export class ViewFace {
 		this.additive_filter = json.additive_filter;
 		this.sort = json.sort;
 		this.config = json.config;
+		if (!this.sort.length && ((this.config.order as string[] | undefined)?.length ?? 0) > 0)
+			this.sort = [{ field_id: MANUAL_SORT, direction: 'asc' }];
 		this.body = json.body
 			? new ViewFace({ ...json.body, additive_filter: { op: 'and', children: [] } })
 			: json.type === 'journal'
@@ -258,10 +260,23 @@ export function isStatusField(field: Pick<ViewField, 'id'>): boolean {
 	return field.id === TODO_STATUS;
 }
 
+const liveStatuses: StatusOption[] = $state([]);
+
+export function statusOptions(): StatusOption[] {
+	return liveStatuses;
+}
+
+export function loadStatuses(): void {
+	const saved = appSettings?.get<StatusOption[]>('todo.statuses') ?? DEFAULT_STATUSES;
+	liveStatuses.splice(0, liveStatuses.length, ...saved.map((o) => ({ ...o })));
+}
+
 export function saveStatuses(options: StatusOption[]): void {
+	const next = options.map((o) => ({ value: o.value, color: o.color, done: !!o.done }));
+	liveStatuses.splice(0, liveStatuses.length, ...next);
 	void appSettings?.set(
 		'todo.statuses',
-		options.map((o) => ({ value: o.value, color: o.color, done: !!o.done }))
+		next.map((o) => ({ ...o }))
 	);
 }
 
@@ -285,11 +300,10 @@ const BUILTIN_FIELD_IDS = new Set(
 
 // fresh copies: views hold their fields in $state and write config in place
 function builtinFields(): ViewField[] {
-	const statuses = appSettings?.get<StatusOption[]>('todo.statuses') ?? DEFAULT_STATUSES;
 	return Object.values(BUILTIN_UNITS).flatMap((u) =>
 		u.fields.map((f) => ({
 			...f,
-			config: isStatusField(f) ? { options: statuses.map((o) => ({ ...o })) } : { ...f.config }
+			config: isStatusField(f) ? { options: liveStatuses } : { ...f.config }
 		}))
 	);
 }
@@ -466,6 +480,12 @@ export interface SortKey {
 	nulls?: 'first' | 'last';
 }
 
+export const MANUAL_SORT = 'manual';
+
+export function isManualSort(face: ViewFace): boolean {
+	return face.sort[0]?.field_id === MANUAL_SORT;
+}
+
 // ── SQL Compilation ──────────────────────────────────────────────────────────────────
 
 interface CompiledFilter {
@@ -492,6 +512,10 @@ export function sanitizeName(raw: string): string {
 		.trim();
 }
 
+function propPath(field: ViewField): string {
+	return `'$.views."${pathSeg(fieldKey(field), 'unit key')}"."${pathSeg(field.name, 'field name')}"'`;
+}
+
 function resolveColumn(field: ViewField): string {
 	switch (field.type) {
 		case 'title':
@@ -505,7 +529,7 @@ function resolveColumn(field: ViewField): string {
 		case 'tags':
 			throw new Error(`tags field has no scalar column; handle separately`);
 		default:
-			return `json_extract(d.properties, '$.views."${pathSeg(fieldKey(field), 'unit key')}"."${pathSeg(field.name, 'field name')}"')`;
+			return `json_extract(d.properties, ${propPath(field)})`;
 	}
 }
 
@@ -530,6 +554,18 @@ export function unitPropKey(unitId: string): string {
 
 export function folderPropKey(path: string): string {
 	return path ? `/${path}/` : '/';
+}
+
+export async function seenOptionValues(field: ViewField): Promise<string[]> {
+	const path = propPath(field);
+	const sql =
+		field.type === 'multiselect'
+			? `SELECT DISTINCT j.value AS v FROM documents d, json_each(d.properties, ${path}) j
+				WHERE d.deleted_at IS NULL AND json_type(d.properties, ${path}) = 'array' AND j.type = 'text'`
+			: `SELECT DISTINCT json_extract(d.properties, ${path}) AS v FROM documents d
+				WHERE d.deleted_at IS NULL AND json_type(d.properties, ${path}) = 'text'`;
+	const rows = await select<{ v: string }>(sql, []);
+	return rows.map((r) => r.v).filter((v) => v !== '');
 }
 
 function compileUnit(unitId: string): CompiledFilter {
@@ -1389,6 +1425,42 @@ class View {
 			params: [...compiled.params],
 			includeDeleted: this.unit === DELETED
 		};
+	}
+
+	// the field a face's quick filter bar offers, if it set one that still exists
+	quickFilterField(face: ViewFace | undefined): ViewField | null {
+		const id = face?.config.quick_filter as string | undefined;
+		return id ? (this.fields.find((f) => f.id === id) ?? null) : null;
+	}
+
+	// how many members carry each value of a field, within this scope
+	async countValues(
+		field: ViewField,
+		opts?: { face?: ViewFace; scope?: FilterNode | null }
+	): Promise<{ value: string; label: string; n: number }[]> {
+		const compiled = this.compileScope(opts);
+		const where = `${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
+		const params = [...compiled.params];
+		if (field.type === 'tags') {
+			const rows = await select<{ value: string; label: string; n: number }>(
+				`SELECT t.id AS value, t.slug AS label, COUNT(*) AS n
+				 FROM document_tags dt
+				 JOIN tags t ON t.id = dt.tag_id
+				 JOIN documents d ON d.id = dt.document_id
+				 WHERE ${where}
+				 GROUP BY t.id`,
+				params
+			);
+			return rows;
+		}
+		const rows = await select<{ value: unknown; n: number }>(
+			`SELECT ${resolveColumn(field)} AS value, COUNT(*) AS n
+			 FROM documents d
+			 WHERE ${where} AND ${resolveColumn(field)} IS NOT NULL
+			 GROUP BY 1`,
+			params
+		);
+		return rows.map((r) => ({ value: String(r.value), label: String(r.value), n: r.n }));
 	}
 
 	// total matching members

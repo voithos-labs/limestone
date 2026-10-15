@@ -104,7 +104,7 @@
 		</div>
 
 		{#if projects.length}
-			<p class="sec">Projects</p>
+			<div class="sec"><span class="sec-label">Projects</span><span class="rule"></span></div>
 			<div class="chips">
 				{#each projects as v (v.id)}
 					{@const Icon = getViewIcon(v)}
@@ -125,7 +125,7 @@
 		{/if}
 
 		{#if recent.length}
-			<p class="sec">Recent</p>
+			<div class="sec"><span class="sec-label">Recent</span><span class="rule"></span></div>
 			<div class="rows">
 				{#each recent as r (r.id)}
 					<button class="row" type="button" onclick={() => openNote(r.id, r.title)}>
@@ -187,24 +187,25 @@
 		gap: 4px;
 		min-height: 96px;
 		padding: 14px;
-		border: 1px solid var(--color-border);
-		border-radius: 12px;
-		background: transparent;
+		border: none;
+		border-radius: 10px;
+		background: var(--chip-bg);
 		font: inherit;
 		text-align: left;
 		color: inherit;
 		cursor: pointer;
-		transition: background-color 100ms ease;
+		transition: background-color 120ms ease;
 	}
 
 	.card:hover {
-		background: var(--chip-bg);
+		background: var(--chip-bg-hover);
 	}
 
 	.card-icon {
 		display: inline-flex;
 		margin-bottom: 7px;
 		color: var(--color-ui-muted);
+		transition: color 120ms ease;
 	}
 
 	.card:hover .card-icon {
@@ -212,7 +213,7 @@
 	}
 
 	.card-label {
-		font-size: 13.5px;
+		font-size: 13px;
 		font-weight: 600;
 	}
 
@@ -269,12 +270,25 @@
 	}
 
 	.sec {
-		margin: 28px 2px 10px;
-		font-size: 11px;
+		display: flex;
+		align-items: center;
+		height: 28px;
+		margin: 22px 0 4px;
+	}
+
+	.sec-label {
+		font-size: 10px;
 		font-weight: 600;
-		letter-spacing: 0.06em;
+		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		color: var(--color-ui-muted);
+	}
+
+	.rule {
+		flex: 1;
+		height: 1px;
+		margin-left: 10px;
+		background: var(--chip-divider);
 	}
 
 	.chips {
@@ -346,10 +360,11 @@
 		border-radius: 8px;
 		background: transparent;
 		font: inherit;
-		font-size: 13.5px;
+		font-size: 13px;
 		color: inherit;
 		text-align: left;
 		cursor: pointer;
+		transition: background-color 80ms ease;
 	}
 
 	.row:hover {

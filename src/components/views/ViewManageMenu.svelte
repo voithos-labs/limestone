@@ -5,7 +5,6 @@
 		Trash2,
 		Plus,
 		ChevronRight,
-		Check,
 		CircleSlash,
 		Triangle,
 		Eye,
@@ -21,6 +20,7 @@
 		isLockedField
 	} from '#lib/models/View.svelte.js';
 	import { getFieldIcon } from '#lib/views/filterDisplay.js';
+	import { contextMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import { fieldLabel } from '#lib/views/fieldValue.js';
 	import Menu from '../ui/Menu.svelte';
 	import { nameGuard } from '#lib/util/paths.js';
@@ -170,12 +170,12 @@
 		if (popEl?.contains(e.target as Node)) return;
 		if (anchor?.contains(e.target as Node)) return;
 		// the Add field flyout renders outside popEl, keep it from closing us
-		if ((e.target as HTMLElement).closest?.('.menu, .pop')) return;
+		if ((e.target as HTMLElement).closest?.('.menu, .pop, .ctx-menu')) return;
 		open = false;
 	}
 
 	function onKey(e: KeyboardEvent) {
-		if (!open || editingId !== null) return;
+		if (!open || editingId !== null || contextMenu.open) return;
 		const n = ordered.length;
 		if (e.key === 'Escape') {
 			open = false;
@@ -199,7 +199,6 @@
 				activeIndex = 0;
 				addOpen = false;
 				flyoutFor = null;
-				defaultFor = null;
 				editingId = null;
 			});
 			queueMicrotask(position);
@@ -223,7 +222,6 @@
 	}
 
 	// ── Per-field default (select / multiselect) ───────────────────────────────
-	let defaultFor: string | null = $state(null);
 
 	function hasDefaultSupport(f: ViewField): boolean {
 		return f.type === 'select' || f.type === 'multiselect';
@@ -242,7 +240,24 @@
 	function setDefault(f: ViewField, value: string | null) {
 		if (value === null) delete f.config.default;
 		else f.config.default = f.type === 'multiselect' ? [value] : value;
-		defaultFor = null;
+	}
+	function defaultEntries(f: ViewField): CtxEntry[] {
+		const current = currentDefault(f);
+		return [
+			{ divider: true, label: 'Default value' },
+			{
+				label: 'None',
+				icon: CircleSlash,
+				checked: current === null,
+				action: () => setDefault(f, null)
+			},
+			...fieldOptions(f).map((o) => ({
+				label: o.value,
+				pill: o.color,
+				checked: current === o.value,
+				action: () => setDefault(f, o.value)
+			}))
+		];
 	}
 </script>
 
@@ -325,7 +340,7 @@
 									title="Set default value"
 									onclick={(e) => {
 										e.stopPropagation();
-										defaultFor = defaultFor === field.id ? null : field.id;
+										contextMenu.showAt(e.currentTarget as HTMLElement, () => defaultEntries(field));
 									}}
 								>
 									<Triangle size={14} strokeWidth={1.75} />
@@ -366,32 +381,6 @@
 						</button>
 					{/if}
 				</div>
-				{#if defaultFor === field.id}
-					<div class="default-panel">
-						<div class="panel-label">Default value</div>
-						<button
-							class="default-opt"
-							class:selected={currentDefault(field) === null}
-							type="button"
-							onclick={() => setDefault(field, null)}
-						>
-							<CircleSlash size={13} strokeWidth={1.75} />
-							<span class="none-label">None</span>
-							{#if currentDefault(field) === null}<Check size={13} strokeWidth={2} />{/if}
-						</button>
-						{#each fieldOptions(field) as opt (opt.value)}
-							<button
-								class="default-opt"
-								class:selected={currentDefault(field) === opt.value}
-								type="button"
-								onclick={() => setDefault(field, opt.value)}
-							>
-								<span class="pill tag-c{opt.color}">{opt.value}</span>
-								{#if currentDefault(field) === opt.value}<Check size={13} strokeWidth={2} />{/if}
-							</button>
-						{/each}
-					</div>
-				{/if}
 			{/snippet}
 
 			<div class="section-label">{title}</div>
@@ -662,65 +651,5 @@
 
 	.add-toggle span {
 		flex: 1;
-	}
-
-	.default-panel {
-		padding: 2px 4px 6px 22px;
-	}
-
-	.panel-label {
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--color-ui-muted);
-		padding: 2px 4px 4px;
-	}
-
-	.default-opt {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
-		padding: 5px 8px;
-		border: 0;
-		background: transparent;
-		border-radius: 5px;
-		color: inherit;
-		font: inherit;
-		font-size: 13px;
-		text-align: left;
-		cursor: pointer;
-	}
-
-	.default-opt:hover {
-		background: var(--menu-item-hover);
-	}
-
-	.default-opt :global(svg) {
-		flex-shrink: 0;
-		color: var(--color-ui-muted);
-	}
-
-	.default-opt.selected :global(svg:last-child) {
-		color: var(--color-accent);
-		margin-left: auto;
-	}
-
-	.none-label {
-		color: var(--color-ui-muted);
-	}
-
-	.default-opt .pill {
-		display: inline-flex;
-		align-items: center;
-		max-width: 180px;
-		padding: 1px 8px;
-		border-radius: 4px;
-		font-size: 11px;
-		line-height: 1.55;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
-		color: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-fg-l, 30%));
 	}
 </style>

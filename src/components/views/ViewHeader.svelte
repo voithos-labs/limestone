@@ -13,14 +13,15 @@
 	import EmojiPicker from './editors/EmojiPicker.svelte';
 	import DocPickerPanel from './DocPicker.svelte';
 	import type { DocPicker } from '#lib/views/project.svelte.js';
-	import { getFaceIcon, getFieldIcon } from '#lib/views/filterDisplay.js';
+	import { getFaceIcon, fieldMenuEntries, getFieldIcon } from '#lib/views/filterDisplay.js';
 	import { fieldLabel } from '#lib/views/fieldValue.js';
-	import { VIEW_FIELD_SORTABLE } from '#lib/models/View.svelte.js';
+	import { VIEW_FIELD_SORTABLE, MANUAL_SORT } from '#lib/models/View.svelte.js';
 	import type { MenuEntry } from '#lib/overlays.svelte.js';
 	import Menu from '../ui/Menu.svelte';
 	import {
 		Funnel,
 		ChevronDown,
+		Plus,
 		Search,
 		EllipsisVertical,
 		Columns3Cog,
@@ -28,7 +29,7 @@
 		ArrowDownUp,
 		ArrowUpAZ,
 		ArrowDownAZ,
-		RotateCcw,
+		GripVertical,
 		Globe,
 		ChevronRight,
 		SquareArrowOutUpRight
@@ -36,6 +37,7 @@
 	import { tick, untrack } from 'svelte';
 	import { ctxMenu } from '#lib/overlays.svelte.js';
 	import { nameGuard, type NameKind } from '#lib/util/paths.js';
+	import QuickFilterBar from './QuickFilterBar.svelte';
 
 	let {
 		view,
@@ -56,6 +58,7 @@
 	const activeFace = $derived(
 		view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
 	);
+	const quickField = $derived(view.quickFilterField(activeFace));
 
 	// ── Fields (columns shown in the active face; a journal's body is the face) ───
 	const fieldTarget = $derived(
@@ -107,12 +110,15 @@
 	});
 
 	function onSearchKey(e: KeyboardEvent) {
-		if (!picking) return;
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			if (view.state.search) view.state.search = '';
-			else picking.open = false;
-		} else if (e.key === 'Enter') {
+			else if (picking?.open) picking.open = false;
+			else (e.currentTarget as HTMLInputElement).blur();
+			return;
+		}
+		if (!picking) return;
+		if (e.key === 'Enter') {
 			e.preventDefault();
 			const first = picking.results[0];
 			if (first) picking.pick(first.id);
@@ -135,40 +141,67 @@
 				: activeFace
 			: null
 	);
-	const sortFieldId = $derived(sortTarget?.sort[0]?.field_id ?? '');
-	const sortDir = $derived(sortTarget?.sort[0]?.direction ?? 'desc');
-	const sortField = $derived(view.fields.find((f) => f.id === sortFieldId));
+	const sortKeys = $derived(sortTarget?.sort ?? []);
 	let sortEl: HTMLButtonElement | null = $state(null);
 	let sortOpen = $state(false);
-	const sortItems = $derived.by((): MenuEntry[] => [
-		{ value: '', label: 'Default', icon: ArrowDownUp },
-		...view.fields
-			.filter((f) => VIEW_FIELD_SORTABLE.has(f.type))
-			.map((f) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }))
-	]);
+	let sortAt = $state(0);
+	const sortItems = $derived.by((): MenuEntry[] => {
+		const used = new Set(sortKeys.map((k, i) => (i === sortAt ? '' : k.field_id)));
+		const fields = fieldMenuEntries(
+			view.fields.filter((f) => VIEW_FIELD_SORTABLE.has(f.type) && !used.has(f.id))
+		);
+		if (sortAt > 0) return fields;
+		return [
+			{ value: '', label: 'Default', icon: ArrowDownUp },
+			{ value: MANUAL_SORT, label: 'Manual', icon: GripVertical },
+			...fields
+		];
+	});
+	const sortable = $derived(view.fields.filter((f) => VIEW_FIELD_SORTABLE.has(f.type)).length);
 
-	// a hand-made order (rows dragged in the list) overrides the sort until the sort is
-	// touched again or reset here
-	const manualOrder = $derived(
-		((sortTarget?.config.order as string[] | undefined) ?? []).length > 0
-	);
+	// under the manual sort, rows go where they were dragged; any other sort snaps them back
+	const manualOrder = $derived(sortKeys[0]?.field_id === MANUAL_SORT);
+
+	function openSort(e: MouseEvent, at: number) {
+		sortEl = e.currentTarget as HTMLButtonElement;
+		sortAt = at;
+		sortOpen = true;
+	}
+
+	function sortName(fid: string): string {
+		if (fid === MANUAL_SORT) return 'Manual';
+		const f = view.fields.find((x) => x.id === fid);
+		return f ? fieldLabel(f) : fid;
+	}
+
+	function sortIcon(fid: string) {
+		if (fid === MANUAL_SORT) return GripVertical;
+		const f = view.fields.find((x) => x.id === fid);
+		return f ? getFieldIcon(f.type) : ArrowDownUp;
+	}
 
 	function setSortField(v: string) {
 		sortOpen = false;
 		if (!sortTarget) return;
-		sortTarget.config.order = undefined;
-		sortTarget.sort = v ? [{ field_id: v, direction: sortDir }] : [];
+		if (!v) sortTarget.sort = [];
+		else if (v === MANUAL_SORT) sortTarget.sort = [{ field_id: v, direction: 'asc' }];
+		else {
+			const next = [...sortKeys].filter((k) => k.field_id !== MANUAL_SORT);
+			const dir = next[sortAt]?.direction ?? 'desc';
+			next[Math.min(sortAt, next.length)] = { field_id: v, direction: dir };
+			sortTarget.sort = next;
+		}
 	}
 
-	function flipSort() {
+	function flipSort(i: number) {
 		if (!sortTarget) return;
-		sortTarget.config.order = undefined;
-		const fid = sortFieldId || view.fields.find((f) => f.type === 'updated_at')?.id;
-		if (fid) sortTarget.sort = [{ field_id: fid, direction: sortDir === 'asc' ? 'desc' : 'asc' }];
+		sortTarget.sort = sortKeys.map((k, j) =>
+			j === i ? { ...k, direction: k.direction === 'asc' ? 'desc' : 'asc' } : k
+		);
 	}
 
-	function resetOrder() {
-		if (sortTarget) sortTarget.config.order = undefined;
+	function removeSort(i: number) {
+		if (sortTarget) sortTarget.sort = sortKeys.filter((_, j) => j !== i);
 	}
 
 	let filtersPos: { top: number; left: number } = $state({ top: 0, left: 0 });
@@ -488,34 +521,66 @@
 			{/if}
 			{#if sortTarget}
 				<div class="divider"></div>
-				<div class="sort-row">
+				<div class="sort-head">
 					<span class="sort-label"><ArrowDownUp size={12} strokeWidth={1.75} />Sort</span>
-					<button
-						class="sort-field"
-						type="button"
-						bind:this={sortEl}
-						onclick={() => (sortOpen = !sortOpen)}
-					>
-						{manualOrder ? 'Manual' : sortField ? fieldLabel(sortField) : 'Default'}
-						<ChevronDown size={12} strokeWidth={2} />
-					</button>
-					{#if manualOrder}
-						<button class="sort-dir" type="button" title="Reset order" onclick={resetOrder}>
-							<RotateCcw size={13} strokeWidth={1.75} />
+					{#if sortKeys.length > 0 && !manualOrder && sortKeys.length < sortable}
+						<button
+							class="sort-add"
+							type="button"
+							aria-label="Then sort by"
+							title="Then by"
+							onclick={(e) => openSort(e, sortKeys.length)}
+						>
+							<Plus size={14} strokeWidth={2} />
 						</button>
 					{/if}
-					<button
-						class="sort-dir"
-						type="button"
-						title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
-						onclick={flipSort}
-					>
-						{#if sortDir === 'asc'}
-							<ArrowUpAZ size={14} strokeWidth={1.75} />
-						{:else}
-							<ArrowDownAZ size={14} strokeWidth={1.75} />
-						{/if}
-					</button>
+				</div>
+				<div class="sort-list">
+					{#if sortKeys.length === 0}
+						<div class="sort-chip">
+							<button class="seg seg-field" type="button" onclick={(e) => openSort(e, 0)}>
+								<ArrowDownUp size={12} strokeWidth={2} />
+								<span class="seg-label">Default</span>
+								<ChevronDown size={11} strokeWidth={2} />
+							</button>
+						</div>
+					{:else}
+						{#each sortKeys as k, i (k.field_id)}
+							{@const Icon = sortIcon(k.field_id)}
+							<div class="sort-chip">
+								<button class="seg seg-field" type="button" onclick={(e) => openSort(e, i)}>
+									<Icon size={12} strokeWidth={2} />
+									<span class="seg-label">{sortName(k.field_id)}</span>
+									<ChevronDown size={11} strokeWidth={2} />
+								</button>
+								{#if k.field_id !== MANUAL_SORT}
+									<button
+										class="seg seg-dir"
+										type="button"
+										title={k.direction === 'asc' ? 'Ascending' : 'Descending'}
+										onclick={() => flipSort(i)}
+									>
+										{#if k.direction === 'asc'}
+											<ArrowUpAZ size={13} strokeWidth={1.75} />
+										{:else}
+											<ArrowDownAZ size={13} strokeWidth={1.75} />
+										{/if}
+										<span class="seg-label"
+											>{k.direction === 'asc' ? 'ascending' : 'descending'}</span
+										>
+									</button>
+									<button
+										class="seg seg-remove"
+										type="button"
+										aria-label="Remove sort"
+										onclick={() => removeSort(i)}
+									>
+										<X size={12} strokeWidth={2} />
+									</button>
+								{/if}
+							</div>
+						{/each}
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -523,7 +588,7 @@
 			bind:open={sortOpen}
 			anchor={sortEl}
 			items={sortItems}
-			selectedValues={[sortFieldId]}
+			selectedValues={[sortKeys[sortAt]?.field_id ?? '']}
 			onSelect={setSortField}
 			minWidth={170}
 		/>
@@ -572,6 +637,12 @@
 		{@render moreButton()}
 	{/if}
 </div>
+
+{#if quickField && activeFace && activeFace.type !== 'journal' && activeFace.type !== 'doc'}
+	<div class="quick" class:covered={hasCover}>
+		<QuickFilterBar {view} face={activeFace} field={quickField} />
+	</div>
+{/if}
 
 {#if fieldTarget}
 	<ArrangeFields
@@ -794,6 +865,15 @@
 		display: none;
 	}
 
+	.quick {
+		margin-left: -6px;
+		padding-left: 6px;
+	}
+
+	.quick.covered {
+		padding-left: 0;
+	}
+
 	/* under a cover the title sits in its own block above; the bar's leading room for the
 	   emoji button isn't needed, so the face switcher lines up with the title's edge */
 	.filter-bar.covered {
@@ -826,11 +906,113 @@
 		color: var(--color-text-primary);
 	}
 
-	.sort-row {
+	.sort-head {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		padding: 2px 4px 4px 8px;
+		height: 26px;
+		padding: 2px 4px 0 8px;
+	}
+
+	.sort-add {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		margin-left: auto;
+		width: 22px;
+		height: 22px;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		cursor: pointer;
+	}
+
+	.sort-add:hover {
+		background: var(--menu-item-hover);
+		color: var(--color-text-primary);
+	}
+
+	.sort-list {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 5px;
+		padding: 2px 2px 4px;
+	}
+
+	.sort-chip {
+		display: flex;
+		align-items: stretch;
+		height: 28px;
+		border-radius: 6px;
+		background: var(--chip-bg);
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--color-ui-muted);
+		overflow: hidden;
+		transition: background-color 100ms ease;
+	}
+
+	.sort-chip:hover {
+		background: var(--chip-bg-hover);
+	}
+
+	.seg {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 0 9px;
+		border: 0;
+		background: transparent;
+		font: inherit;
+		color: inherit;
+		cursor: pointer;
+		white-space: nowrap;
+		transition:
+			background-color 100ms ease,
+			color 100ms ease;
+	}
+
+	.seg:hover {
+		background: var(--chip-seg-hover);
+		color: var(--color-text-secondary);
+	}
+
+	.seg:active {
+		background: var(--chip-seg-active);
+	}
+
+	.seg-field {
+		flex: 1 1 auto;
+		min-width: 0;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+	}
+
+	.seg-field .seg-label {
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		text-align: left;
+	}
+
+	.seg-field :global(svg) {
+		color: var(--color-ui-muted);
+		flex-shrink: 0;
+	}
+
+	.seg-dir {
+		padding-left: 8px;
+		padding-right: 8px;
+	}
+
+	.seg-remove {
+		padding: 0 7px;
+	}
+
+	.seg-remove:hover {
+		color: var(--color-text-primary);
 	}
 
 	.sort-label {
@@ -842,44 +1024,6 @@
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		color: var(--color-ui-muted);
-	}
-
-	.sort-field {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		margin-left: auto;
-		height: 22px;
-		padding: 0 6px 0 8px;
-		border: 0;
-		border-radius: 5px;
-		background: var(--chip-bg);
-		font: inherit;
-		font-size: 12px;
-		color: var(--color-text-primary);
-		cursor: pointer;
-	}
-
-	.sort-field:hover {
-		background: var(--chip-bg-hover);
-	}
-
-	.sort-dir {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 22px;
-		height: 22px;
-		border: 0;
-		border-radius: 5px;
-		background: transparent;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-	}
-
-	.sort-dir:hover {
-		background: var(--chip-bg-hover);
-		color: var(--color-text-primary);
 	}
 
 	.pop.filters-pop {

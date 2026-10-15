@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Check, Search, ChevronRight, Plus } from '@lucide/svelte';
+	import { Check, Search, Plus } from '@lucide/svelte';
 	import type { MenuItem, MenuEntry } from '#lib/overlays.svelte.js';
 	import { isMenuItem as isItem } from '#lib/overlays.svelte.js';
-	import Menu from './Menu.svelte';
 
 	let {
 		open = $bindable(false),
@@ -44,11 +43,6 @@
 	let activeIndex = $state(-1);
 	let query = $state('');
 	let searchEl: HTMLInputElement | null = $state(null);
-
-	// ── Submenu (single open slot, always mounted, controlled via bound open) ──
-	let subOpen = $state(false);
-	let subAnchor: HTMLElement | null = $state(null);
-	let subItems: MenuEntry[] = $state([]);
 
 	const filtered = $derived(
 		!searchable || query.trim() === ''
@@ -115,8 +109,6 @@
 
 	function onKey(e: KeyboardEvent) {
 		if (!open) return;
-		// While a submenu is open it owns the keyboard, esc backs
-		if (subOpen) return;
 		if (e.key === 'Escape') {
 			open = false;
 			e.preventDefault();
@@ -135,17 +127,12 @@
 			e.preventDefault();
 		} else if (e.key === 'Enter') {
 			if (activeIndex >= 0 && actionable[activeIndex]) {
-				activate(actionable[activeIndex], activeRowEl());
+				activate(actionable[activeIndex]);
 			} else if (showCreate && activeIndex === actionable.length) {
 				doCreate();
 			}
 			e.preventDefault();
 		}
-	}
-
-	function activeRowEl(): HTMLElement | null {
-		const value = actionable[activeIndex]?.value;
-		return value ? (menuEl?.querySelector(`[data-mi="${value}"]`) ?? null) : null;
 	}
 
 	let wasOpen = false;
@@ -158,7 +145,6 @@
 				activeIndex = actionable.findIndex((i) => i.value === selected);
 				if (activeIndex < 0 && actionable.length > 0) activeIndex = 0;
 				if (query !== '') query = '';
-				subOpen = false;
 			});
 			queueMicrotask(() => {
 				position();
@@ -192,31 +178,9 @@
 		}
 	});
 
-	function activate(entry: MenuItem, rowEl: HTMLElement | null) {
-		if (entry.children && entry.children.length > 0) {
-			subItems = entry.children;
-			subAnchor = rowEl;
-			subOpen = true;
-		} else {
-			onSelect(entry.value);
-			if (!multiple && !entry.keepOpen) open = false;
-		}
-	}
-
-	function hover(entry: MenuItem, i: number, rowEl: HTMLElement) {
-		activeIndex = i;
-		if (entry.children && entry.children.length > 0) {
-			subItems = entry.children;
-			subAnchor = rowEl;
-			subOpen = true;
-		} else {
-			subOpen = false;
-		}
-	}
-
-	function handleChildSelect(value: string) {
-		onSelect(value);
-		open = false;
+	function activate(entry: MenuItem) {
+		onSelect(entry.value);
+		if (!multiple && !entry.keepOpen) open = false;
 	}
 </script>
 
@@ -250,7 +214,6 @@
 				{#if isItem(entry)}
 					{@const Icon = entry.icon}
 					{@const itemIdx = actionable.indexOf(entry)}
-					{@const hasChildren = !!entry.children && entry.children.length > 0}
 					<button
 						class="menu-item"
 						class:active={activeIndex === itemIdx}
@@ -260,17 +223,15 @@
 						role="menuitem"
 						tabindex="-1"
 						data-mi={entry.value}
-						onclick={(e) => activate(entry, e.currentTarget as HTMLElement)}
-						onmouseenter={(e) => hover(entry, itemIdx, e.currentTarget as HTMLElement)}
+						onclick={() => activate(entry)}
+						onmouseenter={() => (activeIndex = itemIdx)}
 					>
 						{#if Icon}
 							<span class="item-icon"><Icon size={13} strokeWidth={1.75} /></span>
 						{/if}
 						<span class="item-label">{entry.label}</span>
 						{#if entry.hint}<span class="item-hint">{entry.hint}</span>{/if}
-						{#if hasChildren}
-							<ChevronRight size={13} strokeWidth={2} />
-						{:else if isChecked(entry.value)}
+						{#if isChecked(entry.value)}
 							<Check size={13} strokeWidth={2} />
 						{/if}
 					</button>
@@ -292,28 +253,13 @@
 					role="menuitem"
 					tabindex="-1"
 					onclick={doCreate}
-					onmouseenter={() => {
-						activeIndex = actionable.length;
-						subOpen = false;
-					}}
+					onmouseenter={() => (activeIndex = actionable.length)}
 				>
 					<span class="item-icon"><Plus size={13} strokeWidth={1.75} /></span>
 					<span class="item-label">Create "{query.trim()}"</span>
 				</button>
 			{/if}
 		</div>
-
-		<Menu
-			bind:open={subOpen}
-			anchor={subAnchor}
-			items={subItems}
-			{selected}
-			{selectedValues}
-			{multiple}
-			onSelect={handleChildSelect}
-			{minWidth}
-			placement="right"
-		/>
 	</div>
 {/if}
 

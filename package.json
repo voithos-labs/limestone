@@ -55,6 +55,6 @@
 	},
 	"imports": {
 		"#lib/*": "./src/lib/*",
-		"#assets/*": "./static/assets/*"
+		"#assets/*": "./src/assets/*"
 	}
 }

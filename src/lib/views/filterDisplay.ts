@@ -1,4 +1,6 @@
 import type { Component } from 'svelte';
+import type { MenuEntry } from '#lib/overlays.svelte.js';
+import { fieldLabel, fieldSections } from '#lib/views/fieldValue.js';
 import {
 	CaseSensitive,
 	Trash2,
@@ -31,6 +33,7 @@ import View, {
 	VIEW_FIELD_OPS,
 	opTakesValue,
 	type ViewFaceType,
+	type ViewField,
 	type ViewFieldType,
 	type ViewFace
 } from '#lib/models/View.svelte.js';
@@ -109,6 +112,13 @@ export const FALLBACK_FIELD_ICON: Component = Filter;
 export function getFieldIcon(type: ViewFieldType | undefined): Component {
 	if (!type) return FALLBACK_FIELD_ICON;
 	return FIELD_TYPE_ICONS[type] ?? FALLBACK_FIELD_ICON;
+}
+
+export function fieldMenuEntries(fields: ViewField[]): MenuEntry[] {
+	return fieldSections(fields).flatMap((s): MenuEntry[] => [
+		...(s.label ? [{ kind: 'divider' as const, section: s.label }] : []),
+		...s.fields.map((f) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }))
+	]);
 }
 
 export const OP_LABELS: Record<string, string> = {

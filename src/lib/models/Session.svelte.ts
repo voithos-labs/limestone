@@ -12,6 +12,7 @@ import { SvelteSet } from 'svelte/reactivity';
 // internal
 import EditorState, { type EditorJSON, type TabState } from '#lib/models/EditorState.svelte.js';
 import { SettingsState, getSetting, registerSettings } from '#lib/models/Settings.svelte.js';
+import { loadStatuses } from '#lib/models/View.svelte.js';
 import type { Source } from '#lib/models/Source.js';
 import {
 	applyAccent,
@@ -82,7 +83,7 @@ class Session {
 	// sources: Source[];
 	missingSources = new SvelteSet<string>();
 	viewTabs: Map<string, ViewTab> = new Map();
-	settings = new SettingsState();
+	settings: SettingsState;
 
 	private themeStore: Store;
 
@@ -90,10 +91,11 @@ class Session {
 		editors: EditorState[],
 		activeTheme: string,
 		themeStore: Store,
+		settings: SettingsState,
 		viewTabs?: ViewTab[]
 	) {
 		this.editors = editors;
-		registerSettings(this.settings);
+		this.settings = settings;
 		for (const e of editors) e.session = this;
 		this.activeTheme = activeTheme;
 		this.themeStore = themeStore;
@@ -108,6 +110,10 @@ class Session {
 	}
 
 	static async init(): Promise<Session> {
+		const settings = new SettingsState();
+		registerSettings(settings);
+		await settings.load();
+		loadStatuses();
 		let state = await loadAppState();
 		let themeStore = await load('themes.json');
 
@@ -129,8 +135,7 @@ class Session {
 			editors.push(new EditorState());
 		}
 
-		let session = new Session(editors, state.activeTheme, themeStore, state.viewTabs);
-		await session.settings.load();
+		let session = new Session(editors, state.activeTheme, themeStore, settings, state.viewTabs);
 		await session.applyCurrentTheme();
 		return session;
 	}

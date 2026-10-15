@@ -18,7 +18,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
 	import View from '#lib/models/View.svelte.js';
-	import type { ViewFace, FilterLeaf } from '#lib/models/View.svelte.js';
+	import type { ViewFace, FilterLeaf, FilterNode } from '#lib/models/View.svelte.js';
 	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import type { TabState } from '#lib/models/EditorState.svelte.js';
@@ -81,6 +81,16 @@
 	const activeFace: ViewFace = $derived(
 		view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
 	);
+
+	const quickField = $derived(view.quickFilterField(activeFace));
+	const quickScope = $derived.by((): FilterNode | null => {
+		const v = view.state.quick_value as string | undefined;
+		const f = quickField;
+		if (!f || !v) return null;
+		if (f.type === 'tags') return { field_id: f.id, op: 'has_any', value: [v] };
+		if (f.type === 'boolean') return { field_id: f.id, op: 'eq', value: v === '1' };
+		return { field_id: f.id, op: 'eq', value: v };
+	});
 
 	const bodyFlow = true;
 	let bodyEl: HTMLDivElement | null = $state(null);
@@ -758,7 +768,19 @@
 		if (value === 'meta' && view.unit) metaDialog.show(view.unit);
 		if (value === 'project' && view.unit)
 			openProjectSetup(editor, { id: view.unit, name: view.slug }, tab);
-		if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));
+		if (value === 'unproject') unproject();
+	}
+
+	async function unproject() {
+		if (!view.unit) return;
+		try {
+			await view.unsave();
+			const plain = View.createForUnit(view.unit, view.slug);
+			if (tab) editor.replaceViewInTab(tab, plain);
+			else editor.openView(plain);
+		} catch (e) {
+			reportError(e, `${subject} couldn't stop being a project.`);
+		}
 	}
 
 	async function onOpenUnit(id: string, name: string, newTab = false) {
@@ -862,7 +884,7 @@
 				</div>
 			</div>
 
-			<div class="view-inner">
+			<div class="view-inner" class:board={activeFace?.type === 'kanban'}>
 				{#if activeFace?.type === 'journal'}
 					<JournalFace
 						{view}
@@ -890,15 +912,15 @@
 						{dockTarget}
 					/>
 				{:else if activeFace?.type === 'list'}
-					<ListFace {view} face={activeFace} {onOpenRow} />
+					<ListFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{:else if activeFace?.type === 'masonry'}
-					<MasonryFace {view} face={activeFace} {onOpenRow} />
+					<MasonryFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{:else if activeFace?.type === 'kanban'}
-					<KanbanFace {view} face={activeFace} {onOpenRow} />
+					<KanbanFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{:else if activeFace?.type === 'dashboard'}
-					<DashboardFace {view} face={activeFace} {onOpenRow} {onOpenUnit} />
+					<DashboardFace {view} face={activeFace} scope={quickScope} {onOpenRow} {onOpenUnit} />
 				{:else if activeFace}
-					<ListFace {view} face={activeFace} {onOpenRow} />
+					<ListFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{/if}
 			</div>
 		</div>
@@ -964,6 +986,11 @@
 		overflow: hidden;
 	}
 
+	/* a face that wants more than the column (the board) measures the pane through this */
+	.view-body {
+		container-type: inline-size;
+	}
+
 	.view-body.restoring {
 		opacity: 0;
 	}
@@ -1012,6 +1039,10 @@
 
 	.view-chrome.has-cover {
 		padding-top: 0;
+	}
+
+	.view-inner.board {
+		padding-bottom: 0;
 	}
 
 	.view-inner > :global(.list-face) {

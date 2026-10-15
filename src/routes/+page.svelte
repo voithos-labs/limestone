@@ -145,7 +145,7 @@
 		// document, even a shortcut the reader has bound to an app action.
 		if (editorTakesKey(e)) return;
 		const action = actionForKey(e, session.settings);
-		if (!action) return;
+		if (!action || (action.when && !action.when(session))) return;
 		e.preventDefault();
 		e.stopPropagation();
 		void action.run(session);

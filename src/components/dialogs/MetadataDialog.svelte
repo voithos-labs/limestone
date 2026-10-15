@@ -300,8 +300,9 @@
 		align-items: center;
 		gap: 8px;
 		margin: 0 4px 20px;
-		font-size: 16px;
+		font-size: 15px;
 		font-weight: 600;
+		letter-spacing: -0.01em;
 	}
 
 	.title-chip {
@@ -518,8 +519,8 @@
 		align-items: flex-start;
 		gap: 11px;
 		padding: 11px 13px;
-		border: 1px solid var(--color-border);
-		border-radius: 10px;
+		border: none;
+		border-radius: 8px;
 		background: transparent;
 		font: inherit;
 		color: inherit;
@@ -574,8 +575,7 @@
 	}
 
 	.opt.picked {
-		border-color: var(--color-accent);
-		background: var(--accent-a9);
+		background: var(--accent-a14);
 	}
 
 	.radio {
@@ -680,7 +680,7 @@
 	.btn.primary {
 		background: var(--color-accent);
 		font-weight: 600;
-		color: #fff;
+		color: var(--color-accent-contrast);
 	}
 
 	.btn.primary:hover:not(:disabled) {
