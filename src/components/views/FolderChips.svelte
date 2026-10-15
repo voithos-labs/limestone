@@ -1,6 +1,6 @@
 <script
 	lang="ts"
-	generics="F extends { id: string; slug: string; parentId?: string; repo?: boolean; writesMeta?: boolean }"
+	generics="F extends { id: string; slug: string; parentId?: string; repo?: boolean; writesMeta?: boolean; count?: number }"
 >
 	import {
 		Folder as FolderIcon,
@@ -18,7 +18,8 @@
 	} from '@lucide/svelte';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
 	import { getSource } from '#lib/models/Source.js';
-	import View from '#lib/models/View.svelte.js';
+	import View, { listSavedViewJSON, saveViewJSON } from '#lib/models/View.svelte.js';
+	import { history } from '#lib/views/FaceRows.svelte.js';
 	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import { metaDialog } from '#lib/overlays.svelte.js';
 	import { folderNameProblem, nameGuard } from '#lib/util/paths.js';
@@ -46,7 +47,8 @@
 		onChanged,
 		showAll = $bindable(false),
 		onHidden,
-		selected = $bindable(null)
+		selected = $bindable(null),
+		owner
 	}: {
 		folders: F[];
 		projects?: Map<string, { emoji: string }>;
@@ -58,12 +60,27 @@
 		showAll?: boolean; // past the row cap; the page owns the toggle
 		onHidden?: (n: number) => void; // how many chips the cap is hiding
 		selected?: string | null;
+		owner?: string;
 	} = $props();
 
 	function onWindowPointerDown(e: PointerEvent) {
 		if (!selected) return;
 		if ((e.target as Element | null)?.closest?.('.folder, button, .ctx-menu')) return;
 		selected = null;
+	}
+
+	function onWindowKeyDown(e: KeyboardEvent) {
+		if (!selected || renamingId) return;
+		if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		const a = document.activeElement as HTMLElement | null;
+		if (a && (a.matches('input, textarea, select') || a.isContentEditable || a.closest('.editor')))
+			return;
+		if (document.querySelector('.menu, .pop, .overlay, .ctx-menu, [role="dialog"]')) return;
+		const f = folders.find((o) => o.id === selected);
+		if (!f || isSourceRoot(f.id)) return;
+		e.preventDefault();
+		deleteFolder(f);
 	}
 
 	let overId: string | null = $state(null);
@@ -147,15 +164,45 @@
 
 	async function deleteFolder(f: F) {
 		confirmDelete = null;
+		const source = folderIdSource(f.id);
+		const path = folderIdPath(f.id);
+		const views =
+			owner && Folder.restorable
+				? (await listSavedViewJSON()).filter(
+						(v) => v.unit === f.id || v.unit?.startsWith(f.id + '/')
+					)
+				: null;
 		try {
-			await Folder.delete(folderIdSource(f.id), folderIdPath(f.id));
+			await Folder.delete(source, path);
 			if (selected === f.id) selected = null;
 			onChanged?.();
 		} catch (e) {
 			Folder.reportOpError(e, `${mark('folder', f.slug)} couldn't be deleted.`, () =>
 				deleteFolder(f)
 			);
+			return;
 		}
+		if (!owner || !views) return;
+		history.push(owner, {
+			back: async () => {
+				try {
+					await Folder.restore(source, path);
+					for (const v of views) await saveViewJSON(v);
+				} catch (e) {
+					Folder.reportOpError(e, `${mark('folder', f.slug)} couldn't be restored.`);
+				}
+				onChanged?.();
+			},
+			forward: async () => {
+				try {
+					await Folder.delete(source, path);
+				} catch (e) {
+					Folder.reportOpError(e, `${mark('folder', f.slug)} couldn't be deleted.`);
+				}
+				onChanged?.();
+			},
+			label: 'Folder deleted'
+		});
 	}
 
 	function reveal(f: F) {
@@ -226,7 +273,7 @@
 	});
 </script>
 
-<svelte:window onpointerdown={onWindowPointerDown} />
+<svelte:window onpointerdown={onWindowPointerDown} onkeydown={onWindowKeyDown} />
 
 <div class="folders" bind:clientWidth={width}>
 	{#each shown as f (f.id)}
@@ -283,10 +330,11 @@
 				<span class="name">
 					{f.slug}{#if where}<span class="where">{where}</span>{/if}
 				</span>
+				{#if f.count}<span class="count">{f.count}</span>{/if}
 			{/if}
 			{#if !root}
 				<button
-					class="menu"
+					class="more"
 					type="button"
 					tabindex="-1"
 					aria-label="More"
@@ -386,7 +434,14 @@
 		color: var(--color-ui-muted);
 	}
 
-	.menu {
+	.count {
+		flex: none;
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+		color: var(--color-ui-muted);
+	}
+
+	.more {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -401,12 +456,12 @@
 		transition: opacity 80ms ease;
 	}
 
-	.folder:hover .menu,
-	.folder:focus-within .menu {
+	.folder:hover .more,
+	.folder:focus-within .more {
 		opacity: 1;
 	}
 
-	.menu:hover {
+	.more:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}

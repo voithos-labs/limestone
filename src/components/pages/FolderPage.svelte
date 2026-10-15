@@ -643,6 +643,7 @@
 								onOpen={openInNewTab}
 								onChanged={loadFolders}
 								bind:selected={selectedFolder}
+								owner={view.id}
 							/>
 						</div>
 					{/if}
@@ -678,6 +679,7 @@
 								bind:selected={selectedFolder}
 								bind:showAll={foldersShowAll}
 								onHidden={(n) => (foldersHidden = n)}
+								owner={view.id}
 							/>
 						</div>
 					{/if}

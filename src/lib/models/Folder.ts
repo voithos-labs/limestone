@@ -61,6 +61,7 @@ class Folder {
 	readonly createdAt: Date;
 	updatedAt: Date;
 	accessedAt: Date;
+	count = 0;
 
 	constructor(row: FolderRow) {
 		this.id = row.id;
@@ -75,11 +76,21 @@ class Folder {
 	}
 
 	static async list(): Promise<Folder[]> {
-		const rows = await select<FolderRow>(
-			`SELECT * FROM folders WHERE parent_id IS NOT NULL ORDER BY slug ASC`,
-			[]
-		);
-		return rows.map((r) => new Folder(r));
+		const [rows, counts] = await Promise.all([
+			select<FolderRow>(`SELECT * FROM folders WHERE parent_id IS NOT NULL ORDER BY slug ASC`, []),
+			select<{ folder_id: string; n: number }>(
+				`SELECT folder_id, COUNT(*) AS n FROM documents
+				 WHERE deleted_at IS NULL AND folder_id IS NOT NULL GROUP BY folder_id`,
+				[]
+			)
+		]);
+		const byId = new Map(rows.map((r) => [r.id, new Folder(r)]));
+		for (const { folder_id, n } of counts) {
+			for (let f = byId.get(folder_id); f; f = f.parentId ? byId.get(f.parentId) : undefined) {
+				f.count += n;
+			}
+		}
+		return [...byId.values()];
 	}
 
 	static async fromID(id: string): Promise<Folder> {
@@ -217,6 +228,12 @@ class Folder {
 		for (const v of await listSavedViewJSON()) {
 			if (v.unit === id || v.unit?.startsWith(id + '/')) await deleteSavedView(v.id);
 		}
+	}
+
+	static readonly restorable = !navigator.userAgent.includes('Mac');
+
+	static async restore(sourceId: string, path: string): Promise<void> {
+		await invoke('restore_folder', { sourceId, relDir: path });
 	}
 
 	static async move(sourceId: string, oldPath: string, newPath: string): Promise<string> {
