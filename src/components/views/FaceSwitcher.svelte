@@ -5,7 +5,6 @@
 		ChevronDown,
 		Columns3,
 		List,
-		Layers,
 		Rows3,
 		Pencil,
 		Copy,
@@ -53,8 +52,6 @@
 	let renameDraft = $state('');
 	let renameInput: HTMLInputElement | null = $state(null);
 
-	let groupEl: HTMLButtonElement | null = $state(null);
-	let groupOpen = $state(false);
 
 	// ── Journal (compound face) ──────────────────────────────────────────────
 	let bodyEl: HTMLButtonElement | null = $state(null);
@@ -121,32 +118,6 @@
 		face.config.show_activity = !showActivity;
 	}
 
-	const groupable = $derived(
-		view.fields.filter(
-			(f: ViewField) =>
-				f.type === 'select' ||
-				f.type === 'multiselect' ||
-				f.type === 'boolean' ||
-				f.type === 'folder'
-		)
-	);
-	const groupById = $derived((target.config.group_by ?? null) as string | null);
-	const groupLabel = $derived.by(() => {
-		if (!groupById) return 'None';
-		const f = view.fields.find((ff) => ff.id === groupById);
-		return f ? fieldLabel(f) : 'None';
-	});
-
-	// a board's columns come from a select or a boolean; a list groups by anything, or nothing
-	const groupItems = $derived.by((): MenuEntry[] => {
-		const fields = fieldMenuEntries(
-			target.type === 'kanban'
-				? groupable.filter((f: ViewField) => f.type === 'select' || f.type === 'boolean')
-				: groupable
-		);
-		return target.type === 'kanban' ? fields : [{ value: '', label: 'None' }, ...fields];
-	});
-
 	let closeOnSwapLeave = false;
 
 	function selectFace(id: string) {
@@ -158,7 +129,7 @@
 	function onPopLeave() {
 		if (dragId) return;
 		if (!closeOnSwapLeave) return;
-		if (groupOpen || quickOpen || addFaceOpen || renamingId || confirmFor) return;
+		if (quickOpen || addFaceOpen || renamingId || confirmFor) return;
 		if (bodyOpen || dateFieldOpen) return;
 		open = false;
 	}
@@ -302,11 +273,6 @@
 		f.name = next;
 	}
 
-	function setGroup(id: string) {
-		target.config.group_by = id || null;
-		groupOpen = false;
-	}
-
 	let quickEl: HTMLButtonElement | null = $state(null);
 	let quickOpen = $state(false);
 	const quickable = $derived(
@@ -353,7 +319,6 @@
 		return (
 			addFaceOpen ||
 			sectionsOpen ||
-			groupOpen ||
 			quickOpen ||
 			bodyOpen ||
 			dateFieldOpen ||
@@ -408,7 +373,6 @@
 			untrack(() => {
 				confirmFor = null;
 				renamingId = null;
-				groupOpen = false;
 				quickOpen = false;
 				addFaceOpen = false;
 				sectionsOpen = false;
@@ -587,27 +551,6 @@
 			</button>
 		{/if}
 
-		{#if target.type === 'list' || target.type === 'kanban'}
-			<button
-				class="action group-toggle"
-				type="button"
-				data-nav
-				data-flyout
-				bind:this={groupEl}
-				onclick={() => (groupOpen = !groupOpen)}
-			>
-				{#if target.type === 'kanban'}
-					<Columns3 size={14} strokeWidth={1.75} />
-					<span>Columns</span>
-				{:else}
-					<Layers size={14} strokeWidth={1.75} />
-					<span>Group by</span>
-				{/if}
-				<span class="trailing">{groupLabel}</span>
-				<ChevronRight size={13} strokeWidth={2} />
-			</button>
-		{/if}
-
 		{#if target.type !== 'journal' && target.type !== 'doc'}
 			<button
 				class="action group-toggle"
@@ -683,18 +626,6 @@
 			multiple
 			selectedValues={shownSections}
 			onSelect={toggleSection}
-			minWidth={170}
-			placement="right"
-		/>
-	{/if}
-
-	{#if target.type === 'list' || target.type === 'kanban'}
-		<Menu
-			bind:open={groupOpen}
-			anchor={groupEl}
-			items={groupItems}
-			selected={groupById ?? ''}
-			onSelect={setGroup}
 			minWidth={170}
 			placement="right"
 		/>

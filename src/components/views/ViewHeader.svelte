@@ -32,7 +32,9 @@
 		GripVertical,
 		Globe,
 		ChevronRight,
-		SquareArrowOutUpRight
+		SquareArrowOutUpRight,
+		BetweenHorizontalStart,
+		BetweenVerticalEnd
 	} from '@lucide/svelte';
 	import { tick, untrack } from 'svelte';
 	import { ctxMenu } from '#lib/overlays.svelte.js';
@@ -126,6 +128,33 @@
 			e.preventDefault();
 			picking.open = true;
 		}
+	}
+
+	// ── Group: a list groups by anything groupable or nothing; a board's columns need a select or boolean ──
+	const groupTarget = $derived(
+		fieldTarget && (fieldTarget.type === 'list' || fieldTarget.type === 'kanban') ? fieldTarget : null
+	);
+	let groupEl: HTMLButtonElement | null = $state(null);
+	let groupOpen = $state(false);
+	const groupById = $derived((groupTarget?.config.group_by ?? null) as string | null);
+	const groupLabel = $derived.by(() => {
+		const f = groupById ? view.fields.find((ff) => ff.id === groupById) : null;
+		return f ? fieldLabel(f) : 'None';
+	});
+	const groupItems = $derived.by((): MenuEntry[] => {
+		const kinds: ViewFieldType[] =
+			groupTarget?.type === 'kanban'
+				? ['select', 'boolean']
+				: ['select', 'multiselect', 'boolean', 'folder'];
+		const fields = fieldMenuEntries(view.fields.filter((f: ViewField) => kinds.includes(f.type)));
+		return groupTarget?.type === 'kanban'
+			? fields
+			: [{ value: '', label: "Don't group", icon: X }, { kind: 'divider' }, ...fields];
+	});
+
+	function setGroup(id: string) {
+		if (groupTarget) groupTarget.config.group_by = id || null;
+		groupOpen = false;
 	}
 
 	// ── Filters popover: view filters and the active face's subfilters ─────────
@@ -565,9 +594,6 @@
 										{:else}
 											<ArrowDownAZ size={13} strokeWidth={1.75} />
 										{/if}
-										<span class="seg-label"
-											>{k.direction === 'asc' ? 'ascending' : 'descending'}</span
-										>
 									</button>
 									<button
 										class="seg seg-remove"
@@ -592,6 +618,36 @@
 			onSelect={setSortField}
 			minWidth={170}
 		/>
+	{/if}
+
+	{#if groupTarget}
+		<button
+			class="collapse-toggle"
+			class:on={!!groupById}
+			type="button"
+			aria-label={groupTarget.type === 'kanban' ? 'Columns' : 'Group by'}
+			title={groupTarget.type === 'kanban' ? `Columns: ${groupLabel}` : `Group by: ${groupLabel}`}
+			bind:this={groupEl}
+			onclick={() => (groupOpen = !groupOpen)}
+		>
+			{#if groupTarget.type === 'kanban'}
+				<BetweenVerticalEnd size={15} strokeWidth={1.75} />
+			{:else}
+				<BetweenHorizontalStart size={15} strokeWidth={1.75} />
+			{/if}
+		</button>
+		<Menu
+			bind:open={groupOpen}
+			anchor={groupEl}
+			items={groupItems}
+			selected={groupById ?? ''}
+			onSelect={setGroup}
+			minWidth={170}
+		>
+			{#snippet header()}
+				<span class="menu-title">{groupTarget.type === 'kanban' ? 'Columns' : 'Group by'}</span>
+			{/snippet}
+		</Menu>
 	{/if}
 
 	<label class="search-chip" bind:this={searchChipEl}>
@@ -902,6 +958,22 @@
 	}
 
 	.collapse-toggle:hover {
+		background: var(--chip-bg);
+		color: var(--color-text-primary);
+	}
+
+	.menu-title {
+		display: block;
+		padding: 2px 6px 0;
+		font-family: var(--font-ui);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--color-ui-dulled);
+	}
+
+	.collapse-toggle.on {
 		background: var(--chip-bg);
 		color: var(--color-text-primary);
 	}
