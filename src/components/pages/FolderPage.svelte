@@ -995,7 +995,7 @@
 
 	/* a folder is a project page, so it takes the project column */
 	.inner {
-		max-width: var(--view-max-width, 1200px);
+		max-width: var(--view-max-width, 1000px);
 		margin: 0 auto;
 		padding: 16px 16px 0 24px;
 	}

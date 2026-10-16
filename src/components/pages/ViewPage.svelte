@@ -1010,13 +1010,13 @@
 	/* a project page's column: the cover, header and faces share it; a document inside keeps
        its own reading width */
 	.view-top {
-		max-width: var(--view-max-width, 1200px);
+		max-width: var(--view-max-width, 1000px);
 		margin: 0 auto;
 		padding: 16px 24px 0;
 	}
 
 	.view-inner {
-		max-width: var(--view-max-width, 1200px);
+		max-width: var(--view-max-width, 1000px);
 		margin: 0 auto;
 		padding: 0 24px 72px;
 	}

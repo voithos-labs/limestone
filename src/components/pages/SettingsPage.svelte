@@ -1078,7 +1078,7 @@
 	.settings-top {
 		flex-shrink: 0;
 		width: 100%;
-		max-width: var(--view-max-width, 1200px);
+		max-width: var(--view-max-width, 1000px);
 		margin: 0 auto;
 		padding: 47px 24px 0;
 	}
@@ -1224,7 +1224,7 @@
 	}
 
 	.settings-inner {
-		max-width: var(--view-max-width, 1200px);
+		max-width: var(--view-max-width, 1000px);
 		margin: 0 auto;
 		padding: 6px 48px 72px;
 	}
