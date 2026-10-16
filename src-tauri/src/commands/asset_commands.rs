@@ -8,6 +8,41 @@ use crate::commands::source_commands::find_source;
 use crate::commands::OpError;
 use crate::services::fs::{atomic_write, clean_location, resolve_in_source, validate_file_name};
 
+fn shrink(bytes: Vec<u8>, ext: String, max_edge: Option<u32>) -> Result<(Vec<u8>, String), OpError> {
+    use image::ImageDecoder;
+    let Some(max) = max_edge else {
+        return Ok((bytes, ext));
+    };
+    fn bad<E>(_: E) -> OpError {
+        OpError::new("invalid_data")
+    }
+    let mut decoder = image::ImageReader::new(std::io::Cursor::new(&bytes))
+        .with_guessed_format()
+        .map_err(bad)?
+        .into_decoder()
+        .map_err(bad)?;
+    let orientation = decoder
+        .orientation()
+        .unwrap_or(image::metadata::Orientation::NoTransforms);
+    let mut img = image::DynamicImage::from_decoder(decoder).map_err(bad)?;
+    if img.width().max(img.height()) <= max
+        && orientation == image::metadata::Orientation::NoTransforms
+    {
+        return Ok((bytes, ext));
+    }
+    img.apply_orientation(orientation);
+    let img = img.resize(max, max, image::imageops::FilterType::Triangle);
+    let mut out = std::io::Cursor::new(Vec::new());
+    if img.color().has_alpha() {
+        img.write_to(&mut out, image::ImageFormat::Png).map_err(bad)?;
+        Ok((out.into_inner(), "png".to_string()))
+    } else {
+        let enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 85);
+        img.to_rgb8().write_with_encoder(enc).map_err(bad)?;
+        Ok((out.into_inner(), "jpg".to_string()))
+    }
+}
+
 fn decode_base64(data: &str) -> Result<Vec<u8>, OpError> {
     base64::engine::general_purpose::STANDARD
         .decode(data.as_bytes())
@@ -94,11 +129,16 @@ fn source_import(
 }
 
 #[tauri::command]
-pub async fn import_global_asset(app: AppHandle, src_path: String) -> Result<String, OpError> {
+pub async fn import_global_asset(
+    app: AppHandle,
+    src_path: String,
+    max_edge: Option<u32>,
+) -> Result<String, OpError> {
     let src = Path::new(&src_path);
     let bytes = std::fs::read(src).map_err(OpError::from)?;
     let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("");
-    global_import(&app, &bytes, ext)
+    let (bytes, ext) = shrink(bytes, ext.to_string(), max_edge)?;
+    global_import(&app, &bytes, &ext)
 }
 
 #[tauri::command]
@@ -106,8 +146,10 @@ pub async fn import_global_asset_bytes(
     app: AppHandle,
     data: String,
     ext: String,
+    max_edge: Option<u32>,
 ) -> Result<String, OpError> {
-    global_import(&app, &decode_base64(&data)?, &ext)
+    let (bytes, ext) = shrink(decode_base64(&data)?, ext, max_edge)?;
+    global_import(&app, &bytes, &ext)
 }
 
 #[tauri::command]
@@ -116,6 +158,7 @@ pub async fn import_source_asset(
     source_id: Uuid,
     src_path: String,
     stem: Option<String>,
+    max_edge: Option<u32>,
 ) -> Result<String, OpError> {
     let src = Path::new(&src_path);
     let bytes = std::fs::read(src).map_err(OpError::from)?;
@@ -126,7 +169,8 @@ pub async fn import_source_asset(
             .to_string()
     });
     let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("");
-    source_import(&app, source_id, &bytes, &stem, ext)
+    let (bytes, ext) = shrink(bytes, ext.to_string(), max_edge)?;
+    source_import(&app, source_id, &bytes, &stem, &ext)
 }
 
 #[tauri::command]
@@ -136,6 +180,7 @@ pub async fn import_source_asset_bytes(
     data: String,
     ext: String,
     stem: Option<String>,
+    max_edge: Option<u32>,
 ) -> Result<String, OpError> {
     let stem = stem.unwrap_or_else(|| {
         format!(
@@ -143,7 +188,8 @@ pub async fn import_source_asset_bytes(
             chrono::Local::now().format("%Y%m%d%H%M%S")
         )
     });
-    source_import(&app, source_id, &decode_base64(&data)?, &stem, &ext)
+    let (bytes, ext) = shrink(decode_base64(&data)?, ext, max_edge)?;
+    source_import(&app, source_id, &bytes, &stem, &ext)
 }
 
 /// Releases an asset an import wrote but nothing ended up referencing — the paste whose
