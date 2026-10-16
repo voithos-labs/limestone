@@ -511,7 +511,7 @@
 	// ── Per-tab state ───────────────────────────────────────────────────────────────────
 
 	// Persisted on the tab, so a doc reopens with its properties panel as you left it
-	let propsOpen = $state(untrack(() => tab.state.props_open ?? false));
+	let propsOpen = $state(untrack(() => tab.state.props_open ?? true));
 	$effect(() => {
 		tab.state.props_open = propsOpen;
 	});
