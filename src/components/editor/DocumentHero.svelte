@@ -848,7 +848,7 @@
 
 	.kebab {
 		display: flex;
-		margin-left: -4px;
+		margin-left: -6px;
 		align-items: center;
 		justify-content: center;
 		width: 22px;
