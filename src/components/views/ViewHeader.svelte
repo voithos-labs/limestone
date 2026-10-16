@@ -434,7 +434,7 @@
 {#snippet actionButton()}
 	{#if view.temporary && !view.unit}
 		{@render saveButton()}
-	{:else if !view.cover}
+	{:else if !hasCover}
 		{@render moreButton()}
 	{/if}
 {/snippet}

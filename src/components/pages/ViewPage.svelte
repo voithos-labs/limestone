@@ -67,7 +67,9 @@
 		FileLock,
 		FilePen,
 		Settings,
-		SquareCheck
+		SquareCheck,
+		Eye,
+		EyeOff
 	} from '@lucide/svelte';
 	import NewFab from '../views/NewFab.svelte';
 	import { createInView } from '#lib/views/FaceRows.svelte.js';
@@ -423,6 +425,7 @@
 
 	function removeCover() {
 		view.cover = '';
+		view.coverHidden = false;
 		cropping = false;
 	}
 
@@ -573,9 +576,11 @@
 
 	const moreItems = $derived.by(() => {
 		const items: MenuEntry[] = [];
-		const cover: MenuEntry[] = view.cover
-			? []
-			: [{ value: 'add-cover', label: 'Add cover', icon: ImageUp }];
+		const cover: MenuEntry[] = !view.cover
+			? [{ value: 'add-cover', label: 'Add cover', icon: ImageUp }]
+			: view.coverHidden
+				? [{ value: 'show-cover', label: 'Show cover', icon: Eye }]
+				: [];
 		const builtin = !!view.unit && isBuiltinUnit(view.unit);
 		if (builtin) {
 			items.push({ value: 'new-note', label: 'New note', icon: FilePlus });
@@ -746,6 +751,7 @@
 		}
 		moreOpen = false;
 		if (value === 'add-cover') pickCover();
+		if (value === 'show-cover') view.coverHidden = false;
 		if (value === 'duplicate') duplicateView();
 		if (value === 'confirm-delete') unitKind ? deleteUnit() : deleteView();
 		if (value === 'new-note') newNote();
@@ -803,7 +809,7 @@
 			onscroll={bodyScroll}
 		>
 			<div class="view-top">
-				{#if view.cover}
+				{#if view.cover && !view.coverHidden}
 					<div
 						class="view-cover"
 						class:cropping
@@ -847,6 +853,14 @@
 								<button class="cover-btn" type="button" title="Replace" onclick={pickCover}>
 									<ImageUp size={14} />
 								</button>
+								<button
+									class="cover-btn"
+									type="button"
+									title="Hide on this page"
+									onclick={() => (view.coverHidden = true)}
+								>
+									<EyeOff size={14} />
+								</button>
 								<button class="cover-btn" type="button" title="Remove" onclick={removeCover}>
 									<X size={14} />
 								</button>
@@ -855,12 +869,12 @@
 					</div>
 				{/if}
 
-				<div class="view-chrome" class:has-cover={!!view.cover}>
+				<div class="view-chrome" class:has-cover={!!view.cover && !view.coverHidden}>
 					<ViewHeader
 						bind:this={header}
 						{view}
 						{titleProblem}
-						hasCover={!!view.cover}
+						hasCover={!!view.cover && !view.coverHidden}
 						{docPicker}
 						onOpenNewTab={(id, name) => onOpenUnit(id, name, true)}
 						onMore={(anchor) => {

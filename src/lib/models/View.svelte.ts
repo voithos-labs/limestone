@@ -877,6 +877,7 @@ interface ViewJSON {
 	temporary?: boolean;
 	emoji?: string;
 	cover?: string;
+	cover_hidden?: boolean;
 	accessed_at?: Date;
 }
 
@@ -1073,6 +1074,7 @@ class View {
 	temporary: boolean = $state(false);
 	emoji: string = $state(''); // user-set per-view emoji
 	cover: string = $state('');
+	coverHidden: boolean = $state(false);
 	accessedAt: Date = $state(new Date());
 	private pristine = '';
 
@@ -1093,6 +1095,7 @@ class View {
 		this.temporary = json.temporary ?? false;
 		this.emoji = json.emoji ?? '';
 		this.cover = json.cover ?? '';
+		this.coverHidden = json.cover_hidden ?? false;
 		// the store hands dates back as strings; the model always holds Dates
 		this.accessedAt = new Date(json.accessed_at ?? json.updated_at);
 		// a stateful field with no home has nowhere to read or write; drop it and its uses
@@ -1365,6 +1368,7 @@ class View {
 			temporary: this.temporary,
 			emoji: this.emoji,
 			cover: this.cover,
+			cover_hidden: this.coverHidden || undefined,
 			accessed_at: this.accessedAt
 		};
 	}
