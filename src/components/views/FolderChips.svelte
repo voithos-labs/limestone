@@ -71,7 +71,7 @@
 
 	function onWindowKeyDown(e: KeyboardEvent) {
 		if (!selected || renamingId) return;
-		if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+		if (e.key !== 'Backspace' && e.key !== 'Delete' && e.key !== 'F2') return;
 		if (e.ctrlKey || e.metaKey || e.altKey) return;
 		const a = document.activeElement as HTMLElement | null;
 		if (a && (a.matches('input, textarea, select') || a.isContentEditable || a.closest('.editor')))
@@ -80,7 +80,8 @@
 		const f = folders.find((o) => o.id === selected);
 		if (!f || isSourceRoot(f.id)) return;
 		e.preventDefault();
-		deleteFolder(f);
+		if (e.key === 'F2') startRename(f);
+		else deleteFolder(f);
 	}
 
 	let overId: string | null = $state(null);
@@ -328,9 +329,10 @@
 				/>
 			{:else}
 				<span class="name">
-					{f.slug}{#if where}<span class="where">{where}</span>{/if}
+					{f.slug}{#if f.count}<span class="count">{f.count}</span>{/if}{#if where}<span
+							class="where">{where}</span
+						>{/if}
 				</span>
-				{#if f.count}<span class="count">{f.count}</span>{/if}
 			{/if}
 			{#if !root}
 				<button
@@ -435,7 +437,7 @@
 	}
 
 	.count {
-		flex: none;
+		margin-left: 6px;
 		font-size: 11px;
 		font-variant-numeric: tabular-nums;
 		color: var(--color-ui-muted);
