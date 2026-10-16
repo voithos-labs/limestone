@@ -7,6 +7,7 @@ import {
 	type EditorPlugin,
 	type InlineNode
 } from '@voithos-labs/aragonite/plugin';
+import { svelteView } from '@voithos-labs/aragonite/svelte';
 import WikiLink from './WikiLink.svelte';
 import BodyTag from './BodyTag.svelte';
 import { parseWikiTarget } from '#lib/services/links.svelte.js';
@@ -39,7 +40,7 @@ export function wikiLinksPlugin(): EditorPlugin {
 			);
 			registerInlineWidgetKind(link, {
 				isWidget: () => true,
-				component: WikiLink,
+				view: svelteView(WikiLink),
 				editing: { revealSource: true, claimsActivationClick: true }
 			});
 
@@ -50,7 +51,7 @@ export function wikiLinksPlugin(): EditorPlugin {
 			});
 			registerInlineWidgetKind(tag, {
 				isWidget: () => true,
-				component: BodyTag,
+				view: svelteView(BodyTag),
 				editing: { revealSource: true, claimsActivationClick: true }
 			});
 		}
