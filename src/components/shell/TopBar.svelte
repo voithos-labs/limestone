@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getViewIcon, getUnitIcon } from '#lib/views/filterDisplay.js';
+	import { getViewIcon } from '#lib/views/filterDisplay.js';
 	import { palette } from '#lib/overlays.svelte.js';
 	import { openProjectSetup } from '#lib/views/project.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
@@ -25,13 +25,12 @@
 		PinOff,
 		CircleX,
 		Scale,
-		Blocks,
 		Columns2
 	} from '@lucide/svelte';
 	import { ctxMenu, contextMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import { listSources, sourceName, type Source } from '#lib/models/Source.js';
 	import { folderId } from '#lib/models/Folder.js';
-	import View, { BUILTIN_UNITS } from '#lib/models/View.svelte.js';
+	import View from '#lib/models/View.svelte.js';
 	import { FolderInput, SquareArrowOutUpRight } from '@lucide/svelte';
 
 	let { session, onAddSource }: { session: Session; onAddSource?: () => void } = $props();
@@ -83,24 +82,14 @@
 				]
 			},
 			{
-				label: 'Built-in',
-				icon: Blocks,
-				children: [
-					{ label: 'Home', icon: House, action: () => editor.openHome() },
-					...Object.values(BUILTIN_UNITS).map((u): CtxEntry => {
-						const name = u.unit.slice('tag:'.length);
-						return {
-							label: name,
-							icon: getUnitIcon(u.unit),
-							action: () => openUnitView(u.unit, name),
-							aux: {
-								icon: SquareArrowOutUpRight,
-								label: 'Open in new tab',
-								action: () => openUnitView(u.unit, name, true)
-							}
-						};
-					})
-				]
+				label: 'Home',
+				icon: House,
+				action: () => editor.showPreview(TabState.forHome()),
+				aux: {
+					icon: SquareArrowOutUpRight,
+					label: 'Open in new tab',
+					action: () => editor.openHome()
+				}
 			},
 			{ divider: true },
 			...bmViews.map((v): CtxEntry => ({
@@ -114,7 +103,7 @@
 				},
 				action: () => editor.showPreview(TabState.forView(v))
 			})),
-			...(bmViews.length ? [{ divider: true } as CtxEntry] : []),
+			{ divider: true },
 			{ label: 'New project', icon: Plus, action: () => openProjectSetup(editor) }
 		];
 	}
@@ -410,7 +399,23 @@
 					role="button"
 					tabindex="-1"
 				>
-					<Bookmark size={16} />
+					<span class="bm-icon">
+						{#if ed.preview?.origin.type === 'view'}
+							{@const shown = ed.preview.origin.view}
+							{#if shown.emoji}
+								<span class="tab-emoji">{shown.emoji}</span>
+							{:else}
+								{@const ShownIcon = getViewIcon(shown)}
+								<ShownIcon size={14} />
+							{/if}
+						{:else if ed.preview?.origin.type === 'home'}
+							<House size={14} />
+						{:else if ed.preview?.origin.type === 'markdown'}
+							<TextAlignStart size={14} />
+						{:else}
+							<Bookmark size={16} />
+						{/if}
+					</span>
 					<ChevronDown size={12} strokeWidth={2} />
 				</div>
 
@@ -686,6 +691,20 @@
 	.tab.bookmarks {
 		gap: 4px;
 		padding: 0 8px 0 10px;
+	}
+
+	.bm-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+		overflow: hidden;
+	}
+
+	.bm-icon .tab-emoji {
+		font-size: 13px;
 	}
 
 	/* Collapsed pinned tabs: fixed-width icon-only anchors */

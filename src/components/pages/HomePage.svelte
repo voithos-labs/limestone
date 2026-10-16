@@ -4,11 +4,12 @@
 	import type { Component } from 'svelte';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import DocHandle from '#lib/models/DocHandle.js';
-	import View, { coverArt, type CoverArt } from '#lib/models/View.svelte.js';
+	import View, { coverArt, isBuiltinUnit, type CoverArt } from '#lib/models/View.svelte.js';
+	import Tag from '#lib/models/Tag.js';
 	import { listSources, sourceName, type Source } from '#lib/models/Source.js';
 	import { folderIdSource } from '#lib/models/Folder.js';
 	import { select } from '#lib/services/db.js';
-	import { getViewIcon } from '#lib/views/filterDisplay.js';
+	import { getViewIcon, tagIcon } from '#lib/views/filterDisplay.js';
 	import { formatDateFriendly } from '#lib/views/dateFormat.js';
 	import { openProjectSetup } from '#lib/views/project.svelte.js';
 	import { mark } from '#lib/overlays.svelte.js';
@@ -29,6 +30,7 @@
 	let covers: Record<string, CoverArt> = $state({});
 	let recent: Recent[] = $state([]);
 	let sources: Source[] = $state([]);
+	let tags: Tag[] = $state([]);
 
 	$effect(() => {
 		listSources()
@@ -52,7 +54,28 @@
 		)
 			.then((r) => (recent = r))
 			.catch((e) => console.error('home recents failed', e));
+		Tag.list()
+			.then((all) => {
+				tags = all
+					.sort(
+						(a, b) =>
+							Number(isBuiltinUnit(b.id)) - Number(isBuiltinUnit(a.id)) ||
+							b.accessedAt.getTime() - a.accessedAt.getTime() ||
+							a.slug.localeCompare(b.slug)
+					)
+					.slice(0, 12);
+			})
+			.catch((e) => console.error('home tags failed', e));
 	});
+
+	async function openTag(t: Tag) {
+		try {
+			void t.touch();
+			editor.openView(await View.forUnit(t.id, t.slug));
+		} catch (e) {
+			reportError(e, `${mark('tag', t.slug)} couldn't be opened.`);
+		}
+	}
 
 	function where(r: Recent): string {
 		const src = sources.find((s) => s.id === r.source_id);
@@ -141,6 +164,23 @@
 							{@const src = sources.find((s) => s.id === folderIdSource(v.unit ?? ''))}
 							{#if src}<span class="chip-where">{sourceName(src)}</span>{/if}
 						{/if}
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+		{#if tags.length}
+			<div class="sec"><span class="sec-label">Tags</span><span class="rule"></span></div>
+			<div class="tags">
+				{#each tags as t (t.id)}
+					{@const Icon = tagIcon(t.id)}
+					<button
+						class="tag"
+						class:builtin={isBuiltinUnit(t.id)}
+						type="button"
+						onclick={() => openTag(t)}
+					>
+						<Icon size={12} strokeWidth={2} />{t.slug}
 					</button>
 				{/each}
 			</div>
@@ -341,6 +381,54 @@
 
 	.chip:hover {
 		background: var(--chip-bg-hover);
+	}
+
+	.tags {
+		display: flex;
+		flex-wrap: nowrap;
+		gap: 6px;
+		overflow: hidden;
+	}
+
+	.tag {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		gap: 4px;
+		height: 24px;
+		padding: 0 11px 0 8px;
+		border: none;
+		border-radius: 999px;
+		background: var(--chip-bg);
+		font: inherit;
+		font-size: 12px;
+		color: var(--color-ui-dulled);
+		white-space: nowrap;
+		cursor: pointer;
+		transition: background-color 80ms ease;
+	}
+
+	.tag:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.tag :global(svg) {
+		opacity: 0.7;
+	}
+
+	.tag.builtin,
+	.tag.builtin:hover {
+		background: var(--color-accent);
+		color: #fff;
+	}
+
+	.tag.builtin:hover {
+		filter: brightness(1.1);
+	}
+
+	.tag.builtin :global(svg) {
+		opacity: 0.85;
 	}
 
 	.chip :global(svg) {
