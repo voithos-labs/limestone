@@ -7,7 +7,7 @@
 		undoHint
 	} from '#lib/overlays.svelte.js';
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { Editor } from '@voithos-labs/aragonite';
+	import { Editor } from '@voithos-labs/aragonite/svelte';
 	import type {
 		DecorationSourceHandle,
 		EditorInstance,
