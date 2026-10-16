@@ -18,7 +18,11 @@
 	} from '@lucide/svelte';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
 	import { getSource } from '#lib/models/Source.js';
-	import View, { listSavedViewJSON, saveViewJSON } from '#lib/models/View.svelte.js';
+	import View, {
+		listSavedViewJSON,
+		saveViewJSON,
+		type CoverArt
+	} from '#lib/models/View.svelte.js';
 	import { history } from '#lib/views/FaceRows.svelte.js';
 	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import { metaDialog } from '#lib/overlays.svelte.js';
@@ -48,10 +52,11 @@
 		showAll = $bindable(false),
 		onHidden,
 		selected = $bindable(null),
-		owner
+		owner,
+		cards = false
 	}: {
 		folders: F[];
-		projects?: Map<string, { emoji: string }>;
+		projects?: Map<string, { emoji: string; cover?: CoverArt }>;
 		rows?: number;
 		whereOf?: (f: F) => string; // a location hint under search
 		onOpen: (f: F) => void;
@@ -61,6 +66,7 @@
 		onHidden?: (n: number) => void; // how many chips the cap is hiding
 		selected?: string | null;
 		owner?: string;
+		cards?: boolean;
 	} = $props();
 
 	function onWindowPointerDown(e: PointerEvent) {
@@ -279,10 +285,13 @@
 <div class="folders" bind:clientWidth={width}>
 	{#each shown as f (f.id)}
 		{@const emoji = projects.get(f.id)?.emoji}
+		{@const cover = cards ? projects.get(f.id)?.cover : undefined}
 		{@const where = whereOf?.(f) ?? ''}
 		{@const root = isSourceRoot(f.id)}
 		<div
 			class="folder"
+			class:card={cards}
+			class:covered={!!cover}
 			class:over={overId === f.id}
 			class:selected={selected === f.id}
 			role="button"
@@ -302,6 +311,14 @@
 				if (e.key === 'Enter') onOpen(f);
 			}}
 		>
+			{#if cover}
+				<span
+					class="cover"
+					style:background-image="url('{cover.url}')"
+					style:background-position="{cover.x}% {cover.y}%"
+					style:background-size="{cover.z * 100}%"
+				></span>
+			{/if}
 			{#if emoji}
 				<span class="emoji">{emoji}</span>
 			{:else if projects.has(f.id)}
@@ -378,6 +395,48 @@
 	.folder:focus-visible {
 		background: var(--chip-bg-hover);
 		outline: none;
+	}
+
+	.folder.card {
+		position: relative;
+		isolation: isolate;
+		overflow: hidden;
+		height: 48px;
+	}
+
+	.cover {
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+		background-repeat: no-repeat;
+		-webkit-mask-image: linear-gradient(
+			to right,
+			transparent 0%,
+			rgba(0, 0, 0, 0.15) 40%,
+			rgba(0, 0, 0, 0.65) 70%,
+			#000 100%
+		);
+		mask-image: linear-gradient(
+			to right,
+			transparent 0%,
+			rgba(0, 0, 0, 0.15) 40%,
+			rgba(0, 0, 0, 0.65) 70%,
+			#000 100%
+		);
+	}
+
+	.folder.covered .count {
+		color: inherit;
+	}
+
+	.folder.covered.selected::after,
+	.folder.covered.over::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		box-shadow: inset 0 0 0 2px var(--color-accent);
+		pointer-events: none;
 	}
 
 	.folder.selected {

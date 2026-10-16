@@ -45,6 +45,7 @@
 	import DocFace from '../views/faces/DocFace.svelte';
 	import { DocPicker } from '#lib/views/project.svelte.js';
 	import { convertFileSrc } from '@tauri-apps/api/core';
+	import { parseCover } from '#lib/models/View.svelte.js';
 	import { getSource } from '#lib/models/Source.js';
 	import Menu from '../ui/Menu.svelte';
 	import CoverSourceDialog from '../dialogs/CoverSourceDialog.svelte';
@@ -185,20 +186,6 @@
 	// a journal's card body makes the note itself, so it lands on the day being read
 	let createSignal = $state(0);
 
-	function parseCover(cover: string) {
-		const [ref, q] = cover.split('?');
-		const p = new URLSearchParams(q ?? '');
-		const num = (k: string, d: number) => {
-			const v = parseFloat(p.get(k) ?? '');
-			return Number.isFinite(v) ? v : d;
-		};
-		return {
-			ref,
-			x: Math.min(100, Math.max(0, num('x', 50))),
-			y: Math.min(100, Math.max(0, num('y', 50))),
-			z: Math.max(1, num('z', 1))
-		};
-	}
 
 	function buildCover(ref: string, x: number, y: number, z: number) {
 		const parts: string[] = [];

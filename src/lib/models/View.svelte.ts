@@ -44,7 +44,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import type DocHandle from '#lib/models/DocHandle.js';
 import type Tag from '#lib/models/Tag.js';
 import Folder, {
@@ -977,6 +977,34 @@ function getViews(): Promise<Map<string, ViewJSON>> {
 onSourceReconciled(() => {
 	views = null;
 });
+
+export type CoverArt = { url: string; x: number; y: number; z: number };
+
+export function parseCover(cover: string) {
+	const [ref, q] = cover.split('?');
+	const p = new URLSearchParams(q ?? '');
+	const num = (k: string, d: number) => {
+		const v = parseFloat(p.get(k) ?? '');
+		return Number.isFinite(v) ? v : d;
+	};
+	return {
+		ref,
+		x: Math.min(100, Math.max(0, num('x', 50))),
+		y: Math.min(100, Math.max(0, num('y', 50))),
+		z: Math.max(1, num('z', 1))
+	};
+}
+
+export async function coverArt(
+	unit: string | null | undefined,
+	cover: string
+): Promise<CoverArt | null> {
+	if (!cover) return null;
+	const { ref, x, y, z } = parseCover(cover);
+	if (!unit?.startsWith('folder:')) return { url: convertFileSrc(ref, 'appasset'), x, y, z };
+	const s = await getSource(folderIdSource(unit)).catch(() => null);
+	return s ? { url: convertFileSrc(`${s.path}/${ref}`), x, y, z } : null;
+}
 
 export async function listSavedViewJSON(): Promise<ViewJSON[]> {
 	return [...(await getViews()).values()];

@@ -6,8 +6,8 @@
 	import { reportError } from '#lib/overlays.svelte.js';
 	import { onDestroy, onMount } from 'svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
-	import type { FilterNode, ViewField, ViewFieldType } from '#lib/models/View.svelte.js';
+	import View, { listSavedViewJSON, coverArt } from '#lib/models/View.svelte.js';
+	import type { CoverArt, FilterNode, ViewField, ViewFieldType } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import type { TabState } from '#lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '#lib/models/Settings.svelte.js';
@@ -106,7 +106,7 @@
 		);
 	}
 	// folders that are projects: they have a saved view of their own, and its emoji
-	let projects: Map<string, { emoji: string }> = $state(new Map());
+	let projects: Map<string, { emoji: string; cover?: CoverArt }> = $state(new Map());
 	const query = $derived(((view.state.search as string | undefined) ?? '').trim());
 	// direct children, or while searching every folder below here whose name matches
 	const children = $derived.by(() => {
@@ -141,11 +141,21 @@
 			]);
 			folders = list;
 			root = r;
-			projects = new Map(
+			const marks = new Map<string, { emoji: string; cover?: CoverArt }>(
 				saved
 					.filter((v) => v.unit?.startsWith('folder:'))
 					.map((v) => [v.unit as string, { emoji: v.emoji ?? '' }])
 			);
+			projects = marks;
+			await Promise.all(
+				saved
+					.filter((v) => v.unit?.startsWith('folder:') && v.cover)
+					.map(async (v) => {
+						const art = await coverArt(v.unit, v.cover!);
+						if (art) marks.get(v.unit!)!.cover = art;
+					})
+			);
+			projects = new Map(marks);
 		} catch (e) {
 			console.error('load folders failed', e);
 		}
@@ -312,7 +322,7 @@
 	}
 
 	// ── Sections fold; the folded set lives on the tab so it survives navigation ──
-	type SectionId = 'projects' | 'folders' | 'files';
+	type SectionId = 'folders' | 'files';
 	const folded = $derived((tab?.state.folded as Record<string, boolean> | undefined) ?? {});
 
 	function toggleFold(id: SectionId) {
@@ -617,22 +627,18 @@
 				</header>
 
 				{#if projectChildren.length > 0}
-					<div class="section-label">
-						{@render fold('projects', 'Projects')}
+					<div class="strip projects">
+						<FolderChips
+							folders={projectChildren}
+							{projects}
+							cards
+							whereOf={(f) => (query ? relDir(f) : '')}
+							onOpen={openInNewTab}
+							onChanged={loadFolders}
+							bind:selected={selectedFolder}
+							owner={view.id}
+						/>
 					</div>
-					{#if !folded.projects}
-						<div class="strip">
-							<FolderChips
-								folders={projectChildren}
-								{projects}
-								whereOf={(f) => (query ? relDir(f) : '')}
-								onOpen={openInNewTab}
-								onChanged={loadFolders}
-								bind:selected={selectedFolder}
-								owner={view.id}
-							/>
-						</div>
-					{/if}
 				{/if}
 
 				{#if plainChildren.length > 0}
@@ -1014,6 +1020,10 @@
 
 	.strip {
 		margin: 0 24px 6px;
+	}
+
+	.strip.projects {
+		margin-top: 14px;
 	}
 
 	.nothing {

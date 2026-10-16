@@ -4,7 +4,7 @@
 	import type { Component } from 'svelte';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import DocHandle from '#lib/models/DocHandle.js';
-	import View from '#lib/models/View.svelte.js';
+	import View, { coverArt, type CoverArt } from '#lib/models/View.svelte.js';
 	import { listSources, sourceName, type Source } from '#lib/models/Source.js';
 	import { folderIdSource } from '#lib/models/Folder.js';
 	import { select } from '#lib/services/db.js';
@@ -26,6 +26,7 @@
 	};
 
 	let projects: View[] = $state([]);
+	let covers: Record<string, CoverArt> = $state({});
 	let recent: Recent[] = $state([]);
 	let sources: Source[] = $state([]);
 
@@ -34,8 +35,12 @@
 			.then((s) => (sources = s))
 			.catch(() => {});
 		View.listSaved()
-			.then((all) => {
+			.then(async (all) => {
 				projects = all.sort((a, b) => b.accessedAt.getTime() - a.accessedAt.getTime()).slice(0, 6);
+				const art = await Promise.all(
+					projects.filter((v) => v.cover).map(async (v) => [v.id, await coverArt(v.unit, v.cover)])
+				);
+				covers = Object.fromEntries(art.filter(([, a]) => a));
 			})
 			.catch((e) => console.error('home projects failed', e));
 		select<Recent>(
@@ -108,7 +113,21 @@
 			<div class="chips">
 				{#each projects as v (v.id)}
 					{@const Icon = getViewIcon(v)}
-					<button class="chip" type="button" onclick={() => editor.openView(v)}>
+					{@const cover = covers[v.id]}
+					<button
+						class="chip"
+						class:covered={!!cover}
+						type="button"
+						onclick={() => editor.openView(v)}
+					>
+						{#if cover}
+							<span
+								class="cover"
+								style:background-image="url('{cover.url}')"
+								style:background-position="{cover.x}% {cover.y}%"
+								style:background-size="{cover.z * 100}%"
+							></span>
+						{/if}
 						{#if v.emoji}
 							<span class="chip-emoji">{v.emoji}</span>
 						{:else}
@@ -298,10 +317,13 @@
 	}
 
 	.chip {
+		position: relative;
+		isolation: isolate;
+		overflow: hidden;
 		display: flex;
 		align-items: center;
 		gap: 9px;
-		height: 40px;
+		height: 48px;
 		padding: 0 12px;
 		border: none;
 		border-radius: 8px;
@@ -342,6 +364,31 @@
 		padding-left: 8px;
 		font-size: 11px;
 		color: var(--color-ui-muted);
+	}
+
+	.cover {
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+		background-repeat: no-repeat;
+		-webkit-mask-image: linear-gradient(
+			to right,
+			transparent 0%,
+			rgba(0, 0, 0, 0.15) 40%,
+			rgba(0, 0, 0, 0.65) 70%,
+			#000 100%
+		);
+		mask-image: linear-gradient(
+			to right,
+			transparent 0%,
+			rgba(0, 0, 0, 0.15) 40%,
+			rgba(0, 0, 0, 0.65) 70%,
+			#000 100%
+		);
+	}
+
+	.chip.covered .chip-where {
+		color: inherit;
 	}
 
 	.rows {
