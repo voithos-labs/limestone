@@ -7,7 +7,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
-	import type { FilterNode, ViewField } from '#lib/models/View.svelte.js';
+	import type { FilterNode, ViewField, ViewFieldType } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import type { TabState } from '#lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '#lib/models/Settings.svelte.js';
@@ -29,6 +29,7 @@
 	import { addSourceRequest } from '#lib/overlays.svelte.js';
 	import { folderNameProblem } from '#lib/util/paths.js';
 	import ListFace from '../views/faces/ListFace.svelte';
+	import MasonryFace from '../views/faces/MasonryFace.svelte';
 	import Menu from '../ui/Menu.svelte';
 	import InputPopover from '../ui/InputPopover.svelte';
 	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
@@ -63,10 +64,11 @@
 		Search,
 		X,
 		List,
-		LayoutGrid,
+		LayoutDashboard,
+		FolderTree,
 		Bookmark,
 		FolderInput,
-		CalendarClock,
+		ArrowDownUp,
 		SquareCheck,
 		GitBranch,
 		FileLock,
@@ -212,58 +214,42 @@
 		return g;
 	});
 
-	// ── The face: this unit's own list, direct children only unless searching ──
+	// ── The face: this unit's own list, the whole subtree unless narrowed to direct children ──
 	const face = $derived(view.faces.find((f) => f.type === 'list') ?? view.faces[0]);
-	const layout = $derived(face?.config.layout === 'grid' ? 'grid' : 'list');
+	const layout = $derived(face?.config.layout === 'list' ? 'list' : 'masonry');
+	const deep = $derived(view.state.deep !== false);
 	const folderField = $derived(view.fields.find((f: ViewField) => f.type === 'folder'));
-	const updatedField = $derived(view.fields.find((f: ViewField) => f.type === 'updated_at'));
 
-	// "Modified": the same quick ranges Drive offers, as a scope on updated_at
-	const MODIFIED = [
-		{ value: 'any', label: 'Any time' },
-		{ value: 'today', label: 'Today' },
-		{ value: 'week', label: 'Last 7 days' },
-		{ value: 'month', label: 'Last 30 days' },
-		{ value: 'year', label: 'This year' },
-		{ value: 'lastyear', label: 'Last year' }
+	// sort: one key on a built-in field; an unset face sorts newest-modified first already
+	const SORTS = [
+		{ value: 'updated_at:desc', label: 'Newest modified' },
+		{ value: 'updated_at:asc', label: 'Oldest modified' },
+		{ value: 'created_at:desc', label: 'Newest created' },
+		{ value: 'created_at:asc', label: 'Oldest created' },
+		{ value: 'title:asc', label: 'Title A to Z' },
+		{ value: 'title:desc', label: 'Title Z to A' }
 	];
-	const modified = $derived((view.state.modified as string | undefined) ?? 'any');
-	const modifiedLabel = $derived(MODIFIED.find((m) => m.value === modified)?.label ?? 'Any time');
-	let modifiedOpen = $state(false);
-	let modifiedEl: HTMLElement | null = $state(null);
+	const sortValue = $derived.by(() => {
+		const key = face?.sort[0];
+		const type = key && view.fields.find((f: ViewField) => f.id === key.field_id)?.type;
+		return type ? `${type}:${key.direction}` : 'updated_at:desc';
+	});
+	const sortLabel = $derived(SORTS.find((s) => s.value === sortValue)?.label ?? 'Sort');
+	let sortOpen = $state(false);
+	let sortEl: HTMLElement | null = $state(null);
 
-	function modifiedLeaves(): FilterNode[] {
-		const f = updatedField;
-		if (!f) return [];
-		const y = new Date().getFullYear();
-		switch (modified) {
-			case 'today':
-				return [{ field_id: f.id, op: 'on_or_after', value: 'today' }];
-			case 'week':
-				return [{ field_id: f.id, op: 'on_or_after', value: 'today-6' }];
-			case 'month':
-				return [{ field_id: f.id, op: 'on_or_after', value: 'today-29' }];
-			case 'year':
-				return [{ field_id: f.id, op: 'on_or_after', value: `${y}-01-01` }];
-			case 'lastyear':
-				return [
-					{ field_id: f.id, op: 'on_or_after', value: `${y - 1}-01-01` },
-					{ field_id: f.id, op: 'before', value: `${y}-01-01` }
-				];
-			default:
-				return [];
-		}
+	function setSort(value: string) {
+		const [type, direction] = value.split(':') as [ViewFieldType, 'asc' | 'desc'];
+		const field = view.fields.find((f: ViewField) => f.type === type);
+		if (face && field) face.sort = [{ field_id: field.id, direction }];
 	}
 
 	const scope: FilterNode | null = $derived.by(() => {
-		const leaves: FilterNode[] = [];
-		if (folderField && !query) leaves.push({ field_id: folderField.id, op: 'is', value: unitId });
-		leaves.push(...modifiedLeaves());
-		if (leaves.length === 0) return null;
-		return leaves.length === 1 ? leaves[0] : { op: 'and', children: leaves };
+		if (!folderField || query) return null;
+		return { field_id: folderField.id, op: deep ? 'in' : 'is', value: unitId };
 	});
 
-	function setLayout(l: 'list' | 'grid') {
+	function setLayout(l: 'list' | 'masonry') {
 		if (face) face.config.layout = l;
 	}
 
@@ -690,14 +676,23 @@
 					<span class="controls">
 						<button
 							class="chip-btn"
-							class:set={modified !== 'any'}
 							type="button"
-							bind:this={modifiedEl}
-							onclick={() => (modifiedOpen = !modifiedOpen)}
+							bind:this={sortEl}
+							onclick={() => (sortOpen = !sortOpen)}
 						>
-							<CalendarClock size={13} strokeWidth={1.75} />
-							<span>{modified === 'any' ? 'Modified' : modifiedLabel}</span>
+							<ArrowDownUp size={13} strokeWidth={1.75} />
+							<span>{sortLabel}</span>
 							<ChevronDown size={12} strokeWidth={2} />
+						</button>
+						<button
+							class="lay"
+							class:on={deep}
+							type="button"
+							title={deep ? 'Including subfolders' : 'This folder only'}
+							aria-pressed={deep}
+							onclick={() => (view.state.deep = !deep)}
+						>
+							<FolderTree size={14} strokeWidth={1.75} />
 						</button>
 						<span class="layout" role="group" aria-label="Layout">
 							<button
@@ -712,27 +707,39 @@
 							</button>
 							<button
 								class="lay"
-								class:on={layout === 'grid'}
+								class:on={layout === 'masonry'}
 								type="button"
-								title="Grid"
-								aria-pressed={layout === 'grid'}
-								onclick={() => setLayout('grid')}
+								title="Masonry"
+								aria-pressed={layout === 'masonry'}
+								onclick={() => setLayout('masonry')}
 							>
-								<LayoutGrid size={14} strokeWidth={1.75} />
+								<LayoutDashboard size={14} strokeWidth={1.75} />
 							</button>
 						</span>
 					</span>
 				</div>
 				{#if face && !folded.files}
-					<ListFace
-						{view}
-						{face}
-						{onOpenRow}
-						{scope}
-						moveable
-						editable={false}
-						onTotal={(n) => (fileTotal = n)}
-					/>
+					{#if layout === 'masonry'}
+						<MasonryFace
+							{view}
+							{face}
+							{onOpenRow}
+							{scope}
+							moveable
+							editable={false}
+							onTotal={(n) => (fileTotal = n)}
+						/>
+					{:else}
+						<ListFace
+							{view}
+							{face}
+							{onOpenRow}
+							{scope}
+							moveable
+							editable={false}
+							onTotal={(n) => (fileTotal = n)}
+						/>
+					{/if}
 				{/if}
 				{#if bare}
 					<div class="nothing">
@@ -757,13 +764,13 @@
 	minWidth={200}
 />
 <Menu
-	bind:open={modifiedOpen}
-	anchor={modifiedEl}
-	items={MODIFIED}
-	selected={modified}
+	bind:open={sortOpen}
+	anchor={sortEl}
+	items={SORTS}
+	selected={sortValue}
 	onSelect={(v) => {
-		view.state.modified = v;
-		modifiedOpen = false;
+		setSort(v);
+		sortOpen = false;
 	}}
 	minWidth={170}
 />
@@ -943,12 +950,6 @@
 	}
 
 	.chip-btn:hover {
-		color: var(--color-text-primary);
-	}
-
-	/* a chosen range gets the same box the chosen layout does */
-	.chip-btn.set {
-		border-color: var(--color-border);
 		color: var(--color-text-primary);
 	}
 
