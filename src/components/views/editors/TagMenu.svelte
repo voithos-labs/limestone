@@ -16,6 +16,7 @@
 	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import Tag, { tagId } from '#lib/models/Tag.js';
 	import { isBuiltinUnit } from '#lib/models/View.svelte.js';
+	import { tagIcon } from '#lib/views/filterDisplay.js';
 	import { nameGuard } from '#lib/util/paths.js';
 
 	let {
@@ -26,7 +27,8 @@
 		onToggle,
 		onCreate,
 		onMutated,
-		width = 240
+		width = 240,
+		builtinAddOnly = false
 	}: {
 		open: boolean;
 		anchor: HTMLElement | null;
@@ -36,6 +38,7 @@
 		onCreate?: (slug: string) => void | Promise<void>;
 		onMutated?: () => void;
 		width?: number;
+		builtinAddOnly?: boolean;
 	} = $props();
 
 	let query = $state('');
@@ -68,9 +71,12 @@
 
 	const browseTags = $derived.by(() => {
 		const rank = new Map(browseOrder.map((id, i) => [id, i]));
-		return [...tags].sort(
-			(a, b) => (rank.get(a.id) ?? browseOrder.length) - (rank.get(b.id) ?? browseOrder.length)
-		);
+		return tags
+			.filter((t) => !(builtinAddOnly && isBuiltinUnit(t.id) && selectedIds.includes(t.id)))
+			.sort(
+				(a, b) =>
+					(rank.get(a.id) ?? browseOrder.length) - (rank.get(b.id) ?? browseOrder.length)
+			);
 	});
 
 	const filtered = $derived.by(() => {
@@ -318,6 +324,7 @@
 		<div class="list" onmouseleave={() => (activeIndex = -1)} role="presentation">
 			{#each filtered as t, i (t.id)}
 				{@const on = selectedIds.includes(t.id)}
+				{@const TagIcon = tagIcon(t.id)}
 				<div
 					class="row"
 					class:builtin={isBuiltinUnit(t.id)}
@@ -330,7 +337,7 @@
 				>
 					{#if confirmId === t.id}
 						<span class="name">
-							<Hash size={13} strokeWidth={1.75} />
+							<TagIcon size={13} strokeWidth={1.75} />
 							<span class="name-text">{t.slug}</span>
 						</span>
 						<button
@@ -346,7 +353,7 @@
 						>
 					{:else if renamingId === t.id}
 						<span class="name">
-							<Hash size={13} strokeWidth={1.75} />
+							<TagIcon size={13} strokeWidth={1.75} />
 							<input
 								class="name-input"
 								class:invalid={renameInvalid(t)}
@@ -366,7 +373,7 @@
 							{#if on || i === activeIndex}
 								<span class="box" class:on><Check size={11} strokeWidth={3} /></span>
 							{:else}
-								<span class="lead"><Hash size={13} strokeWidth={1.75} /></span>
+								<span class="lead"><TagIcon size={13} strokeWidth={1.75} /></span>
 							{/if}
 							<span class="name-text">{pre}<b>{hit}</b>{post}</span>
 						</button>

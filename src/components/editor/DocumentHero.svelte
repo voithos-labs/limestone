@@ -19,7 +19,6 @@
 	import DocProperties from './DocProperties.svelte';
 	import TodoCard from './TodoCard.svelte';
 	import {
-		Hash,
 		EllipsisVertical,
 		Trash2,
 		FolderInput,
@@ -40,6 +39,7 @@
 		ArrowUpRight,
 		Bookmark
 	} from '@lucide/svelte';
+	import { tagIcon } from '#lib/views/filterDisplay.js';
 	import { onMount, untrack, type Component } from 'svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { flushAll } from '#lib/services/platform.js';
@@ -662,7 +662,8 @@
 							/>{/if}
 					</button>
 					{#each tagList as t (t.id)}
-						<span class="tag"><Hash size={11} />{t.slug}</span>
+						{@const TagIcon = tagIcon(t.id)}
+						<span class="tag"><TagIcon size={11} />{t.slug}</span>
 					{/each}
 				{:else}
 					<span
@@ -676,8 +677,9 @@
 						onclick={() => (tagMenuOpen = !tagMenuOpen)}
 					>
 						{#each chipTags as t (t.id)}
+							{@const TagIcon = tagIcon(t.id)}
 							<span class="tag">
-								<Hash size={11} />{t.slug}
+								<TagIcon size={11} />{t.slug}
 								<button
 									class="tag-x"
 									type="button"
@@ -698,13 +700,14 @@
 					</span>
 				{/if}
 				{#each textOnlyTags as t (t.slug)}
+					{@const TagIcon = tagIcon(t.slug)}
 					<button
 						class="tag from-text"
 						type="button"
 						title="Tagged in the text. Click to find it"
 						onclick={() => onTextTag?.(t.slug)}
 					>
-						<Hash size={11} />{t.slug}
+						<TagIcon size={11} />{t.slug}
 					</button>
 				{/each}
 				{#if meta.writes && isTodo}
@@ -759,6 +762,7 @@
 	onToggle={toggleTag}
 	onCreate={createTag}
 	onMutated={tagsMutated}
+	builtinAddOnly
 />
 
 <style>

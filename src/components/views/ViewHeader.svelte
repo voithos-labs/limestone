@@ -13,7 +13,12 @@
 	import EmojiPicker from './editors/EmojiPicker.svelte';
 	import DocPickerPanel from './DocPicker.svelte';
 	import type { DocPicker } from '#lib/views/project.svelte.js';
-	import { getFaceIcon, fieldMenuEntries, getFieldIcon } from '#lib/views/filterDisplay.js';
+	import {
+		getFaceIcon,
+		fieldMenuEntries,
+		getFieldIcon,
+		getUnitIcon
+	} from '#lib/views/filterDisplay.js';
 	import { fieldLabel } from '#lib/views/fieldValue.js';
 	import { VIEW_FIELD_SORTABLE, MANUAL_SORT } from '#lib/models/View.svelte.js';
 	import type { MenuEntry } from '#lib/overlays.svelte.js';
@@ -370,16 +375,25 @@
 </script>
 
 {#snippet titleBlock()}
-	{#if !view.temporary}
-		<button
-			class="view-emoji"
-			bind:this={emojiAnchor}
-			title="Set an emoji"
-			onclick={() => (emojiOpen = !emojiOpen)}
-		>
-			{#if view.emoji}{view.emoji}{:else}<Globe size={16} strokeWidth={1.75} />{/if}
-		</button>
+	{#if view.builtin}
+		{@const UnitIcon = getUnitIcon(view.unit ?? '')}
+		<span class="title-chip"><UnitIcon size={15} strokeWidth={2} />{view.slug}</span>
+	{:else}
+		{#if !view.temporary}
+			<button
+				class="view-emoji"
+				bind:this={emojiAnchor}
+				title="Set an emoji"
+				onclick={() => (emojiOpen = !emojiOpen)}
+			>
+				{#if view.emoji}{view.emoji}{:else}<Globe size={16} strokeWidth={1.75} />{/if}
+			</button>
+		{/if}
+		{@render titleField()}
 	{/if}
+{/snippet}
+
+{#snippet titleField()}
 	{#if crumbs.length > 0}
 		<span class="title-field">
 			<span class="title-ghost">{view.slug}</span>
@@ -463,7 +477,7 @@
 {#snippet actionButton()}
 	{#if view.temporary && !view.unit}
 		{@render saveButton()}
-	{:else if !hasCover}
+	{:else if !hasCover && !view.builtin}
 		{@render moreButton()}
 	{/if}
 {/snippet}
@@ -689,7 +703,7 @@
 		{/if}
 	</label>
 
-	{#if !hasCover && (!view.temporary || view.unit)}
+	{#if !hasCover && (!view.temporary || view.unit) && !view.builtin}
 		{@render moreButton()}
 	{/if}
 </div>
@@ -808,6 +822,28 @@
 
 	.view-emoji:hover :global(svg) {
 		color: var(--color-ui-muted);
+	}
+
+	.title-chip {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		gap: 5px;
+		height: 28px;
+		padding: 0 13px 0 10px;
+		border-radius: 999px;
+		background: var(--color-accent);
+		color: #fff;
+		font-family: var(--font-ui);
+		font-size: 15px;
+		font-weight: 600;
+		line-height: 1;
+		letter-spacing: -0.01em;
+		white-space: nowrap;
+	}
+
+	.title-chip :global(svg) {
+		opacity: 0.85;
 	}
 
 	.title-field {

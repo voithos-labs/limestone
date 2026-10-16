@@ -28,8 +28,8 @@ import {
 } from '@lucide/svelte';
 import { isSourceRoot } from '#lib/models/Folder.js';
 import View, {
+	BUILTIN_UNITS,
 	DELETED,
-	isBuiltinUnit,
 	VIEW_FIELD_OPS,
 	opTakesValue,
 	type ViewFaceType,
@@ -55,18 +55,20 @@ export function getFaceIcon(face: Pick<ViewFace, 'type' | 'isCards'>): Component
 }
 
 // what a view is about, for tabs and anywhere else it stands in for a place
+export function tagIcon(tag: string): Component {
+	const id = tag.startsWith('tag:') ? tag : `tag:${tag}`;
+	return BUILTIN_UNITS[id]?.icon ?? Hash;
+}
+
 export function getUnitIcon(unitId: string): Component {
-	if (isBuiltinUnit(unitId)) return SquareCheck;
-	if (unitId.startsWith('tag:')) return Hash;
+	if (unitId.startsWith('tag:')) return tagIcon(unitId);
 	return isSourceRoot(unitId) ? FolderInput : Folder;
 }
 
 export function getViewIcon(view: View): Component {
 	if (view.unit) {
 		if (view.unit === DELETED) return Trash2;
-		if (isBuiltinUnit(view.unit)) return SquareCheck;
-		if (view.unit.startsWith('tag:')) return Hash;
-		return isSourceRoot(view.unit) ? FolderInput : Folder;
+		return getUnitIcon(view.unit);
 	}
 	const typesById = new Map(view.fields.map((f) => [f.id, f.type]));
 	let hasTags = false;

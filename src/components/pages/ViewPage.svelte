@@ -581,12 +581,6 @@
 			: view.coverHidden
 				? [{ value: 'show-cover', label: 'Show cover', icon: Eye }]
 				: [];
-		const builtin = !!view.unit && isBuiltinUnit(view.unit);
-		if (builtin) {
-			items.push({ value: 'new-note', label: 'New note', icon: FilePlus });
-			items.push(...cover);
-			return items;
-		}
 		if (unitKind) {
 			// making things is the fab's job; in a project this menu holds the place underneath
 			// and the project on top of it, so the place gets named

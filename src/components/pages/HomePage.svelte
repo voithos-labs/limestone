@@ -36,7 +36,10 @@
 			.catch(() => {});
 		View.listSaved()
 			.then(async (all) => {
-				projects = all.sort((a, b) => b.accessedAt.getTime() - a.accessedAt.getTime()).slice(0, 6);
+				projects = all
+					.filter((v) => !v.builtin)
+					.sort((a, b) => b.accessedAt.getTime() - a.accessedAt.getTime())
+					.slice(0, 6);
 				const art = await Promise.all(
 					projects.filter((v) => v.cover).map(async (v) => [v.id, await coverArt(v.unit, v.cover)])
 				);

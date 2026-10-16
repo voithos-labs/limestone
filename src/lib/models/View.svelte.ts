@@ -45,6 +45,8 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import type { Component } from 'svelte';
+import { CircleCheckBig } from '@lucide/svelte';
 import type DocHandle from '#lib/models/DocHandle.js';
 import type Tag from '#lib/models/Tag.js';
 import Folder, {
@@ -234,7 +236,7 @@ export const METADATA_FIELD: ViewField = {
 
 export interface BuiltinUnit {
 	unit: string;
-	emoji: string;
+	icon: Component;
 	fields: ViewField[];
 	display: string[];
 }
@@ -283,7 +285,7 @@ export function saveStatuses(options: StatusOption[]): void {
 export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
 	[TODO]: {
 		unit: TODO,
-		emoji: '',
+		icon: CircleCheckBig,
 		fields: [
 			builtinField(TODO, 'done', 'boolean'),
 			builtinField(TODO, 'status', 'select'),
@@ -1093,8 +1095,8 @@ class View {
 		this.faces = json.faces.map((j) => new ViewFace(j));
 		this.state = json.state ?? {};
 		this.temporary = json.temporary ?? false;
-		this.emoji = json.emoji ?? '';
-		this.cover = json.cover ?? '';
+		this.emoji = this.builtin ? '' : (json.emoji ?? '');
+		this.cover = this.builtin ? '' : (json.cover ?? '');
 		this.coverHidden = json.cover_hidden ?? false;
 		// the store hands dates back as strings; the model always holds Dates
 		this.accessedAt = new Date(json.accessed_at ?? json.updated_at);
@@ -1102,6 +1104,10 @@ class View {
 		for (const f of this.fields.filter((f) => !isDerived(f.type) && !f.unit))
 			this.removeField(f.id);
 		this.markPristine();
+	}
+
+	get builtin(): boolean {
+		return !!this.unit && isBuiltinUnit(this.unit);
 	}
 
 	private snapshot(): string {
@@ -1161,11 +1167,19 @@ class View {
 			);
 			view.faces = [ViewFace.create('list', ids)];
 		} else if (builtin) {
-			if (builtin.emoji) view.emoji = builtin.emoji;
 			const title = view.fields.find((f) => f.type === 'title')!.id;
 			const [done, ...rest] = builtin.display;
+			const due = rest[0];
+			const bySoonest: SortKey[] = due ? [{ field_id: due, direction: 'asc', nulls: 'last' }] : [];
 			view.faces = [
-				ViewFace.create('list', [done, title, ...rest], undefined, [], { group_by: done })
+				ViewFace.create('list', [done, title, ...rest], undefined, bySoonest, {
+					group_by: done,
+					right: rest
+				}),
+				ViewFace.create('kanban', [title, ...rest], undefined, bySoonest, {
+					group_by: builtin.fields.find((f) => f.type === 'select')?.id ?? done,
+					right: rest
+				})
 			];
 		} else if (unitId.startsWith('folder:')) {
 			const title = view.fields.find((f) => f.type === 'title')!.id;

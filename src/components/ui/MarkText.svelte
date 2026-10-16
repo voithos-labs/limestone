@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { toastParts } from '#lib/overlays.svelte.js';
 	import { FolderInput, Folder, Box, Hash, TextAlignStart } from '@lucide/svelte';
+	import { tagIcon } from '#lib/views/filterDisplay.js';
 
 	let { text }: { text: string } = $props();
 
@@ -15,7 +16,7 @@
 
 {#each toastParts(text) as part, i (i)}
 	{#if part.kind}
-		{@const Icon = ICONS[part.kind]}
+		{@const Icon = part.kind === 'tag' ? tagIcon(part.text) : ICONS[part.kind]}
 		<span class="chip"
 			><Icon size={11} strokeWidth={2} /><span class="chip-text">{part.text}</span></span
 		>

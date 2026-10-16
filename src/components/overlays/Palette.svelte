@@ -7,7 +7,6 @@
 		FileText,
 		Folder as FolderIcon,
 		FolderInput,
-		Hash,
 		TextAlignStart,
 		CornerDownLeft,
 		SlashSquare,
@@ -37,7 +36,7 @@
 	import { highlightTitle } from '#lib/util/dom.js';
 	import { palette } from '#lib/overlays.svelte.js';
 	import { openProjectSetup } from '#lib/views/project.svelte.js';
-	import { getViewIcon } from '#lib/views/filterDisplay.js';
+	import { getViewIcon, tagIcon } from '#lib/views/filterDisplay.js';
 
 	let { session, onAddSource }: { session: Session; onAddSource: () => void } = $props();
 	const editor = $derived(session.active);
@@ -169,7 +168,7 @@
 				hint: isFolder
 					? [srcOf(r.source_id), dirOf(folderIdPath(r.id))].filter(Boolean).join(' / ') || 'folder'
 					: 'tag',
-				icon: isFolder ? FolderIcon : Hash,
+				icon: isFolder ? FolderIcon : tagIcon(r.id),
 				kind: isFolder ? 'folder' : 'tag',
 				match: r.match_indices,
 				run: async (newTab) => {
@@ -318,7 +317,7 @@
 		View.listSaved()
 			.then((saved) => {
 				projects = saved
-					.filter((v) => !!v.unit)
+					.filter((v) => !!v.unit && !v.builtin)
 					.sort((a, b) => b.accessedAt.getTime() - a.accessedAt.getTime())
 					.slice(0, 4);
 			})

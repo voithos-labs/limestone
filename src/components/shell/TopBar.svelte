@@ -87,21 +87,19 @@
 				icon: Blocks,
 				children: [
 					{ label: 'Home', icon: House, action: () => editor.openHome() },
-					...Object.values(BUILTIN_UNITS)
-						.filter((u) => !bmViews.some((v) => v.unit === u.unit))
-						.map((u): CtxEntry => {
-							const name = u.unit.slice('tag:'.length);
-							return {
-								label: name,
-								icon: getUnitIcon(u.unit),
-								action: () => openUnitView(u.unit, name),
-								aux: {
-									icon: SquareArrowOutUpRight,
-									label: 'Open in new tab',
-									action: () => openUnitView(u.unit, name, true)
-								}
-							};
-						})
+					...Object.values(BUILTIN_UNITS).map((u): CtxEntry => {
+						const name = u.unit.slice('tag:'.length);
+						return {
+							label: name,
+							icon: getUnitIcon(u.unit),
+							action: () => openUnitView(u.unit, name),
+							aux: {
+								icon: SquareArrowOutUpRight,
+								label: 'Open in new tab',
+								action: () => openUnitView(u.unit, name, true)
+							}
+						};
+					})
 				]
 			},
 			{ divider: true },
@@ -126,7 +124,9 @@
 		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		try {
 			[bmSources, bmViews] = await Promise.all([listSources(), View.listSaved()]);
-			bmViews.sort((a, b) => b.accessedAt.getTime() - a.accessedAt.getTime());
+			bmViews = bmViews
+				.filter((v) => !v.builtin)
+				.sort((a, b) => b.accessedAt.getTime() - a.accessedAt.getTime());
 		} catch (err) {
 			console.error('bookmarks load failed', err);
 		}

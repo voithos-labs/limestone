@@ -138,6 +138,10 @@ body {
 	overflow: hidden;
 }
 
+svg.lucide-circle-check-big {
+	transform: scale(0.88);
+}
+
 html {
 	background: var(--color-bg);
 }
