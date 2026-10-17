@@ -1066,7 +1066,7 @@
 									<StatusIcon
 										kind={statusKind(checkField, sv)}
 										color={statusColor(checkField, sv)}
-										size={18}
+										size={16}
 									/>
 								</button>
 							{:else if checkField && member && rows.writable(row)}
