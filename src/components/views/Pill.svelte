@@ -5,12 +5,14 @@
 	import { statusColor, statusKind } from '#lib/views/fieldValue.js';
 	import StatusIcon from './StatusIcon.svelte';
 
-	let { field, value }: { field: ViewField; value: string } = $props();
+	let { field, value, filled = false }: { field: ViewField; value: string; filled?: boolean } =
+		$props();
 </script>
 
 {#if isStatusField(field)}
-	<span class="status-pill">
-		<StatusIcon kind={statusKind(field, value)} color={statusColor(field, value)} size={14} />
+	{@const kind = statusKind(field, value)}
+	<span class="status-pill tag-c{statusColor(field, value)} {kind}" class:filled>
+		<StatusIcon {kind} color={statusColor(field, value)} size={filled ? 11 : 14} />
 		<span>{value}</span>
 	</span>
 {:else}
@@ -38,6 +40,23 @@
 		gap: 6px;
 		font-size: 12px;
 		white-space: nowrap;
+		color: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-fg-l, 30%));
+	}
+
+	.status-pill.todo {
 		color: var(--color-text-secondary);
+	}
+
+	.status-pill.filled {
+		gap: 4px;
+		padding: 1px 8px 1px 6px;
+		border-radius: 4px;
+		font-size: 11px;
+		line-height: 1.55;
+		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
+	}
+
+	.status-pill.filled.todo {
+		background: var(--chip-bg);
 	}
 </style>
