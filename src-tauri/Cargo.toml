@@ -43,8 +43,8 @@ notify-debouncer-mini = "0.7.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 
 [target.'cfg(windows)'.dependencies]
-webview2-com = "0.38"
-windows-core = "0.61"
+webview2-com = "0.39"
+windows-core = "0.62"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
