@@ -575,6 +575,64 @@ pub async fn delete_folder(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn restore_folder(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    source_id: String,
+    rel_dir: String,
+) -> Result<(), FolderOpError> {
+    if rel_dir.is_empty() {
+        return Err(FolderOpError::new("invalid_name"));
+    }
+    validate_folder_path(&rel_dir)?;
+    let root = source_root(&app, &source_id).map_err(|_| FolderOpError::new("source_missing"))?;
+    let full = resolve_in_source(&root, &rel_dir)
+        .map_err(|_| FolderOpError::named("not_found", folder_leaf(&rel_dir)))?;
+    if full.exists() {
+        return Err(FolderOpError::named("already_exists", folder_leaf(&rel_dir)));
+    }
+    restore_from_trash(&full)?;
+
+    let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
+    let source = find_source(&app, uuid).map_err(|_| FolderOpError::new("source_missing"))?;
+    run_reconcile(
+        app.clone(),
+        source,
+        app_data.db.clone(),
+        frontmatter_buffer_size(&app_data),
+        git_frontmatter_off(&app_data),
+    )
+    .await;
+    Ok(())
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+fn restore_from_trash(full: &Path) -> Result<(), FolderOpError> {
+    let leaf = full.file_name().ok_or_else(|| FolderOpError::new("not_found"))?;
+    let parent = full
+        .parent()
+        .and_then(|p| p.canonicalize().ok())
+        .ok_or_else(|| FolderOpError::new("not_found"))?;
+    let item = trash::os_limited::list()
+        .map_err(|_| FolderOpError::new("other"))?
+        .into_iter()
+        .filter(|i| i.name.as_os_str() == leaf)
+        .filter(|i| i.original_parent.canonicalize().ok().as_deref() == Some(parent.as_path()))
+        .max_by_key(|i| i.time_deleted)
+        .ok_or_else(|| FolderOpError::new("not_found"))?;
+    trash::os_limited::restore_all([item]).map_err(|e| match e {
+        trash::Error::RestoreCollision { .. } => FolderOpError::new("already_exists"),
+        trash::Error::CouldNotAccess { .. } => FolderOpError::new("permission"),
+        _ => FolderOpError::new("other"),
+    })
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn restore_from_trash(_full: &Path) -> Result<(), FolderOpError> {
+    Err(FolderOpError::new("unsupported"))
+}
+
 #[derive(serde::Serialize)]
 pub struct FolderMeta {
     explicit: Option<bool>,

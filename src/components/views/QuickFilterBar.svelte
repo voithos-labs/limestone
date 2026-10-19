@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Hash } from '@lucide/svelte';
+	import { tagIcon } from '#lib/views/filterDisplay.js';
 	import type View from '#lib/models/View.svelte.js';
 	import type { ViewFace, ViewField } from '#lib/models/View.svelte.js';
 	import { onSourceReconciled } from '#lib/models/Source.js';
@@ -70,7 +70,10 @@
 				type="button"
 				onclick={() => (view.state.quick_value = selected === c.value ? null : c.value)}
 			>
-				{#if field.type === 'tags'}<Hash size={11} strokeWidth={2} />{/if}{c.label}
+				{#if field.type === 'tags'}{@const TagIcon = tagIcon(c.value)}<TagIcon
+						size={11}
+						strokeWidth={2}
+					/>{/if}{c.label}
 				<span class="n">{c.n}</span>
 			</button>
 		{/each}

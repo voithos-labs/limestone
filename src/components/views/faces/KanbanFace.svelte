@@ -1204,7 +1204,7 @@
 
 	@supports (width: 1cqw) {
 		.board-wrap {
-			--ext: max(0px, (100cqw - var(--view-max-width, 1200px)) / 2 + 24px);
+			--ext: max(0px, (100cqw - var(--view-max-width, 1000px)) / 2 + 24px);
 		}
 	}
 

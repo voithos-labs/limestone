@@ -511,7 +511,7 @@
 	// ── Per-tab state ───────────────────────────────────────────────────────────────────
 
 	// Persisted on the tab, so a doc reopens with its properties panel as you left it
-	let propsOpen = $state(untrack(() => tab.state.props_open ?? false));
+	let propsOpen = $state(untrack(() => tab.state.props_open ?? true));
 	$effect(() => {
 		tab.state.props_open = propsOpen;
 	});
@@ -862,6 +862,10 @@
 		if (!hasCaret && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
 	}
 
+	function focusStart() {
+		void instance?.setSelection(DOCUMENT_START);
+	}
+
 	async function restore() {
 		// The old editor's `cursorPos`/`scrollTop` tab keys are ignored: they measure a flat
 		// character offset and a scroller with the header outside it, neither of which exists here.
@@ -1138,6 +1142,7 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onEnter={focusStart}
 			onError={reportProblem}
 		/>
 		{@render docNotices()}
@@ -1198,6 +1203,7 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onEnter={focusStart}
 			onError={reportProblem}
 		/>
 		{@render docNotices()}
