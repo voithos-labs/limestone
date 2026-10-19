@@ -63,6 +63,7 @@
 		textTags = [],
 		onTextTag,
 		onRemoveTextTag,
+		onEnter,
 		onError = reportError
 	}: {
 		handle: DocHandle;
@@ -83,6 +84,7 @@
 		textTags?: { slug: string; places: unknown[] }[];
 		onTextTag?: (slug: string) => void;
 		onRemoveTextTag?: (slug: string) => Promise<void>;
+		onEnter?: () => void;
 		onError?: ReportError;
 	} = $props();
 
@@ -290,6 +292,7 @@
 		if (e.key === 'Enter') {
 			e.preventDefault();
 			(e.currentTarget as HTMLInputElement).blur();
+			onEnter?.();
 		} else if (e.key === 'Escape') {
 			title = handle.title;
 			(e.currentTarget as HTMLInputElement).blur();
