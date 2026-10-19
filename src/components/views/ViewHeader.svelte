@@ -137,7 +137,9 @@
 
 	// ── Group: a list groups by anything groupable or nothing; a board's columns need a select or boolean ──
 	const groupTarget = $derived(
-		fieldTarget && (fieldTarget.type === 'list' || fieldTarget.type === 'kanban') ? fieldTarget : null
+		fieldTarget && (fieldTarget.type === 'list' || fieldTarget.type === 'kanban')
+			? fieldTarget
+			: null
 	);
 	let groupEl: HTMLButtonElement | null = $state(null);
 	let groupOpen = $state(false);

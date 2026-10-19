@@ -238,7 +238,11 @@
 			framed = !!line;
 			if (!box || !line) return;
 			let y = line.offsetHeight / 2;
-			for (let el: HTMLElement | null = line; el && el !== box; el = el.offsetParent as HTMLElement | null)
+			for (
+				let el: HTMLElement | null = line;
+				el && el !== box;
+				el = el.offsetParent as HTMLElement | null
+			)
 				y += el.offsetTop;
 			frameTop = Math.round(y);
 			const b = box.getBoundingClientRect();

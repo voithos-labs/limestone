@@ -5,8 +5,11 @@
 	import { statusColor, statusKind } from '#lib/views/fieldValue.js';
 	import StatusIcon from './StatusIcon.svelte';
 
-	let { field, value, filled = false }: { field: ViewField; value: string; filled?: boolean } =
-		$props();
+	let {
+		field,
+		value,
+		filled = false
+	}: { field: ViewField; value: string; filled?: boolean } = $props();
 </script>
 
 {#if isStatusField(field)}

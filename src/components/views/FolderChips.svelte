@@ -18,11 +18,7 @@
 	} from '@lucide/svelte';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
 	import { getSource } from '#lib/models/Source.js';
-	import View, {
-		listSavedViewJSON,
-		saveViewJSON,
-		type CoverArt
-	} from '#lib/models/View.svelte.js';
+	import View, { listSavedViewJSON, saveViewJSON, type CoverArt } from '#lib/models/View.svelte.js';
 	import { history } from '#lib/views/FaceRows.svelte.js';
 	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import { metaDialog } from '#lib/overlays.svelte.js';

@@ -188,7 +188,6 @@
 	// a journal's card body makes the note itself, so it lands on the day being read
 	let createSignal = $state(0);
 
-
 	function buildCover(ref: string, x: number, y: number, z: number) {
 		const parts: string[] = [];
 		if (Math.round(x) !== 50) parts.push(`x=${Math.round(x)}`);

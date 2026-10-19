@@ -74,8 +74,7 @@
 		return tags
 			.filter((t) => !(builtinAddOnly && isBuiltinUnit(t.id) && selectedIds.includes(t.id)))
 			.sort(
-				(a, b) =>
-					(rank.get(a.id) ?? browseOrder.length) - (rank.get(b.id) ?? browseOrder.length)
+				(a, b) => (rank.get(a.id) ?? browseOrder.length) - (rank.get(b.id) ?? browseOrder.length)
 			);
 	});
 
