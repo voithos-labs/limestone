@@ -50,6 +50,12 @@ pub fn history_dir(source_path: &Path, doc_id: &str) -> PathBuf {
     history_root(source_path).join(doc_id)
 }
 
+pub fn mtime_ms(path: &Path) -> Option<i64> {
+    let modified = fs::metadata(path).ok()?.modified().ok()?;
+    let since = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
+    Some(since.as_millis() as i64)
+}
+
 pub fn atomic_write(path: &Path, content: &[u8]) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;

@@ -18,7 +18,7 @@ pub async fn index_fts(
     let source_id = source.id.to_string();
 
     let missing: Vec<(String, String)> = sqlx::query_as(
-        "SELECT id, rel_path FROM documents WHERE source_id = ?1
+        "SELECT id, rel_path FROM documents WHERE source_id = ?1 AND deleted_at IS NULL
          AND rowid NOT IN (SELECT rowid FROM documents_fts)",
     )
     .bind(&source_id)

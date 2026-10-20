@@ -8,7 +8,11 @@ use crate::commands::source_commands::find_source;
 use crate::commands::OpError;
 use crate::services::fs::{atomic_write, clean_location, resolve_in_source, validate_file_name};
 
-fn shrink(bytes: Vec<u8>, ext: String, max_edge: Option<u32>) -> Result<(Vec<u8>, String), OpError> {
+fn shrink(
+    bytes: Vec<u8>,
+    ext: String,
+    max_edge: Option<u32>,
+) -> Result<(Vec<u8>, String), OpError> {
     use image::ImageDecoder;
     let Some(max) = max_edge else {
         return Ok((bytes, ext));
@@ -34,7 +38,8 @@ fn shrink(bytes: Vec<u8>, ext: String, max_edge: Option<u32>) -> Result<(Vec<u8>
     let img = img.resize(max, max, image::imageops::FilterType::Triangle);
     let mut out = std::io::Cursor::new(Vec::new());
     if img.color().has_alpha() {
-        img.write_to(&mut out, image::ImageFormat::Png).map_err(bad)?;
+        img.write_to(&mut out, image::ImageFormat::Png)
+            .map_err(bad)?;
         Ok((out.into_inner(), "png".to_string()))
     } else {
         let enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 85);

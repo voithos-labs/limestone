@@ -2,7 +2,7 @@ use crate::commands::source_commands::{doc_writes_meta, source_root};
 use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
 use crate::services::fs::{
-    atomic_write, history_dir, is_taken, move_file, resolve_in_source, validate_file_name,
+    atomic_write, history_dir, is_taken, move_file, mtime_ms, resolve_in_source, validate_file_name,
 };
 use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
 use crate::AppData;
@@ -12,13 +12,8 @@ use sqlx::SqlitePool;
 use std::path::Path;
 use tauri::{AppHandle, State};
 
-fn mtime(path: &std::path::Path) -> i64 {
-    std::fs::metadata(path)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+fn mtime(path: &Path) -> i64 {
+    mtime_ms(path).unwrap_or(0)
 }
 
 fn fm_tags(fm: Option<&Value>) -> Vec<String> {
@@ -101,7 +96,7 @@ pub async fn write_document(
     contents: String,
     updated_at: i64,
     create: Option<bool>,
-) -> Result<(), OpError> {
+) -> Result<i64, OpError> {
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
 
@@ -164,7 +159,7 @@ pub async fn write_document(
     }
 
     tx.commit().await.map_err(OpError::from)?;
-    Ok(())
+    Ok(mtime)
 }
 
 async fn index_body(
@@ -414,7 +409,7 @@ pub async fn save_document_meta(
     rel_path: String,
     created_at: Option<String>,
     updated_at: Option<String>,
-) -> Result<(), OpError> {
+) -> Result<i64, OpError> {
     if !doc_writes_meta(&app_data.db, &source_id, &rel_path).await? {
         return Err(OpError::new("no_metadata"));
     }
@@ -445,6 +440,7 @@ pub async fn save_document_meta(
 
     let created_ms = created_at.as_deref().and_then(frontmatter::date_ms);
     let updated_ms = updated_at.as_deref().and_then(frontmatter::date_ms);
+    let mtime = mtime(&full_path);
 
     sqlx::query(
         "UPDATE documents
@@ -455,13 +451,13 @@ pub async fn save_document_meta(
     )
     .bind(created_ms)
     .bind(updated_ms)
-    .bind(mtime(&full_path))
+    .bind(mtime)
     .bind(&id)
     .execute(&app_data.db)
     .await
     .map_err(OpError::from)?;
 
-    Ok(())
+    Ok(mtime)
 }
 
 /// moves a doc within or between sources

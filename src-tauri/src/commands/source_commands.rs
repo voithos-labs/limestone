@@ -590,7 +590,10 @@ pub async fn restore_folder(
     let full = resolve_in_source(&root, &rel_dir)
         .map_err(|_| FolderOpError::named("not_found", folder_leaf(&rel_dir)))?;
     if full.exists() {
-        return Err(FolderOpError::named("already_exists", folder_leaf(&rel_dir)));
+        return Err(FolderOpError::named(
+            "already_exists",
+            folder_leaf(&rel_dir),
+        ));
     }
     restore_from_trash(&full)?;
 
@@ -609,7 +612,9 @@ pub async fn restore_folder(
 
 #[cfg(any(windows, target_os = "linux"))]
 fn restore_from_trash(full: &Path) -> Result<(), FolderOpError> {
-    let leaf = full.file_name().ok_or_else(|| FolderOpError::new("not_found"))?;
+    let leaf = full
+        .file_name()
+        .ok_or_else(|| FolderOpError::new("not_found"))?;
     let parent = full
         .parent()
         .and_then(|p| p.canonicalize().ok())
