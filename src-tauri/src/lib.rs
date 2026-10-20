@@ -188,7 +188,10 @@ pub fn run() {
                     use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
                     use windows_core::Interface;
                     let settings = unsafe {
-                        webview.controller().CoreWebView2().and_then(|core| core.Settings())
+                        webview
+                            .controller()
+                            .CoreWebView2()
+                            .and_then(|core| core.Settings())
                     }
                     .and_then(|s| s.cast::<ICoreWebView2Settings3>());
                     if let Ok(settings) = settings {
