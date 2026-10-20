@@ -146,6 +146,24 @@ const RECONCILE_DEBOUNCE_MS = 500;
 const FOCUS_DWELL_MS = 1000;
 const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+const SELF_WRITE_MS = 2000;
+const selfWrites = new Map<string, number>();
+
+export function noteSelfWrite(sourceId: string, relPath: string): void {
+	const now = Date.now();
+	for (const [key, at] of selfWrites) if (now - at >= SELF_WRITE_MS) selfWrites.delete(key);
+	selfWrites.set(`${sourceId}/${relPath}`, now);
+}
+
+function isSelfWrite(e: FsChanged): boolean {
+	const now = Date.now();
+	const prefix = `${e.source_id}/`;
+	const fresh = [...selfWrites]
+		.filter(([key, at]) => now - at < SELF_WRITE_MS && key.startsWith(prefix))
+		.map(([key]) => key.slice(prefix.length));
+	return e.rel_paths.every((p) => fresh.some((f) => f === p || f.startsWith(`${p}/`)));
+}
+
 export function requestReconcile(id: string): void {
 	clearTimeout(reconcileTimers.get(id));
 	reconcileTimers.set(
@@ -162,9 +180,9 @@ async function reconcileAll(): Promise<void> {
 }
 
 export async function startWatching(missingSources: Set<string>): Promise<UnlistenFn> {
-	const unlistenFs = await listen<FsChanged>('fs-changed', (e) =>
-		requestReconcile(e.payload.source_id)
-	);
+	const unlistenFs = await listen<FsChanged>('fs-changed', (e) => {
+		if (!isSelfWrite(e.payload)) requestReconcile(e.payload.source_id);
+	});
 	const unlistenLost = await listen<{ source_id: string }>('watch-lost', (e) =>
 		requestReconcile(e.payload.source_id)
 	);
@@ -205,7 +223,9 @@ export async function startWatching(missingSources: Set<string>): Promise<Unlist
 }
 
 export function onFsChanged(cb: (e: FsChanged) => void): () => void {
-	const unlisten = listen<FsChanged>('fs-changed', (e) => cb(e.payload));
+	const unlisten = listen<FsChanged>('fs-changed', (e) => {
+		if (!isSelfWrite(e.payload)) cb(e.payload);
+	});
 	return () => {
 		unlisten.then((f) => f());
 	};

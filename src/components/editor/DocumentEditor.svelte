@@ -398,7 +398,9 @@
 	// ── Save: edit events, debounced, writing back what the editor serialized ───────────
 
 	const SAVE_DEBOUNCE_MS = 250;
+	const SAVE_RETRY_MS = 1000;
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	let saveRetried = false;
 	// The editor a pending save reads from, so a flush that runs after `instance` is unbound (tab
 	// teardown) still gets the text that was typed.
 	let pendingEditor: EditorInstance | null = null;
@@ -431,11 +433,18 @@
 			.saveContent(body, opts)
 			.then(() => {
 				savedBody = body;
+				saveRetried = false;
 				if (saveProblem && problem === saveProblem) problem = null;
 				saveProblem = null;
 				if (historyOpen && history?.atPresent) void history.load();
 			})
 			.catch((e) => {
+				if (!saveRetried && isRetryable(e)) {
+					saveRetried = true;
+					saveTimer = setTimeout(() => flushSave({ ...opts, body }), SAVE_RETRY_MS);
+					return;
+				}
+				saveRetried = false;
 				saveProblem = reportProblem(e, "This note couldn't be saved.", () => flushSave());
 			})
 			.finally(() => {

@@ -34,7 +34,7 @@ import { addChangeHistory, moveHistory, removeHistory } from '#lib/services/hist
 import { LinkRewriteFailure, rewriteLinksForMove } from '#lib/services/links.svelte.js';
 import { isRetryable, toasts, mark } from '#lib/overlays.svelte.js';
 import { sanitizeSegment } from '#lib/util/paths.js';
-import { creationSource, defaultNoteDir, getSource, type Source } from './Source';
+import { creationSource, defaultNoteDir, getSource, noteSelfWrite, type Source } from './Source';
 import Tag, { tagSlug, type TagRow } from './Tag';
 import Folder from './Folder';
 
@@ -476,6 +476,7 @@ class DocHandle {
 			updatedAt: this.updatedAt.getTime(),
 			create: !this.hasFile
 		});
+		noteSelfWrite(this.source.id, this._relPath);
 		this.hasFile = true;
 		this.idOnDisk = DocHandle.deserialize(contents).frontmatter?.id === this.id;
 		this.recordHistory(body);
@@ -661,6 +662,7 @@ class DocHandle {
 			createdAt: meta.createdAt ? meta.createdAt.toISOString() : null,
 			updatedAt: meta.updatedAt ? meta.updatedAt.toISOString() : null
 		});
+		noteSelfWrite(this.source.id, this._relPath);
 		if (meta.createdAt) this.createdAt = meta.createdAt;
 		if (meta.updatedAt) this.updatedAt = meta.updatedAt;
 	}
