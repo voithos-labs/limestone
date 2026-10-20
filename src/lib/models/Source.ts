@@ -111,9 +111,15 @@ export async function updateSourcePath(id: string, path: string): Promise<void> 
 	requestReconcile(id);
 }
 
+export interface FsChange {
+	rel_path: string;
+	mtime: number | null;
+	is_dir: boolean;
+}
+
 export interface FsChanged {
 	source_id: string;
-	rel_paths: string[];
+	changes: FsChange[];
 }
 
 export async function reconcileSource(id: string): Promise<void> {
@@ -146,22 +152,17 @@ const RECONCILE_DEBOUNCE_MS = 500;
 const FOCUS_DWELL_MS = 1000;
 const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-const SELF_WRITE_MS = 2000;
 const selfWrites = new Map<string, number>();
 
-export function noteSelfWrite(sourceId: string, relPath: string): void {
-	const now = Date.now();
-	for (const [key, at] of selfWrites) if (now - at >= SELF_WRITE_MS) selfWrites.delete(key);
-	selfWrites.set(`${sourceId}/${relPath}`, now);
+export function noteSelfWrite(sourceId: string, relPath: string, mtime: number): void {
+	selfWrites.set(`${sourceId}/${relPath}`, mtime);
 }
 
 function isSelfWrite(e: FsChanged): boolean {
-	const now = Date.now();
-	const prefix = `${e.source_id}/`;
-	const fresh = [...selfWrites]
-		.filter(([key, at]) => now - at < SELF_WRITE_MS && key.startsWith(prefix))
-		.map(([key]) => key.slice(prefix.length));
-	return e.rel_paths.every((p) => fresh.some((f) => f === p || f.startsWith(`${p}/`)));
+	return e.changes.every(
+		(c) =>
+			c.is_dir || (c.mtime !== null && selfWrites.get(`${e.source_id}/${c.rel_path}`) === c.mtime)
+	);
 }
 
 export function requestReconcile(id: string): void {
@@ -236,7 +237,7 @@ export function onDocChanged(
 	cb: () => void
 ): () => void {
 	return onFsChanged((e) => {
-		if (e.source_id === doc.source.id && e.rel_paths.includes(doc.relPath)) cb();
+		if (e.source_id === doc.source.id && e.changes.some((c) => c.rel_path === doc.relPath)) cb();
 	});
 }
 

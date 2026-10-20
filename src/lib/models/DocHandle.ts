@@ -469,14 +469,14 @@ class DocHandle {
 		await this.refreshMetaFromDisk(); // this is hmm possibly not needed
 		this.updatedAt = new Date();
 		const contents = await this.serialize(body, opts.rebuildFrontmatter);
-		await invoke('write_document', {
+		const mtime = await invoke<number>('write_document', {
 			sourceId: this.source.id,
 			relPath: this._relPath,
 			contents,
 			updatedAt: this.updatedAt.getTime(),
 			create: !this.hasFile
 		});
-		noteSelfWrite(this.source.id, this._relPath);
+		noteSelfWrite(this.source.id, this._relPath, mtime);
 		this.hasFile = true;
 		this.idOnDisk = DocHandle.deserialize(contents).frontmatter?.id === this.id;
 		this.recordHistory(body);
@@ -655,14 +655,14 @@ class DocHandle {
 	 */
 	async saveMeta(meta: { createdAt?: Date; updatedAt?: Date }): Promise<void> {
 		await this.ensureFile();
-		await invoke('save_document_meta', {
+		const mtime = await invoke<number>('save_document_meta', {
 			id: this.id,
 			sourceId: this.source.id,
 			relPath: this._relPath,
 			createdAt: meta.createdAt ? meta.createdAt.toISOString() : null,
 			updatedAt: meta.updatedAt ? meta.updatedAt.toISOString() : null
 		});
-		noteSelfWrite(this.source.id, this._relPath);
+		noteSelfWrite(this.source.id, this._relPath, mtime);
 		if (meta.createdAt) this.createdAt = meta.createdAt;
 		if (meta.updatedAt) this.updatedAt = meta.updatedAt;
 	}

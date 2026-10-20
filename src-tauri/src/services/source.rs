@@ -35,7 +35,7 @@
 
 use crate::services::body::fold_tag;
 use crate::services::frontmatter;
-use crate::services::fs::{atomic_write, clean_location};
+use crate::services::fs::{atomic_write, clean_location, mtime_ms};
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -704,12 +704,7 @@ fn fs_birth_ms(path: &Path, fallback_mtime: i64) -> i64 {
 }
 
 fn fs_mtime_ms(path: &Path) -> i64 {
-    fs::metadata(path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    mtime_ms(path).unwrap_or(0)
 }
 
 fn fm_tags(fm: Option<&serde_json::Value>) -> Vec<String> {
