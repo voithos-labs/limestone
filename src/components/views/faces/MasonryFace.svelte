@@ -14,7 +14,9 @@
 		onOpenRow,
 		createSignal = 0,
 		scope = null,
-		editable = true
+		editable = true,
+		moveable = false,
+		onTotal
 	}: {
 		view: View;
 		face: ViewFace;
@@ -22,6 +24,8 @@
 		createSignal?: number;
 		scope?: FilterNode | null;
 		editable?: boolean;
+		moveable?: boolean;
+		onTotal?: (n: number) => void;
 	} = $props();
 
 	const rows = new FaceRows(
@@ -30,6 +34,10 @@
 		() => scope
 	);
 	let editors: RowEditors = $state()!;
+
+	$effect(() => {
+		if (!rows.loading) onTotal?.(rows.total);
+	});
 
 	const checkField = $derived(rows.checkField);
 	const lanes = $derived(rows.lanes);
@@ -191,6 +199,7 @@
 						inline={lanes.inline}
 						meta={lanes.meta}
 						editMode={editable}
+						{moveable}
 						preview={face.config.no_preview ? undefined : previews[row.id]}
 						body="flow"
 						onOpen={onOpenRow}

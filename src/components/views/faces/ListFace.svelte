@@ -869,7 +869,7 @@
 
 {#snippet groupTitle(g: { key: string; label: string })}
 	{#if groupField && groupField.type === 'select' && g.key}
-		<Pill field={groupField} value={g.key} />
+		<Pill field={groupField} value={g.key} filled />
 	{:else}
 		<span class="group-title">{g.label}</span>
 	{/if}
@@ -1066,7 +1066,7 @@
 									<StatusIcon
 										kind={statusKind(checkField, sv)}
 										color={statusColor(checkField, sv)}
-										size={18}
+										size={16}
 									/>
 								</button>
 							{:else if checkField && member && rows.writable(row)}
@@ -1291,7 +1291,7 @@
 	}
 
 	.slotted + .group .group-head {
-		margin-top: 6px;
+		margin-top: 12px;
 	}
 
 	.group-title {

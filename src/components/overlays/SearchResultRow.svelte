@@ -2,7 +2,8 @@
 	import type { SearchResult } from '#lib/services/search.js';
 	import { sourceName, type Source } from '#lib/models/Source.js';
 	import { highlightTitle, highlightSnippet } from '#lib/util/dom.js';
-	import { Folder, FolderInput, Hash, TextAlignStart, Box, Check, Trash2 } from '@lucide/svelte';
+	import { Folder, FolderInput, TextAlignStart, Box, Check, Trash2 } from '@lucide/svelte';
+	import { tagIcon } from '#lib/views/filterDisplay.js';
 	import { DELETED } from '#lib/models/View.svelte.js';
 
 	let {
@@ -48,7 +49,8 @@
 				{#if result.group_type === 'folder'}
 					<Folder size={14} />
 				{:else}
-					<Hash size={14} />
+					{@const TagIcon = tagIcon(result.id)}
+					<TagIcon size={14} />
 				{/if}
 			{:else}
 				<TextAlignStart size={14} />

@@ -45,6 +45,7 @@
 	import DocFace from '../views/faces/DocFace.svelte';
 	import { DocPicker } from '#lib/views/project.svelte.js';
 	import { convertFileSrc } from '@tauri-apps/api/core';
+	import { parseCover } from '#lib/models/View.svelte.js';
 	import { getSource } from '#lib/models/Source.js';
 	import Menu from '../ui/Menu.svelte';
 	import CoverSourceDialog from '../dialogs/CoverSourceDialog.svelte';
@@ -66,7 +67,9 @@
 		FileLock,
 		FilePen,
 		Settings,
-		SquareCheck
+		SquareCheck,
+		Eye,
+		EyeOff
 	} from '@lucide/svelte';
 	import NewFab from '../views/NewFab.svelte';
 	import { createInView } from '#lib/views/FaceRows.svelte.js';
@@ -184,21 +187,6 @@
 
 	// a journal's card body makes the note itself, so it lands on the day being read
 	let createSignal = $state(0);
-
-	function parseCover(cover: string) {
-		const [ref, q] = cover.split('?');
-		const p = new URLSearchParams(q ?? '');
-		const num = (k: string, d: number) => {
-			const v = parseFloat(p.get(k) ?? '');
-			return Number.isFinite(v) ? v : d;
-		};
-		return {
-			ref,
-			x: Math.min(100, Math.max(0, num('x', 50))),
-			y: Math.min(100, Math.max(0, num('y', 50))),
-			z: Math.max(1, num('z', 1))
-		};
-	}
 
 	function buildCover(ref: string, x: number, y: number, z: number) {
 		const parts: string[] = [];
@@ -436,6 +424,7 @@
 
 	function removeCover() {
 		view.cover = '';
+		view.coverHidden = false;
 		cropping = false;
 	}
 
@@ -586,15 +575,11 @@
 
 	const moreItems = $derived.by(() => {
 		const items: MenuEntry[] = [];
-		const cover: MenuEntry[] = view.cover
-			? []
-			: [{ value: 'add-cover', label: 'Add cover', icon: ImageUp }];
-		const builtin = !!view.unit && isBuiltinUnit(view.unit);
-		if (builtin) {
-			items.push({ value: 'new-note', label: 'New note', icon: FilePlus });
-			items.push(...cover);
-			return items;
-		}
+		const cover: MenuEntry[] = !view.cover
+			? [{ value: 'add-cover', label: 'Add cover', icon: ImageUp }]
+			: view.coverHidden
+				? [{ value: 'show-cover', label: 'Show cover', icon: Eye }]
+				: [];
 		if (unitKind) {
 			// making things is the fab's job; in a project this menu holds the place underneath
 			// and the project on top of it, so the place gets named
@@ -759,6 +744,7 @@
 		}
 		moreOpen = false;
 		if (value === 'add-cover') pickCover();
+		if (value === 'show-cover') view.coverHidden = false;
 		if (value === 'duplicate') duplicateView();
 		if (value === 'confirm-delete') unitKind ? deleteUnit() : deleteView();
 		if (value === 'new-note') newNote();
@@ -816,7 +802,7 @@
 			onscroll={bodyScroll}
 		>
 			<div class="view-top">
-				{#if view.cover}
+				{#if view.cover && !view.coverHidden}
 					<div
 						class="view-cover"
 						class:cropping
@@ -860,6 +846,14 @@
 								<button class="cover-btn" type="button" title="Replace" onclick={pickCover}>
 									<ImageUp size={14} />
 								</button>
+								<button
+									class="cover-btn"
+									type="button"
+									title="Hide on this page"
+									onclick={() => (view.coverHidden = true)}
+								>
+									<EyeOff size={14} />
+								</button>
 								<button class="cover-btn" type="button" title="Remove" onclick={removeCover}>
 									<X size={14} />
 								</button>
@@ -868,12 +862,12 @@
 					</div>
 				{/if}
 
-				<div class="view-chrome" class:has-cover={!!view.cover}>
+				<div class="view-chrome" class:has-cover={!!view.cover && !view.coverHidden}>
 					<ViewHeader
 						bind:this={header}
 						{view}
 						{titleProblem}
-						hasCover={!!view.cover}
+						hasCover={!!view.cover && !view.coverHidden}
 						{docPicker}
 						onOpenNewTab={(id, name) => onOpenUnit(id, name, true)}
 						onMore={(anchor) => {
@@ -1010,13 +1004,13 @@
 	/* a project page's column: the cover, header and faces share it; a document inside keeps
        its own reading width */
 	.view-top {
-		max-width: var(--view-max-width, 1200px);
+		max-width: var(--view-max-width, 1000px);
 		margin: 0 auto;
 		padding: 16px 24px 0;
 	}
 
 	.view-inner {
-		max-width: var(--view-max-width, 1200px);
+		max-width: var(--view-max-width, 1000px);
 		margin: 0 auto;
 		padding: 0 24px 72px;
 	}

@@ -502,6 +502,7 @@
 							onChanged={loadFolders}
 							bind:showAll={foldersShowAll}
 							onHidden={(n) => (foldersHidden = n)}
+							owner={view.id}
 						/>
 					</div>
 				{:else if sec.id === 'todo'}

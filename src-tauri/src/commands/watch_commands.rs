@@ -7,6 +7,8 @@ use notify::RecommendedWatcher;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 use tauri::{AppHandle, Emitter, State};
 
+use crate::services::fs::mtime_ms;
+
 #[derive(Default)]
 pub struct Watchers(Mutex<HashMap<String, (PathBuf, Debouncer<RecommendedWatcher>)>>);
 
@@ -17,9 +19,16 @@ pub struct WatchTarget {
 }
 
 #[derive(Clone, serde::Serialize)]
+struct FsChange {
+    rel_path: String,
+    mtime: Option<i64>,
+    is_dir: bool,
+}
+
+#[derive(Clone, serde::Serialize)]
 struct FsChanged<'a> {
     source_id: &'a str,
-    rel_paths: &'a [String],
+    changes: &'a [FsChange],
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -48,22 +57,32 @@ fn watch(
                     return;
                 }
             };
-            let mut rel_paths: Vec<String> = events
+            let changes: Vec<FsChange> = events
                 .iter()
-                .filter_map(|e| e.path.strip_prefix(&handler_root).ok())
-                .map(|rel| rel.to_string_lossy().replace('\\', "/"))
-                .filter(|rel| !rel.is_empty() && !rel.split('/').any(|c| c.starts_with('.')))
+                .filter_map(|e| {
+                    let rel = e.path.strip_prefix(&handler_root).ok()?;
+                    let rel = rel.to_string_lossy().replace('\\', "/");
+                    (!rel.is_empty() && !rel.split('/').any(|c| c.starts_with('.'))).then_some(rel)
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .map(|rel_path| {
+                    let full = handler_root.join(&rel_path);
+                    FsChange {
+                        mtime: mtime_ms(&full),
+                        is_dir: full.is_dir(),
+                        rel_path,
+                    }
+                })
                 .collect();
-            rel_paths.sort();
-            rel_paths.dedup();
-            if rel_paths.is_empty() {
+            if changes.is_empty() {
                 return;
             }
             let _ = app.emit(
                 "fs-changed",
                 FsChanged {
                     source_id: &source_id,
-                    rel_paths: &rel_paths,
+                    changes: &changes,
                 },
             );
         },

@@ -398,7 +398,9 @@
 	// ── Save: edit events, debounced, writing back what the editor serialized ───────────
 
 	const SAVE_DEBOUNCE_MS = 250;
+	const SAVE_RETRY_MS = 1000;
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	let saveRetried = false;
 	// The editor a pending save reads from, so a flush that runs after `instance` is unbound (tab
 	// teardown) still gets the text that was typed.
 	let pendingEditor: EditorInstance | null = null;
@@ -431,11 +433,18 @@
 			.saveContent(body, opts)
 			.then(() => {
 				savedBody = body;
+				saveRetried = false;
 				if (saveProblem && problem === saveProblem) problem = null;
 				saveProblem = null;
 				if (historyOpen && history?.atPresent) void history.load();
 			})
 			.catch((e) => {
+				if (!saveRetried && isRetryable(e)) {
+					saveRetried = true;
+					saveTimer = setTimeout(() => flushSave({ ...opts, body }), SAVE_RETRY_MS);
+					return;
+				}
+				saveRetried = false;
 				saveProblem = reportProblem(e, "This note couldn't be saved.", () => flushSave());
 			})
 			.finally(() => {
@@ -511,7 +520,7 @@
 	// ── Per-tab state ───────────────────────────────────────────────────────────────────
 
 	// Persisted on the tab, so a doc reopens with its properties panel as you left it
-	let propsOpen = $state(untrack(() => tab.state.props_open ?? false));
+	let propsOpen = $state(untrack(() => tab.state.props_open ?? true));
 	$effect(() => {
 		tab.state.props_open = propsOpen;
 	});
@@ -862,6 +871,10 @@
 		if (!hasCaret && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
 	}
 
+	function focusStart() {
+		void instance?.setSelection(DOCUMENT_START);
+	}
+
 	async function restore() {
 		// The old editor's `cursorPos`/`scrollTop` tab keys are ignored: they measure a flat
 		// character offset and a scroller with the header outside it, neither of which exists here.
@@ -1138,6 +1151,7 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onEnter={focusStart}
 			onError={reportProblem}
 		/>
 		{@render docNotices()}
@@ -1198,6 +1212,7 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onEnter={focusStart}
 			onError={reportProblem}
 		/>
 		{@render docNotices()}

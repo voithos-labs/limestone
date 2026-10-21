@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Square, Hash } from '@lucide/svelte';
+	import { Square } from '@lucide/svelte';
+	import { tagIcon } from '#lib/views/filterDisplay.js';
 	import type { ViewField, MemberRow } from '#lib/models/View.svelte.js';
 	import { isBuiltinUnit, isStatusField } from '#lib/models/View.svelte.js';
 	import { statusOf } from '#lib/views/fieldValue.js';
@@ -49,8 +50,9 @@
 {:else if field.type === 'tags'}
 	{#if tags.length}
 		<span class="pills">
-			{#each tags as t (t)}<span class="tag" class:builtin={isBuiltinUnit(`tag:${t}`)}
-					><Hash size={11} />{t}</span
+			{#each tags as t (t)}{@const TagIcon = tagIcon(t)}<span
+					class="tag"
+					class:builtin={isBuiltinUnit(`tag:${t}`)}><TagIcon size={11} />{t}</span
 				>{/each}
 		</span>
 	{:else}<span class="muted">—</span>{/if}

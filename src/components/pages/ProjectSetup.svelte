@@ -9,10 +9,10 @@
 		FileText,
 		Folder as FolderIcon,
 		FolderInput,
-		Hash,
 		ChevronDown,
 		Globe
 	} from '@lucide/svelte';
+	import { getUnitIcon } from '#lib/views/filterDisplay.js';
 	import type { Component } from 'svelte';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import { TabState } from '#lib/models/EditorState.svelte.js';
@@ -35,9 +35,7 @@
 	const unitKind = $derived(
 		!unitId ? null : unitId.startsWith('tag:') ? 'tag' : isSourceRoot(unitId) ? 'source' : 'folder'
 	);
-	const UnitIcon = $derived(
-		unitKind === 'tag' ? Hash : unitKind === 'source' ? FolderInput : FolderIcon
-	);
+	const UnitIcon = $derived(unitId ? getUnitIcon(unitId) : FolderIcon);
 
 	// ── The new-project inputs ────────────────────────────────────────────────
 	let name = $state('');

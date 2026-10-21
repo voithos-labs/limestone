@@ -111,9 +111,15 @@ export async function updateSourcePath(id: string, path: string): Promise<void> 
 	requestReconcile(id);
 }
 
+export interface FsChange {
+	rel_path: string;
+	mtime: number | null;
+	is_dir: boolean;
+}
+
 export interface FsChanged {
 	source_id: string;
-	rel_paths: string[];
+	changes: FsChange[];
 }
 
 export async function reconcileSource(id: string): Promise<void> {
@@ -146,6 +152,19 @@ const RECONCILE_DEBOUNCE_MS = 500;
 const FOCUS_DWELL_MS = 1000;
 const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+const selfWrites = new Map<string, number>();
+
+export function noteSelfWrite(sourceId: string, relPath: string, mtime: number): void {
+	selfWrites.set(`${sourceId}/${relPath}`, mtime);
+}
+
+function isSelfWrite(e: FsChanged): boolean {
+	return e.changes.every(
+		(c) =>
+			c.is_dir || (c.mtime !== null && selfWrites.get(`${e.source_id}/${c.rel_path}`) === c.mtime)
+	);
+}
+
 export function requestReconcile(id: string): void {
 	clearTimeout(reconcileTimers.get(id));
 	reconcileTimers.set(
@@ -162,9 +181,9 @@ async function reconcileAll(): Promise<void> {
 }
 
 export async function startWatching(missingSources: Set<string>): Promise<UnlistenFn> {
-	const unlistenFs = await listen<FsChanged>('fs-changed', (e) =>
-		requestReconcile(e.payload.source_id)
-	);
+	const unlistenFs = await listen<FsChanged>('fs-changed', (e) => {
+		if (!isSelfWrite(e.payload)) requestReconcile(e.payload.source_id);
+	});
 	const unlistenLost = await listen<{ source_id: string }>('watch-lost', (e) =>
 		requestReconcile(e.payload.source_id)
 	);
@@ -205,7 +224,9 @@ export async function startWatching(missingSources: Set<string>): Promise<Unlist
 }
 
 export function onFsChanged(cb: (e: FsChanged) => void): () => void {
-	const unlisten = listen<FsChanged>('fs-changed', (e) => cb(e.payload));
+	const unlisten = listen<FsChanged>('fs-changed', (e) => {
+		if (!isSelfWrite(e.payload)) cb(e.payload);
+	});
 	return () => {
 		unlisten.then((f) => f());
 	};
@@ -216,7 +237,7 @@ export function onDocChanged(
 	cb: () => void
 ): () => void {
 	return onFsChanged((e) => {
-		if (e.source_id === doc.source.id && e.rel_paths.includes(doc.relPath)) cb();
+		if (e.source_id === doc.source.id && e.changes.some((c) => c.rel_path === doc.relPath)) cb();
 	});
 }
 
