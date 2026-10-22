@@ -12,6 +12,7 @@ This file is generated. To refresh it, run: npm run notices
 
 Rust crates:   581
 npm packages:  149
+Vendored:      1
 License texts: 95
 
 ==============================================================================
@@ -4342,6 +4343,16 @@ zimmerframe 1.1.4
   License: MIT
   Source:  https://github.com/sveltejs/zimmerframe
   Copyright (c) 2023 [these people](https://github.com/Rich-Harris/zimmerframe/graphs/contributors)
+  Full text: [L-750260c3]
+
+==============================================================================
+VENDORED ASSETS
+==============================================================================
+
+bootstrap-icons filetype-pdf
+  License: MIT
+  Source:  https://github.com/twbs/icons
+  Copyright (c) 2019-2024 The Bootstrap Authors
   Full text: [L-750260c3]
 
 ==============================================================================
