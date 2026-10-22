@@ -167,7 +167,11 @@
 			{:else if Icon}
 				<span class="ctx-icon"><Icon size={14} strokeWidth={1.75} /></span>
 			{/if}
-			<span class="ctx-label">{entry.label}</span>
+			{#if entry.pill !== undefined}
+				<span class="ctx-pill tag-c{entry.pill}">{entry.label}</span>
+			{:else}
+				<span class="ctx-label">{entry.label}</span>
+			{/if}
 			{#if entry.children}
 				<span class="ctx-more"><ChevronRight size={13} strokeWidth={2} /></span>
 			{:else if entry.checked}
@@ -189,6 +193,21 @@
 				</span>
 			{/if}
 		</button>
+	{:else if 'swatches' in entry}
+		<div class="ctx-swatches">
+			{#each Array(16) as _, c}
+				<button
+					class="swatch tag-c{c}"
+					class:active={entry.swatches.active === c}
+					type="button"
+					aria-label="Color {c}"
+					onclick={() => {
+						contextMenu.close();
+						entry.swatches.pick(c);
+					}}
+				></button>
+			{/each}
+		</div>
 	{:else if entry.label}
 		<div class="ctx-group">{entry.label}</div>
 	{:else}
@@ -293,6 +312,41 @@
 	.ctx-aux:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
+	}
+
+	.ctx-pill {
+		display: inline-flex;
+		align-items: center;
+		max-width: 180px;
+		padding: 1px 8px;
+		border-radius: 4px;
+		font-size: 11px;
+		line-height: 1.55;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
+		color: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-fg-l, 30%));
+	}
+
+	.ctx-swatches {
+		display: grid;
+		grid-template-columns: repeat(8, 18px);
+		gap: 5px;
+		padding: 4px 6px;
+	}
+
+	.swatch {
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: 1.5px solid transparent;
+		border-radius: 5px;
+		cursor: pointer;
+		background: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
+	}
+
+	.swatch.active {
+		border-color: var(--color-text-primary);
 	}
 
 	.ctx-group {

@@ -51,6 +51,7 @@ create table if not exists folders (
     parent_id text references folders(id) on delete cascade,
     repo integer not null default 0,
     writes_meta integer not null default 1,
+    view integer not null default 0,
     created_at integer not null default (unixepoch() * 1000),
     updated_at integer not null default (unixepoch() * 1000),
     accessed_at integer not null default (unixepoch() * 1000)
@@ -62,6 +63,12 @@ create table if not exists document_tags (
     primary key (document_id, tag_id)
 ) strict;
 
+create table if not exists asset_refs (
+    document_id text not null references documents(id) on delete cascade,
+    rel_path text not null,
+    primary key (document_id, rel_path)
+) strict;
+
 
 -- FTS --
 create virtual table if not exists documents_fts using fts5(doc_id unindexed, body);
@@ -69,12 +76,13 @@ create virtual table if not exists documents_fts using fts5(doc_id unindexed, bo
 -- ── Indexes ──────────────────────────────────────────────────────────────────────────
 
 create index if not exists idx_documents_source on documents(source_id);
-create unique index if not exists idx_documents_rel_path on documents(source_id, rel_path);
+create unique index if not exists idx_documents_rel_path on documents(source_id, rel_path) where deleted_at is null;
 create index if not exists idx_documents_updated_at on documents(updated_at);
 create index if not exists idx_documents_folder on documents(folder_id);
 create index if not exists idx_folders_source on folders(source_id);
 create index if not exists idx_folders_parent on folders(parent_id);
 create index if not exists idx_document_tags_tag on document_tags(tag_id);
+create index if not exists idx_asset_refs_path on asset_refs(rel_path);
 
 -- ── Restrictions ─────────────────────────────────────────────────────────────────────
 

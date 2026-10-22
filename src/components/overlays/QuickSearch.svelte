@@ -12,7 +12,7 @@
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 	import Tag from '#lib/models/Tag.js';
 	import Folder, { folderId, folderIdSource } from '#lib/models/Folder.js';
-	import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import View, { DELETED, listSavedViewJSON } from '#lib/models/View.svelte.js';
 	import { searchDocuments } from '#lib/services/search.js';
 	import SearchResultRow from './SearchResultRow.svelte';
 	import { Search, X } from '@lucide/svelte';
@@ -99,7 +99,23 @@
 			}));
 		const projectUnits = new Set(savedViews.map((v) => v.unit).filter((u): u is string => !!u));
 		if (q !== query) return;
+		const deletedPlace: SearchResult[] =
+			'deleted'.startsWith(ql) || 'trash'.startsWith(ql)
+				? [
+						{
+							id: DELETED,
+							title: 'Deleted',
+							rel_path: null,
+							source_id: null,
+							score: 0,
+							match_indices: [],
+							kind: 'view' as const,
+							group_type: null
+						}
+					]
+				: [];
 		results = [
+			...deletedPlace,
 			...viewResults,
 			...docResults.filter((r) => !(r.kind === 'group' && projectUnits.has(r.id)))
 		].slice(0, 25);
@@ -107,6 +123,15 @@
 	}
 
 	async function openResult(result: SearchResult) {
+		if (result.kind === 'view' && result.id === DELETED) {
+			const existing = findViewTabByUnit(DELETED);
+			if (existing) {
+				editor.focusTab({ kind: 'tab', id: existing.id });
+				return;
+			}
+			openInTab(TabState.forView(await View.forUnit(DELETED, 'Deleted')));
+			return;
+		}
 		if (result.kind === 'view') {
 			const existing = editor.tabs.find(
 				(t) => t.content.type === 'view' && t.content.view.id === result.id

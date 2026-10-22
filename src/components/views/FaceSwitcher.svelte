@@ -5,9 +5,7 @@
 		ChevronDown,
 		Columns3,
 		List,
-		Layers,
 		Rows3,
-		Tags,
 		Pencil,
 		Copy,
 		Trash2,
@@ -22,13 +20,15 @@
 		ScanLine,
 		Pin,
 		ScanBarcode,
-		ChevronRight
+		ChevronRight,
+		Funnel,
+		EyeOff
 	} from '@lucide/svelte';
 	import type View from '#lib/models/View.svelte.js';
 	import type { ViewFace, ViewFaceType, ViewField, FilterNode } from '#lib/models/View.svelte.js';
 	import { isStatusField } from '#lib/models/View.svelte.js';
-	import type { MenuEntry } from '#lib/overlays.svelte.js';
-	import { getFaceIcon, getFieldIcon } from '#lib/views/filterDisplay.js';
+	import { isMenuItem, type MenuEntry } from '#lib/overlays.svelte.js';
+	import { getFaceIcon, getFieldIcon, fieldMenuEntries } from '#lib/views/filterDisplay.js';
 	import { fieldLabel } from '#lib/views/fieldValue.js';
 	import Menu from '../ui/Menu.svelte';
 	import { dashboardSections, DASH_SECTION_LABEL } from '#lib/views/project.svelte.js';
@@ -52,9 +52,6 @@
 	let renameDraft = $state('');
 	let renameInput: HTMLInputElement | null = $state(null);
 
-	let groupEl: HTMLButtonElement | null = $state(null);
-	let groupOpen = $state(false);
-
 	// ── Journal (compound face) ──────────────────────────────────────────────
 	let bodyEl: HTMLButtonElement | null = $state(null);
 	let bodyOpen = $state(false);
@@ -77,15 +74,13 @@
 	let dateFieldOpen = $state(false);
 
 	const dateFieldKey = $derived((face.config.date_field as string) ?? 'created_at');
-	const dateFieldItems = $derived([
+	const dateFieldItems = $derived.by((): MenuEntry[] => [
 		{ value: 'created_at', label: 'Created', icon: getFieldIcon('created_at') },
 		{ value: 'updated_at', label: 'Updated', icon: getFieldIcon('updated_at') },
-		...view.fields
-			.filter((f: ViewField) => f.type === 'date')
-			.map((f: ViewField) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }))
+		...fieldMenuEntries(view.fields.filter((f: ViewField) => f.type === 'date'))
 	]);
 	const dateFieldLabel = $derived(
-		dateFieldItems.find((i) => i.value === dateFieldKey)?.label ?? 'Created'
+		dateFieldItems.filter(isMenuItem).find((i) => i.value === dateFieldKey)?.label ?? 'Created'
 	);
 
 	function setDateField(v: string) {
@@ -122,32 +117,6 @@
 		face.config.show_activity = !showActivity;
 	}
 
-	const groupable = $derived(
-		view.fields.filter(
-			(f: ViewField) =>
-				f.type === 'select' ||
-				f.type === 'multiselect' ||
-				f.type === 'boolean' ||
-				f.type === 'folder'
-		)
-	);
-	const groupById = $derived((target.config.group_by ?? null) as string | null);
-	const groupLabel = $derived.by(() => {
-		if (!groupById) return 'None';
-		const f = view.fields.find((ff) => ff.id === groupById);
-		return f ? fieldLabel(f) : 'None';
-	});
-
-	// a board's columns come from a select or a boolean; a list groups by anything, or nothing
-	const groupItems = $derived.by(() => {
-		const fields = (
-			target.type === 'kanban'
-				? groupable.filter((f: ViewField) => f.type === 'select' || f.type === 'boolean')
-				: groupable
-		).map((f: ViewField) => ({ value: f.id, label: fieldLabel(f), icon: getFieldIcon(f.type) }));
-		return target.type === 'kanban' ? fields : [{ value: '', label: 'None' }, ...fields];
-	});
-
 	let closeOnSwapLeave = false;
 
 	function selectFace(id: string) {
@@ -159,7 +128,7 @@
 	function onPopLeave() {
 		if (dragId) return;
 		if (!closeOnSwapLeave) return;
-		if (groupOpen || addFaceOpen || renamingId || confirmFor) return;
+		if (quickOpen || addFaceOpen || renamingId || confirmFor) return;
 		if (bodyOpen || dateFieldOpen) return;
 		open = false;
 	}
@@ -303,9 +272,26 @@
 		f.name = next;
 	}
 
-	function setGroup(id: string) {
-		target.config.group_by = id || null;
-		groupOpen = false;
+	let quickEl: HTMLButtonElement | null = $state(null);
+	let quickOpen = $state(false);
+	const quickable = $derived(
+		view.fields.filter(
+			(f: ViewField) => f.type === 'tags' || f.type === 'select' || f.type === 'boolean'
+		)
+	);
+	const quickId = $derived((target.config.quick_filter ?? null) as string | null);
+	const quickLabel = $derived.by(() => {
+		const f = quickId ? view.fields.find((ff) => ff.id === quickId) : null;
+		return f ? fieldLabel(f) : 'Hidden';
+	});
+	const quickItems = $derived.by((): MenuEntry[] => [
+		{ value: '', label: 'Hidden', icon: EyeOff },
+		...fieldMenuEntries(quickable)
+	]);
+	function setQuick(id: string) {
+		target.config.quick_filter = id || undefined;
+		view.state.quick_value = null;
+		quickOpen = false;
 	}
 
 	function position() {
@@ -332,7 +318,7 @@
 		return (
 			addFaceOpen ||
 			sectionsOpen ||
-			groupOpen ||
+			quickOpen ||
 			bodyOpen ||
 			dateFieldOpen ||
 			!!renamingId ||
@@ -386,7 +372,7 @@
 			untrack(() => {
 				confirmFor = null;
 				renamingId = null;
-				groupOpen = false;
+				quickOpen = false;
 				addFaceOpen = false;
 				sectionsOpen = false;
 				closeOnSwapLeave = false;
@@ -553,16 +539,6 @@
 				class="action group-toggle"
 				type="button"
 				data-nav
-				onclick={() => (target.config.hide_chips = !target.config.hide_chips)}
-			>
-				<Tags size={14} strokeWidth={1.75} />
-				<span>Quick filters</span>
-				<span class="trailing">{target.config.hide_chips ? 'Off' : 'On'}</span>
-			</button>
-			<button
-				class="action group-toggle"
-				type="button"
-				data-nav
 				data-flyout
 				bind:this={sectionsEl}
 				onclick={() => (sectionsOpen = !sectionsOpen)}
@@ -574,23 +550,18 @@
 			</button>
 		{/if}
 
-		{#if target.type === 'list' || target.type === 'kanban'}
+		{#if target.type !== 'journal' && target.type !== 'doc'}
 			<button
 				class="action group-toggle"
 				type="button"
 				data-nav
 				data-flyout
-				bind:this={groupEl}
-				onclick={() => (groupOpen = !groupOpen)}
+				bind:this={quickEl}
+				onclick={() => (quickOpen = !quickOpen)}
 			>
-				{#if target.type === 'kanban'}
-					<Columns3 size={14} strokeWidth={1.75} />
-					<span>Columns</span>
-				{:else}
-					<Layers size={14} strokeWidth={1.75} />
-					<span>Group by</span>
-				{/if}
-				<span class="trailing">{groupLabel}</span>
+				<Funnel size={14} strokeWidth={1.75} />
+				<span>Quick filter</span>
+				<span class="trailing">{quickLabel}</span>
 				<ChevronRight size={13} strokeWidth={2} />
 			</button>
 		{/if}
@@ -659,13 +630,13 @@
 		/>
 	{/if}
 
-	{#if target.type === 'list' || target.type === 'kanban'}
+	{#if target.type !== 'journal' && target.type !== 'doc'}
 		<Menu
-			bind:open={groupOpen}
-			anchor={groupEl}
-			items={groupItems}
-			selected={groupById ?? ''}
-			onSelect={setGroup}
+			bind:open={quickOpen}
+			anchor={quickEl}
+			items={quickItems}
+			selected={quickId ?? ''}
+			onSelect={setQuick}
 			minWidth={170}
 			placement="right"
 		/>

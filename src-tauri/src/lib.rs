@@ -2,14 +2,14 @@ use serde::Serialize;
 use serde_json::Value;
 use sqlx::{AssertSqlSafe, SqlitePool};
 use std::sync::RwLock;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri_plugin_fs::FsExt;
 
 mod commands;
 mod services;
 
 const SCHEMA: &str = include_str!("../sql/schema.sql");
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 7;
 
 pub async fn create_pool(
     path: &std::path::Path,
@@ -25,6 +25,7 @@ pub async fn create_pool(
         // rebuild db on schema version change
         sqlx::raw_sql(
             "DROP TABLE IF EXISTS documents_fts;
+             DROP TABLE IF EXISTS asset_refs;
              DROP TABLE IF EXISTS document_tags;
              DROP TABLE IF EXISTS document_groups;
              DROP TABLE IF EXISTS documents;
@@ -135,14 +136,7 @@ pub fn run() {
             });
 
             // Load sources
-            let sources_path = global_data_path.join("sources.json");
-            let sources = services::JsonSettingsStore {
-                path: sources_path,
-                default_json: None,
-            }
-            .load::<services::Sources>()
-            .unwrap_or_default()
-            .sources;
+            let sources = commands::source_commands::load_sources(app.handle());
 
             let assets_path = global_data_path.join("assets");
             std::fs::create_dir_all(&assets_path)?;
@@ -188,6 +182,24 @@ pub fn run() {
             });
             app.manage(commands::watch_commands::Watchers::default());
 
+            #[cfg(all(windows, not(debug_assertions)))]
+            if let Some(main) = app.get_webview_window("main") {
+                main.with_webview(|webview| {
+                    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+                    use windows_core::Interface;
+                    let settings = unsafe {
+                        webview
+                            .controller()
+                            .CoreWebView2()
+                            .and_then(|core| core.Settings())
+                    }
+                    .and_then(|s| s.cast::<ICoreWebView2Settings3>());
+                    if let Ok(settings) = settings {
+                        let _ = unsafe { settings.SetAreBrowserAcceleratorKeysEnabled(false) };
+                    }
+                })?;
+            }
+
             // ── Not Blocking!1 ───────────────────────────────────────────────────────
 
             let source_paths: std::collections::HashMap<String, std::path::PathBuf> = sources
@@ -213,34 +225,15 @@ pub fn run() {
                     for source in sources {
                         let app_handle = app_handle.clone();
                         let pool = pool.clone();
-                        tasks.push(tauri::async_runtime::spawn(async move {
-                            let source_id = source.id.to_string();
-                            // reconcile returns changes for deep indexing (FTS, in-body tags, etc.)
-                            let (changed, skipped) = services::reconcile_source(
-                                &source,
-                                &pool,
-                                &["md"],
+                        tasks.push(tauri::async_runtime::spawn(
+                            commands::source_commands::run_reconcile(
+                                app_handle,
+                                source,
+                                pool,
                                 fm_buf_size,
                                 git_off,
-                            )
-                            .await
-                            .unwrap_or_else(|e| {
-                                eprintln!("Reconciliation failed: {e}");
-                                Default::default()
-                            });
-                            let _ = app_handle.emit(
-                                "source-reconciled",
-                                Reconciled {
-                                    source_id: &source_id,
-                                    skipped,
-                                    unreachable: !source.path.is_dir(),
-                                },
-                            );
-                            if let Err(e) = services::index_fts(&pool, &source, changed).await {
-                                eprintln!("FTS indexing failed: {e}");
-                            }
-                            let _ = app_handle.emit("source-indexed", &source_id);
-                        }));
+                            ),
+                        ));
                     }
                     for task in tasks {
                         let _ = task.await;
@@ -256,6 +249,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::source_commands::get_sources,
             commands::source_commands::set_folder_frontmatter,
+            commands::source_commands::rekey_folder_frontmatter,
             commands::source_commands::contains_git_repo,
             commands::source_commands::get_source_by_id,
             commands::source_commands::update_source,
@@ -269,6 +263,7 @@ pub fn run() {
             commands::source_commands::create_folder,
             commands::source_commands::move_folder,
             commands::source_commands::delete_folder,
+            commands::source_commands::restore_folder,
             commands::source_commands::folder_meta,
             commands::source_commands::strip_folder_frontmatter,
             commands::source_commands::reconcile_source,
@@ -292,11 +287,14 @@ pub fn run() {
             commands::document_commands::read_document_tags,
             commands::document_commands::strip_document_tag,
             commands::document_commands::delete_document,
+            commands::document_commands::restore_document,
+            commands::document_commands::purge_document,
             commands::bulk_ops_commands::bulk_set_view_field,
             commands::bulk_ops_commands::bulk_rename_view_field,
             commands::bulk_ops_commands::bulk_rename_view_option,
             commands::bulk_ops_commands::bulk_remove_view_field,
-            commands::bulk_ops_commands::bulk_rename_view_prefix,
+            commands::bulk_ops_commands::bulk_rename_view_key,
+            commands::bulk_ops_commands::bulk_remove_view_key,
             commands::bulk_ops_commands::bulk_rename_tag,
             commands::bulk_ops_commands::bulk_remove_tag,
             commands::bulk_ops_commands::bulk_rewrite_links,
@@ -310,6 +308,13 @@ pub fn run() {
             commands::history_commands::history_load,
             commands::history_commands::history_append,
             commands::history_commands::history_remove,
+            commands::history_commands::history_move,
+            commands::view_commands::view_file_read,
+            commands::view_commands::view_file_write,
+            commands::view_commands::view_file_remove,
+            commands::view_commands::app_views_read,
+            commands::view_commands::app_view_write,
+            commands::view_commands::app_view_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

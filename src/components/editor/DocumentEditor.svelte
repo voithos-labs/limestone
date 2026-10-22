@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { describeError, isRetryable, splitMessage } from '#lib/overlays.svelte.js';
+	import {
+		describeError,
+		isRetryable,
+		reportError,
+		splitMessage,
+		undoHint
+	} from '#lib/overlays.svelte.js';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { Editor } from '@voithos-labs/aragonite';
 	import type {
@@ -23,7 +29,7 @@
 	import { registerFlush } from '#lib/services/platform.js';
 	import { onDocChanged, onSourceReconciled, sourceName } from '#lib/models/Source.js';
 	import MarkdownHandle, { readErrorKind, type ReadErrorKind } from '#lib/models/MarkdownHandle.js';
-	import { historyCheckpoints, historyTextAt } from '#lib/services/history.js';
+	import { lastHistoryText } from '#lib/services/history.js';
 	import GonePage from '../pages/GonePage.svelte';
 	import GoneActions, { type GoneAction } from '../pages/GoneActions.svelte';
 	import DocHistory, { type HistoryVersion } from '#lib/models/DocHistory.svelte.js';
@@ -151,10 +157,15 @@
 	async function open(h: MarkdownHandle) {
 		let c = '';
 		try {
-			c = await h.loadContent();
+			c = await h.loadContent().catch(async (e) => {
+				const moved =
+					readErrorKind(e) === 'not_found' && (await h.refreshPath().catch(() => false));
+				if (!moved) throw e;
+				return h.loadContent();
+			});
 		} catch (e) {
 			const kind = readErrorKind(e);
-			const fromHistory = canRestoreKind(kind) && (await lastKnownText(h)) !== null;
+			const fromHistory = canRestoreKind(kind) && (await lastHistoryText(h)) !== null;
 			if (h !== handle) return;
 			if (kind !== 'not_found' || fromHistory) {
 				unavailable = { kind, held: null, fromHistory, settled: true };
@@ -189,16 +200,6 @@
 			canRestoreKind(unavailable.kind) &&
 			(unavailable.held !== null || unavailable.fromHistory)
 	);
-
-	async function lastKnownText(h: MarkdownHandle): Promise<string | null> {
-		try {
-			const last = (await historyCheckpoints(h.id)).at(-1);
-			const text = last ? await historyTextAt(h.id, last) : '';
-			return text.trim() ? text : null;
-		} catch {
-			return null;
-		}
-	}
 
 	async function retry(h: MarkdownHandle, settle = false) {
 		if (!unavailable || restoring) return;
@@ -239,7 +240,7 @@
 		restoring = true;
 		restoreFailed = false;
 		try {
-			const text = u.held ?? (await lastKnownText(h));
+			const text = u.held ?? (await lastHistoryText(h));
 			if (text === null) throw new Error('nothing to restore');
 			await h.restore(text, u.kind === 'invalid_data');
 			if (h !== handle) return;
@@ -272,8 +273,20 @@
 		if (unavailable && unavailable.kind !== 'not_found')
 			out.push({ label: 'Try again', run: () => handle && retry(handle) });
 		if (editor) out.push({ label: 'Close', run: () => editor.closeTab(tab.id, false) });
+		if (handle?.deletedAt) out.push({ label: 'Delete forever', run: purgeDoc, danger: true });
 		return out;
 	});
+
+	async function purgeDoc() {
+		const h = handle;
+		if (!h) return;
+		try {
+			await h.purge();
+			editor?.closeTab(tab.id, false);
+		} catch (e) {
+			reportProblem(e, "This note couldn't be deleted.", purgeDoc);
+		}
+	}
 
 	const restoreNote = $derived(
 		restoreFailed
@@ -333,6 +346,11 @@
 					detail: 'Check that the folder lets Limestone read it, then try again.'
 				};
 			case 'not_found':
+				if (handle?.deletedAt)
+					return {
+						headline: 'this note was deleted',
+						detail: 'Restore puts it back where it was, as you last saw it.'
+					};
 				return u.held !== null
 					? {
 							headline: 'this note was deleted',
@@ -380,7 +398,9 @@
 	// ── Save: edit events, debounced, writing back what the editor serialized ───────────
 
 	const SAVE_DEBOUNCE_MS = 250;
+	const SAVE_RETRY_MS = 1000;
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	let saveRetried = false;
 	// The editor a pending save reads from, so a flush that runs after `instance` is unbound (tab
 	// teardown) still gets the text that was typed.
 	let pendingEditor: EditorInstance | null = null;
@@ -413,11 +433,18 @@
 			.saveContent(body, opts)
 			.then(() => {
 				savedBody = body;
+				saveRetried = false;
 				if (saveProblem && problem === saveProblem) problem = null;
 				saveProblem = null;
 				if (historyOpen && history?.atPresent) void history.load();
 			})
 			.catch((e) => {
+				if (!saveRetried && isRetryable(e)) {
+					saveRetried = true;
+					saveTimer = setTimeout(() => flushSave({ ...opts, body }), SAVE_RETRY_MS);
+					return;
+				}
+				saveRetried = false;
 				saveProblem = reportProblem(e, "This note couldn't be saved.", () => flushSave());
 			})
 			.finally(() => {
@@ -493,7 +520,7 @@
 	// ── Per-tab state ───────────────────────────────────────────────────────────────────
 
 	// Persisted on the tab, so a doc reopens with its properties panel as you left it
-	let propsOpen = $state(untrack(() => tab.state.props_open ?? false));
+	let propsOpen = $state(untrack(() => tab.state.props_open ?? true));
 	$effect(() => {
 		tab.state.props_open = propsOpen;
 	});
@@ -501,7 +528,7 @@
 	// ── History: the slider previews a version in the same editor, read-only ────────────
 
 	// History is the tab's too: it reopens docked at the version you left it on, until closed.
-	let history = $derived(handle ? new DocHistory(handle.id) : null);
+	let history = $derived(handle ? new DocHistory(handle) : null);
 	let historyOpen = $state(untrack(() => tab.state.history_open ?? false));
 	const storedHistoryAt = untrack(
 		() => tab.state.history_at as { heads: string[]; time: number } | null | undefined
@@ -844,6 +871,10 @@
 		if (!hasCaret && !(await instance?.setSelection(DOCUMENT_START))) scrollEl?.focus();
 	}
 
+	function focusStart() {
+		void instance?.setSelection(DOCUMENT_START);
+	}
+
 	async function restore() {
 		// The old editor's `cursorPos`/`scrollTop` tab keys are ignored: they measure a flat
 		// character offset and a scroller with the header outside it, neither of which exists here.
@@ -936,10 +967,15 @@
 		if (!/\.md$/i.test(clean)) return;
 		const dir = handle.relPath.includes('/') ? handle.relPath.replace(/\/[^/]*$/, '') : '';
 		const target = clean.startsWith('.') ? joinRel(dir, clean) : clean.replace(/^\//, '');
-		void openWikiLink(target);
+		void openWikiLink(target, undefined, false, opensNewTab(event.ctrlKey || event.metaKey));
 	}
 
-	async function openWikiLink(target: string, heading?: string, side = false): Promise<void> {
+	async function openWikiLink(
+		target: string,
+		heading?: string,
+		side = false,
+		newTab = false
+	): Promise<void> {
 		const h = handle;
 		if (!h || !editor) return;
 		const hit = await resolveWikiLink(h.source.id, target);
@@ -961,13 +997,15 @@
 		}
 		const state = heading ? { [OPEN_AT_HEADING]: heading } : {};
 		if (side) editor.beside().openDetail({ type: 'markdown', handle: doc }, h.title);
+		else if (newTab) editor.openDoc(doc, state);
 		else editor.showDocInTab(tab, doc, state);
 	}
 
-	async function openTagView(slug: string, side = false): Promise<void> {
+	async function openTagView(slug: string, side = false, newTab = false): Promise<void> {
 		if (!editor) return;
 		const view = await View.forUnit(tagId(slug), slug);
 		if (side) editor.beside().openDetail({ type: 'view', view }, handle?.title ?? slug);
+		else if (newTab) editor.openView(view);
 		else editor.showViewInTab(tab, view);
 	}
 
@@ -980,11 +1018,16 @@
 		return true;
 	}
 
+	function opensNewTab(modified: boolean): boolean {
+		return mode === 'live' && modified;
+	}
+
 	function onActivate(e: Event): void {
-		const { kind, target, fragment, side } = (e as CustomEvent<ActivateDetail>).detail;
-		if (kind === 'wikilink' && target) void openWikiLink(target, fragment, side);
+		const { kind, target, fragment, side, newTab } = (e as CustomEvent<ActivateDetail>).detail;
+		const inNewTab = opensNewTab(!!newTab);
+		if (kind === 'wikilink' && target) void openWikiLink(target, fragment, side, inNewTab);
 		else if (kind === 'wikilink' && fragment) void jumpToHeading(fragment);
-		else if (kind === 'tag') void openTagView(target, side);
+		else if (kind === 'tag') void openTagView(target, side, inNewTab);
 	}
 
 	$effect(() => {
@@ -1047,6 +1090,10 @@
 
 	async function deleteDoc() {
 		if (!handle) return;
+		const h = handle;
+		const ed = editor;
+		const go = back;
+		const body = instance?.getSource() ?? editorText.text;
 		if (saveTimer) {
 			clearTimeout(saveTimer);
 			saveTimer = null;
@@ -1056,11 +1103,24 @@
 		// editor's live text and would write the file back after the backend removed it.
 		deleted = true;
 		try {
-			await handle.delete();
-			editor?.closeTab(tab.id, false);
+			const kept = await h.delete();
+			if (go) {
+				go.go();
+				tab.forward.length = 0;
+			} else ed?.closeTab(tab.id, false);
+			if (kept) undoHint.show('Deleted', () => undoDelete(h, ed, body));
 		} catch (e) {
 			deleted = false;
 			reportProblem(e, "This note couldn't be deleted.", deleteDoc);
+		}
+	}
+
+	async function undoDelete(h: MarkdownHandle, ed: EditorStateModel | undefined, body: string) {
+		try {
+			await h.restore(body, false);
+			ed?.openDoc(h);
+		} catch (e) {
+			reportError(e, "This note couldn't be restored.", () => undoDelete(h, ed, body));
 		}
 	}
 
@@ -1091,6 +1151,7 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onEnter={focusStart}
 			onError={reportProblem}
 		/>
 		{@render docNotices()}
@@ -1151,6 +1212,7 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onEnter={focusStart}
 			onError={reportProblem}
 		/>
 		{@render docNotices()}
@@ -1175,6 +1237,7 @@
 			header={flow ? undefined : documentHeader}
 			theme={currentThemeType()}
 			presentationMode={mode}
+			linkClick="plain"
 			selectionToolbar={mode === 'live'}
 			blockDragHandles={true}
 			searchBarAnchor={flow ? findBarAnchor : undefined}
@@ -1207,6 +1270,10 @@
 		min-height: 320px;
 	}
 
+	.unavailable :global(.doc-hero) {
+		padding-top: 1rem;
+	}
+
 	.ua-headline {
 		margin: 0;
 		font-family: var(--font-mono);
@@ -1229,7 +1296,7 @@
 		align-items: center;
 		gap: 10px 16px;
 		max-width: calc(var(--page-max-width, 1200px) - 48px);
-		margin: -16px auto 16px;
+		margin: 0 auto 16px;
 		width: calc(100% - 48px);
 		padding: 12px 14px;
 		border-radius: 8px;

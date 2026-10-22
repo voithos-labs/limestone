@@ -110,8 +110,9 @@
 
 	.title {
 		margin: 0 0 12px;
-		font-size: 16px;
+		font-size: 15px;
 		font-weight: 600;
+		letter-spacing: -0.01em;
 		color: var(--color-text-primary);
 	}
 
@@ -151,27 +152,48 @@
 	}
 
 	.btn {
-		padding: 7px 14px;
-		border: 1px solid var(--color-border);
+		height: 32px;
+		padding: 0 14px;
+		border: none;
 		border-radius: 8px;
 		background: transparent;
 		color: var(--color-text-secondary);
 		font-family: var(--font-ui);
 		font-size: 13px;
 		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
-	.btn:hover {
+	.btn:hover:not(:disabled) {
+		background: var(--chip-bg);
 		color: var(--color-text-primary);
+	}
+
+	.btn.primary {
+		background: var(--color-accent);
+		color: var(--color-accent-contrast);
+		font-weight: 600;
+	}
+
+	.btn.primary:hover:not(:disabled) {
+		background: var(--color-accent);
+		color: var(--color-accent-contrast);
+		filter: brightness(1.08);
+	}
+
+	.btn:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	.btn.danger {
 		color: var(--error-fg);
 	}
 
-	.btn.primary {
-		border-color: transparent;
-		background: var(--color-accent);
-		color: var(--color-accent-contrast);
+	.btn.danger:hover:not(:disabled) {
+		background: var(--error-bg);
+		color: var(--error-fg);
 	}
 </style>

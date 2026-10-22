@@ -16,6 +16,7 @@
 	const max = $derived(Math.max(0, count - 1));
 	const pct = $derived(max > 0 ? (history.index / max) * 100 : 100);
 	const empty = $derived(count < 2);
+	const unavailable = $derived(!history.available);
 
 	function formatWhen(ms: number): string {
 		const d = new Date(ms);
@@ -33,11 +34,13 @@
 	}
 
 	const whenLabel = $derived(
-		empty
-			? 'No earlier versions yet'
-			: history.atPresent || !history.selected
-				? 'Current version'
-				: formatWhen(history.selected.time)
+		unavailable
+			? 'History needs note metadata'
+			: empty
+				? 'No earlier versions yet'
+				: history.atPresent || !history.selected
+					? 'Current version'
+					: formatWhen(history.selected.time)
 	);
 
 	// Every label the slider can show, so the slot is sized to the widest one and never shifts.

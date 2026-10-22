@@ -9,6 +9,7 @@ export interface Action {
 	title: string;
 	category: string;
 	defaultKeys?: string[];
+	when?(session: Session): boolean;
 	run(session: Session): void | Promise<void>;
 }
 
@@ -218,6 +219,15 @@ export const actions: Action[] = [
 		run: (session) => session.active.openHome()
 	},
 	{
+		id: 'nav.deleted',
+		title: 'Open deleted notes',
+		category: 'navigation',
+		run: async (session) => {
+			const { default: View, DELETED } = await import('#lib/models/View.svelte.js');
+			session.active.openView(await View.forUnit(DELETED, 'Deleted'));
+		}
+	},
+	{
 		id: 'nav.settings',
 		title: 'Open settings',
 		category: 'navigation',
@@ -228,8 +238,24 @@ export const actions: Action[] = [
 			session.activate(session.editors[0], true);
 			session.editors[0].focusTab({ kind: 'settings' });
 		}
+	},
+	{
+		id: 'view.search',
+		title: 'Search in view',
+		category: 'views',
+		defaultKeys: ['mod+f'],
+		when: () => !!activeSearchInput(),
+		run: () => {
+			const input = activeSearchInput();
+			input?.focus();
+			input?.select();
+		}
 	}
 ];
+
+function activeSearchInput(): HTMLInputElement | null {
+	return document.querySelector('.content-area.active .search-input');
+}
 
 /**
  * Which keystrokes a focused document takes, so the app's window-level handler can leave them

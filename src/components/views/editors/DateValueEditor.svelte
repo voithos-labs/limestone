@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { ChevronLeft, ChevronRight, Clock } from '@lucide/svelte';
-	import Toggle from '../../ui/Toggle.svelte';
+	import { ChevronLeft, ChevronRight, Clock, X } from '@lucide/svelte';
 	import { isRelativeDate, resolveRelativeDate } from '#lib/views/dateFormat.js';
 
 	let {
@@ -26,6 +25,12 @@
 
 	let popEl: HTMLDivElement | null = $state(null);
 	let textEl: HTMLInputElement | null = $state(null);
+	let timeEl: HTMLInputElement | null = $state(null);
+	let timeText = $state('');
+	let timeFocused = $state(false);
+	const timeInvalid = $derived(
+		timeFocused && timeText.trim() !== '' && parseTime(timeText) === null
+	);
 	let pos: { top: number; left: number } = $state({ top: 0, left: 0 });
 	let textValue = $state('');
 	let textFocused = $state(false);
@@ -60,7 +65,6 @@
 	// hh is canonical 24-hour (0-23)
 	let hh = $state(0);
 	let mm = $state('00');
-	let meridiem: '24' | 'AM' | 'PM' = $state('24');
 
 	const tzLabel = (() => {
 		try {
@@ -70,28 +74,74 @@
 		}
 	})();
 
-	const displayHour = $derived(meridiem === '24' ? pad(hh) : pad(hh % 12 === 0 ? 12 : hh % 12));
+	function parseTime(raw: string): { hh: number; mm: number } | null {
+		const t = raw.toLowerCase().replace(/[\s.]+/g, '');
+		if (!t) return null;
+		const m = t.match(/^(\d{1,2})(?::?(\d{2}))?(a|p|am|pm)?$/);
+		if (!m) return null;
+		let h = parseInt(m[1], 10);
+		const min = m[2] ? parseInt(m[2], 10) : 0;
+		if (min > 59) return null;
+		if (m[3]) {
+			if (h < 1 || h > 12) return null;
+			h = (h % 12) + (m[3].startsWith('p') ? 12 : 0);
+		} else if (h > 23) return null;
+		return { hh: h, mm: min };
+	}
 
-	function commitHour(raw: string) {
-		let h = parseInt(raw || '0', 10);
-		if (isNaN(h)) h = 0;
-		if (meridiem === '24') {
-			hh = Math.max(0, Math.min(23, h));
-		} else {
-			h = Math.max(1, Math.min(12, h));
-			hh = (h % 12) + (meridiem === 'PM' ? 12 : 0);
+	function timeString(): string {
+		return new Date(2000, 0, 1, hh, parseInt(mm, 10) || 0).toLocaleTimeString(undefined, {
+			hour: 'numeric',
+			minute: '2-digit',
+			hour12: !prefers24h()
+		});
+	}
+
+	function commitTime() {
+		const t = parseTime(timeText);
+		if (t) {
+			hh = t.hh;
+			mm = pad(t.mm);
+			commit();
 		}
+		timeText = timeString();
+	}
+
+	function stepTime(delta: number) {
+		const total = hh * 60 + (parseInt(mm, 10) || 0);
+		const step = Math.abs(delta);
+		const snapped =
+			delta > 0 ? Math.floor(total / step) * step + step : Math.ceil(total / step) * step - step;
+		const next = ((snapped % 1440) + 1440) % 1440;
+		hh = Math.floor(next / 60);
+		mm = pad(next % 60);
+		timeText = timeString();
 		commit();
 	}
 
-	function changeMeridiem(next: '24' | 'AM' | 'PM') {
-		if (next === '24') {
-			meridiem = '24';
-			return;
+	function addTime() {
+		const n = new Date();
+		if (!hasSelection) {
+			selY = n.getFullYear();
+			selM = n.getMonth();
+			selD = n.getDate();
+			viewYear = selY;
+			viewMonth = selM;
 		}
-		const base = hh % 12;
-		hh = next === 'PM' ? base + 12 : base;
-		meridiem = next;
+		const next = (Math.ceil((n.getHours() * 60 + n.getMinutes()) / 30) * 30) % 1440;
+		hh = Math.floor(next / 60);
+		mm = pad(next % 60);
+		hasTime = true;
+		timeText = timeString();
+		commit();
+		requestAnimationFrame(() => {
+			timeEl?.focus();
+			timeEl?.select();
+		});
+	}
+
+	function removeTime() {
+		hasTime = false;
 		commit();
 	}
 
@@ -225,27 +275,17 @@
 	function selectionText(): string {
 		if (selY === null || selM === null || selD === null) return '';
 		const dt = new Date(selY, selM, selD, hh, parseInt(mm, 10) || 0);
-		const datePart = dt.toLocaleDateString(undefined, {
+		return dt.toLocaleDateString(undefined, {
 			month: 'short',
 			day: 'numeric',
 			year: 'numeric'
 		});
-		if (!showTime) return datePart;
-		const t = dt
-			.toLocaleTimeString(undefined, {
-				hour: 'numeric',
-				minute: '2-digit',
-				hour12: meridiem !== '24'
-			})
-			.toLowerCase()
-			.replace(/\s/g, '');
-		return `${datePart} ${t}`;
 	}
 
-	function commitText() {
+	function commitText(close = true) {
 		if (relative && isRelativeDate(textValue)) {
 			onChange(textValue.trim().toLowerCase());
-			open = false;
+			if (close) open = false;
 			return;
 		}
 		relToken = null;
@@ -265,7 +305,7 @@
 			mm = pad(p.mm);
 		}
 		commit();
-		if (!showTime) open = false;
+		if (close && !showTime) open = false;
 	}
 
 	const cells = $derived.by(() => {
@@ -361,16 +401,6 @@
 		open = false;
 	}
 
-	function setTime(on: boolean) {
-		hasTime = on;
-		const n = new Date();
-		if (on && hh === 0 && mm === '00') {
-			hh = n.getHours();
-			mm = pad(n.getMinutes());
-		}
-		commit();
-	}
-
 	function clampMM(v: string): string {
 		const n = Math.max(0, Math.min(59, parseInt(v || '0', 10) || 0));
 		return pad(n);
@@ -409,9 +439,8 @@
 					hh = 0;
 					mm = '00';
 				}
-				// default to the locale's 12/24h preference
-				meridiem = prefers24h() ? '24' : hh >= 12 ? 'PM' : 'AM';
 				textValue = relToken ?? selectionText();
+				timeText = timeString();
 				lastSent = relToken ? null : compose();
 				cursor = null;
 			});
@@ -420,13 +449,14 @@
 				textEl?.focus();
 				textEl?.select();
 			});
-			window.addEventListener('resize', position);
-			window.addEventListener('scroll', position, true);
+			const reposition = () => position();
+			window.addEventListener('resize', reposition);
+			window.addEventListener('scroll', reposition, true);
 			document.addEventListener('pointerdown', onDocPointerDown);
 			document.addEventListener('keydown', onKey);
 			return () => {
-				window.removeEventListener('resize', position);
-				window.removeEventListener('scroll', position, true);
+				window.removeEventListener('resize', reposition);
+				window.removeEventListener('scroll', reposition, true);
 				document.removeEventListener('pointerdown', onDocPointerDown);
 				document.removeEventListener('keydown', onKey);
 			};
@@ -443,18 +473,18 @@
 		hh;
 		mm;
 		showTime;
-		meridiem;
 		if (open && !textFocused) untrack(() => (textValue = relToken ?? selectionText()));
+		if (open && !timeFocused) untrack(() => (timeText = timeString()));
 	});
 
 	// Reposition when the popup's height changes (time row / footer toggling)
 	$effect(() => {
 		showTime;
 		hasSelection;
-		if (open) requestAnimationFrame(position);
+		if (open) requestAnimationFrame(() => position(true));
 	});
 
-	function position() {
+	function position(keepLeft = false) {
 		if (!anchor?.isConnected || !popEl) return;
 		const a = anchor.getBoundingClientRect();
 		const m = popEl.getBoundingClientRect();
@@ -465,8 +495,8 @@
 		if (top + m.height > window.innerHeight - pad) {
 			top = a.top - margin - m.height;
 		}
-		let left = a.left;
-		if (left + m.width > window.innerWidth - pad) {
+		let left = keepLeft ? pos.left : a.left;
+		if (!keepLeft && left + m.width > window.innerWidth - pad) {
 			left = a.right - m.width;
 		}
 		// Final hard clamp so it can never leave the viewport
@@ -490,7 +520,7 @@
 			return;
 		}
 		// While typing in the text field, leave arrow keys to the caret
-		if (textFocused) return;
+		if (textFocused || timeFocused) return;
 		if (e.key === 'ArrowLeft') {
 			moveCursor(0, -1);
 			e.preventDefault();
@@ -523,14 +553,14 @@
 			class:invalid={textInvalid}
 			bind:this={textEl}
 			bind:value={textValue}
-			placeholder="e.g. Jul 15, 2025"
+			placeholder="Jul 15, 2025"
 			spellcheck="false"
 			autocomplete="off"
 			onfocus={() => (textFocused = true)}
 			onblur={(e) => {
 				textFocused = false;
 				if (popEl?.contains(e.relatedTarget as Node)) return;
-				commitText();
+				commitText(false);
 			}}
 			onkeydown={(e) => {
 				if (e.key === 'Enter') {
@@ -581,51 +611,56 @@
 
 		{#if (allowTime && mode === 'date') || showTime || (hasSelection && clearable)}
 			<div class="opts">
-				{#if allowTime && mode === 'date'}
-					<div class="opt">
-						<span>Include time</span>
-						<Toggle bind:checked={() => hasTime, setTime} />
-					</div>
-				{/if}
 				{#if showTime}
-					<div class="time-row">
-						<span class="clock" title="Times shown in {tzLabel}"
-							><Clock size={13} strokeWidth={1.75} /></span
-						>
+					<div class="time-row" class:invalid={timeInvalid} title="Times shown in {tzLabel}">
+						<Clock size={13} strokeWidth={1.75} />
 						<input
 							class="time-input"
-							inputmode="numeric"
-							maxlength="2"
-							value={displayHour}
-							onblur={(e) => commitHour((e.currentTarget as HTMLInputElement).value)}
-							onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-						/>
-						<span class="colon">:</span>
-						<input
-							class="time-input"
-							inputmode="numeric"
-							maxlength="2"
-							bind:value={mm}
+							bind:this={timeEl}
+							bind:value={timeText}
+							spellcheck="false"
+							autocomplete="off"
+							onfocus={() => (timeFocused = true)}
 							onblur={() => {
-								mm = clampMM(mm);
-								commit();
+								timeFocused = false;
+								commitTime();
 							}}
-							onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+							onkeydown={(e) => {
+								if (e.key === 'ArrowUp') {
+									e.preventDefault();
+									stepTime(e.shiftKey ? 60 : 15);
+								} else if (e.key === 'ArrowDown') {
+									e.preventDefault();
+									stepTime(e.shiftKey ? -60 : -15);
+								} else if (e.key === 'Enter') {
+									e.preventDefault();
+									commitTime();
+									open = false;
+								} else if (e.key === 'Escape') {
+									e.preventDefault();
+									open = false;
+									return;
+								}
+								e.stopPropagation();
+							}}
 						/>
-						<select
-							class="meridiem"
-							value={meridiem}
-							onchange={(e) =>
-								changeMeridiem((e.currentTarget as HTMLSelectElement).value as '24' | 'AM' | 'PM')}
-						>
-							<option value="24">24h</option>
-							<option value="AM">AM</option>
-							<option value="PM">PM</option>
-						</select>
+						{#if mode === 'date'}
+							<button type="button" class="time-x" aria-label="Remove time" onclick={removeTime}>
+								<X size={12} strokeWidth={2} />
+							</button>
+						{/if}
 					</div>
+				{:else if allowTime && mode === 'date'}
+					<button type="button" class="opt-btn" onclick={addTime}>
+						<Clock size={13} strokeWidth={1.75} />
+						<span>Add time</span>
+					</button>
 				{/if}
 				{#if hasSelection && clearable}
-					<button type="button" class="opt opt-btn" onclick={clear}>Clear</button>
+					<button type="button" class="opt-btn" onclick={clear}>
+						<X size={13} strokeWidth={2} />
+						<span>Clear</span>
+					</button>
 				{/if}
 			</div>
 		{/if}
@@ -654,24 +689,29 @@
 	.date-text {
 		box-sizing: border-box;
 		width: 100%;
+		height: 28px;
 		margin-bottom: 8px;
-		padding: 6px 8px;
-		border: 1px solid var(--color-border);
+		padding: 0 9px;
+		border: none;
 		border-radius: 6px;
-		background: var(--color-bg);
+		background: var(--chip-bg);
 		font: inherit;
 		font-size: 13px;
 		color: var(--color-text-primary);
 		outline: none;
+		transition: background-color 120ms ease;
 	}
 
+	.date-text:hover,
 	.date-text:focus {
-		border-color: var(--color-ui-muted);
+		background: var(--chip-bg-hover);
 	}
 
 	.date-text.invalid {
 		color: var(--error-fg);
-		border-color: var(--error-fg);
+		text-decoration: underline;
+		text-decoration-color: var(--error-fg);
+		text-underline-offset: 3px;
 	}
 
 	.date-text::placeholder {
@@ -773,15 +813,19 @@
 	}
 
 	.day.today {
-		box-shadow: inset 0 0 0 1.5px var(--color-accent);
+		background: var(--accent-a14);
+		color: var(--color-accent);
 		font-weight: 600;
+	}
+
+	.day.today:hover {
+		background: var(--accent-a14);
 	}
 
 	.day.selected,
 	.day.selected:hover {
 		background: var(--color-accent);
 		color: var(--color-accent-contrast);
-		box-shadow: none;
 	}
 
 	.day.cursor:not(.selected) {
@@ -791,25 +835,21 @@
 	.opts {
 		display: flex;
 		flex-direction: column;
+		gap: 2px;
 		margin-top: 6px;
 		padding-top: 6px;
 		border-top: 1px solid var(--menu-search-divider);
 	}
 
-	.opt {
+	.opt-btn {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		gap: 7px;
+		width: 100%;
 		height: 30px;
 		padding: 0 6px;
-		border-radius: 6px;
-		font-size: 12.5px;
-		color: var(--color-text-primary);
-	}
-
-	.opt-btn {
-		width: 100%;
 		border: 0;
+		border-radius: 6px;
 		background: transparent;
 		font: inherit;
 		font-size: 12.5px;
@@ -826,56 +866,69 @@
 		color: var(--color-text-primary);
 	}
 
+	.opt-btn :global(svg) {
+		flex-shrink: 0;
+	}
+
 	.time-row {
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		height: 32px;
-		padding: 0 2px 0 6px;
+		gap: 7px;
+		height: 30px;
+		padding: 0 6px;
+		border-radius: 6px;
 		color: var(--color-ui-muted);
+		transition: background-color 120ms ease;
+	}
+
+	.time-row:hover,
+	.time-row:focus-within {
+		background: var(--chip-bg-hover);
+	}
+
+	.time-row > :global(svg) {
+		flex-shrink: 0;
 	}
 
 	.time-input {
-		width: 30px;
-		padding: 3px 0;
-		border: 1px solid var(--color-border);
-		border-radius: 5px;
-		background: var(--color-bg);
+		flex: 1;
+		min-width: 0;
+		padding: 0;
+		border: none;
+		background: transparent;
 		font: inherit;
-		font-size: 12px;
+		font-size: 13px;
 		font-variant-numeric: tabular-nums;
-		text-align: center;
 		color: var(--color-text-primary);
 		outline: none;
 	}
 
-	.time-input:focus {
-		border-color: var(--focus-border);
+	.time-row.invalid .time-input {
+		color: var(--error-fg);
+		text-decoration: underline;
+		text-decoration-color: var(--error-fg);
+		text-underline-offset: 3px;
 	}
 
-	.colon {
-		color: var(--color-ui-muted);
-	}
-
-	.clock {
+	.time-x {
 		display: inline-flex;
 		align-items: center;
-		cursor: help;
-	}
-
-	.meridiem {
-		padding: 3px 2px;
-		border: 1px solid var(--color-border);
-		border-radius: 5px;
-		background: var(--color-bg);
-		font: inherit;
-		font-size: 11px;
-		color: var(--color-text-primary);
-		outline: none;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: none;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--color-ui-muted);
 		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
 	}
 
-	.meridiem:focus {
-		border-color: var(--focus-border);
+	.time-x:hover {
+		background: var(--chip-divider);
+		color: var(--color-text-primary);
 	}
 </style>

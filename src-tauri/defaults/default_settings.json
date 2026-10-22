@@ -8,7 +8,7 @@
 		"collapse_pinned_tabs": true,
 		"ui_scale_percent": 100,
 		"max_page_width": 1000,
-		"max_view_width": 1200
+		"max_view_width": 1000
 	},
 	"editor": {
 		"mode": "live",
@@ -19,10 +19,14 @@
 		"frontmatter_read_buffer_size": 1024
 	},
 	"sources": {
-		"git_frontmatter_off": true
+		"git_frontmatter_off": true,
+		"deleted_retention_days": 30
 	},
 	"updates": {
 		"auto_install": false
+	},
+	"general": {
+		"action_hints": true
 	},
 	"todo": {
 		"statuses": [

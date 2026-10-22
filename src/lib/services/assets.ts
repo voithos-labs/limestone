@@ -1,22 +1,49 @@
 import { invoke } from '@tauri-apps/api/core';
 
-export function importGlobalAsset(srcPath: string): Promise<string> {
-	return invoke<string>('import_global_asset', { srcPath });
+export function importGlobalAsset(srcPath: string, maxEdge?: number): Promise<string> {
+	return invoke<string>('import_global_asset', { srcPath, maxEdge: maxEdge ?? null });
 }
 
 export function importGlobalAssetBytes(
 	data: ArrayBuffer | Uint8Array,
-	ext: string
+	ext: string,
+	maxEdge?: number
 ): Promise<string> {
-	return invoke<string>('import_global_asset_bytes', { data: toBase64(data), ext });
+	return invoke<string>('import_global_asset_bytes', {
+		data: toBase64(data),
+		ext,
+		maxEdge: maxEdge ?? null
+	});
+}
+
+export function importSourceAsset(
+	sourceId: string,
+	srcPath: string,
+	stem?: string,
+	maxEdge?: number
+): Promise<string> {
+	return invoke<string>('import_source_asset', {
+		sourceId,
+		srcPath,
+		stem: stem ?? null,
+		maxEdge: maxEdge ?? null
+	});
 }
 
 export function importSourceAssetBytes(
 	sourceId: string,
 	data: ArrayBuffer | Uint8Array,
-	ext: string
+	ext: string,
+	stem?: string,
+	maxEdge?: number
 ): Promise<string> {
-	return invoke<string>('import_source_asset_bytes', { sourceId, data: toBase64(data), ext });
+	return invoke<string>('import_source_asset_bytes', {
+		sourceId,
+		data: toBase64(data),
+		ext,
+		stem: stem ?? null,
+		maxEdge: maxEdge ?? null
+	});
 }
 
 export function deleteSourceAsset(sourceId: string, relPath: string): Promise<void> {

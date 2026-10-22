@@ -1,4 +1,5 @@
-import { reportError, addSourceRequest, toasts, mark } from '#lib/overlays.svelte.js';
+import { reportError, addSourceRequest, toasts, mark, undoHint } from '#lib/overlays.svelte.js';
+import { lastHistoryText } from '#lib/services/history.js';
 import View, {
 	type FilterNode,
 	type MemberRow,
@@ -7,6 +8,7 @@ import View, {
 	describeBulkFailure,
 	isBuiltinUnit,
 	isLeafActive,
+	isManualSort,
 	isStatusField,
 	TODO_DONE,
 	ViewFace,
@@ -69,6 +71,31 @@ function orderTags(tags: RowTag[]): RowTag[] {
 	return [...tags].sort((a, b) => Number(isBuiltinUnit(b.id)) - Number(isBuiltinUnit(a.id)));
 }
 
+function sameRow(a: MemberRow, b: MemberRow): boolean {
+	return (
+		a.title === b.title &&
+		a.rel_path === b.rel_path &&
+		a.created_at === b.created_at &&
+		a.updated_at === b.updated_at &&
+		a.deleted_at === b.deleted_at &&
+		a.properties === b.properties &&
+		a.source_id === b.source_id &&
+		a.writes_meta === b.writes_meta
+	);
+}
+
+function sameTags(a: Record<string, RowTag[]>, b: Record<string, RowTag[]>): boolean {
+	const ak = Object.keys(a);
+	if (ak.length !== Object.keys(b).length) return false;
+	return ak.every((id) => {
+		const x = a[id];
+		const y = b[id];
+		return (
+			!!y && x.length === y.length && x.every((t, i) => t.id === y[i].id && t.slug === y[i].slug)
+		);
+	});
+}
+
 export class FaceRows {
 	rows: MemberRow[] = $state([]);
 	total = $state(0);
@@ -88,7 +115,8 @@ export class FaceRows {
 	constructor(
 		private readonly view: () => View,
 		private readonly face: () => ViewFace,
-		private readonly scope: () => FilterNode | null = () => null
+		private readonly scope: () => FilterNode | null = () => null,
+		private readonly limit: () => number | undefined = () => undefined
 	) {}
 
 	get query(): string {
@@ -129,6 +157,7 @@ export class FaceRows {
 		const view = this.view();
 		const face = this.face();
 		const scope = this.scope();
+		const page = Math.min(PAGE, this.limit() ?? PAGE);
 		if (!silent) this.loading = true;
 		this.error = '';
 		try {
@@ -153,7 +182,7 @@ export class FaceRows {
 					}
 				}
 			} else {
-				out = await view.getMembers({ face, scope, limit: PAGE });
+				out = await view.getMembers({ face, scope, limit: page });
 			}
 			if (token !== this.token) return;
 			const tags = await this.fetchTags(out);
@@ -161,7 +190,7 @@ export class FaceRows {
 
 			// a hand-ordered face: rows it knows go in that order, the rest follow as sorted
 			const order = face.config.order as string[] | undefined;
-			if (order?.length && !q) {
+			if (order?.length && !q && isManualSort(face)) {
 				const rank = new Map(order.map((id, i) => [id, i]));
 				const known = out
 					.filter((r) => rank.has(r.id))
@@ -169,8 +198,18 @@ export class FaceRows {
 				out = [...known, ...out.filter((r) => !rank.has(r.id))];
 			}
 
-			this.rows = out;
-			this.rowTags = tags;
+			// a reload that finds nothing changed changes nothing: rows that match the ones on
+			// screen stay the same objects, and an identical set is not reassigned, so a background
+			// reconcile never redraws a face that is already right
+			const prev = new Map(this.rows.map((r) => [r.id, r]));
+			out = out.map((r) => {
+				const p = prev.get(r.id);
+				return p && sameRow(p, r) ? p : r;
+			});
+			if (out.length !== this.rows.length || out.some((r, i) => r !== this.rows[i])) {
+				this.rows = out;
+			}
+			if (!sameTags(this.rowTags, tags)) this.rowTags = tags;
 			this.searchHits = hits;
 			this.total = out.length;
 			// rows still here after all weren't leaving; the ones gone keep their mark while
@@ -178,7 +217,7 @@ export class FaceRows {
 			const gone = [...this.leaving].filter((id) => !out.some((r) => r.id === id));
 			for (const id of this.leaving) if (!gone.includes(id)) this.leaving.delete(id);
 			if (gone.length) setTimeout(() => gone.forEach((id) => this.leaving.delete(id)), 400);
-			if (!q && out.length === PAGE) {
+			if (!q && out.length === page) {
 				view
 					.countMembers({ face, scope })
 					.then((n) => {
@@ -358,7 +397,8 @@ export class FaceRows {
 		}));
 		history.push(this.view().id, {
 			back: () => this.restore(row, prev),
-			forward: () => this.restore(row, writes)
+			forward: () => this.restore(row, writes),
+			label: writeLabel(field, value)
 		});
 		if (writes.some((w) => this.fieldFiltersView(w.field.id))) this.leaving.add(row.id);
 		const before = row.properties;
@@ -433,7 +473,8 @@ export class FaceRows {
 		if (!row || !this.writable(row)) return null;
 		history.push(this.view().id, {
 			back: async () => void (await this.applyTag(rowId, slug, !on)),
-			forward: async () => void (await this.applyTag(rowId, slug, on))
+			forward: async () => void (await this.applyTag(rowId, slug, on)),
+			label: on ? `#${slug} added` : `#${slug} removed`
 		});
 		return this.applyTag(rowId, slug, on);
 	}
@@ -496,11 +537,56 @@ export class FaceRows {
 		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		try {
 			const doc = await MarkdownHandle.fromID(rowId);
-			await doc.delete();
-			this.rows = this.rows.filter((r) => r.id !== rowId);
-			this.total = Math.max(0, this.total - 1);
+			const kept = await doc.delete();
+			this.dropRow(rowId);
+			if (!kept) return;
+			history.push(this.view().id, {
+				back: () => this.restoreDoc(doc),
+				forward: async () => {
+					try {
+						await doc.delete();
+						this.dropRow(doc.id);
+					} catch (e) {
+						reportError(e, `${mark('note', doc.title)} couldn't be deleted.`);
+					}
+				},
+				label: 'Deleted'
+			});
 		} catch (e) {
 			reportError(e, `${mark('note', title)} couldn't be deleted.`, () => this.delete(rowId));
+		}
+	}
+
+	private dropRow(rowId: string): void {
+		this.rows = this.rows.filter((r) => r.id !== rowId);
+		this.total = Math.max(0, this.total - 1);
+	}
+
+	private async restoreDoc(doc: MarkdownHandle): Promise<void> {
+		try {
+			const text = await lastHistoryText(doc);
+			if (text === null) throw new Error('nothing to restore');
+			await doc.restore(text, false);
+			await this.load(true);
+		} catch (e) {
+			reportError(e, `${mark('note', doc.title)} couldn't be restored.`, () =>
+				this.restoreDoc(doc)
+			);
+		}
+	}
+
+	async restoreRow(rowId: string): Promise<void> {
+		await this.restoreDoc(await MarkdownHandle.fromID(rowId));
+	}
+
+	async purge(rowId: string): Promise<void> {
+		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
+		try {
+			const doc = await MarkdownHandle.fromID(rowId);
+			await doc.purge();
+			this.dropRow(rowId);
+		} catch (e) {
+			reportError(e, `${mark('note', title)} couldn't be deleted.`, () => this.purge(rowId));
 		}
 	}
 
@@ -810,7 +896,13 @@ function firstImage(body: string, source: Source): string {
 	if (!m) return '';
 	const target = (m[1] ? m[1].split('|')[0] : m[3]).trim();
 	if (/^(https?|data|asset):/i.test(target)) return target;
-	const clean = target.replace(/\\/g, '/').replace(/^\.?\//, '');
+	let decoded = target;
+	try {
+		decoded = decodeURIComponent(target);
+	} catch {
+		decoded = target;
+	}
+	const clean = decoded.replace(/\\/g, '/').replace(/^\.?\//, '');
 	const ext = clean.split('.').pop()?.toLowerCase() ?? '';
 	if (!IMAGE_EXTS.has(ext)) return '';
 	const loc = (source.asset_location ?? '').replace(/^\/+|\/+$/g, '');
@@ -879,9 +971,20 @@ export function leave(node: HTMLElement, { mode }: { mode: 'row' | 'card' }): Tr
 	};
 }
 
+function writeLabel(field: ViewField, value: unknown): string {
+	if (field.id === TODO_DONE) return value === true ? 'Done' : 'Not done';
+	const name = field.name.charAt(0).toUpperCase() + field.name.slice(1);
+	const empty =
+		value === null ||
+		value === undefined ||
+		value === '' ||
+		(Array.isArray(value) && !value.length);
+	return `${name} ${empty ? 'cleared' : 'changed'}`;
+}
+
 // Undo for view actions: one stack, owned by whichever view last pushed, cleared when its face
 // changes. Entries put the file back (or forward again); the screen follows the file
-export type Entry = { back: () => Promise<void>; forward: () => Promise<void> };
+export type Entry = { back: () => Promise<void>; forward: () => Promise<void>; label?: string };
 
 const MAX = 50;
 
@@ -892,6 +995,7 @@ class History {
 	private batch: Entry[] | null = null;
 
 	push(owner: string, entry: Entry): void {
+		undoHint.dismiss();
 		if (owner !== this.owner) {
 			this.owner = owner;
 			this.undos = [];
@@ -904,6 +1008,7 @@ class History {
 		this.redos = [];
 		this.undos.push(entry);
 		if (this.undos.length > MAX) this.undos.shift();
+		if (entry.label) undoHint.show(entry.label, () => this.undo(owner));
 	}
 
 	// everything pushed inside runs as one step, undone in reverse
@@ -925,7 +1030,8 @@ class History {
 			},
 			forward: async () => {
 				for (const e of list) await e.forward();
-			}
+			},
+			label: list.find((e) => e.label)?.label
 		});
 	}
 

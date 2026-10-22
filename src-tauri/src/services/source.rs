@@ -1,6 +1,6 @@
 //! ── Overview BAF (Big Ass File) ──────────────────────────────────────────────────────────
 //! This contains, broadly:
-//! 1. The source data model definition & associated helpers
+//! 1. The source data model definition, config, & associated helpers
 //! 2. source scanning and reconciliation logic (big and ugly)
 //!
 //! Due to the size of the file, I will give a brief overview here.
@@ -17,7 +17,7 @@
 //! *Scan & Reconciliation*
 //!
 //! Little complicated, but basically:
-//! PER SOURCE, RUN IN PARALLEL
+//! PER SOURCE, IN PARALLEL
 //! 1. Walks source dir, collecting dirs and rel_path (to source) + mtime for *.md documents
 //! 2. Loads all documents from the db (cache)
 //! 3. Diffs source dir to db documents
@@ -35,7 +35,7 @@
 
 use crate::services::body::fold_tag;
 use crate::services::frontmatter;
-use crate::services::fs::clean_location;
+use crate::services::fs::{atomic_write, clean_location, mtime_ms};
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -50,34 +50,26 @@ use uuid::Uuid;
 
 // ── Model ────────────────────────────────────────────────────────────────────────────
 
-#[derive(Deserialize, Serialize, Clone)]
-pub struct Source {
-    pub title: String,
-    pub path: PathBuf,
-    pub id: Uuid,
-    pub created_at: DateTime<Utc>,
-    pub accessed_at: DateTime<Utc>,
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
+pub struct SourceConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub use_frontmatter: Option<bool>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub frontmatter_dirs: BTreeMap<String, bool>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note_location: String,
-    #[serde(default = "default_asset_location")]
+    #[serde(
+        default = "default_asset_location",
+        skip_serializing_if = "is_default_asset_location"
+    )]
     pub asset_location: String,
-    #[serde(default = "default_ignore")]
+    #[serde(default = "default_ignore", skip_serializing_if = "is_default_ignore")]
     pub ignore: Vec<String>,
 }
 
-impl Source {
-    pub fn new(title: String, path: PathBuf) -> Self {
-        let now = Utc::now();
+impl Default for SourceConfig {
+    fn default() -> Self {
         Self {
-            title,
-            path,
-            id: Uuid::new_v4(),
-            created_at: now,
-            accessed_at: now,
             use_frontmatter: None,
             frontmatter_dirs: BTreeMap::new(),
             note_location: String::new(),
@@ -85,6 +77,107 @@ impl Source {
             ignore: default_ignore(),
         }
     }
+}
+
+impl SourceConfig {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct SourceRecord {
+    pub title: String,
+    pub path: PathBuf,
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub accessed_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct Source {
+    pub title: String,
+    pub path: PathBuf,
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub accessed_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_frontmatter: Option<bool>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub frontmatter_dirs: BTreeMap<String, bool>,
+    pub note_location: String,
+    pub asset_location: String,
+    pub ignore: Vec<String>,
+}
+
+impl Source {
+    pub fn new(title: String, path: PathBuf) -> Self {
+        let now = Utc::now();
+        let record = SourceRecord {
+            title,
+            path,
+            id: Uuid::new_v4(),
+            created_at: now,
+            accessed_at: now,
+        };
+        Self::from_parts(record, SourceConfig::default())
+    }
+
+    pub fn from_parts(record: SourceRecord, config: SourceConfig) -> Self {
+        Self {
+            title: record.title,
+            path: record.path,
+            id: record.id,
+            created_at: record.created_at,
+            accessed_at: record.accessed_at,
+            use_frontmatter: config.use_frontmatter,
+            frontmatter_dirs: config.frontmatter_dirs,
+            note_location: config.note_location,
+            asset_location: config.asset_location,
+            ignore: config.ignore,
+        }
+    }
+
+    pub fn record(&self) -> SourceRecord {
+        SourceRecord {
+            title: self.title.clone(),
+            path: self.path.clone(),
+            id: self.id,
+            created_at: self.created_at,
+            accessed_at: self.accessed_at,
+        }
+    }
+
+    pub fn config(&self) -> SourceConfig {
+        SourceConfig {
+            use_frontmatter: self.use_frontmatter,
+            frontmatter_dirs: self.frontmatter_dirs.clone(),
+            note_location: self.note_location.clone(),
+            asset_location: self.asset_location.clone(),
+            ignore: self.ignore.clone(),
+        }
+    }
+}
+
+pub fn source_config_path(source_path: &Path) -> PathBuf {
+    source_path.join(".limestone").join("config.json")
+}
+
+pub fn load_source_config(source_path: &Path) -> Option<SourceConfig> {
+    let text = fs::read_to_string(source_config_path(source_path)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+pub fn save_source_config(source_path: &Path, config: &SourceConfig) -> std::io::Result<()> {
+    let path = source_config_path(source_path);
+    if config.is_default() {
+        return match fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        };
+    }
+    let json = serde_json::to_string_pretty(config)?;
+    atomic_write(&path, json.as_bytes())
 }
 
 // yup
@@ -101,7 +194,7 @@ pub struct Sources {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_source_id: Option<Uuid>,
     #[serde(default)]
-    pub sources: Vec<Source>,
+    pub sources: Vec<SourceRecord>,
 }
 
 impl Default for Sources {
@@ -118,8 +211,16 @@ fn default_asset_location() -> String {
     "assets".to_string()
 }
 
+fn is_default_asset_location(v: &str) -> bool {
+    v == "assets"
+}
+
 fn default_ignore() -> Vec<String> {
     vec![".*".to_string()]
+}
+
+fn is_default_ignore(v: &[String]) -> bool {
+    v == [".*"]
 }
 
 pub fn create_source(
@@ -220,10 +321,13 @@ fn keep_dir(rel_path: &str, ignore: Option<&globset::GlobSet>) -> bool {
     ignore.is_none_or(|g| !g.is_match(rel_path))
 }
 
+pub const VIEW_FILE: &str = ".limestone.view.json";
+
 pub struct WalkResult {
     pub files: Vec<(String, i64)>,
     pub dirs: Vec<String>,
     pub repos: HashSet<String>,
+    pub views: HashSet<String>,
     pub skipped: usize,
 }
 
@@ -239,6 +343,8 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
     let prune_root = source_path.clone();
     let found_repos = Arc::new(Mutex::new(HashSet::new()));
     let repo_sink = found_repos.clone();
+    let found_views = Arc::new(Mutex::new(HashSet::new()));
+    let view_sink = found_views.clone();
     let walker = jwalk::WalkDir::new(source_path)
         .sort(true)
         .skip_hidden(false)
@@ -246,10 +352,18 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
             let is_repo = children
                 .iter()
                 .any(|e| e.as_ref().is_ok_and(|e| e.file_name == ".git"));
-            if is_repo {
+            let has_view = children
+                .iter()
+                .any(|e| e.as_ref().is_ok_and(|e| e.file_name == VIEW_FILE));
+            if is_repo || has_view {
                 if let Ok(rel) = path.strip_prefix(&prune_root) {
                     let rel_path = rel.to_string_lossy().replace('\\', "/");
-                    repo_sink.lock().unwrap().insert(rel_path);
+                    if is_repo {
+                        repo_sink.lock().unwrap().insert(rel_path.clone());
+                    }
+                    if has_view {
+                        view_sink.lock().unwrap().insert(rel_path);
+                    }
                 }
             }
             children.retain(|entry| {
@@ -330,10 +444,12 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
     }
 
     let repos = std::mem::take(&mut *found_repos.lock().unwrap());
+    let views = std::mem::take(&mut *found_views.lock().unwrap());
     WalkResult {
         files,
         dirs,
         repos,
+        views,
         skipped,
     }
 }
@@ -459,6 +575,7 @@ pub fn resolve_plan(
     diff: &ReconciliationDiff,
     frontmatter: &[(String, Option<serde_json::Value>)],
     db_docs: &HashMap<String, (String, i64)>,
+    deleted_ids: &HashSet<String>,
     foreign_ids: &HashSet<String>,
 ) -> ReconcilePlan {
     let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
@@ -467,6 +584,7 @@ pub fn resolve_plan(
         .collect();
     let db_path_to_id: HashMap<&str, &str> = db_docs
         .iter()
+        .filter(|(id, _)| !deleted_ids.contains(id.as_str()))
         .map(|(id, (path, _))| (path.as_str(), id.as_str()))
         .collect();
     let unchanged: HashSet<&str> = diff.unchanged.iter().map(|p| p.as_str()).collect();
@@ -567,7 +685,7 @@ pub fn resolve_plan(
         .collect();
     let delete_ids: Vec<String> = db_docs
         .keys()
-        .filter(|id| !keep.contains(id.as_str()))
+        .filter(|id| !keep.contains(id.as_str()) && !deleted_ids.contains(id.as_str()))
         .cloned()
         .collect();
 
@@ -586,12 +704,7 @@ fn fs_birth_ms(path: &Path, fallback_mtime: i64) -> i64 {
 }
 
 fn fs_mtime_ms(path: &Path) -> i64 {
-    fs::metadata(path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    mtime_ms(path).unwrap_or(0)
 }
 
 fn fm_tags(fm: Option<&serde_json::Value>) -> Vec<String> {
@@ -635,8 +748,17 @@ pub async fn apply_plan(
 
     let mut tx = db.begin().await?;
 
+    let now = Utc::now().timestamp_millis();
     let mut unlinked_tags: Vec<String> = Vec::new();
     for id in &plan.delete_ids {
+        if crate::services::fs::history_dir(source_path, id).is_dir() {
+            sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2")
+                .bind(now)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            continue;
+        }
         let tag_ids: Vec<String> =
             sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")
                 .bind(id)
@@ -683,7 +805,8 @@ pub async fn apply_plan(
 
         let wrote = if doc.existing {
             sqlx::query(
-                "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4, updated_at = ?5
+                "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4, updated_at = ?5,
+                     deleted_at = NULL
                  WHERE id = ?6 AND coalesce(mtime, 0) = ?7",
             )
             .bind(&doc.rel_path)
@@ -704,6 +827,10 @@ pub async fn apply_plan(
             sqlx::query(
                 "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT(id) DO UPDATE SET source_id = excluded.source_id, rel_path = excluded.rel_path,
+                     title = excluded.title, mtime = excluded.mtime, properties = excluded.properties,
+                     updated_at = excluded.updated_at, folder_id = NULL, deleted_at = NULL
+                     WHERE documents.deleted_at IS NOT NULL
                  ON CONFLICT DO NOTHING",
             )
             .bind(&doc.id)
@@ -838,6 +965,7 @@ pub(crate) async fn sync_folder_dirs(
     source_id: &str,
     dirs: &[String],
     repos: &HashSet<String>,
+    views: &HashSet<String>,
 ) -> sqlx::Result<()> {
     let mut expected: HashSet<String> = HashSet::with_capacity(dirs.len() + 1);
     expected.insert(upsert_folder(tx, source_id, "").await?);
@@ -852,6 +980,16 @@ pub(crate) async fn sync_folder_dirs(
     )
     .bind(source_id)
     .bind(serde_json::to_string(&repo_ids).unwrap_or_default())
+    .execute(&mut **tx)
+    .await?;
+
+    let view_ids: Vec<String> = views.iter().map(|p| folder_id(source_id, p)).collect();
+    sqlx::query(
+        "UPDATE folders SET view = (id IN (SELECT value FROM json_each(?2)))
+         WHERE source_id = ?1 AND view <> (id IN (SELECT value FROM json_each(?2)))",
+    )
+    .bind(source_id)
+    .bind(serde_json::to_string(&view_ids).unwrap_or_default())
     .execute(&mut **tx)
     .await?;
 
@@ -1053,16 +1191,17 @@ pub async fn reconcile_source(
         files: fs_entries,
         dirs: fs_dirs,
         repos,
+        views,
         skipped,
     } = walk_source(source, extensions);
 
     let mut tx = db.begin().await?;
-    sync_folder_dirs(&mut tx, source_id, &fs_dirs, &repos).await?;
+    sync_folder_dirs(&mut tx, source_id, &fs_dirs, &repos, &views).await?;
     tx.commit().await?;
     sync_folder_meta(db, source, git_off).await?;
 
-    let db_rows: Vec<(String, String, i64)> = sqlx::query_as(
-        "SELECT id, rel_path, coalesce(mtime, 0) FROM documents WHERE source_id = ?1 AND rel_path IS NOT NULL",
+    let db_rows: Vec<(String, String, i64, bool)> = sqlx::query_as(
+        "SELECT id, rel_path, coalesce(mtime, 0), deleted_at IS NOT NULL FROM documents WHERE source_id = ?1",
     )
     .bind(source_id)
     .fetch_all(db)
@@ -1070,11 +1209,17 @@ pub async fn reconcile_source(
 
     let db_entries: Vec<(String, i64)> = db_rows
         .iter()
-        .map(|(_, path, mtime)| (path.clone(), *mtime))
+        .filter(|(_, _, _, deleted)| !deleted)
+        .map(|(_, path, mtime, _)| (path.clone(), *mtime))
+        .collect();
+    let deleted_ids: HashSet<String> = db_rows
+        .iter()
+        .filter(|(_, _, _, deleted)| *deleted)
+        .map(|(id, _, _, _)| id.clone())
         .collect();
     let db_docs: HashMap<String, (String, i64)> = db_rows
         .into_iter()
-        .map(|(id, path, mtime)| (id, (path, mtime)))
+        .map(|(id, path, mtime, _)| (id, (path, mtime)))
         .collect();
 
     let diff = diff_against_db(&db_entries, &fs_entries);
@@ -1088,14 +1233,14 @@ pub async fn reconcile_source(
     let frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
 
     let foreign_ids: HashSet<String> =
-        sqlx::query_scalar("SELECT id FROM documents WHERE source_id != ?1")
+        sqlx::query_scalar("SELECT id FROM documents WHERE source_id != ?1 AND deleted_at IS NULL")
             .bind(source_id)
             .fetch_all(db)
             .await?
             .into_iter()
             .collect();
 
-    let plan = resolve_plan(&diff, &frontmatter, &db_docs, &foreign_ids);
+    let plan = resolve_plan(&diff, &frontmatter, &db_docs, &deleted_ids, &foreign_ids);
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
@@ -1153,7 +1298,35 @@ mod tests {
             .map(|(id, p)| (id.to_string(), (p.to_string(), 0)))
             .collect();
         let foreign_ids: HashSet<String> = foreign.iter().map(|s| s.to_string()).collect();
-        resolve_plan(&diff, &frontmatter, &db_docs, &foreign_ids)
+        resolve_plan(&diff, &frontmatter, &db_docs, &HashSet::new(), &foreign_ids)
+    }
+
+    #[test]
+    fn deleted_row_is_revived_by_its_id_and_never_counted_missing() {
+        let diff = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![("back/a.md".to_string(), 1)],
+            missing: vec![],
+        };
+        let frontmatter = vec![("back/a.md".to_string(), fm("id-a"))];
+        let db_docs: HashMap<String, (String, i64)> =
+            [("id-a".to_string(), ("a.md".to_string(), 0))].into();
+        let deleted: HashSet<String> = ["id-a".to_string()].into();
+        let p = resolve_plan(&diff, &frontmatter, &db_docs, &deleted, &HashSet::new());
+        let d = doc(&p, "back/a.md");
+        assert_eq!(d.id, "id-a");
+        assert!(d.existing && d.moved && !d.rewrite_id);
+        assert!(p.delete_ids.is_empty());
+
+        let empty = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![],
+            missing: vec![],
+        };
+        let p = resolve_plan(&empty, &[], &db_docs, &deleted, &HashSet::new());
+        assert!(p.docs.is_empty() && p.delete_ids.is_empty());
     }
 
     fn doc<'a>(p: &'a ReconcilePlan, path: &str) -> &'a ResolvedDoc {
@@ -1297,6 +1470,48 @@ mod tests {
         assert_eq!(d.id, "id-a");
         assert!(d.existing && !d.moved && !d.rewrite_id);
         assert_eq!(p.delete_ids, vec!["id-gone".to_string()]);
+    }
+
+    #[test]
+    fn source_config_round_trips_and_default_removes_the_file() {
+        let tmp = std::env::temp_dir().join(format!("ls-source-config-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        save_source_config(&tmp, &SourceConfig::default()).unwrap();
+        assert!(!source_config_path(&tmp).exists());
+        assert!(load_source_config(&tmp).is_none());
+
+        let mut config = SourceConfig::default();
+        config.frontmatter_dirs.insert("repo".into(), false);
+        save_source_config(&tmp, &config).unwrap();
+        let text = fs::read_to_string(source_config_path(&tmp)).unwrap();
+        assert!(!text.contains("asset_location"));
+        assert_eq!(load_source_config(&tmp), Some(config));
+
+        save_source_config(&tmp, &SourceConfig::default()).unwrap();
+        assert!(!source_config_path(&tmp).exists());
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn walk_notes_dirs_holding_a_view_file() {
+        let tmp = std::env::temp_dir().join(format!("ls-walk-views-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("a/b")).unwrap();
+        fs::create_dir_all(tmp.join("c")).unwrap();
+        fs::write(tmp.join(VIEW_FILE), b"{}").unwrap();
+        fs::write(tmp.join("a/b").join(VIEW_FILE), b"{}").unwrap();
+        fs::write(tmp.join("c/note.md"), b"hi").unwrap();
+
+        let source = Source::new("t".into(), tmp.clone());
+        let walk = walk_source(&source, &["md"]);
+
+        let mut views: Vec<String> = walk.views.into_iter().collect();
+        views.sort();
+        assert_eq!(views, vec!["".to_string(), "a/b".to_string()]);
+        assert_eq!(walk.files.len(), 1);
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

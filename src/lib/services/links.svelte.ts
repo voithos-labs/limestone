@@ -21,12 +21,20 @@ export function touchLinkIndex(): void {
 	linkIndex.version++;
 }
 
+// a deleted note still answers to its name when no live one does, so the link opens its gone
+// page with Restore instead of creating a blank namesake
 async function candidatesFor(sourceId: string, stem: string): Promise<LinkCandidate[]> {
-	return select<LinkCandidate>(
-		`SELECT id, rel_path FROM documents
-		 WHERE source_id = ?1 AND deleted_at IS NULL AND lower(title) = lower(?2)`,
+	const rows = await select<LinkCandidate & { deleted_at: number | null }>(
+		`SELECT id, rel_path, deleted_at FROM documents
+		 WHERE source_id = ?1 AND lower(title) = lower(?2)`,
 		[sourceId, stem]
 	);
+	const live = rows.filter((r) => !r.deleted_at);
+	return (live.length ? live : rows).map((r) => ({
+		id: r.id,
+		rel_path: r.rel_path,
+		deleted: !!r.deleted_at
+	}));
 }
 
 export async function resolveWikiLink(
@@ -142,6 +150,7 @@ export interface WikiTarget {
 export interface LinkCandidate {
 	id: string;
 	rel_path: string;
+	deleted?: boolean;
 }
 
 export function parseWikiTarget(inner: string): WikiTarget {

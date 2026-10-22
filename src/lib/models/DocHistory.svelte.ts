@@ -5,6 +5,7 @@ import {
 	type Checkpoint,
 	type StateDelta
 } from '#lib/services/history.js';
+import type MarkdownHandle from './MarkdownHandle.js';
 
 export interface HistoryVersion {
 	text: string;
@@ -12,7 +13,7 @@ export interface HistoryVersion {
 }
 
 export default class DocHistory {
-	readonly docId: string;
+	readonly doc: MarkdownHandle;
 	checkpoints = $state<Checkpoint[]>([]);
 	index = $state(0);
 	version = $state<HistoryVersion | null>(null);
@@ -20,8 +21,12 @@ export default class DocHistory {
 	private seq = 0;
 	private cache = new Map<string, HistoryVersion>();
 
-	constructor(docId: string) {
-		this.docId = docId;
+	constructor(doc: MarkdownHandle) {
+		this.doc = doc;
+	}
+
+	get available(): boolean {
+		return this.doc.idOnDisk;
 	}
 
 	get count(): number {
@@ -38,7 +43,7 @@ export default class DocHistory {
 
 	async load(): Promise<void> {
 		const seq = ++this.seq;
-		const checkpoints = await historyCheckpoints(this.docId);
+		const checkpoints = await historyCheckpoints(this.doc);
 		if (seq !== this.seq) return;
 		this.checkpoints = checkpoints;
 		this.index = Math.max(0, checkpoints.length - 1);
@@ -63,8 +68,8 @@ export default class DocHistory {
 			this.loading = true;
 			const prev = cps[idx - 1];
 			const [text, delta] = await Promise.all([
-				historyTextAt(this.docId, cp),
-				prev ? historyDelta(this.docId, prev, cp) : null
+				historyTextAt(this.doc, cp),
+				prev ? historyDelta(this.doc, prev, cp) : null
 			]);
 			v = { text, delta: delta ?? { inserts: [{ from: 0, to: text.length }], removals: [] } };
 			this.cache.set(key, v);

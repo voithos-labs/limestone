@@ -12,8 +12,8 @@
 		position: relative;
 		display: inline-block;
 		flex-shrink: 0;
-		width: 36px;
-		height: 20px;
+		width: 32px;
+		height: 18px;
 		cursor: pointer;
 	}
 
@@ -26,28 +26,40 @@
 	.toggle-slider {
 		position: absolute;
 		inset: 0;
-		background: var(--color-ui-muted);
-		border-radius: 10px;
-		transition: background 150ms ease;
+		background: var(--chip-bg-hover);
+		border-radius: 999px;
+		transition: background-color 120ms ease;
+	}
+
+	.toggle:hover .toggle-slider {
+		background: var(--chip-seg-active);
 	}
 
 	.toggle-slider::before {
 		content: '';
 		position: absolute;
-		left: 2px;
-		top: 2px;
-		width: 16px;
-		height: 16px;
-		background: var(--color-surface);
+		left: 3px;
+		top: 3px;
+		width: 12px;
+		height: 12px;
+		background: var(--color-bg);
 		border-radius: 50%;
-		transition: transform 150ms ease;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+		transition: transform 120ms ease;
 	}
 
-	.toggle input:checked + .toggle-slider {
+	.toggle input:checked + .toggle-slider,
+	.toggle:hover input:checked + .toggle-slider {
 		background: var(--color-accent);
 	}
 
 	.toggle input:checked + .toggle-slider::before {
-		transform: translateX(16px);
+		transform: translateX(14px);
+	}
+
+	.toggle input:focus-visible + .toggle-slider {
+		box-shadow:
+			0 0 0 2px var(--color-bg),
+			0 0 0 3.5px var(--focus-ring);
 	}
 </style>

@@ -80,21 +80,40 @@ pub async fn bulk_rename_view_field(
 }
 
 #[tauri::command]
-pub async fn bulk_rename_view_prefix(
+pub async fn bulk_rename_view_key(
     app_data: State<'_, AppData>,
     app: AppHandle,
     source_id: String,
-    old_prefix: String,
-    new_prefix: String,
+    old_key: String,
+    new_key: String,
+    doc_ids: Vec<String>,
 ) -> Result<BulkResult, String> {
     run(
         &app_data,
         &app,
         &source_id,
-        BulkAction::RenameViewPrefix {
-            old_prefix,
-            new_prefix,
+        BulkAction::RenameViewKey {
+            old_key,
+            new_key,
+            doc_ids,
         },
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn bulk_remove_view_key(
+    app_data: State<'_, AppData>,
+    app: AppHandle,
+    source_id: String,
+    key: String,
+    doc_ids: Vec<String>,
+) -> Result<BulkResult, String> {
+    run(
+        &app_data,
+        &app,
+        &source_id,
+        BulkAction::RemoveViewKey { key, doc_ids },
     )
     .await
 }

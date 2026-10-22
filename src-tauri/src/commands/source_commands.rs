@@ -5,7 +5,7 @@ use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
 use crate::services::fs::{clean_location, resolve_in_source};
-use crate::services::{self, dot_get, JsonSettingsStore, Source, Sources};
+use crate::services::{self, dot_get, JsonSettingsStore, Source, SourceRecord, Sources};
 use crate::AppData;
 
 fn sources_store(app: &AppHandle) -> JsonSettingsStore {
@@ -22,8 +22,22 @@ fn load_sources_file(app: &AppHandle) -> Sources {
     data
 }
 
-fn load_sources(app: &AppHandle) -> Vec<Source> {
-    load_sources_file(app).sources
+pub(crate) fn load_sources(app: &AppHandle) -> Vec<Source> {
+    load_sources_file(app)
+        .sources
+        .into_iter()
+        .map(|record| {
+            let config = services::load_source_config(&record.path).unwrap_or_default();
+            Source::from_parts(record, config)
+        })
+        .collect()
+}
+
+fn save_source_config(source: &Source) -> Result<(), String> {
+    if !source.path.is_dir() {
+        return Err("source unavailable".to_string());
+    }
+    services::save_source_config(&source.path, &source.config()).map_err(|e| e.to_string())
 }
 
 pub(crate) async fn doc_writes_meta(
@@ -33,7 +47,7 @@ pub(crate) async fn doc_writes_meta(
 ) -> Result<bool, String> {
     let writes: Option<bool> = sqlx::query_scalar(
         "SELECT f.writes_meta FROM documents d JOIN folders f ON f.id = d.folder_id
-         WHERE d.source_id = ?1 AND d.rel_path = ?2",
+         WHERE d.source_id = ?1 AND d.rel_path = ?2 AND d.deleted_at IS NULL",
     )
     .bind(source_id)
     .bind(rel_path)
@@ -101,7 +115,7 @@ pub(crate) fn refresh_folder_meta(app: &AppHandle, app_data: &AppData) {
     });
 }
 
-async fn run_reconcile(
+pub(crate) async fn run_reconcile(
     app_handle: AppHandle,
     source: Source,
     pool: sqlx::SqlitePool,
@@ -124,6 +138,8 @@ async fn run_reconcile(
             unreachable: !source.path.is_dir(),
         },
     );
+    crate::commands::history_commands::sweep_expired(&app_handle, &pool, &source).await;
+    crate::commands::history_commands::sweep_orphans(&app_handle, &pool, &source).await;
     if let Err(e) = services::index_fts(&pool, &source, changed).await {
         eprintln!("FTS indexing failed: {e}");
     }
@@ -162,7 +178,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 
 /// Check that `candidate` is neither equal to, nor an ancestor of, nor a
 /// descendant of any existing source path.
-fn check_source_conflict(candidate: &Path, existing: &[Source]) -> Result<(), String> {
+fn check_source_conflict(candidate: &Path, existing: &[SourceRecord]) -> Result<(), String> {
     let candidate_norm = normalize_path(candidate);
     for source in existing {
         let existing_norm = normalize_path(&source.path);
@@ -214,7 +230,8 @@ pub fn create_source(
         .asset_protocol_scope()
         .allow_directory(&source.path, true);
 
-    data.sources.push(source.clone());
+    save_source_config(&source)?;
+    data.sources.push(source.record());
     save_sources_file(&app, &data)?;
 
     spawn_reconcile(&app, &source, &app_data);
@@ -257,15 +274,10 @@ pub fn update_source(
     let note_location = clean_location(&note_location).map_err(|e| e.to_string())?;
     let asset_location = clean_location(&asset_location).map_err(|e| e.to_string())?;
 
-    let mut data = load_sources_file(&app);
-    let source = data
-        .sources
-        .iter_mut()
-        .find(|s| s.id == id)
-        .ok_or_else(|| "source not found".to_string())?;
+    let mut source = find_source(&app, id)?;
     source.note_location = note_location;
     source.asset_location = asset_location;
-    save_sources_file(&app, &data)
+    save_source_config(&source)
 }
 
 #[tauri::command]
@@ -276,12 +288,7 @@ pub async fn set_folder_frontmatter(
     dir: String,
     value: Option<bool>,
 ) -> Result<(), String> {
-    let mut data = load_sources_file(&app);
-    let source = data
-        .sources
-        .iter_mut()
-        .find(|s| s.id == id)
-        .ok_or_else(|| "source not found".to_string())?;
+    let mut source = find_source(&app, id)?;
     if dir.is_empty() {
         source.use_frontmatter = value;
     } else if let Some(v) = value {
@@ -289,8 +296,7 @@ pub async fn set_folder_frontmatter(
     } else {
         source.frontmatter_dirs.remove(&dir);
     }
-    let source = source.clone();
-    save_sources_file(&app, &data)?;
+    save_source_config(&source)?;
     services::sync_folder_meta(&app_data.db, &source, git_frontmatter_off(&app_data))
         .await
         .map_err(|e| e.to_string())?;
@@ -305,7 +311,7 @@ pub fn update_source_path(app: AppHandle, id: Uuid, path: String) -> Result<(), 
         return Err("folder not found".to_string());
     }
     let mut data = load_sources_file(&app);
-    let others: Vec<Source> = data
+    let others: Vec<SourceRecord> = data
         .sources
         .iter()
         .filter(|s| s.id != id)
@@ -512,9 +518,13 @@ pub async fn move_folder(
     Ok(())
 }
 
+#[tauri::command]
+pub fn rekey_folder_frontmatter(app: AppHandle, id: Uuid, old_dir: String, new_dir: String) {
+    rekey_frontmatter_dirs(&app, id, &old_dir, &new_dir);
+}
+
 fn rekey_frontmatter_dirs(app: &AppHandle, id: Uuid, old_dir: &str, new_dir: &str) {
-    let mut data = load_sources_file(app);
-    let Some(source) = data.sources.iter_mut().find(|s| s.id == id) else {
+    let Ok(mut source) = find_source(app, id) else {
         return;
     };
     let old_prefix = format!("{old_dir}/");
@@ -533,7 +543,7 @@ fn rekey_frontmatter_dirs(app: &AppHandle, id: Uuid, old_dir: &str, new_dir: &st
             .frontmatter_dirs
             .insert(format!("{new_dir}{}", &k[old_dir.len()..]), v);
     }
-    let _ = save_sources_file(app, &data);
+    let _ = save_source_config(&source);
 }
 
 /// The folder goes to the OS trash, never straight to nothing: a folder holds work the reader
@@ -568,6 +578,69 @@ pub async fn delete_folder(
     )
     .await;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn restore_folder(
+    app: AppHandle,
+    app_data: State<'_, AppData>,
+    source_id: String,
+    rel_dir: String,
+) -> Result<(), FolderOpError> {
+    if rel_dir.is_empty() {
+        return Err(FolderOpError::new("invalid_name"));
+    }
+    validate_folder_path(&rel_dir)?;
+    let root = source_root(&app, &source_id).map_err(|_| FolderOpError::new("source_missing"))?;
+    let full = resolve_in_source(&root, &rel_dir)
+        .map_err(|_| FolderOpError::named("not_found", folder_leaf(&rel_dir)))?;
+    if full.exists() {
+        return Err(FolderOpError::named(
+            "already_exists",
+            folder_leaf(&rel_dir),
+        ));
+    }
+    restore_from_trash(&full)?;
+
+    let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
+    let source = find_source(&app, uuid).map_err(|_| FolderOpError::new("source_missing"))?;
+    run_reconcile(
+        app.clone(),
+        source,
+        app_data.db.clone(),
+        frontmatter_buffer_size(&app_data),
+        git_frontmatter_off(&app_data),
+    )
+    .await;
+    Ok(())
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+fn restore_from_trash(full: &Path) -> Result<(), FolderOpError> {
+    let leaf = full
+        .file_name()
+        .ok_or_else(|| FolderOpError::new("not_found"))?;
+    let parent = full
+        .parent()
+        .and_then(|p| p.canonicalize().ok())
+        .ok_or_else(|| FolderOpError::new("not_found"))?;
+    let item = trash::os_limited::list()
+        .map_err(|_| FolderOpError::new("other"))?
+        .into_iter()
+        .filter(|i| i.name.as_os_str() == leaf)
+        .filter(|i| i.original_parent.canonicalize().ok().as_deref() == Some(parent.as_path()))
+        .max_by_key(|i| i.time_deleted)
+        .ok_or_else(|| FolderOpError::new("not_found"))?;
+    trash::os_limited::restore_all([item]).map_err(|e| match e {
+        trash::Error::RestoreCollision { .. } => FolderOpError::new("already_exists"),
+        trash::Error::CouldNotAccess { .. } => FolderOpError::new("permission"),
+        _ => FolderOpError::new("other"),
+    })
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn restore_from_trash(_full: &Path) -> Result<(), FolderOpError> {
+    Err(FolderOpError::new("unsupported"))
 }
 
 #[derive(serde::Serialize)]

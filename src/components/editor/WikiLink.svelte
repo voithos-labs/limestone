@@ -1,13 +1,10 @@
 <script lang="ts">
-	import {
-		isWidgetActivationClick,
-		type InlineWidgetComponentProps
-	} from '@voithos-labs/aragonite/plugin';
+	import { type InlineWidgetComponentProps } from '@voithos-labs/aragonite/plugin';
 	import { parseWikiTarget } from '#lib/services/links.svelte.js';
 	import { linkIndex, resolveWikiLink } from '#lib/services/links.svelte.js';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 
-	let { source, getPresentationMode }: InlineWidgetComponentProps = $props();
+	let { source, isActivationClick }: InlineWidgetComponentProps = $props();
 
 	// svelte-ignore state_referenced_locally
 	const { target, fragment, alias } = parseWikiTarget(source.slice(2, -2));
@@ -15,6 +12,7 @@
 
 	let el: HTMLElement | null = $state(null);
 	let unresolved = $state(false);
+	let deleted = $state(false);
 
 	$effect(() => {
 		linkIndex.version;
@@ -22,7 +20,9 @@
 		if (!sourceId || !target) return;
 		let live = true;
 		resolveWikiLink(sourceId, target).then((hit) => {
-			if (live) unresolved = hit === null;
+			if (!live) return;
+			unresolved = hit === null;
+			deleted = !!hit?.deleted;
 		});
 		return () => {
 			live = false;
@@ -30,15 +30,22 @@
 	});
 
 	function onClick(e: MouseEvent): void {
-		if (!isWidgetActivationClick(e.ctrlKey || e.metaKey, getPresentationMode())) return;
+		if (!isActivationClick(e)) return;
 		e.preventDefault();
-		const detail: ActivateDetail = { kind: 'wikilink', target, fragment, side: e.shiftKey };
+		const detail: ActivateDetail = {
+			kind: 'wikilink',
+			target,
+			fragment,
+			side: e.shiftKey,
+			newTab: e.ctrlKey || e.metaKey
+		};
 		el?.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { bubbles: true, detail }));
 	}
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<span bind:this={el} class="wikilink" class:unresolved onclick={onClick}>{label}</span>
+<span bind:this={el} class="wikilink" class:unresolved class:deleted onclick={onClick}>{label}</span
+>
 
 <style>
 	.wikilink {
@@ -52,5 +59,10 @@
 	.wikilink.unresolved {
 		color: var(--md-unresolved-color);
 		text-decoration-style: dashed;
+	}
+
+	.wikilink.deleted {
+		opacity: 0.6;
+		text-decoration-style: dotted;
 	}
 </style>

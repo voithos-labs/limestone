@@ -7,7 +7,7 @@
 		isSourceRoot
 	} from '#lib/models/Folder.js';
 	import Tag, { tagId } from '#lib/models/Tag.js';
-	import { isBuiltinUnit } from '#lib/models/View.svelte.js';
+	import { DELETED, isBuiltinUnit } from '#lib/models/View.svelte.js';
 	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
 	import { openProjectSetup } from '#lib/views/project.svelte.js';
 	import { metaDialog } from '#lib/overlays.svelte.js';
@@ -18,8 +18,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
 	import View from '#lib/models/View.svelte.js';
-	import type { ViewFace, FilterLeaf } from '#lib/models/View.svelte.js';
-	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import type { ViewFace, FilterLeaf, FilterNode } from '#lib/models/View.svelte.js';
+	import { listSavedViewJSON, unitDisplayName } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import type { TabState } from '#lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '#lib/models/Settings.svelte.js';
@@ -45,6 +45,8 @@
 	import DocFace from '../views/faces/DocFace.svelte';
 	import { DocPicker } from '#lib/views/project.svelte.js';
 	import { convertFileSrc } from '@tauri-apps/api/core';
+	import { parseCover } from '#lib/models/View.svelte.js';
+	import { getSource } from '#lib/models/Source.js';
 	import Menu from '../ui/Menu.svelte';
 	import CoverSourceDialog from '../dialogs/CoverSourceDialog.svelte';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
@@ -65,7 +67,9 @@
 		FileLock,
 		FilePen,
 		Settings,
-		SquareCheck
+		SquareCheck,
+		Eye,
+		EyeOff
 	} from '@lucide/svelte';
 	import NewFab from '../views/NewFab.svelte';
 	import { createInView } from '#lib/views/FaceRows.svelte.js';
@@ -80,6 +84,16 @@
 	const activeFace: ViewFace = $derived(
 		view.faces.find((f) => f.id === view.state.active_face_id) ?? view.faces[0]
 	);
+
+	const quickField = $derived(view.quickFilterField(activeFace));
+	const quickScope = $derived.by((): FilterNode | null => {
+		const v = view.state.quick_value as string | undefined;
+		const f = quickField;
+		if (!f || !v) return null;
+		if (f.type === 'tags') return { field_id: f.id, op: 'has_any', value: [v] };
+		if (f.type === 'boolean') return { field_id: f.id, op: 'eq', value: v === '1' };
+		return { field_id: f.id, op: 'eq', value: v };
+	});
 
 	const bodyFlow = true;
 	let bodyEl: HTMLDivElement | null = $state(null);
@@ -98,7 +112,9 @@
 	// a doc face makes its own entry
 	// a journal adds through the day itself (its entry, or the body's inline add row), so the
 	// fab would only ask a question it can't answer: new note in which day?
-	const showNewFab = $derived(activeFace?.type !== 'doc' && activeFace?.type !== 'journal');
+	const showNewFab = $derived(
+		activeFace?.type !== 'doc' && activeFace?.type !== 'journal' && view.unit !== DELETED
+	);
 
 	// a mode bar docked here (the history scrubber) owns the bottom of the page; the fab steps
 	// aside for it rather than sitting on top
@@ -172,21 +188,6 @@
 	// a journal's card body makes the note itself, so it lands on the day being read
 	let createSignal = $state(0);
 
-	function parseCover(cover: string) {
-		const [ref, q] = cover.split('?');
-		const p = new URLSearchParams(q ?? '');
-		const num = (k: string, d: number) => {
-			const v = parseFloat(p.get(k) ?? '');
-			return Number.isFinite(v) ? v : d;
-		};
-		return {
-			ref,
-			x: Math.min(100, Math.max(0, num('x', 50))),
-			y: Math.min(100, Math.max(0, num('y', 50))),
-			z: Math.max(1, num('z', 1))
-		};
-	}
-
 	function buildCover(ref: string, x: number, y: number, z: number) {
 		const parts: string[] = [];
 		if (Math.round(x) !== 50) parts.push(`x=${Math.round(x)}`);
@@ -224,7 +225,8 @@
 		const { ref } = parseCover(cover);
 		let cancelled = false;
 		(async () => {
-			const url = convertFileSrc(ref, 'appasset');
+			const url = await coverUrlFor(ref).catch(() => '');
+			if (!url) return;
 			const img = new Image();
 			img.src = url;
 			try {
@@ -282,6 +284,14 @@
 			return;
 		}
 		const next = await folderPresence(unit);
+		if (next.state === 'gone') {
+			const saved = (await listSavedViewJSON()).find((v) => v.id === view.id);
+			if (saved?.unit && saved.unit !== unit && view.unit === unit) {
+				view.retarget(unit, saved.unit, true);
+				view.slug = await unitDisplayName(saved.unit);
+				return;
+			}
+		}
 		if (view.unit === unit) presence = next;
 	}
 
@@ -403,6 +413,17 @@
 		sourceRemoved = !sources.some((s) => s.id === sid);
 	});
 
+	// a project's cover is an asset of its source
+	const coverSourceId = $derived(
+		view.unit?.startsWith('folder:') ? folderIdSource(view.unit) : undefined
+	);
+
+	async function coverUrlFor(ref: string): Promise<string> {
+		if (!coverSourceId) return convertFileSrc(ref, 'appasset');
+		const source = await getSource(coverSourceId);
+		return convertFileSrc(`${source.path}/${ref}`);
+	}
+
 	let coverDialogOpen = $state(false);
 
 	function pickCover() {
@@ -411,6 +432,7 @@
 
 	function removeCover() {
 		view.cover = '';
+		view.coverHidden = false;
 		cropping = false;
 	}
 
@@ -474,6 +496,7 @@
 
 	let unitSiblings = $state<Set<string>>(new Set());
 	let unitChildren = $state<Set<string>>(new Set());
+
 	async function loadNeighbours() {
 		const unit = view.unit;
 		if (!unit) return;
@@ -491,6 +514,7 @@
 		unitSiblings = new Set(all.filter((f) => f.parentId === parent && f.id !== unit).map(slugs));
 		unitChildren = new Set(all.filter((f) => f.parentId === unit).map(slugs));
 	}
+
 	$effect(() => {
 		void view.unit;
 		void loadNeighbours();
@@ -504,6 +528,7 @@
 			return folderNameProblem(name, unitSiblings.has(name.trim().toLowerCase()));
 		return null;
 	}
+
 	let header: ViewHeader | null = $state(null);
 
 	// a different face is a different place: what was done on the last one isn't undone here
@@ -558,15 +583,11 @@
 
 	const moreItems = $derived.by(() => {
 		const items: MenuEntry[] = [];
-		const cover: MenuEntry[] = view.cover
-			? []
-			: [{ value: 'add-cover', label: 'Add cover', icon: ImageUp }];
-		const builtin = !!view.unit && isBuiltinUnit(view.unit);
-		if (builtin) {
-			items.push({ value: 'new-note', label: 'New note', icon: FilePlus });
-			items.push(...cover);
-			return items;
-		}
+		const cover: MenuEntry[] = !view.cover
+			? [{ value: 'add-cover', label: 'Add cover', icon: ImageUp }]
+			: view.coverHidden
+				? [{ value: 'show-cover', label: 'Show cover', icon: Eye }]
+				: [];
 		if (unitKind) {
 			// making things is the fab's job; in a project this menu holds the place underneath
 			// and the project on top of it, so the place gets named
@@ -650,6 +671,7 @@
 
 	let sourceDialogOpen = $state(false);
 	let dialogSource: Source | null = $state(null);
+
 	async function configureSource() {
 		if (!view.unit) return;
 		dialogSource = (await listSources()).find((s) => s.id === folderIdSource(view.unit!)) ?? null;
@@ -730,6 +752,7 @@
 		}
 		moreOpen = false;
 		if (value === 'add-cover') pickCover();
+		if (value === 'show-cover') view.coverHidden = false;
 		if (value === 'duplicate') duplicateView();
 		if (value === 'confirm-delete') unitKind ? deleteUnit() : deleteView();
 		if (value === 'new-note') newNote();
@@ -739,7 +762,19 @@
 		if (value === 'meta' && view.unit) metaDialog.show(view.unit);
 		if (value === 'project' && view.unit)
 			openProjectSetup(editor, { id: view.unit, name: view.slug }, tab);
-		if (value === 'unproject') view.unsave().catch((e) => console.error('unsave failed', e));
+		if (value === 'unproject') unproject();
+	}
+
+	async function unproject() {
+		if (!view.unit) return;
+		try {
+			await view.unsave();
+			const plain = View.createForUnit(view.unit, view.slug);
+			if (tab) editor.replaceViewInTab(tab, plain);
+			else editor.openView(plain);
+		} catch (e) {
+			reportError(e, `${subject} couldn't stop being a project.`);
+		}
 	}
 
 	async function onOpenUnit(id: string, name: string, newTab = false) {
@@ -775,7 +810,7 @@
 			onscroll={bodyScroll}
 		>
 			<div class="view-top">
-				{#if view.cover}
+				{#if view.cover && !view.coverHidden}
 					<div
 						class="view-cover"
 						class:cropping
@@ -819,6 +854,14 @@
 								<button class="cover-btn" type="button" title="Replace" onclick={pickCover}>
 									<ImageUp size={14} />
 								</button>
+								<button
+									class="cover-btn"
+									type="button"
+									title="Hide on this page"
+									onclick={() => (view.coverHidden = true)}
+								>
+									<EyeOff size={14} />
+								</button>
 								<button class="cover-btn" type="button" title="Remove" onclick={removeCover}>
 									<X size={14} />
 								</button>
@@ -827,12 +870,12 @@
 					</div>
 				{/if}
 
-				<div class="view-chrome" class:has-cover={!!view.cover}>
+				<div class="view-chrome" class:has-cover={!!view.cover && !view.coverHidden}>
 					<ViewHeader
 						bind:this={header}
 						{view}
 						{titleProblem}
-						hasCover={!!view.cover}
+						hasCover={!!view.cover && !view.coverHidden}
 						{docPicker}
 						onOpenNewTab={(id, name) => onOpenUnit(id, name, true)}
 						onMore={(anchor) => {
@@ -843,7 +886,7 @@
 				</div>
 			</div>
 
-			<div class="view-inner">
+			<div class="view-inner" class:board={activeFace?.type === 'kanban'}>
 				{#if activeFace?.type === 'journal'}
 					<JournalFace
 						{view}
@@ -871,21 +914,21 @@
 						{dockTarget}
 					/>
 				{:else if activeFace?.type === 'list'}
-					<ListFace {view} face={activeFace} {onOpenRow} />
+					<ListFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{:else if activeFace?.type === 'masonry'}
-					<MasonryFace {view} face={activeFace} {onOpenRow} />
+					<MasonryFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{:else if activeFace?.type === 'kanban'}
-					<KanbanFace {view} face={activeFace} {onOpenRow} />
+					<KanbanFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{:else if activeFace?.type === 'dashboard'}
-					<DashboardFace {view} face={activeFace} {onOpenRow} {onOpenUnit} />
+					<DashboardFace {view} face={activeFace} scope={quickScope} {onOpenRow} {onOpenUnit} />
 				{:else if activeFace}
-					<ListFace {view} face={activeFace} {onOpenRow} />
+					<ListFace {view} face={activeFace} scope={quickScope} {onOpenRow} />
 				{/if}
 			</div>
 		</div>
 
 		<!-- Where a document on this page draws its find bar. Outside the scroller, so it stays at
-		     the page's top right while the document scrolls under it. -->
+             the page's top right while the document scrolls under it. -->
 		<div class="find-bar-anchor" bind:this={findBarAnchor}></div>
 		<!-- Where a document on this page docks its mode bars (history), in the page's own frame. -->
 		<div bind:this={dockTarget}></div>
@@ -913,6 +956,8 @@
 <SourceDialog bind:open={sourceDialogOpen} mode="edit" source={dialogSource} onSaved={() => {}} />
 <CoverSourceDialog
 	bind:open={coverDialogOpen}
+	sourceId={coverSourceId}
+	stem={`${view.slug} cover`}
 	onPicked={(ref) => {
 		view.cover = ref;
 	}}
@@ -943,6 +988,11 @@
 		overflow: hidden;
 	}
 
+	/* a face that wants more than the column (the board) measures the pane through this */
+	.view-body {
+		container-type: inline-size;
+	}
+
 	.view-body.restoring {
 		opacity: 0;
 	}
@@ -960,21 +1010,21 @@
 	}
 
 	/* a project page's column: the cover, header and faces share it; a document inside keeps
-	   its own reading width */
+       its own reading width */
 	.view-top {
-		max-width: var(--view-max-width, 1200px);
+		max-width: var(--view-max-width, 1000px);
 		margin: 0 auto;
 		padding: 16px 24px 0;
 	}
 
 	.view-inner {
-		max-width: var(--view-max-width, 1200px);
+		max-width: var(--view-max-width, 1000px);
 		margin: 0 auto;
-		padding: 0 24px;
+		padding: 0 24px 72px;
 	}
 
 	/* No size of its own: the bar hangs off this corner, and an empty box would otherwise sit
-	   over the page swallowing clicks. Clear of the scroll thumb's 14px rail on the right. */
+       over the page swallowing clicks. Clear of the scroll thumb's 14px rail on the right. */
 	.find-bar-anchor {
 		position: absolute;
 		top: 0;
@@ -991,6 +1041,10 @@
 
 	.view-chrome.has-cover {
 		padding-top: 0;
+	}
+
+	.view-inner.board {
+		padding-bottom: 0;
 	}
 
 	.view-inner > :global(.list-face) {

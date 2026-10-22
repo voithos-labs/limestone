@@ -44,7 +44,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import type { Component } from 'svelte';
+import { CircleCheckBig } from '@lucide/svelte';
 import type MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import type Tag from '#lib/models/Tag.js';
 import Folder, {
@@ -53,9 +55,14 @@ import Folder, {
 	folderIdSource,
 	isSourceRoot
 } from '#lib/models/Folder.js';
-import { listSources, sourceName, type Source } from '#lib/models/Source.js';
-import { select } from '#lib/services/db.js';
-import { load, type Store } from '@tauri-apps/plugin-store';
+import {
+	getSource,
+	listSources,
+	onSourceReconciled,
+	sourceName,
+	type Source
+} from '#lib/models/Source.js';
+import { execute, select } from '#lib/services/db.js';
 import { toasts } from '#lib/overlays.svelte.js';
 import { resolveRelativeDate, wallClockToMs } from '#lib/views/dateFormat.js';
 import { appSettings } from '#lib/models/Settings.svelte.js';
@@ -107,6 +114,8 @@ export class ViewFace {
 		this.additive_filter = json.additive_filter;
 		this.sort = json.sort;
 		this.config = json.config;
+		if (!this.sort.length && ((this.config.order as string[] | undefined)?.length ?? 0) > 0)
+			this.sort = [{ field_id: MANUAL_SORT, direction: 'asc' }];
 		this.body = json.body
 			? new ViewFace({ ...json.body, additive_filter: { op: 'and', children: [] } })
 			: json.type === 'journal'
@@ -227,7 +236,7 @@ export const METADATA_FIELD: ViewField = {
 
 export interface BuiltinUnit {
 	unit: string;
-	emoji: string;
+	icon: Component;
 	fields: ViewField[];
 	display: string[];
 }
@@ -253,17 +262,30 @@ export function isStatusField(field: Pick<ViewField, 'id'>): boolean {
 	return field.id === TODO_STATUS;
 }
 
+const liveStatuses: StatusOption[] = $state([]);
+
+export function statusOptions(): StatusOption[] {
+	return liveStatuses;
+}
+
+export function loadStatuses(): void {
+	const saved = appSettings?.get<StatusOption[]>('todo.statuses') ?? DEFAULT_STATUSES;
+	liveStatuses.splice(0, liveStatuses.length, ...saved.map((o) => ({ ...o })));
+}
+
 export function saveStatuses(options: StatusOption[]): void {
+	const next = options.map((o) => ({ value: o.value, color: o.color, done: !!o.done }));
+	liveStatuses.splice(0, liveStatuses.length, ...next);
 	void appSettings?.set(
 		'todo.statuses',
-		options.map((o) => ({ value: o.value, color: o.color, done: !!o.done }))
+		next.map((o) => ({ ...o }))
 	);
 }
 
 export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
 	[TODO]: {
 		unit: TODO,
-		emoji: '',
+		icon: CircleCheckBig,
 		fields: [
 			builtinField(TODO, 'done', 'boolean'),
 			builtinField(TODO, 'status', 'select'),
@@ -280,11 +302,10 @@ const BUILTIN_FIELD_IDS = new Set(
 
 // fresh copies: views hold their fields in $state and write config in place
 function builtinFields(): ViewField[] {
-	const statuses = appSettings?.get<StatusOption[]>('todo.statuses') ?? DEFAULT_STATUSES;
 	return Object.values(BUILTIN_UNITS).flatMap((u) =>
 		u.fields.map((f) => ({
 			...f,
-			config: isStatusField(f) ? { options: statuses.map((o) => ({ ...o })) } : { ...f.config }
+			config: isStatusField(f) ? { options: liveStatuses } : { ...f.config }
 		}))
 	);
 }
@@ -292,6 +313,8 @@ function builtinFields(): ViewField[] {
 export function isBuiltinUnit(unitId: string): boolean {
 	return unitId in BUILTIN_UNITS;
 }
+
+export const DELETED = 'deleted';
 
 export function isBuiltinField(field: Pick<ViewField, 'id'>): boolean {
 	return BUILTIN_FIELD_IDS.has(field.id);
@@ -459,6 +482,12 @@ export interface SortKey {
 	nulls?: 'first' | 'last';
 }
 
+export const MANUAL_SORT = 'manual';
+
+export function isManualSort(face: ViewFace): boolean {
+	return face.sort[0]?.field_id === MANUAL_SORT;
+}
+
 // ── SQL Compilation ──────────────────────────────────────────────────────────────────
 
 interface CompiledFilter {
@@ -485,6 +514,10 @@ export function sanitizeName(raw: string): string {
 		.trim();
 }
 
+function propPath(field: ViewField): string {
+	return `'$.views."${pathSeg(fieldKey(field), 'unit key')}"."${pathSeg(field.name, 'field name')}"'`;
+}
+
 function resolveColumn(field: ViewField): string {
 	switch (field.type) {
 		case 'title':
@@ -497,27 +530,142 @@ function resolveColumn(field: ViewField): string {
 			return 'd.updated_at';
 		case 'tags':
 			throw new Error(`tags field has no scalar column; handle separately`);
-		default:
-			return `json_extract(d.properties, '$.views."${pathSeg(fieldKey(field), 'unit key')}"."${pathSeg(field.name, 'field name')}"')`;
+		default: {
+			const value = `json_extract(d.properties, ${propPath(field)})`;
+			if (!field.unit?.startsWith('folder:')) return value;
+			return `CASE WHEN ${unitScopeSql(field.unit)} THEN ${value} END`;
+		}
 	}
+}
+
+function sqlLit(s: string): string {
+	return `'${s.replace(/'/g, "''")}'`;
+}
+
+function unitScopeSql(unitId: string): string {
+	const src = `d.source_id = ${sqlLit(folderIdSource(unitId))}`;
+	if (isSourceRoot(unitId)) return src;
+	const below = sqlLit(`${unitId}/`);
+	return `${src} AND (d.folder_id = ${sqlLit(unitId)} OR substr(d.folder_id, 1, length(${below})) = ${below})`;
+}
+
+export function rowInUnit(row: Pick<MemberRow, 'source_id' | 'rel_path'>, unitId: string): boolean {
+	if (!unitId.startsWith('folder:')) return true;
+	if (row.source_id !== folderIdSource(unitId)) return false;
+	const path = folderIdPath(unitId);
+	return !path || row.rel_path.startsWith(`${path}/`);
 }
 
 /**
  * A unit view is 1:1 with an organization unit; a source is its root folder. The unit id both
  * scopes the view and names the frontmatter namespace its stateful props live under: tags key on
- * their bare slug, folders on their source-relative path wrapped in slashes (root is "/"). A tag
- * never ends with a slash and is never only slashes, so the two can't collide
+ * their bare slug, folders on their leaf name (root is "/"). A value only counts where the unit
+ * encloses the document, so same-named folders elsewhere never bleed into each other
  */
+export async function unitDisplayName(unitId: string): Promise<string> {
+	if (unitId === DELETED) return 'Deleted';
+	if (unitId.startsWith('tag:')) return unitId.slice('tag:'.length);
+	const path = folderIdPath(unitId);
+	if (path) return path.split('/').pop()!;
+	return sourceName(await getSource(folderIdSource(unitId)));
+}
+
 export function unitPropKey(unitId: string): string {
 	if (unitId.startsWith('tag:')) return unitId.slice('tag:'.length);
 	return folderPropKey(folderIdPath(unitId));
 }
 
 export function folderPropKey(path: string): string {
-	return path ? `/${path}/` : '/';
+	return path ? path.slice(path.lastIndexOf('/') + 1) : '/';
+}
+
+export function dirOf(relPath: string): string {
+	return relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : '';
+}
+
+export async function enclosingProjectKeys(sourceId: string, dir: string): Promise<string[]> {
+	const segs = dir.split('/').filter(Boolean);
+	const ids = [
+		folderId(sourceId, ''),
+		...segs.map((_, i) => folderId(sourceId, segs.slice(0, i + 1).join('/')))
+	];
+	const rows = await select<{ id: string }>(
+		`SELECT id FROM folders WHERE view = 1 AND id IN (${ids.map(() => '?').join(', ')})`,
+		ids
+	);
+	return rows.map((r) => folderPropKey(folderIdPath(r.id))).filter(isValidName);
+}
+
+export async function leftProjectKeys(
+	from: { sourceId: string; dir: string },
+	to: { sourceId: string; dir: string }
+): Promise<string[]> {
+	const was = await enclosingProjectKeys(from.sourceId, from.dir);
+	if (from.sourceId !== to.sourceId) return was;
+	const now = new Set(await enclosingProjectKeys(to.sourceId, to.dir));
+	return was.filter((k) => !now.has(k));
+}
+
+export async function docIdsWithKey(
+	sourceId: string,
+	folderId: string,
+	key: string
+): Promise<string[]> {
+	const path = `$.views."${pathSeg(key, 'unit key')}"`;
+	const below = isSourceRoot(folderId) ? folderId : `${folderId}/`;
+	const rows = await select<{ id: string }>(
+		`SELECT id FROM documents
+		 WHERE source_id = ?1 AND deleted_at IS NULL AND json_type(properties, ?2) = 'object'
+		   AND (folder_id = ?3 OR substr(folder_id, 1, length(?4)) = ?4)`,
+		[sourceId, path, folderId, below]
+	);
+	return rows.map((r) => r.id);
+}
+
+export async function renameViewKey(
+	sourceId: string,
+	folderId: string,
+	oldKey: string,
+	newKey: string
+): Promise<boolean> {
+	if (oldKey === newKey || !isValidName(oldKey) || !isValidName(newKey)) return true;
+	const docIds = await docIdsWithKey(sourceId, folderId, oldKey);
+	if (docIds.length === 0) return true;
+	const result = await invoke<BulkResult>('bulk_rename_view_key', {
+		sourceId,
+		oldKey,
+		newKey,
+		docIds
+	});
+	toastBulkFailures([result]);
+	return result.failed === 0 && !result.source_unreachable;
+}
+
+export async function removeViewKey(
+	sourceId: string,
+	key: string,
+	docIds: string[]
+): Promise<boolean> {
+	if (docIds.length === 0) return true;
+	const result = await invoke<BulkResult>('bulk_remove_view_key', { sourceId, key, docIds });
+	toastBulkFailures([result]);
+	return result.failed === 0 && !result.source_unreachable;
+}
+
+export async function seenOptionValues(field: ViewField): Promise<string[]> {
+	const path = propPath(field);
+	const sql =
+		field.type === 'multiselect'
+			? `SELECT DISTINCT j.value AS v FROM documents d, json_each(d.properties, ${path}) j
+				WHERE d.deleted_at IS NULL AND json_type(d.properties, ${path}) = 'array' AND j.type = 'text'`
+			: `SELECT DISTINCT json_extract(d.properties, ${path}) AS v FROM documents d
+				WHERE d.deleted_at IS NULL AND json_type(d.properties, ${path}) = 'text'`;
+	const rows = await select<{ v: string }>(sql, []);
+	return rows.map((r) => r.v).filter((v) => v !== '');
 }
 
 function compileUnit(unitId: string): CompiledFilter {
+	if (unitId === DELETED) return { sql: '', params: [] };
 	return unitId.startsWith('tag:')
 		? compileTagsLeaf('has_any', [unitId])
 		: compileFolderLeaf('in', unitId);
@@ -540,11 +688,15 @@ function compileFolderLeaf(op: string, value: unknown): CompiledFilter {
 	// with '/' (0x2F), whose successor is '0' (0x30); the source root has no separator before
 	// its children, so its bound comes from the successor of its trailing ':' (0x3A)
 	const id = String(value);
-	const upper = isSourceRoot(id) ? `${id.slice(0, -1)};` : `${id}0`;
-	const inFolder = {
-		sql: `(d.folder_id IS NOT NULL AND d.folder_id >= ? AND d.folder_id < ?)`,
-		params: [id, upper]
-	};
+	const inFolder = isSourceRoot(id)
+		? {
+				sql: `(d.folder_id IS NOT NULL AND d.folder_id >= ? AND d.folder_id < ?)`,
+				params: [id, `${id.slice(0, -1)};`]
+			}
+		: {
+				sql: `(d.folder_id IS NOT NULL AND (d.folder_id = ? OR (d.folder_id >= ? AND d.folder_id < ?)))`,
+				params: [id, `${id}/`, `${id}0`]
+			};
 	switch (op) {
 		case 'in':
 			return inFolder;
@@ -806,6 +958,7 @@ export interface MemberRow {
 	rel_path: string;
 	created_at: number;
 	updated_at: number;
+	deleted_at: number | null;
 	properties: string;
 	source_id: string;
 	writes_meta: number;
@@ -824,52 +977,196 @@ interface ViewJSON {
 	temporary?: boolean;
 	emoji?: string;
 	cover?: string;
+	cover_hidden?: boolean;
 	accessed_at?: Date;
 }
 
-// ── Saved views store (views.json) ───────────────────────────────────────────────────
+// ── Saved views (one file per view) ──────────────────────────────────────────────────
 
-const VIEWS_VERSION = 1;
+type ViewHome = { kind: 'folder'; sourceId: string; relDir: string } | { kind: 'app'; id: string };
 
-let viewStore: Store | null = null;
-async function getViewStore(): Promise<Store> {
-	if (!viewStore) {
-		viewStore = await load('views.json');
-		if ((await viewStore.get<number>('version')) !== VIEWS_VERSION) {
-			await viewStore.set('version', VIEWS_VERSION);
-			await viewStore.save();
+export function isFolderView(json: Pick<ViewJSON, 'unit'>): boolean {
+	return !!json.unit?.startsWith('folder:');
+}
+
+function homeOf(json: Pick<ViewJSON, 'id' | 'unit'>): ViewHome {
+	if (json.unit && isFolderView(json))
+		return { kind: 'folder', sourceId: folderIdSource(json.unit), relDir: folderIdPath(json.unit) };
+	return { kind: 'app', id: json.id };
+}
+
+async function writeHome(home: ViewHome, json: ViewJSON): Promise<void> {
+	if (home.kind === 'folder') {
+		const { accessed_at: _a, temporary: _t, ...rest } = json;
+		await invoke('view_file_write', {
+			sourceId: home.sourceId,
+			relDir: home.relDir,
+			text: JSON.stringify(rest, null, 2)
+		});
+	} else {
+		await invoke('app_view_write', { id: home.id, text: JSON.stringify(json, null, 2) });
+	}
+}
+
+async function removeHome(home: ViewHome): Promise<void> {
+	if (home.kind === 'folder')
+		await invoke('view_file_remove', { sourceId: home.sourceId, relDir: home.relDir });
+	else await invoke('app_view_remove', { id: home.id });
+}
+
+function parseView(text: string): ViewJSON | null {
+	try {
+		const json = JSON.parse(text);
+		return json && typeof json.id === 'string' && Array.isArray(json.faces) ? json : null;
+	} catch {
+		return null;
+	}
+}
+
+async function loadViews(): Promise<Map<string, ViewJSON>> {
+	const all = new Map<string, ViewJSON>();
+	for (const text of await invoke<string[]>('app_views_read')) {
+		const json = parseView(text);
+		if (json) all.set(json.id, json);
+	}
+	const rows = await select<{ id: string; accessed_at: number }>(
+		`SELECT id, accessed_at FROM folders WHERE view = 1`
+	);
+	const found = await Promise.all(
+		rows.map(async (row) => {
+			const text = await invoke<string | null>('view_file_read', {
+				sourceId: folderIdSource(row.id),
+				relDir: folderIdPath(row.id)
+			}).catch(() => null);
+			const json = text ? parseView(text) : null;
+			return json && isValidName(folderPropKey(folderIdPath(row.id))) ? { row, json } : null;
+		})
+	);
+	const entries = found.filter((e) => e !== null).sort((a, b) => b.row.id.length - a.row.id.length);
+
+	const dirty = new Set<string>();
+	const byId = new Map<string, typeof entries>();
+	for (const e of entries) byId.set(e.json.id, [...(byId.get(e.json.id) ?? []), e]);
+	for (const group of byId.values()) {
+		const keeper = group.find((e) => e.json.unit === e.row.id) ?? group[0];
+		for (const e of group) {
+			if (e !== keeper || all.has(e.json.id)) {
+				e.json = { ...e.json, id: uuidv4() };
+				dirty.add(e.json.id);
+			}
 		}
 	}
-	return viewStore;
+	for (const e of entries) all.set(e.json.id, e.json);
+
+	const remapAll = (from: string, to: string) => {
+		if (from === to) return;
+		for (const [id, json] of all) {
+			const next = remapIds(json, from, to, true) as ViewJSON;
+			if (JSON.stringify(next) !== JSON.stringify(json)) {
+				all.set(id, next);
+				dirty.add(id);
+			}
+		}
+	};
+
+	for (const { row, json } of entries) {
+		const hint = json.unit;
+		const sourceId = folderIdSource(row.id);
+		const newPath = folderIdPath(row.id);
+		const newKey = folderPropKey(newPath);
+		const hintPath = hint ? folderIdPath(hint) : newPath;
+		const moved = !!hint && hint !== row.id;
+		let ok = true;
+		if (hintPath) ok = await renameViewKey(sourceId, row.id, `/${hintPath}/`, newKey);
+		if (ok && moved) ok = await renameViewKey(sourceId, row.id, folderPropKey(hintPath), newKey);
+		if (ok && moved) {
+			const copied = await select<{ id: string }>(`SELECT id FROM folders WHERE id = ?1`, [hint]);
+			if (copied.length === 0) {
+				remapAll(hint!, row.id);
+				if (folderIdSource(hint!) === sourceId)
+					await invoke('rekey_folder_frontmatter', {
+						id: sourceId,
+						oldDir: hintPath,
+						newDir: newPath
+					}).catch(() => {});
+			}
+		}
+		const live = all.get(json.id)!;
+		all.set(json.id, { ...live, unit: row.id, accessed_at: new Date(row.accessed_at) });
+		if (!ok) dirty.delete(json.id);
+		else if (moved || !hint) dirty.add(json.id);
+	}
+	for (const id of dirty) {
+		const v = all.get(id);
+		if (v) void writeHome(homeOf(v), v);
+	}
+	return all;
+}
+
+let views: Promise<Map<string, ViewJSON>> | null = null;
+
+function getViews(): Promise<Map<string, ViewJSON>> {
+	return (views ??= loadViews());
+}
+
+onSourceReconciled(() => {
+	views = null;
+});
+
+export type CoverArt = { url: string; x: number; y: number; z: number };
+
+export function parseCover(cover: string) {
+	const [ref, q] = cover.split('?');
+	const p = new URLSearchParams(q ?? '');
+	const num = (k: string, d: number) => {
+		const v = parseFloat(p.get(k) ?? '');
+		return Number.isFinite(v) ? v : d;
+	};
+	return {
+		ref,
+		x: Math.min(100, Math.max(0, num('x', 50))),
+		y: Math.min(100, Math.max(0, num('y', 50))),
+		z: Math.max(1, num('z', 1))
+	};
+}
+
+export async function coverArt(
+	unit: string | null | undefined,
+	cover: string
+): Promise<CoverArt | null> {
+	if (!cover) return null;
+	const { ref, x, y, z } = parseCover(cover);
+	if (!unit?.startsWith('folder:')) return { url: convertFileSrc(ref, 'appasset'), x, y, z };
+	const s = await getSource(folderIdSource(unit)).catch(() => null);
+	return s ? { url: convertFileSrc(`${s.path}/${ref}`), x, y, z } : null;
 }
 
 export async function listSavedViewJSON(): Promise<ViewJSON[]> {
-	const s = await getViewStore();
-	return (await s.get<ViewJSON[]>('views')) ?? [];
+	return [...(await getViews()).values()];
 }
 
 export async function saveViewJSON(json: ViewJSON): Promise<void> {
-	const s = await getViewStore();
-	const all = (await s.get<ViewJSON[]>('views')) ?? [];
-	const idx = all.findIndex((v) => v.id === json.id);
-	if (idx >= 0) all[idx] = json;
-	else all.push(json);
-	await s.set('views', all);
-	await s.save();
+	const all = await getViews();
+	const prev = all.get(json.id);
+	const home = homeOf(json);
+	if (prev) {
+		const old = homeOf(prev);
+		if (JSON.stringify(old) !== JSON.stringify(home)) await removeHome(old);
+	}
+	all.set(json.id, json);
+	await writeHome(home, json);
 }
 
 export async function deleteSavedView(id: string): Promise<void> {
-	const s = await getViewStore();
-	const all = (await s.get<ViewJSON[]>('views')) ?? [];
-	await s.set(
-		'views',
-		all.filter((v) => v.id !== id)
-	);
-	await s.save();
+	const all = await getViews();
+	const prev = all.get(id);
+	if (!prev) return;
+	all.delete(id);
+	await removeHome(homeOf(prev));
 }
 
 export async function isViewSaved(id: string): Promise<boolean> {
-	return (await listSavedViewJSON()).some((v) => v.id === id);
+	return (await getViews()).has(id);
 }
 
 export function remapIds(v: unknown, oldId: string, newId: string, subpaths = false): unknown {
@@ -879,7 +1176,7 @@ export function remapIds(v: unknown, oldId: string, newId: string, subpaths = fa
 		return v;
 	}
 	if (Array.isArray(v)) return v.map((x) => remapIds(x, oldId, newId, subpaths));
-	if (v && typeof v === 'object') {
+	if (v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype) {
 		return Object.fromEntries(
 			Object.entries(v).map(([k, val]) => [k, remapIds(val, oldId, newId, subpaths)])
 		);
@@ -892,10 +1189,10 @@ export async function remapIdsInSavedViews(
 	newId: string,
 	subpaths = false
 ): Promise<void> {
-	const s = await getViewStore();
-	const all = (await s.get<ViewJSON[]>('views')) ?? [];
-	await s.set('views', remapIds(all, oldId, newId, subpaths));
-	await s.save();
+	for (const json of await listSavedViewJSON()) {
+		const next = remapIds(json, oldId, newId, subpaths) as ViewJSON;
+		if (JSON.stringify(next) !== JSON.stringify(json)) await saveViewJSON(next);
+	}
 }
 
 class View {
@@ -911,6 +1208,7 @@ class View {
 	temporary: boolean = $state(false);
 	emoji: string = $state(''); // user-set per-view emoji
 	cover: string = $state('');
+	coverHidden: boolean = $state(false);
 	accessedAt: Date = $state(new Date());
 	private pristine = '';
 
@@ -929,14 +1227,19 @@ class View {
 		this.faces = json.faces.map((j) => new ViewFace(j));
 		this.state = json.state ?? {};
 		this.temporary = json.temporary ?? false;
-		this.emoji = json.emoji ?? '';
-		this.cover = json.cover ?? '';
+		this.emoji = this.builtin ? '' : (json.emoji ?? '');
+		this.cover = this.builtin ? '' : (json.cover ?? '');
+		this.coverHidden = json.cover_hidden ?? false;
 		// the store hands dates back as strings; the model always holds Dates
 		this.accessedAt = new Date(json.accessed_at ?? json.updated_at);
 		// a stateful field with no home has nowhere to read or write; drop it and its uses
 		for (const f of this.fields.filter((f) => !isDerived(f.type) && !f.unit))
 			this.removeField(f.id);
 		this.markPristine();
+	}
+
+	get builtin(): boolean {
+		return !!this.unit && isBuiltinUnit(this.unit);
 	}
 
 	private snapshot(): string {
@@ -990,12 +1293,25 @@ class View {
 		view.unit = unitId;
 		view.temporary = true;
 		const builtin = BUILTIN_UNITS[unitId];
-		if (builtin) {
-			if (builtin.emoji) view.emoji = builtin.emoji;
+		if (unitId === DELETED) {
+			const ids = (['title', 'folder', 'updated_at'] as ViewFieldType[]).map(
+				(t) => view.fields.find((f) => f.type === t)!.id
+			);
+			view.faces = [ViewFace.create('list', ids)];
+		} else if (builtin) {
 			const title = view.fields.find((f) => f.type === 'title')!.id;
 			const [done, ...rest] = builtin.display;
+			const due = rest[0];
+			const bySoonest: SortKey[] = due ? [{ field_id: due, direction: 'asc', nulls: 'last' }] : [];
 			view.faces = [
-				ViewFace.create('list', [done, title, ...rest], undefined, [], { group_by: done })
+				ViewFace.create('list', [done, title, ...rest], undefined, bySoonest, {
+					group_by: done,
+					right: rest
+				}),
+				ViewFace.create('kanban', [title, ...rest], undefined, bySoonest, {
+					group_by: builtin.fields.find((f) => f.type === 'select')?.id ?? done,
+					right: rest
+				})
 			];
 		} else if (unitId.startsWith('folder:')) {
 			const title = view.fields.find((f) => f.type === 'title')!.id;
@@ -1152,19 +1468,29 @@ class View {
 		this.unit = null;
 	}
 
-	/** Persist this view to views.json and mark it as a saved (non-temporary) view. */
+	/** Persist this view to its file and mark it as a saved (non-temporary) view. */
 	async save() {
 		this.temporary = false;
 		await saveViewJSON(this.toJSON());
 	}
 
+	// a folder view's file is the user's; its access time lives on the folder row instead
 	async touchAccessed() {
 		if (this.temporary) return;
 		this.accessedAt = new Date();
-		await saveViewJSON(this.toJSON());
+		if (this.unit && isFolderView(this)) {
+			await execute(`UPDATE folders SET accessed_at = ?2 WHERE id = ?1`, [
+				this.unit,
+				this.accessedAt.getTime()
+			]);
+			const cached = (await getViews()).get(this.id);
+			if (cached) cached.accessed_at = this.accessedAt;
+		} else {
+			await saveViewJSON(this.toJSON());
+		}
 	}
 
-	/** Remove this view from views.json; it becomes a temporary view again. */
+	/** Remove this view's file; it becomes a temporary view again. */
 	async unsave() {
 		this.temporary = true;
 		await deleteSavedView(this.id);
@@ -1183,11 +1509,12 @@ class View {
 			updated_at: this.updatedAt,
 			fields: this.ownFields,
 			filter: this.filter,
-			faces: this.faces,
+			faces: this.faces.map((f) => f.toJSON()),
 			state: this.state,
 			temporary: this.temporary,
 			emoji: this.emoji,
 			cover: this.cover,
+			cover_hidden: this.coverHidden || undefined,
 			accessed_at: this.accessedAt
 		};
 	}
@@ -1208,6 +1535,7 @@ class View {
 		const compiled = compileFilter(memberFilter(this.filter, opts?.face, opts?.scope), this.fields);
 		if (!this.unit) return compiled;
 		const unit = compileUnit(this.subfolder ?? this.unit);
+		if (!unit.sql) return compiled;
 		if (!compiled.sql) return unit;
 		return {
 			sql: `(${unit.sql} AND ${compiled.sql})`,
@@ -1236,13 +1564,14 @@ class View {
 		const sort = opts?.face?.sort ?? [];
 		const orderBy = sort.length ? compileSort(sort, this.fields) : '';
 
-		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.properties, d.source_id,
+		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.deleted_at, d.properties, d.source_id,
 				${WRITES_META_SQL} AS writes_meta
 			FROM documents d
-			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
+			WHERE ${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
 
 		if (!idsIn) {
-			sql += ` ORDER BY ${orderBy || 'd.updated_at DESC'}`;
+			const latest = this.unit === DELETED ? 'd.deleted_at DESC' : 'd.updated_at DESC';
+			sql += ` ORDER BY ${orderBy || latest}`;
 		}
 
 		if (opts?.limit !== undefined) {
@@ -1257,13 +1586,59 @@ class View {
 		return select<MemberRow>(sql, params);
 	}
 
+	// the Deleted view is the one place deleted rows are members; everywhere else they are not
+	private liveClause(): string {
+		return this.unit === DELETED ? 'd.deleted_at IS NOT NULL' : 'd.deleted_at IS NULL';
+	}
+
 	// This face's scope (view filter + face filter + any extra scope) as compiled SQL
 	searchScope(opts?: { face?: ViewFace; scope?: FilterNode | null }): {
 		sql: string;
 		params: unknown[];
+		includeDeleted?: boolean;
 	} {
 		const compiled = this.compileScope(opts);
-		return { sql: compiled.sql, params: [...compiled.params] };
+		return {
+			sql: compiled.sql,
+			params: [...compiled.params],
+			includeDeleted: this.unit === DELETED
+		};
+	}
+
+	// the field a face's quick filter bar offers, if it set one that still exists
+	quickFilterField(face: ViewFace | undefined): ViewField | null {
+		const id = face?.config.quick_filter as string | undefined;
+		return id ? (this.fields.find((f) => f.id === id) ?? null) : null;
+	}
+
+	// how many members carry each value of a field, within this scope
+	async countValues(
+		field: ViewField,
+		opts?: { face?: ViewFace; scope?: FilterNode | null }
+	): Promise<{ value: string; label: string; n: number }[]> {
+		const compiled = this.compileScope(opts);
+		const where = `${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
+		const params = [...compiled.params];
+		if (field.type === 'tags') {
+			const rows = await select<{ value: string; label: string; n: number }>(
+				`SELECT t.id AS value, t.slug AS label, COUNT(*) AS n
+				 FROM document_tags dt
+				 JOIN tags t ON t.id = dt.tag_id
+				 JOIN documents d ON d.id = dt.document_id
+				 WHERE ${where}
+				 GROUP BY t.id`,
+				params
+			);
+			return rows;
+		}
+		const rows = await select<{ value: unknown; n: number }>(
+			`SELECT ${resolveColumn(field)} AS value, COUNT(*) AS n
+			 FROM documents d
+			 WHERE ${where} AND ${resolveColumn(field)} IS NOT NULL
+			 GROUP BY 1`,
+			params
+		);
+		return rows.map((r) => ({ value: String(r.value), label: String(r.value), n: r.n }));
 	}
 
 	// total matching members
@@ -1271,7 +1646,7 @@ class View {
 		const compiled = this.compileScope(opts);
 		const sql = `SELECT COUNT(*) AS n
 			FROM documents d
-			WHERE d.deleted_at IS NULL${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
+			WHERE ${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}`;
 		const [row] = await select<{ n: number }>(sql, [...compiled.params]);
 		return row?.n ?? 0;
 	}
@@ -1288,6 +1663,7 @@ class View {
 	retarget(oldId: string, newId: string, subpaths = false): void {
 		const r = (v: unknown) => remapIds(v, oldId, newId, subpaths);
 		this.unit = r(this.unit) as string | null;
+		this.fields = this.fields.map((f) => (f.unit ? { ...f, unit: r(f.unit) as string } : f));
 		this.filter = r(this.filter) as FilterCompound;
 		for (const f of this.faces) f.additive_filter = r(f.additive_filter) as FilterCompound;
 		this.state = r(this.state) as Record<string, any>;
@@ -1361,12 +1737,6 @@ export function describeBulkFailure(r: BulkResult): string {
 		default:
 			return `${n} ${noun} couldn't be saved.`;
 	}
-}
-
-/** Move every `views.<oldPrefix>*` namespace to `<newPrefix>*`, e.g. when a folder is renamed */
-export async function renameUnitViewPrefix(oldPrefix: string, newPrefix: string): Promise<void> {
-	if (oldPrefix === newPrefix) return;
-	await bulkPerSource('bulk_rename_view_prefix', { oldPrefix, newPrefix });
 }
 
 export async function bulkPerSource(

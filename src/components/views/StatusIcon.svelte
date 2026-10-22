@@ -38,6 +38,7 @@
 
 	.status.done {
 		background: var(--c);
+		color: hsl(var(--tag-h, 0) var(--tag-s, 0%) var(--tag-bg-l, 90%));
 	}
 
 	.half {

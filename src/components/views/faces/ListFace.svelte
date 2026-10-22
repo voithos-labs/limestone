@@ -1,11 +1,17 @@
 <script lang="ts">
 	import type View from '#lib/models/View.svelte.js';
-	import type { FilterNode, MemberRow, ViewFace, ViewField } from '#lib/models/View.svelte.js';
+	import type {
+		FilterNode,
+		MemberRow,
+		StatusOption,
+		ViewFace,
+		ViewField
+	} from '#lib/models/View.svelte.js';
 	import { onSourceReconciled } from '#lib/models/Source.js';
 	import { FaceRows } from '#lib/views/FaceRows.svelte.js';
 	import { PreviewCache, type Preview } from '#lib/views/FaceRows.svelte.js';
 	import { rawStatefulValue, valueFor, fieldLabel } from '#lib/views/fieldValue.js';
-	import { isStatusField } from '#lib/models/View.svelte.js';
+	import { isStatusField, isManualSort, saveStatuses } from '#lib/models/View.svelte.js';
 	import { checkDone, statusOf, statusKind, statusColor } from '#lib/views/fieldValue.js';
 	import StatusIcon from '../StatusIcon.svelte';
 	import { leave } from '#lib/views/FaceRows.svelte.js';
@@ -16,7 +22,14 @@
 	import RowEditors from '../editors/RowEditors.svelte';
 	import NoteCard from '../NoteCard.svelte';
 	import Pill from '../Pill.svelte';
-	import { Check, PanelRight, Plus, ChevronDown, CornerDownLeft } from '@lucide/svelte';
+	import {
+		Check,
+		PanelRight,
+		Plus,
+		ChevronDown,
+		CornerDownLeft,
+		GripVertical
+	} from '@lucide/svelte';
 	import { openHow } from '#lib/views/FaceRows.svelte.js';
 	import { onMount, tick } from 'svelte';
 	import { startMove, endMove } from '#lib/views/move.svelte.js';
@@ -31,9 +44,10 @@
 		scope = null,
 		onTotal,
 		autoFocus = true,
-		onReorder,
 		moveable = false,
-		editable = true
+		editable = true,
+		reorderable = true,
+		limit
 	}: {
 		view: View;
 		face: ViewFace;
@@ -42,15 +56,17 @@
 		scope?: FilterNode | null;
 		onTotal?: (n: number) => void; // how many rows the current search and scope leave
 		autoFocus?: boolean; // the first row takes focus once loaded, if nothing else has it
-		onReorder?: (ids: string[]) => void; // rows drag into an order; the face keeps it unless told otherwise
 		moveable?: boolean; // rows drag out as documents to drop on a folder (no in-list reorder then)
 		editable?: boolean;
+		reorderable?: boolean;
+		limit?: number;
 	} = $props();
 
 	const rows = new FaceRows(
 		() => view,
 		() => face,
-		() => scope
+		() => scope,
+		() => limit
 	);
 	let editors: RowEditors = $state()!;
 
@@ -94,13 +110,82 @@
 			const i = options.indexOf(key);
 			return i < 0 ? options.length : i;
 		};
-		return [...map.values()].sort(
+		const out = [...map.values()].sort(
 			(a, b) =>
 				Number(a.key === '') - Number(b.key === '') ||
 				rank(a.key) - rank(b.key) ||
 				a.key.localeCompare(b.key)
 		);
+		const live = groupOrder;
+		return live ? out.sort((a, b) => live.indexOf(a.key) - live.indexOf(b.key)) : out;
 	});
+
+	let groupOrder: string[] | null = $state(null);
+	let groupDragKey: string | null = $state(null);
+	let groupArm: { key: string; y: number; grab: number; height: number } | null = null;
+
+	function armGroupDrag(e: PointerEvent, key: string) {
+		if (e.button !== 0 || groupField?.type !== 'select') return;
+		e.preventDefault();
+		const el = (e.currentTarget as HTMLElement).closest<HTMLElement>('.group');
+		const r = el?.getBoundingClientRect();
+		groupArm = { key, y: e.clientY, grab: r ? e.clientY - r.top : 0, height: r?.height ?? 0 };
+		window.addEventListener('pointermove', onGroupMove);
+		window.addEventListener('pointerup', onGroupUp);
+	}
+
+	function onGroupMove(e: PointerEvent) {
+		const a = groupArm;
+		if (!a) return;
+		if (!groupDragKey) {
+			if (Math.abs(e.clientY - a.y) < DRAG_PX) return;
+			groupDragKey = a.key;
+			groupOrder = groups.map((g) => g.key);
+		}
+		const els = Array.from(listEl?.querySelectorAll<HTMLElement>('.group[data-group]') ?? []);
+		const cur = els.findIndex((el) => el.dataset.group === groupDragKey);
+		if (cur < 0 || !groupOrder) return;
+		const top = e.clientY - a.grab;
+		const bottom = top + a.height;
+		let next = cur;
+		for (let i = cur + 1; i < els.length; i++) {
+			const r = els[i].getBoundingClientRect();
+			if (bottom > r.top + r.height / 2) next = i;
+			else break;
+		}
+		for (let i = cur - 1; i >= 0; i--) {
+			const r = els[i].getBoundingClientRect();
+			if (top < r.top + r.height / 2) next = i;
+			else break;
+		}
+		if (next === cur) return;
+		const order = [...groupOrder];
+		const [moved] = order.splice(cur, 1);
+		order.splice(next, 0, moved);
+		groupOrder = order;
+	}
+
+	function onGroupUp() {
+		window.removeEventListener('pointermove', onGroupMove);
+		window.removeEventListener('pointerup', onGroupUp);
+		groupArm = null;
+		const f = groupField;
+		const order = groupOrder;
+		groupDragKey = null;
+		if (!order || !f) return;
+		swallowClick = true;
+		const options = (f.config?.options ?? []) as { value: string; [k: string]: unknown }[];
+		const present = new Set(order.filter((k) => options.some((o) => o.value === k)));
+		const queue = order.filter((k) => present.has(k));
+		const byValue = new Map(options.map((o) => [o.value, o]));
+		const next = options.map((o) => (present.has(o.value) ? byValue.get(queue.shift()!)! : o));
+		if (next.some((o, i) => o !== options[i])) {
+			if (isStatusField(f))
+				saveStatuses(next.map((o) => ({ ...o, done: !!o.done }) as StatusOption));
+			else f.config.options = next;
+		}
+		groupOrder = null;
+	}
 
 	const crossGroup = $derived(groupField?.type === 'boolean' || groupField?.type === 'select');
 
@@ -111,19 +196,10 @@
 
 	const newGroup = $derived(groupField?.type === 'boolean' ? '0' : null);
 
-	// a select group's header summons a draft row at its top, seeded with the group's value
-	const canSummon = $derived(groupField?.type === 'select');
-	let summoned: string | null = $state(null);
+	const selectGroups = $derived(groupField?.type === 'select');
 
 	function seedFor(key: string): Record<string, unknown> {
-		return canSummon && key ? { [groupField!.name]: key } : {};
-	}
-
-	async function summon(key: string) {
-		if (collapsedGroups.has(key)) toggleGroup(key);
-		summoned = key;
-		await tick();
-		newEl?.focus();
+		return selectGroups && key ? { [groupField!.name]: key } : {};
 	}
 
 	function toggleGroup(key: string) {
@@ -150,7 +226,7 @@
 	const previewCache = new PreviewCache();
 	let previews: Record<string, Preview> = $state({});
 	$effect(() => {
-		if (layout !== 'grid') return;
+		if (layout !== 'grid' || face.config.no_preview) return;
 		const list = rows.rows;
 		const sources = rows.sources;
 		if (list.length === 0 || sources.length === 0) return;
@@ -353,7 +429,7 @@
 	let downAt: { x: number; y: number } | null = null;
 
 	function armReorder(e: PointerEvent, row: MemberRow) {
-		if (moveable || dragId || e.button !== 0 || layout === 'grid') return;
+		if (!reorderable || moveable || dragId || e.button !== 0 || layout === 'grid') return;
 		if ((e.target as HTMLElement).closest('button, input, a, .value, .rename-wrap')) return;
 		press = {
 			row,
@@ -507,8 +583,7 @@
 	function pushOrder(prevIds: string[], prevOrder: string[] | undefined, ids: string[]) {
 		const apply = async (list: string[], order: string[] | undefined) => {
 			rows.reorder(list);
-			if (onReorder) onReorder(order ?? list);
-			else face.config.order = order;
+			face.config.order = order;
 		};
 		history.push(view.id, {
 			back: () => apply(prevIds, prevOrder),
@@ -527,11 +602,14 @@
 		ids.splice(at, 0, d.row.id);
 		const prevIds = rows.rows.map((r) => r.id);
 		const prevOrder = face.config.order ? [...(face.config.order as string[])] : undefined;
+		const manual = isManualSort(face);
+		if (!manual && target === d.group) return;
 		history.group(view.id, () => {
-			pushOrder(prevIds, prevOrder, ids);
-			rows.reorder(ids);
-			if (onReorder) onReorder(ids);
-			else face.config.order = ids;
+			if (manual) {
+				pushOrder(prevIds, prevOrder, ids);
+				rows.reorder(ids);
+				face.config.order = ids;
+			}
 			if (target !== d.group) writeGroup(rows.rows.find((r) => r.id === d.row.id) ?? d.row, target);
 		});
 	}
@@ -707,7 +785,14 @@
 	// ── Create: an inline row at the bottom, Enter to add ───────────────────────
 	let newTitle = $state('');
 	let newEl: HTMLInputElement | null = $state(null);
+	let openSlot: string | null = $state(null);
 	let creating = false;
+
+	async function expandSlot(key: string) {
+		openSlot = key;
+		await tick();
+		newEl?.focus();
+	}
 
 	async function createNote(title: string, open: boolean, values: Record<string, unknown> = {}) {
 		if (creating) return;
@@ -767,19 +852,26 @@
 	});
 </script>
 
-{#snippet addTo(g: { key: string; label: string }, open: boolean)}
-	{#if canSummon && !rows.loading && openTodos}
+{#snippet addTo(g: { key: string; label: string })}
+	{#if selectGroups && !rows.loading && openTodos}
 		<button
 			class="add"
-			class:open={summoned === g.key}
 			type="button"
 			tabindex="-1"
 			aria-label="New todo in {g.label}"
 			title="New todo"
-			onclick={() => (open ? createNote('', true, seedFor(g.key)) : summon(g.key))}
+			onclick={() => createNote('', true, seedFor(g.key))}
 		>
 			<Plus size={14} strokeWidth={2} />
 		</button>
+	{/if}
+{/snippet}
+
+{#snippet groupTitle(g: { key: string; label: string })}
+	{#if groupField && groupField.type === 'select' && g.key}
+		<Pill field={groupField} value={g.key} filled />
+	{:else}
+		<span class="group-title">{g.label}</span>
 	{/if}
 {/snippet}
 
@@ -805,7 +897,7 @@
 					use:nameGuard
 					onkeydown={(e) => onNewKey(e, values)}
 					onblur={() => {
-						if (!newTitle.trim()) summoned = null;
+						if (!newTitle.trim()) openSlot = null;
 					}}
 				/>
 			</span>
@@ -847,7 +939,8 @@
 						collapsed={collapsedGroups.has(g.key)}
 						onToggle={() => toggleGroup(g.key)}
 					>
-						{#snippet trail()}{@render addTo(g, true)}{/snippet}
+						{#snippet heading()}{@render groupTitle(g)}{/snippet}
+						{#snippet trail()}{@render addTo(g)}{/snippet}
 					</SectionHead>
 				</div>
 			{/if}
@@ -862,7 +955,8 @@
 						inline={lanes.inline}
 						meta={lanes.meta}
 						{editMode}
-						preview={previews[row.id]}
+						body={face.config.no_preview ? 'none' : 'fixed'}
+						preview={face.config.no_preview ? undefined : previews[row.id]}
 						onOpen={onOpenRow}
 						{moveable}
 					/>
@@ -878,7 +972,7 @@
 	</div>
 	{#if !rows.loading && rows.rows.length === 0 && rows.query}
 		<div class="empty">No matches</div>
-	{:else if !rows.loading && rows.total > rows.rows.length}
+	{:else if !limit && !rows.loading && rows.total > rows.rows.length}
 		<button class="more" type="button" disabled={rows.loadingMore} onclick={() => rows.loadMore()}>
 			<ChevronDown size={14} strokeWidth={1.75} />
 			<span>{rows.loadingMore ? 'Loading' : `${rows.total - rows.rows.length} more`}</span>
@@ -888,6 +982,7 @@
 	<div
 		class="list-face"
 		class:reordering={!!dragId}
+		class:grouping={!!groupDragKey}
 		bind:this={listEl}
 		role="list"
 		tabindex="-1"
@@ -897,185 +992,217 @@
 		onpointerdowncapture={onListPointerDown}
 	>
 		{#each groups as g (g.key)}
-			{#if groupField}
-				<div class="group-head" data-group={g.key}>
-					<SectionHead
-						title={g.label}
-						count={g.items.length}
-						collapsed={collapsedGroups.has(g.key)}
-						onToggle={() => toggleGroup(g.key)}
-					>
-						{#snippet trail()}{@render addTo(g, false)}{/snippet}
-					</SectionHead>
-				</div>
-			{/if}
-			{#if !collapsedGroups.has(g.key)}
-				{#if summoned === g.key}
-					{@render newRow(g)}
-				{/if}
-				{#each g.items as row (row.id)}
-					{@const member = checkField ? rows.memberOf(row, checkField) : false}
-					{@const done = member && checkField ? checkDone(row, checkField) : false}
-					<div
-						class="row"
-						class:done
-						class:editable={editMode}
-						class:lifted={dragId === row.id}
-						role="listitem"
-						data-id={row.id}
-						data-group={g.key}
-						data-leaving={rows.leaving.has(row.id) ? '' : undefined}
-						tabindex="-1"
-						draggable={moveable}
-						out:leave={{ mode: 'row' }}
-						ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
-						ondragend={endMove}
-						onpointerdown={(e) => armReorder(e, row)}
-						onclick={(e) => onOpenRow?.(row.id, openHow(e))}
-						onauxclick={(e) => {
-							if (e.button === 1) onOpenRow?.(row.id, true);
-						}}
-						onfocus={(e) => (focusIdx = items().indexOf(e.currentTarget))}
-						oncontextmenu={(e) => editors.menu(e, row.id)}
-					>
-						{#if checkField && isStatusField(checkField)}
-							{@const sv = statusOf(row, checkField)}
-							<button
-								class="check status"
-								type="button"
-								tabindex="-1"
-								aria-label="Change status"
-								title={sv}
-								onclick={(e) => {
-									e.stopPropagation();
-									if (rows.writable(row))
-										editors.edit(row, checkField, e.currentTarget as HTMLElement);
-								}}
-							>
-								<StatusIcon
-									kind={statusKind(checkField, sv)}
-									color={statusColor(checkField, sv)}
-									size={18}
-								/>
-							</button>
-						{:else if checkField && member && rows.writable(row)}
-							<button
-								class="check"
-								class:done
-								type="button"
-								tabindex="-1"
-								role="checkbox"
-								aria-checked={done}
-								aria-label={done ? 'Mark not done' : 'Mark done'}
-								onclick={(e) => {
-									e.stopPropagation();
-									rows.toggle(row, checkField);
-								}}
-							>
-								<span class="box"><Check size={12} strokeWidth={3} /></span>
-							</button>
-						{:else if checkField}
-							<span
-								class="check inert"
-								title={member ? "This folder doesn't store metadata in its files" : 'Not a todo'}
-								><span class="box"></span></span
-							>
-						{/if}
-						{#if renamingId === row.id}
-							<span
-								class="name rename-wrap"
-								role="presentation"
-								onclick={(e) => e.stopPropagation()}
-								onmousedown={caretToEnd}
-							>
-								<span class="rename-ghost">{renameDraft || ' '}</span>
-								<input
-									class="rename"
-									class:invalid={renameTaken}
-									title={renameTaken
-										? 'A note with this name is already in this folder.'
-										: undefined}
-									bind:value={renameDraft}
-									use:renameFocus
-									use:nameGuard
-									onblur={commitRename}
-									onkeydown={onRenameKey}
-									spellcheck="false"
-								/>
-							</span>
-						{:else}
-							<span
-								class="name"
-								class:editable={editMode}
-								role="presentation"
-								onclick={(e) => startRename(e, row)}
-							>
-								{@html highlightTitle(
-									row.title || 'untitled',
-									rows.searchHits[row.id]?.match_indices ?? []
-								)}
-							</span>
-						{/if}
-						<span
-							class="inline"
-							role="presentation"
-							onclick={onLaneClick}
-							onpointermove={onLaneMove}
+			{@const open = !collapsedGroups.has(g.key)}
+			<div
+				class="group"
+				class:slotted={open && selectGroups && openSlot !== g.key}
+				class:dragging={groupDragKey === g.key}
+				data-group={g.key}
+			>
+				{#if groupField}
+					<div class="group-head" data-group={g.key}>
+						<SectionHead
+							title={g.label}
+							count={g.items.length}
+							collapsed={!open}
+							onToggle={() => toggleGroup(g.key)}
 						>
-							<RowChips
-								{row}
-								fields={lanes.inline}
-								{rows}
-								{editMode}
-								onEdit={(r, f, a) => editors.edit(r, f, a)}
-								onTags={(r, a) => editors.tags(r, a)}
-							/>
-						</span>
-						<span class="spacer"></span>
-						<span
-							class="values"
-							role="presentation"
-							onclick={onLaneClick}
-							onpointermove={onLaneMove}
-						>
-							<RowChips
-								{row}
-								fields={lanes.meta}
-								{rows}
-								{editMode}
-								onEdit={(r, f, a) => editors.edit(r, f, a)}
-								onTags={(r, a) => editors.tags(r, a)}
-							/>
-						</span>
-						<button
-							class="row-btn"
-							type="button"
-							tabindex="-1"
-							aria-label="Open to the side"
-							title="Open to the side"
-							onclick={(e) => {
-								e.stopPropagation();
-								e.currentTarget.closest<HTMLElement>('.row')?.focus();
-								onOpenRow?.(row.id, 'side');
-							}}
-						>
-							<PanelRight size={14} strokeWidth={1.75} />
-						</button>
+							{#snippet heading()}{@render groupTitle(g)}{/snippet}
+							{#snippet lead()}
+								{#if selectGroups && reorderable}
+									<span
+										class="grip"
+										role="presentation"
+										title="Drag to reorder"
+										onpointerdown={(e) => armGroupDrag(e, g.key)}
+									>
+										<GripVertical size={14} strokeWidth={1.75} />
+									</span>
+								{/if}
+							{/snippet}
+						</SectionHead>
 					</div>
-				{/each}
-				{#if g.key === newGroup}
-					{@render newRow(null)}
 				{/if}
-			{/if}
+				{#if open}
+					{#each g.items as row (row.id)}
+						{@const member = checkField ? rows.memberOf(row, checkField) : false}
+						{@const done = member && checkField ? checkDone(row, checkField) : false}
+						<div
+							class="row"
+							class:done
+							class:editable={editMode}
+							class:lifted={dragId === row.id}
+							role="listitem"
+							data-id={row.id}
+							data-group={g.key}
+							data-leaving={rows.leaving.has(row.id) ? '' : undefined}
+							tabindex="-1"
+							draggable={moveable}
+							out:leave={{ mode: 'row' }}
+							ondragstart={(e) => startMove(e, { kind: 'doc', id: row.id })}
+							ondragend={endMove}
+							onpointerdown={(e) => armReorder(e, row)}
+							onclick={(e) => onOpenRow?.(row.id, openHow(e))}
+							onauxclick={(e) => {
+								if (e.button === 1) onOpenRow?.(row.id, true);
+							}}
+							onfocus={(e) => (focusIdx = items().indexOf(e.currentTarget))}
+							oncontextmenu={(e) => editors.menu(e, row.id)}
+						>
+							{#if checkField && isStatusField(checkField)}
+								{@const sv = statusOf(row, checkField)}
+								<button
+									class="check status"
+									type="button"
+									tabindex="-1"
+									aria-label="Change status"
+									title={sv}
+									onclick={(e) => {
+										e.stopPropagation();
+										if (rows.writable(row))
+											editors.edit(row, checkField, e.currentTarget as HTMLElement);
+									}}
+								>
+									<StatusIcon
+										kind={statusKind(checkField, sv)}
+										color={statusColor(checkField, sv)}
+										size={16}
+									/>
+								</button>
+							{:else if checkField && member && rows.writable(row)}
+								<button
+									class="check"
+									class:done
+									type="button"
+									tabindex="-1"
+									role="checkbox"
+									aria-checked={done}
+									aria-label={done ? 'Mark not done' : 'Mark done'}
+									onclick={(e) => {
+										e.stopPropagation();
+										rows.toggle(row, checkField);
+									}}
+								>
+									<span class="box"><Check size={12} strokeWidth={3} /></span>
+								</button>
+							{:else if checkField}
+								<span
+									class="check inert"
+									title={member ? "This folder doesn't store metadata in its files" : 'Not a todo'}
+									><span class="box"></span></span
+								>
+							{/if}
+							{#if renamingId === row.id}
+								<span
+									class="name rename-wrap"
+									role="presentation"
+									onclick={(e) => e.stopPropagation()}
+									onmousedown={caretToEnd}
+								>
+									<span class="rename-ghost">{renameDraft || ' '}</span>
+									<input
+										class="rename"
+										class:invalid={renameTaken}
+										title={renameTaken
+											? 'A note with this name is already in this folder.'
+											: undefined}
+										bind:value={renameDraft}
+										use:renameFocus
+										use:nameGuard
+										onblur={commitRename}
+										onkeydown={onRenameKey}
+										spellcheck="false"
+									/>
+								</span>
+							{:else}
+								<span
+									class="name"
+									class:editable={editMode}
+									role="presentation"
+									onclick={(e) => startRename(e, row)}
+								>
+									{@html highlightTitle(
+										row.title || 'untitled',
+										rows.searchHits[row.id]?.match_indices ?? []
+									)}
+								</span>
+							{/if}
+							<span
+								class="inline"
+								role="presentation"
+								onclick={onLaneClick}
+								onpointermove={onLaneMove}
+							>
+								<RowChips
+									{row}
+									fields={lanes.inline}
+									{rows}
+									{editMode}
+									onEdit={(r, f, a) => editors.edit(r, f, a)}
+									onTags={(r, a) => editors.tags(r, a)}
+								/>
+							</span>
+							<span class="spacer"></span>
+							<span
+								class="values"
+								role="presentation"
+								onclick={onLaneClick}
+								onpointermove={onLaneMove}
+							>
+								<RowChips
+									{row}
+									fields={lanes.meta}
+									{rows}
+									{editMode}
+									onEdit={(r, f, a) => editors.edit(r, f, a)}
+									onTags={(r, a) => editors.tags(r, a)}
+								/>
+							</span>
+							<button
+								class="row-btn"
+								type="button"
+								tabindex="-1"
+								aria-label="Open to the side"
+								title="Open to the side"
+								onclick={(e) => {
+									e.stopPropagation();
+									e.currentTarget.closest<HTMLElement>('.row')?.focus();
+									onOpenRow?.(row.id, 'side');
+								}}
+							>
+								<PanelRight size={14} strokeWidth={1.75} />
+							</button>
+						</div>
+					{/each}
+					{#if g.key === newGroup}
+						{@render newRow(null)}
+					{:else if selectGroups && !rows.loading && openTodos}
+						{#if openSlot === g.key}
+							{@render newRow(g)}
+						{:else}
+							<button
+								class="slot"
+								type="button"
+								tabindex="-1"
+								aria-label="New todo in {g.label}"
+								title="New todo"
+								onclick={() => expandSlot(g.key)}
+							>
+								<Plus size={14} strokeWidth={2} />
+							</button>
+						{/if}
+					{/if}
+				{/if}
+			</div>
 		{/each}
 
-		{#if newGroup === null && (!canSummon || groups.length === 0)}
+		{#if newGroup === null && (!selectGroups || groups.length === 0)}
 			{@render newRow(null)}
 		{/if}
 
 		{#if !rows.loading && rows.rows.length === 0 && rows.query}
 			<div class="empty">No matches</div>
-		{:else if !rows.loading && rows.total > rows.rows.length}
+		{:else if !limit && !rows.loading && rows.total > rows.rows.length}
 			<button
 				class="more"
 				type="button"
@@ -1159,8 +1286,51 @@
 		margin-top: 22px;
 	}
 
-	.group-head:first-child {
+	.group:first-child .group-head {
 		margin-top: 4px;
+	}
+
+	.slotted + .group .group-head {
+		margin-top: 12px;
+	}
+
+	.group-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.grip {
+		display: inline-flex;
+		align-items: center;
+		width: 14px;
+		margin-left: -18px;
+		color: var(--color-ui-muted);
+		opacity: 0;
+		cursor: grab;
+		transition: opacity 80ms ease;
+	}
+
+	.group-head:hover .grip {
+		opacity: 0.7;
+	}
+
+	.group-head .grip:hover {
+		opacity: 1;
+	}
+
+	.list-face.grouping,
+	.list-face.grouping .grip {
+		cursor: grabbing;
+		user-select: none;
+	}
+
+	.group {
+		transition: opacity 100ms ease;
+	}
+
+	.group.dragging {
+		opacity: 0.6;
 	}
 
 	.grid .group-head {
@@ -1168,8 +1338,8 @@
 		margin-top: 8px;
 	}
 
-	/* the header's add: hidden like the caret until the head is hovered or its draft is open,
-	   and pulled in so the rule runs up close to it */
+	/* the grid header's add: hidden like the caret until the head is hovered, and pulled in
+	   so the rule runs up close to it */
 	.add {
 		display: inline-flex;
 		align-items: center;
@@ -1189,8 +1359,7 @@
 			color 80ms ease;
 	}
 
-	.group-head:hover .add,
-	.add.open {
+	.group-head:hover .add {
 		opacity: 1;
 	}
 
@@ -1363,8 +1532,8 @@
 	   and nothing after it moves while you type */
 	.name.rename-wrap {
 		display: inline-grid;
-		grid-template-columns: max-content;
-		overflow: visible;
+		grid-template-columns: minmax(0, max-content);
+		max-width: 100%;
 		cursor: text;
 	}
 
@@ -1379,6 +1548,7 @@
 
 	.rename-ghost {
 		visibility: hidden;
+		overflow: hidden;
 	}
 
 	.rename {
@@ -1476,6 +1646,31 @@
 
 	.row.new:focus-within .dashed {
 		border-color: var(--color-ui-muted);
+	}
+
+	.slot {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		height: 26px;
+		margin-top: 2px;
+		padding: 0;
+		border: 0;
+		border-radius: 7px;
+		background: var(--chip-bg);
+		color: var(--color-ui-muted);
+		opacity: 0;
+		cursor: pointer;
+		transition: opacity 80ms ease;
+	}
+
+	.slot:hover {
+		opacity: 1;
+	}
+
+	.list-face.reordering .slot {
+		opacity: 0;
 	}
 
 	/* the draft's group pill is row-sized, like the pills RowChips draws */

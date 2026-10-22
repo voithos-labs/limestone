@@ -37,7 +37,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import MarkdownHandle from '#lib/models/MarkdownHandle.js';
-import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
+import View, { listSavedViewJSON, unitDisplayName } from '#lib/models/View.svelte.js';
 import type Session from '#lib/models/Session.svelte.js';
 
 // ── Focus (used elsewhere) ───────────────────────────────────────────────────────────
@@ -228,14 +228,16 @@ export class TabState {
 			const handle = await MarkdownHandle.fromID(json.handleId);
 			return new TabState({ type: 'markdown', handle }, json.state ?? {}, json.pinned ?? false);
 		}
-		if (json.type === 'view') {
-			const view = new View(json.view);
-			return new TabState({ type: 'view', view }, json.state ?? {}, json.pinned ?? false);
-		}
-		if (json.type === 'view-ref') {
-			const saved = (await listSavedViewJSON()).find((v) => v.id === json.viewId);
-			if (!saved) throw new Error(`Saved view not found: ${json.viewId}`);
-			const view = new View(saved);
+		if (json.type === 'view' || json.type === 'view-ref') {
+			const saved =
+				json.type === 'view'
+					? json.view
+					: (await listSavedViewJSON()).find((v) => v.id === json.viewId);
+			if (!saved) throw new Error('Saved view not found');
+			const slug = saved.unit
+				? await unitDisplayName(saved.unit).catch(() => saved.slug)
+				: saved.slug;
+			const view = new View({ ...saved, slug });
 			return new TabState({ type: 'view', view }, json.state ?? {}, json.pinned ?? false);
 		}
 		if (json.type === 'new' || json.type === 'home' || json.type === 'licenses') {
@@ -440,6 +442,10 @@ class EditorState {
 	// was so the reader can go back, even if that content is open elsewhere
 	showViewInTab(tab: TabState, view: View) {
 		this.showInTab(tab, { type: 'view', view });
+	}
+
+	replaceViewInTab(tab: TabState, view: View) {
+		this.swapContent(tab, { type: 'view', view }, tab.state);
 	}
 
 	showDocInTab(tab: TabState, doc: MarkdownHandle, state: Record<string, any> = {}) {

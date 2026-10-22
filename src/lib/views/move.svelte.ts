@@ -20,10 +20,58 @@ export function startMove(e: DragEvent, p: MovePayload) {
 	e.dataTransfer.setData(MOVE_MIME, JSON.stringify(p));
 	e.dataTransfer.effectAllowed = 'move';
 	current = p;
+	startEdgeScroll();
 }
 
 export function endMove() {
 	current = null;
+	stopEdgeScroll();
+}
+
+const EDGE = 56;
+const MAX_STEP = 16;
+
+let pointer: { x: number; y: number } | null = null;
+let frame = 0;
+
+function scrollerAt(x: number, y: number): HTMLElement | null {
+	let el = document.elementFromPoint(x, y) as HTMLElement | null;
+	while (el && el !== document.body) {
+		const oy = getComputedStyle(el).overflowY;
+		if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight - el.clientHeight > 1) return el;
+		el = el.parentElement;
+	}
+	return null;
+}
+
+function onDragMove(e: DragEvent) {
+	pointer = { x: e.clientX, y: e.clientY };
+}
+
+function edgeScrollFrame() {
+	frame = requestAnimationFrame(edgeScrollFrame);
+	if (!pointer) return;
+	const el = scrollerAt(pointer.x, pointer.y);
+	if (!el) return;
+	const r = el.getBoundingClientRect();
+	const fromTop = pointer.y - r.top;
+	const fromBottom = r.bottom - pointer.y;
+	let step = 0;
+	if (fromTop < EDGE) step = -MAX_STEP * (1 - fromTop / EDGE);
+	else if (fromBottom < EDGE) step = MAX_STEP * (1 - fromBottom / EDGE);
+	if (step) el.scrollTop += step;
+}
+
+function startEdgeScroll() {
+	pointer = null;
+	window.addEventListener('dragover', onDragMove);
+	frame = requestAnimationFrame(edgeScrollFrame);
+}
+
+function stopEdgeScroll() {
+	window.removeEventListener('dragover', onDragMove);
+	cancelAnimationFrame(frame);
+	pointer = null;
 }
 
 export function movingNow(): MovePayload | null {

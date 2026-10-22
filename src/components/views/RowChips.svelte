@@ -8,6 +8,8 @@
 		rawArrayValue,
 		rawStatefulValue,
 		statefulValue,
+		statusOf,
+		firstStatus,
 		titleFor,
 		valueFor
 	} from '#lib/views/fieldValue.js';
@@ -27,6 +29,7 @@
 		rows,
 		editMode = false,
 		compact = false,
+		pick = 'all',
 		onEdit,
 		onTags
 	}: {
@@ -35,6 +38,7 @@
 		rows: FaceRows;
 		editMode?: boolean;
 		compact?: boolean; // cards: dates without a time of day
+		pick?: 'all' | 'filled' | 'empty'; // cards draw the two apart
 		onEdit?: (row: MemberRow, field: ViewField, anchor: HTMLElement) => void;
 		onTags?: (row: MemberRow, anchor: HTMLElement) => void;
 	} = $props();
@@ -50,7 +54,9 @@
 			case 'folder':
 				return !inScopeDir && valueFor(f, row) !== '';
 			case 'select':
-				return isStatusField(f) || statefulValue(row, f) !== '';
+				return isStatusField(f)
+					? statusOf(row, f) !== firstStatus(f, false)
+					: statefulValue(row, f) !== '';
 			case 'multiselect':
 				return rawArrayValue(row, f).length > 0;
 			case 'boolean':
@@ -79,7 +85,7 @@
 
 {#each fields as f (f.id)}
 	{@const has = hasValue(f)}
-	{#if rows.memberOf(row, f) && (has || editable(f))}
+	{#if rows.memberOf(row, f) && (has || editable(f)) && (pick === 'all' || (pick === 'filled') === has)}
 		{@const Icon = getFieldIcon(f.type)}
 		{@const due = has ? dueState(row, f) : null}
 		<span
@@ -95,7 +101,7 @@
 			title={titleFor(f, row)}
 			onclick={(e) => onClick(e, f)}
 		>
-			{#if (listPrefixed(f.type) && f.type !== 'folder') || !has}
+			{#if (listPrefixed(f.type) && f.type !== 'folder') || (!has && !isStatusField(f))}
 				{#if isDerived(f.type)}
 					<span class="prefix icon"><Icon size={13} strokeWidth={1.75} /></span>
 				{:else}
@@ -104,7 +110,7 @@
 			{/if}
 			{#if f.type === 'boolean'}
 				<span class="box" class:on={has}><Check size={10} strokeWidth={3} /></span>
-			{:else if !has}
+			{:else if !has && !isStatusField(f)}
 				{#if f.type !== 'tags'}<span class="none">—</span>{/if}
 			{:else if compact && isDate(f)}
 				{formatDateCompact(

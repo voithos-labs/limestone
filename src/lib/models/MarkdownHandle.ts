@@ -31,14 +31,15 @@ import * as yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '#lib/services/db.js';
-import { addChangeHistory, removeHistory } from '#lib/services/history.js';
+import { addChangeHistory, moveHistory, removeHistory } from '#lib/services/history.js';
 import { LinkRewriteFailure, rewriteLinksForMove } from '#lib/services/links.svelte.js';
 import { isRetryable, toasts, mark } from '#lib/overlays.svelte.js';
 import { sanitizeSegment } from '#lib/util/paths.js';
-import { creationSource, defaultNoteDir, type Source } from './Source';
+import { creationSource, defaultNoteDir, getSource, noteSelfWrite, type Source } from './Source';
 import Tag, { tagSlug } from './Tag';
 import Folder from './Folder';
 import Doc, { type DocumentRow } from './Doc';
+import { leftProjectKeys, removeViewKey } from './View.svelte';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,7 @@ class MarkdownHandle extends Doc {
 	frontmatterError: string | null = null;
 	writesMeta = true;
 	inRepo = false;
+	idOnDisk = false;
 	private fence = '';
 
 	constructor(row: DocumentRow, source: Source) {
@@ -332,6 +334,7 @@ class MarkdownHandle extends Doc {
 		const { frontmatter, body, error } = MarkdownHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 		this.fence = raw.slice(0, raw.length - body.length);
+		this.idOnDisk = frontmatter?.id === this.id;
 
 		if (frontmatter) {
 			const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
@@ -356,7 +359,8 @@ class MarkdownHandle extends Doc {
 	}
 
 	private recordHistory(body: string): void {
-		addChangeHistory(this.id, body).catch((e) => console.error('history record failed', e));
+		if (!this.idOnDisk) return;
+		addChangeHistory(this, body).catch((e) => console.error('history record failed', e));
 	}
 
 	/**
@@ -378,6 +382,7 @@ class MarkdownHandle extends Doc {
 		const { frontmatter, body, error } = MarkdownHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 		this.fence = raw.slice(0, raw.length - body.length);
+		this.idOnDisk = frontmatter?.id === this.id;
 		if (!frontmatter) return;
 		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
 		this.properties = remaining;
@@ -389,14 +394,16 @@ class MarkdownHandle extends Doc {
 		await this.refreshMetaFromDisk(); // this is hmm possibly not needed
 		this.updatedAt = new Date();
 		const contents = await this.serialize(body, opts.rebuildFrontmatter);
-		await invoke('write_document', {
+		const mtime = await invoke<number>('write_document', {
 			sourceId: this.source.id,
 			relPath: this._relPath,
 			contents,
 			updatedAt: this.updatedAt.getTime(),
 			create: !this.hasFile
 		});
+		noteSelfWrite(this.source.id, this._relPath, mtime);
 		this.hasFile = true;
+		this.idOnDisk = MarkdownHandle.deserialize(contents).frontmatter?.id === this.id;
 		this.recordHistory(body);
 	}
 
@@ -410,8 +417,39 @@ class MarkdownHandle extends Doc {
 	}
 
 	async restore(body: string, overwrite: boolean): Promise<void> {
+		if (this.deletedAt) return this.revive(body);
 		this.hasFile = overwrite;
 		await this.saveContent(body, { rebuildFrontmatter: true });
+	}
+
+	// bring back from the dead!
+	private async revive(body: string): Promise<void> {
+		const wanted = this._relPath;
+		const base = wanted.split('/').pop()!.replace(/\.md$/i, '');
+		const relPath = (await MarkdownHandle.pathTaken(this.source, wanted))
+			? await MarkdownHandle.uniqueRelPath(this.source, dirOf(wanted), base)
+			: wanted;
+		this.updateLocation(this.source, relPath, relPath.split('/').pop()!.replace(/\.md$/i, ''));
+		await this.refreshMeta();
+		this.updatedAt = new Date();
+		const fm = yaml.dump(this.toFrontmatter(), { lineWidth: -1, sortKeys: false });
+		const contents = `---\n${fm}---\n${body}`;
+		await invoke('restore_document', {
+			sourceId: this.source.id,
+			id: this.id,
+			relPath,
+			contents,
+			updatedAt: this.updatedAt.getTime()
+		});
+		this.deletedAt = undefined;
+		this.hasFile = true;
+		this.idOnDisk = true;
+		this.recordHistory(body);
+	}
+
+	async purge(): Promise<void> {
+		await invoke('purge_document', { id: this.id });
+		await removeHistory(this).catch(() => {});
 	}
 
 	adoptAsDraft(): void {
@@ -423,22 +461,30 @@ class MarkdownHandle extends Doc {
 	}
 
 	/** Delete the document from disk and the index. */
-	async delete(): Promise<void> {
-		await invoke('delete_document', {
+	async delete(): Promise<boolean> {
+		const kept = await invoke<boolean>('delete_document', {
 			id: this.id,
 			sourceId: this.source.id,
 			relPath: this._relPath
 		});
-		removeHistory(this.id).catch((e) => console.error('history remove failed', e));
+		if (kept) this.deletedAt = new Date();
+		else removeHistory(this).catch((e) => console.error('history remove failed', e));
+		return kept;
 	}
 
 	static async trashAt(source: Source, relPath: string): Promise<string | null> {
 		const [row] = await select<{ id: string }>(
-			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2`,
+			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2 AND deleted_at IS NULL`,
 			[source.id, relPath]
 		);
-		await invoke('delete_document', { id: row?.id ?? null, sourceId: source.id, relPath });
-		if (row) removeHistory(row.id).catch((e) => console.error('history remove failed', e));
+		const kept = await invoke<boolean>('delete_document', {
+			id: row?.id ?? null,
+			sourceId: source.id,
+			relPath
+		});
+		if (row && !kept) {
+			removeHistory({ id: row.id, source }).catch((e) => console.error('history remove failed', e));
+		}
 		return row?.id ?? null;
 	}
 
@@ -464,14 +510,21 @@ class MarkdownHandle extends Doc {
 	}
 
 	async refreshPath(): Promise<boolean> {
-		const [row] = await select<{ rel_path: string; title: string }>(
-			`SELECT rel_path, title
+		const [row] = await select<{ source_id: string; rel_path: string; title: string }>(
+			`SELECT source_id, rel_path, title
              FROM documents
              WHERE id = ?1`,
 			[this.id]
 		);
-		if (!row || (row.rel_path === this._relPath && row.title === this._title)) return false;
-		this.updateLocation(this.source, row.rel_path, row.title);
+		if (!row) return false;
+		const movedSource = row.source_id !== this.source.id;
+		if (!movedSource && row.rel_path === this._relPath && row.title === this._title) return false;
+		this.updateLocation(
+			movedSource ? await getSource(row.source_id) : this.source,
+			row.rel_path,
+			row.title
+		);
+		if (movedSource) await this.refreshMeta();
 		return true;
 	}
 
@@ -486,6 +539,19 @@ class MarkdownHandle extends Doc {
 		this.updateLocation(this.source, newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
 		await this.updateLinks(oldRelPath);
+		await this.stripLeftProjects(this.source.id, oldRelPath);
+	}
+
+	private async stripLeftProjects(oldSourceId: string, oldRelPath: string): Promise<void> {
+		const left = await leftProjectKeys(
+			{ sourceId: oldSourceId, dir: dirOf(oldRelPath) },
+			{ sourceId: this.source.id, dir: dirOf(this._relPath) }
+		);
+		const views = this.properties.views as Record<string, unknown> | undefined;
+		for (const key of left) {
+			if (!views || !(key in views)) continue;
+			if (await removeViewKey(this.source.id, key, [this.id])) delete views[key];
+		}
 	}
 
 	private async updateLinks(oldRelPath: string): Promise<void> {
@@ -508,14 +574,20 @@ class MarkdownHandle extends Doc {
 	 */
 	async moveToSource(newSource: Source, newRelPath: string): Promise<void> {
 		await this.ensureFile();
+		const oldSourceId = this.source.id;
 		await invoke('move_document', {
-			sourceId: this.source.id,
+			sourceId: oldSourceId,
 			relPath: this._relPath,
 			newRelPath,
 			newSourceId: newSource.id
 		});
+		moveHistory(this.id, oldSourceId, newSource.id).catch((e) =>
+			console.error('history move failed', e)
+		);
+		const oldRelPath = this._relPath;
 		this.updateLocation(newSource, newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
+		await this.stripLeftProjects(oldSourceId, oldRelPath);
 	}
 
 	/**
@@ -523,13 +595,14 @@ class MarkdownHandle extends Doc {
 	 */
 	async saveMeta(meta: { createdAt?: Date; updatedAt?: Date }): Promise<void> {
 		await this.ensureFile();
-		await invoke('save_document_meta', {
+		const mtime = await invoke<number>('save_document_meta', {
 			id: this.id,
 			sourceId: this.source.id,
 			relPath: this._relPath,
 			createdAt: meta.createdAt ? meta.createdAt.toISOString() : null,
 			updatedAt: meta.updatedAt ? meta.updatedAt.toISOString() : null
 		});
+		noteSelfWrite(this.source.id, this._relPath, mtime);
 		if (meta.createdAt) this.createdAt = meta.createdAt;
 		if (meta.updatedAt) this.updatedAt = meta.updatedAt;
 	}

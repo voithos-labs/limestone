@@ -2,6 +2,7 @@
 	import {
 		ArrowUpRight,
 		Columns2,
+		RotateCcw,
 		SquareArrowOutUpRight,
 		SquareCheck,
 		SquareMinus,
@@ -108,23 +109,39 @@
 	$effect(() => {
 		if (!menuOpen) confirmDelete = false;
 	});
-	const menuItems = $derived([
-		{ value: 'open', label: 'Open', icon: ArrowUpRight },
-		{ value: 'open-tab', label: 'Open in new tab', icon: SquareArrowOutUpRight },
-		{ value: 'open-side', label: 'Open to the side', icon: Columns2 },
-		{ kind: 'divider' as const },
-		...(menuRow && rows.writable(menuRow)
+	const menuItems = $derived(
+		menuRow?.deleted_at
 			? [
-					menuIsTodo
-						? { value: 'untodo', label: 'Remove from #todo', icon: SquareMinus }
-						: { value: 'todo', label: 'Add to #todo', icon: SquareCheck },
-					{ kind: 'divider' as const }
+					{ value: 'open', label: 'Open', icon: ArrowUpRight },
+					{ value: 'restore', label: 'Restore', icon: RotateCcw },
+					{ kind: 'divider' as const },
+					confirmDelete
+						? {
+								value: 'confirm-purge',
+								label: 'Confirm delete forever',
+								icon: Trash2,
+								danger: true
+							}
+						: { value: 'delete', label: 'Delete forever', icon: Trash2, keepOpen: true }
 				]
-			: []),
-		confirmDelete
-			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
-			: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
-	]);
+			: [
+					{ value: 'open', label: 'Open', icon: ArrowUpRight },
+					{ value: 'open-tab', label: 'Open in new tab', icon: SquareArrowOutUpRight },
+					{ value: 'open-side', label: 'Open to the side', icon: Columns2 },
+					{ kind: 'divider' as const },
+					...(menuRow && rows.writable(menuRow)
+						? [
+								menuIsTodo
+									? { value: 'untodo', label: 'Remove from #todo', icon: SquareMinus }
+									: { value: 'todo', label: 'Add to #todo', icon: SquareCheck },
+								{ kind: 'divider' as const }
+							]
+						: []),
+					confirmDelete
+						? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
+						: { value: 'delete', label: 'Delete', icon: Trash2, keepOpen: true }
+				]
+	);
 
 	// from a button it hangs off the button; from a right-click it opens at the pointer
 	export function menu(e: MouseEvent, rowId: string) {
@@ -155,6 +172,8 @@
 		else if (value === 'todo') await rows.setTag(rowId, 'todo', true);
 		else if (value === 'untodo') await rows.setTag(rowId, 'todo', false);
 		else if (value === 'confirm-delete') await rows.delete(rowId);
+		else if (value === 'restore') await rows.restoreRow(rowId);
+		else if (value === 'confirm-purge') await rows.purge(rowId);
 	}
 
 	// a reload can drop the row a popover was opened on

@@ -60,6 +60,47 @@ class ToastController {
 
 export const toasts = new ToastController();
 
+export interface UndoHint {
+	label: string;
+	run: () => unknown;
+}
+
+const UNDO_HINT_MS = 3000;
+
+class UndoHintController {
+	current = $state<UndoHint | null>(null);
+	visible = $state(false);
+	private timer: ReturnType<typeof setTimeout> | null = null;
+
+	show(label: string, run: () => unknown): void {
+		this.hide();
+		this.current = { label, run };
+		this.visible = true;
+		this.timer = setTimeout(() => this.hide(), UNDO_HINT_MS);
+	}
+
+	hide(): void {
+		if (this.timer) clearTimeout(this.timer);
+		this.timer = null;
+		this.visible = false;
+	}
+
+	dismiss(): void {
+		this.hide();
+		this.current = null;
+	}
+
+	fire(): boolean {
+		const hint = this.current;
+		if (!hint) return false;
+		this.dismiss();
+		void hint.run();
+		return true;
+	}
+}
+
+export const undoHint = new UndoHintController();
+
 export function errorKind(e: unknown): string {
 	const kind = (e as { kind?: unknown } | null)?.kind;
 	return typeof kind === 'string' ? kind : 'other';
@@ -133,6 +174,7 @@ export interface CtxItem {
 	keepOpen?: boolean; // the menu stays up after this action (toggles, choices)
 	children?: CtxEntry[]; // a flyout instead of an action
 	aux?: { icon: Component; label: string; action: () => void }; // a second way, on the row's right
+	pill?: number; // the label drawn as a pill in this colour
 }
 
 export interface CtxDivider {
@@ -140,10 +182,14 @@ export interface CtxDivider {
 	label?: string; // a titled rule, heading the group under it
 }
 
-export type CtxEntry = CtxItem | CtxDivider;
+export interface CtxSwatches {
+	swatches: { active: number | null; pick: (color: number) => void };
+}
+
+export type CtxEntry = CtxItem | CtxDivider | CtxSwatches;
 
 export function isCtxItem(e: CtxEntry): e is CtxItem {
-	return !('divider' in e);
+	return !('divider' in e) && !('swatches' in e);
 }
 
 type CtxSource = CtxEntry[] | (() => CtxEntry[]);
@@ -265,7 +311,6 @@ export interface MenuItem {
 	value: string;
 	label: string;
 	icon?: Component;
-	children?: MenuItem[];
 	keepOpen?: boolean;
 	danger?: boolean;
 	hint?: string; // its current state, trailing in muted text

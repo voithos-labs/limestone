@@ -19,6 +19,7 @@ export interface ActivateDetail {
 	target: string;
 	fragment?: string;
 	side?: boolean;
+	newTab?: boolean;
 }
 
 export const ACTIVATE_EVENT = 'limestone-activate';

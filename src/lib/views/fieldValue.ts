@@ -6,6 +6,7 @@ import {
 	fieldKey,
 	isBuiltinField,
 	isDerived,
+	rowInUnit,
 	BUILTIN_UNITS,
 	TODO_DONE,
 	isStatusField,
@@ -16,6 +17,7 @@ import { formatDateFriendly, formatDateISO, formatViewDate } from '#lib/views/da
 
 // reads a stateful field value (views.<unit key>.<field>) off a row's props
 export function rawStatefulValue(row: MemberRow, field: ViewField): unknown {
+	if (field.unit && !rowInUnit(row, field.unit)) return null;
 	try {
 		const props = JSON.parse(row.properties || '{}');
 		return props?.views?.[fieldKey(field)]?.[field.name] ?? null;
@@ -95,10 +97,13 @@ export function sourceName(sources: Source[], id: string): string {
 export function tagClass(field: ViewField, value: string): string {
 	const opts = (field.config?.options ?? []) as { value: string; color: number }[];
 	const opt = opts.find((o) => o.value === value);
-	if (opt) return `tag-c${opt.color}`;
+	return `tag-c${opt ? opt.color : hashColor(value)}`;
+}
+
+export function hashColor(value: string): number {
 	let h = 0;
 	for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) >>> 0;
-	return `tag-c${h % 16}`;
+	return h % 16;
 }
 
 // plain-text value for a field on a row (used for titles, search, sort previews)
@@ -161,6 +166,17 @@ const PRETTY_FIELD: Record<string, string> = {
 };
 
 // built-ins show a pretty label until renamed then the user's name wins
+export function fieldSections(
+	fields: ViewField[]
+): { label: string | null; fields: ViewField[] }[] {
+	const own = { label: null, fields: fields.filter((f) => !isBuiltinField(f)) };
+	const units = Object.values(BUILTIN_UNITS).map((u) => ({
+		label: '#' + u.unit.replace(/^tag:/, ''),
+		fields: fields.filter((f) => f.unit === u.unit && isBuiltinField(f))
+	}));
+	return [own, ...units].filter((s) => s.fields.length > 0);
+}
+
 export function fieldLabel(field: ViewField): string {
 	if (field.name === field.type && PRETTY_FIELD[field.type]) return PRETTY_FIELD[field.type];
 	// registry names are lowercase keys; they read like the derived fields do

@@ -1,15 +1,26 @@
 <script lang="ts">
 	import { describeError } from '#lib/overlays.svelte.js';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
-	import { importGlobalAsset, importGlobalAssetBytes } from '#lib/services/assets.js';
+	import {
+		importGlobalAsset,
+		importGlobalAssetBytes,
+		importSourceAsset,
+		importSourceAssetBytes
+	} from '#lib/services/assets.js';
 	import { ImageUp, FolderOpen } from '@lucide/svelte';
+
+	const COVER_MAX_EDGE = 1600;
 
 	let {
 		open = $bindable(false),
-		onPicked
+		onPicked,
+		sourceId,
+		stem
 	}: {
 		open: boolean;
 		onPicked: (ref: string) => void;
+		sourceId?: string;
+		stem?: string;
 	} = $props();
 
 	const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg'];
@@ -36,7 +47,11 @@
 		try {
 			const buf = await blob.arrayBuffer();
 			const ext = name?.split('.').pop()?.toLowerCase() || extOfMime(blob.type);
-			finish(await importGlobalAssetBytes(buf, ext));
+			finish(
+				sourceId
+					? await importSourceAssetBytes(sourceId, buf, ext, stem, COVER_MAX_EDGE)
+					: await importGlobalAssetBytes(buf, ext, COVER_MAX_EDGE)
+			);
 		} catch (e) {
 			error = describeError(e, "That image couldn't be added.");
 			busy = false;
@@ -47,7 +62,11 @@
 		busy = true;
 		error = '';
 		try {
-			finish(await importGlobalAsset(path));
+			finish(
+				sourceId
+					? await importSourceAsset(sourceId, path, stem, COVER_MAX_EDGE)
+					: await importGlobalAsset(path, COVER_MAX_EDGE)
+			);
 		} catch (e) {
 			error = describeError(e, "That image couldn't be added.");
 			busy = false;
@@ -135,13 +154,18 @@
 		>
 			<h3 class="title">Add cover</h3>
 
-			<div class="drop">
-				<ImageUp size={24} />
-				<p class="hint">Drag an image here, or paste from clipboard</p>
-				<button class="open-btn" type="button" onclick={openFile} disabled={busy}>
-					<FolderOpen size={14} />
-					<span>Choose file</span>
-				</button>
+			<div class="drop" class:busy>
+				{#if busy}
+					<span class="dots"><i></i><i></i><i></i></span>
+					<p class="hint">Fitting your image</p>
+				{:else}
+					<ImageUp size={24} />
+					<p class="hint">Drag an image here, or paste from clipboard</p>
+					<button class="open-btn" type="button" onclick={openFile}>
+						<FolderOpen size={14} />
+						<span>Choose file</span>
+					</button>
+				{/if}
 			</div>
 
 			{#if error}<p class="err">{error}</p>{/if}
@@ -190,6 +214,47 @@
 		transition:
 			border-color 120ms ease,
 			background-color 120ms ease;
+	}
+
+	.drop.busy {
+		justify-content: center;
+		min-height: 148px;
+	}
+
+	.dots {
+		display: inline-flex;
+		gap: 6px;
+		height: 24px;
+		align-items: center;
+	}
+
+	.dots i {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--color-accent);
+		animation: hop 900ms ease-in-out infinite;
+	}
+
+	.dots i:nth-child(2) {
+		animation-delay: 150ms;
+	}
+
+	.dots i:nth-child(3) {
+		animation-delay: 300ms;
+	}
+
+	@keyframes hop {
+		0%,
+		60%,
+		100% {
+			transform: translateY(0);
+			opacity: 0.55;
+		}
+		30% {
+			transform: translateY(-7px);
+			opacity: 1;
+		}
 	}
 
 	.dialog.drag .drop {

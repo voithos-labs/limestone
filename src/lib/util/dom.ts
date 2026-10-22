@@ -33,7 +33,10 @@ export function selectionIn(el: HTMLElement, text: string): [number, number] | n
 	];
 }
 
-export function restoreSelection(node: HTMLInputElement, range: [number, number] | null) {
+export function restoreSelection(
+	node: HTMLInputElement | HTMLTextAreaElement,
+	range: [number, number] | null
+) {
 	const end = node.value.length;
 	const [from, to] = range ?? [end, end];
 	node.focus();

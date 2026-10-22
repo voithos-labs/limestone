@@ -10,6 +10,7 @@
 	import ProjectSetup from '../pages/ProjectSetup.svelte';
 	import LicensesPage from '../pages/LicensesPage.svelte';
 	import DocumentEditor from '../editor/DocumentEditor.svelte';
+	import UndoHint from '../overlays/UndoHint.svelte';
 
 	let {
 		editor,
@@ -66,6 +67,9 @@
 		<SettingsPage viewTab={session.getViewTab('settings')} {session} />
 	{:else}
 		<div class="panel-placeholder">No document selected</div>
+	{/if}
+	{#if active}
+		<UndoHint settings={session.settings} />
 	{/if}
 </main>
 

@@ -220,6 +220,68 @@
 		void selected;
 		untrack(() => (wasStuck = stuck));
 	});
+	let frameTop = $state(0);
+	let framed = $state(false);
+	let journalW = $state(0);
+	const narrow = $derived(
+		journalW - 48 < (settings.get<number>('appearance.max_page_width') || 1000)
+	);
+	let frameMask = $state('');
+	$effect(() => {
+		const host = entryEl;
+		if (!host) return;
+		let raf = 0;
+		const measure = () => {
+			raf = 0;
+			const box = host.querySelector('.body-face.doc') as HTMLElement | null;
+			const line = box?.querySelector('.title-line') as HTMLElement | null;
+			framed = !!line;
+			if (!box || !line) return;
+			let y = line.offsetHeight / 2;
+			for (
+				let el: HTMLElement | null = line;
+				el && el !== box;
+				el = el.offsetParent as HTMLElement | null
+			)
+				y += el.offsetTop;
+			frameTop = Math.round(y);
+			const b = box.getBoundingClientRect();
+			const x0 = b.left + (parseFloat(getComputedStyle(box, '::before').left) || 0);
+			const span = (els: Element[]): [number, number] | null => {
+				const rs = els.map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
+				if (rs.length === 0) return null;
+				return [
+					Math.min(...rs.map((r) => r.left)) - x0 - 8,
+					Math.max(...rs.map((r) => r.right)) - x0 + 8
+				];
+			};
+			const q = (sel: string) => [...line.querySelectorAll(sel)];
+			const stops = ['#000 0'];
+			for (const gap of [span(q('.title-ghost')), span(q('.top-actions > *, .kebab'))]) {
+				if (!gap) continue;
+				const [a, c] = gap;
+				stops.push(`#000 ${a}px`, `transparent ${a}px`, `transparent ${c}px`, `#000 ${c}px`);
+			}
+			stops.push('#000 100%');
+			frameMask =
+				`linear-gradient(to right, ${stops.join(', ')}) 0 0 / 100% 2px no-repeat, ` +
+				`linear-gradient(#000, #000) 0 2px / 100% calc(100% - 2px) no-repeat`;
+		};
+		const queue = () => {
+			if (!raf) raf = requestAnimationFrame(measure);
+		};
+		const ro = new ResizeObserver(queue);
+		ro.observe(host);
+		const mo = new MutationObserver(queue);
+		mo.observe(host, { childList: true, subtree: true, characterData: true });
+		queue();
+		return () => {
+			ro.disconnect();
+			mo.disconnect();
+			if (raf) cancelAnimationFrame(raf);
+		};
+	});
+
 	let firstDay = true;
 	$effect(() => {
 		void selected;
@@ -647,6 +709,7 @@
 	class:flow
 	class:sticky={face.config.sticky_days !== false}
 	bind:this={journalEl}
+	bind:clientWidth={journalW}
 >
 	{#if searching}
 		<div class="hits">
@@ -749,7 +812,14 @@
 
 		<div class="entry" bind:this={entryEl}>
 			{#if bodyFace}
-				<div class="body-face" class:doc={bodyFace.type === 'doc'}>
+				<div
+					class="body-face"
+					class:doc={bodyFace.type === 'doc'}
+					class:framed
+					class:narrow
+					style:--frame-top="{frameTop}px"
+					style:--frame-mask={frameMask || undefined}
+				>
 					{#key bodyFace.id}
 						{#if bodyFace.type === 'doc'}
 							<DocFace
@@ -919,7 +989,33 @@
 
 	/* a document body is narrower than the strip, so it needs room to read as its own thing */
 	.body-face.doc {
-		margin-top: 40px;
+		position: relative;
+		margin: 20px 0 0;
+		padding: 0 10px;
+	}
+
+	.body-face.doc.framed::before {
+		content: '';
+		position: absolute;
+		inset: var(--frame-top, 0px) 0 0;
+		z-index: 0;
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		pointer-events: none;
+		-webkit-mask: var(--frame-mask, none);
+		mask: var(--frame-mask, none);
+	}
+
+	.body-face.doc.narrow {
+		margin: 20px -24px 0;
+		padding: 0;
+	}
+
+	.body-face.doc.narrow.framed::before {
+		left: 24px;
+		right: 24px;
+		border-width: 1px 0 0;
+		border-radius: 0;
 	}
 
 	.controls {
