@@ -37,6 +37,7 @@ import { sanitizeSegment } from '#lib/util/paths.js';
 import { creationSource, defaultNoteDir, getSource, noteSelfWrite, type Source } from './Source';
 import Tag, { tagSlug, type TagRow } from './Tag';
 import Folder from './Folder';
+import { leftProjectKeys, removeViewKey } from './View.svelte';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
@@ -613,6 +614,19 @@ class DocHandle {
 		this.place(newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
 		await this.updateLinks(oldRelPath);
+		await this.stripLeftProjects(this.source.id, oldRelPath);
+	}
+
+	private async stripLeftProjects(oldSourceId: string, oldRelPath: string): Promise<void> {
+		const left = await leftProjectKeys(
+			{ sourceId: oldSourceId, dir: dirOf(oldRelPath) },
+			{ sourceId: this.source.id, dir: dirOf(this._relPath) }
+		);
+		const views = this.properties.views as Record<string, unknown> | undefined;
+		for (const key of left) {
+			if (!views || !(key in views)) continue;
+			if (await removeViewKey(this.source.id, key, [this.id])) delete views[key];
+		}
 	}
 
 	private async updateLinks(oldRelPath: string): Promise<void> {
@@ -646,8 +660,10 @@ class DocHandle {
 		moveHistory(this.id, oldSourceId, newSource.id).catch((e) =>
 			console.error('history move failed', e)
 		);
+		const oldRelPath = this._relPath;
 		this.place(newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
+		await this.stripLeftProjects(oldSourceId, oldRelPath);
 	}
 
 	/**

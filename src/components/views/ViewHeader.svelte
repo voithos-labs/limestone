@@ -322,6 +322,11 @@
 		}
 	});
 
+	$effect(() => {
+		const slug = view.slug;
+		if (document.activeElement !== untrack(() => titleEl)) slugDraft = slug;
+	});
+
 	function commitSlug() {
 		const next = sanitizeName(slugDraft);
 		if (next && !slugTrouble) {

@@ -1296,7 +1296,7 @@
 		align-items: center;
 		gap: 10px 16px;
 		max-width: calc(var(--page-max-width, 1200px) - 48px);
-		margin: -16px auto 16px;
+		margin: 0 auto 16px;
 		width: calc(100% - 48px);
 		padding: 12px 14px;
 		border-radius: 8px;

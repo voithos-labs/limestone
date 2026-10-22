@@ -263,6 +263,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::source_commands::get_sources,
             commands::source_commands::set_folder_frontmatter,
+            commands::source_commands::rekey_folder_frontmatter,
             commands::source_commands::contains_git_repo,
             commands::source_commands::get_source_by_id,
             commands::source_commands::update_source,
@@ -306,7 +307,8 @@ pub fn run() {
             commands::bulk_ops_commands::bulk_rename_view_field,
             commands::bulk_ops_commands::bulk_rename_view_option,
             commands::bulk_ops_commands::bulk_remove_view_field,
-            commands::bulk_ops_commands::bulk_rename_view_prefix,
+            commands::bulk_ops_commands::bulk_rename_view_key,
+            commands::bulk_ops_commands::bulk_remove_view_key,
             commands::bulk_ops_commands::bulk_rename_tag,
             commands::bulk_ops_commands::bulk_remove_tag,
             commands::bulk_ops_commands::bulk_rewrite_links,
