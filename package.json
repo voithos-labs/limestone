@@ -30,7 +30,7 @@
 		"@tauri-apps/plugin-process": "^2.4.0",
 		"@tauri-apps/plugin-store": "^2.5.0",
 		"@tauri-apps/plugin-updater": "^2.14.0",
-		"@voithos-labs/aragonite": "^0.11.0",
+		"@voithos-labs/aragonite": "^0.11.1",
 		"js-yaml": "^5.4.0",
 		"katex": "^0.19.0",
 		"mermaid": "^11.16.0",
