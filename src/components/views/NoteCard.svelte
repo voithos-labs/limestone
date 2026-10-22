@@ -17,6 +17,7 @@
 	import { leave } from '#lib/views/FaceRows.svelte.js';
 	import { highlightTitle, highlightSnippet } from '#lib/util/dom.js';
 	import RowChips from './RowChips.svelte';
+	import PdfIcon from '../ui/PdfIcon.svelte';
 	import type RowEditors from './editors/RowEditors.svelte';
 	import { nameGuard } from '#lib/util/paths.js';
 	import { selectionIn, restoreSelection } from '#lib/util/dom.js';
@@ -220,7 +221,7 @@
 				<p class="text">{@html snippet}</p>
 			{:else if preview?.text}
 				<p class="text">{preview.text}</p>
-			{:else}
+			{:else if row.document_type === 'md'}
 				<p class="text empty">Empty note</p>
 			{/if}
 		</div>
@@ -241,18 +242,23 @@
 		</div>
 	{/if}
 
-	{#if fields.length}
-		<div class="foot">
-			<RowChips
-				{row}
-				{fields}
-				{rows}
-				{editMode}
-				compact
-				pick="filled"
-				onEdit={(r, f, a) => editors.edit(r, f, a)}
-				onTags={(r, a) => editors.tags(r, a)}
-			/>
+	{#if fields.length || row.document_type === 'pdf'}
+		<div class="foot-row">
+			<div class="foot">
+				<RowChips
+					{row}
+					{fields}
+					{rows}
+					{editMode}
+					compact
+					pick="filled"
+					onEdit={(r, f, a) => editors.edit(r, f, a)}
+					onTags={(r, a) => editors.tags(r, a)}
+				/>
+			</div>
+			{#if row.document_type === 'pdf'}
+				<span class="doc-type" title="PDF"><PdfIcon size={16} /></span>
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -518,6 +524,24 @@
 
 	/* one field per line, read top to bottom; the fields still unset share one wrapping row
 	   under the preview, so the card gives up a single line for them, not one each */
+	.foot-row {
+		display: flex;
+		align-items: flex-end;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.foot-row:has(> .foot:empty):not(:has(> .doc-type)) {
+		display: none;
+	}
+
+	.doc-type {
+		display: flex;
+		flex-shrink: 0;
+		margin-left: auto;
+		color: var(--color-ui-muted);
+	}
+
 	.foot {
 		display: flex;
 		flex-direction: column;

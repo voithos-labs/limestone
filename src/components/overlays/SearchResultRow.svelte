@@ -3,6 +3,7 @@
 	import { sourceName, type Source } from '#lib/models/Source.js';
 	import { highlightTitle, highlightSnippet } from '#lib/util/dom.js';
 	import { Folder, FolderInput, TextAlignStart, Box, Check, Trash2 } from '@lucide/svelte';
+	import PdfIcon from '../ui/PdfIcon.svelte';
 	import { tagIcon } from '#lib/views/filterDisplay.js';
 	import { DELETED } from '#lib/models/View.svelte.js';
 
@@ -52,6 +53,8 @@
 					{@const TagIcon = tagIcon(result.id)}
 					<TagIcon size={14} />
 				{/if}
+			{:else if result.document_type === 'pdf'}
+				<PdfIcon size={14} />
 			{:else}
 				<TextAlignStart size={14} />
 			{/if}

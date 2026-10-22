@@ -16,6 +16,7 @@
 		FolderPlus
 	} from '@lucide/svelte';
 	import type { Component } from 'svelte';
+	import PdfIcon from '../ui/PdfIcon.svelte';
 	import type Session from '#lib/models/Session.svelte.js';
 	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import type { SearchResult } from '#lib/services/search.js';
@@ -61,7 +62,13 @@
 	let active = $state(0);
 	let sources: Source[] = $state([]);
 	let hits: SearchResult[] = $state([]);
-	let recentDocs: { id: string; title: string; rel_path: string; source_id: string }[] = $state([]);
+	let recentDocs: {
+		id: string;
+		title: string;
+		rel_path: string;
+		source_id: string;
+		document_type: string;
+	}[] = $state([]);
 	let projects: View[] = $state([]);
 
 	const trimmed = $derived(query.trim());
@@ -200,7 +207,7 @@
 			id: r.id,
 			label: r.title,
 			hint: r.deleted ? [where, 'deleted'].filter(Boolean).join(' · ') : where,
-			icon: TextAlignStart,
+			icon: r.document_type === 'pdf' ? PdfIcon : TextAlignStart,
 			kind: 'doc',
 			match: r.match_indices,
 			run: async (newTab) => openContent(TabState.forDoc(await MarkdownHandle.fromID(r.id)), newTab)
@@ -225,7 +232,7 @@
 						id: d.id,
 						label: d.title,
 						hint: [srcOf(d.source_id), dirOf(d.rel_path)].filter(Boolean).join(' / '),
-						icon: TextAlignStart,
+						icon: d.document_type === 'pdf' ? PdfIcon : TextAlignStart,
 						kind: 'doc' as const,
 						run: async (newTab) =>
 							openContent(TabState.forDoc(await MarkdownHandle.fromID(d.id)), newTab)
@@ -323,8 +330,14 @@
 			})
 			.catch((e) => console.error('palette projects failed', e));
 		// recent means recently opened, which the documents table tracks itself
-		select<{ id: string; title: string; rel_path: string; source_id: string }>(
-			`SELECT id, title, rel_path, source_id FROM documents
+		select<{
+			id: string;
+			title: string;
+			rel_path: string;
+			source_id: string;
+			document_type: string;
+		}>(
+			`SELECT id, title, rel_path, source_id, document_type FROM documents
 			 WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT 5`
 		)
 			.then((rows) => (recentDocs = rows))
