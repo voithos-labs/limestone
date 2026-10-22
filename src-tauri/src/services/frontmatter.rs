@@ -612,7 +612,8 @@ mod tests {
 
     #[test]
     fn unit_key_removal_is_exact_and_prunes_empty_views() {
-        let mut v = json!({ "tags": ["a"], "views": { "read": { "n": 1 }, "reading": { "n": 2 } } });
+        let mut v =
+            json!({ "tags": ["a"], "views": { "read": { "n": 1 }, "reading": { "n": 2 } } });
         remove_unit_key(&mut v, "read");
         assert_eq!(
             v,
