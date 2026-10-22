@@ -2,10 +2,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { select, execute } from '#lib/services/db.js';
 import {
 	deleteSavedView,
+	dirOf,
+	docIdsWithKey,
 	folderPropKey,
+	leftProjectKeys,
 	listSavedViewJSON,
 	remapIdsInSavedViews,
-	renameUnitViewPrefix,
+	removeViewKey,
+	renameViewKey,
 	type BulkResult
 } from '#lib/models/View.svelte.js';
 import { flushAll } from '#lib/services/platform.js';
@@ -240,8 +244,14 @@ class Folder {
 		await flushAll();
 		await invoke('move_folder', { sourceId, oldRelDir: oldPath, newRelDir: newPath });
 		const newId = folderId(sourceId, newPath);
-		await renameUnitViewPrefix(folderPropKey(oldPath), folderPropKey(newPath));
+		await renameViewKey(sourceId, newId, folderPropKey(oldPath), folderPropKey(newPath));
 		await remapIdsInSavedViews(folderId(sourceId, oldPath), newId, true);
+		const left = await leftProjectKeys(
+			{ sourceId, dir: dirOf(oldPath) },
+			{ sourceId, dir: dirOf(newPath) }
+		);
+		for (const key of left)
+			await removeViewKey(sourceId, key, await docIdsWithKey(sourceId, newId, key));
 		const moved = await Folder.fromID(newId);
 		await moved.touch();
 		return newId;
