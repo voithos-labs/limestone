@@ -1042,9 +1042,7 @@ async function loadViews(): Promise<Map<string, ViewJSON>> {
 			return json && isValidName(folderPropKey(folderIdPath(row.id))) ? { row, json } : null;
 		})
 	);
-	const entries = found
-		.filter((e) => e !== null)
-		.sort((a, b) => b.row.id.length - a.row.id.length);
+	const entries = found.filter((e) => e !== null).sort((a, b) => b.row.id.length - a.row.id.length);
 
 	const dirty = new Set<string>();
 	const byId = new Map<string, typeof entries>();
