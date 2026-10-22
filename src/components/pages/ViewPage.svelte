@@ -19,7 +19,7 @@
 	import { v4 as uuidv4 } from 'uuid';
 	import View from '#lib/models/View.svelte.js';
 	import type { ViewFace, FilterLeaf, FilterNode } from '#lib/models/View.svelte.js';
-	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import { listSavedViewJSON, unitDisplayName } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import type { TabState } from '#lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '#lib/models/Settings.svelte.js';
@@ -284,6 +284,14 @@
 			return;
 		}
 		const next = await folderPresence(unit);
+		if (next.state === 'gone') {
+			const saved = (await listSavedViewJSON()).find((v) => v.id === view.id);
+			if (saved?.unit && saved.unit !== unit && view.unit === unit) {
+				view.retarget(unit, saved.unit, true);
+				view.slug = await unitDisplayName(saved.unit);
+				return;
+			}
+		}
 		if (view.unit === unit) presence = next;
 	}
 

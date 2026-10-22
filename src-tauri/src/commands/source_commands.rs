@@ -518,6 +518,11 @@ pub async fn move_folder(
     Ok(())
 }
 
+#[tauri::command]
+pub fn rekey_folder_frontmatter(app: AppHandle, id: Uuid, old_dir: String, new_dir: String) {
+    rekey_frontmatter_dirs(&app, id, &old_dir, &new_dir);
+}
+
 fn rekey_frontmatter_dirs(app: &AppHandle, id: Uuid, old_dir: &str, new_dir: &str) {
     let Ok(mut source) = find_source(app, id) else {
         return;

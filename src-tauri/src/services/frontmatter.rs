@@ -334,18 +334,17 @@ pub fn rename_unit_key(fm: &mut Value, from: &str, to: &str) {
     rename_keys(views, |k| (k == from).then(|| to.to_string()));
 }
 
-/// Rename every `views.<key>` whose key starts with `from`, swapping that prefix for `to`
-pub fn rename_view_prefix(fm: &mut Value, from: &str, to: &str) {
-    let Some(views) = fm
-        .as_object_mut()
-        .and_then(|r| r.get_mut("views"))
-        .and_then(Value::as_object_mut)
-    else {
+pub fn remove_unit_key(fm: &mut Value, key: &str) {
+    let Some(root) = fm.as_object_mut() else {
         return;
     };
-    rename_keys(views, |k| {
-        k.strip_prefix(from).map(|rest| format!("{to}{rest}"))
-    });
+    let Some(views) = root.get_mut("views").and_then(Value::as_object_mut) else {
+        return;
+    };
+    views.shift_remove(key);
+    if views.is_empty() {
+        root.shift_remove("views");
+    }
 }
 
 fn rename_keys(map: &mut Map<String, Value>, rename: impl Fn(&str) -> Option<String>) {
@@ -612,23 +611,17 @@ mod tests {
     }
 
     #[test]
-    fn rename_prefix_moves_whole_subtree() {
-        let mut v = json!({ "views": {
-            "projects/": { "due": "2026-01-01" },
-            "projects/2026/": { "done": true },
-            "projectsX/": { "due": 1 },
-            "projects": { "x": 1 }
-        } });
-        rename_view_prefix(&mut v, "projects/", "work/");
+    fn unit_key_removal_is_exact_and_prunes_empty_views() {
+        let mut v = json!({ "tags": ["a"], "views": { "read": { "n": 1 }, "reading": { "n": 2 } } });
+        remove_unit_key(&mut v, "read");
         assert_eq!(
             v,
-            json!({ "views": {
-                "work/": { "due": "2026-01-01" },
-                "work/2026/": { "done": true },
-                "projectsX/": { "due": 1 },
-                "projects": { "x": 1 }
-            } })
+            json!({ "tags": ["a"], "views": { "reading": { "n": 2 } } })
         );
+        remove_unit_key(&mut v, "reading");
+        assert_eq!(v, json!({ "tags": ["a"] }));
+        remove_unit_key(&mut v, "missing");
+        assert_eq!(v, json!({ "tags": ["a"] }));
     }
 
     #[test]
@@ -640,13 +633,6 @@ mod tests {
         let (back, body) = split_content(&out);
         assert_eq!(back.unwrap(), v);
         assert_eq!(body, "body");
-    }
-
-    #[test]
-    fn rename_prefix_without_views_is_noop() {
-        let mut v = json!({ "tags": ["a"] });
-        rename_view_prefix(&mut v, "projects/", "work/");
-        assert_eq!(v, json!({ "tags": ["a"] }));
     }
 
     #[test]

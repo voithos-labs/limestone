@@ -108,9 +108,14 @@ pub(crate) enum BulkAction {
         old_value: String,
         new_value: String,
     },
-    RenameViewPrefix {
-        old_prefix: String,
-        new_prefix: String,
+    RenameViewKey {
+        old_key: String,
+        new_key: String,
+        doc_ids: Vec<String>,
+    },
+    RemoveViewKey {
+        key: String,
+        doc_ids: Vec<String>,
     },
     RenameTag {
         old_slug: String,
@@ -157,13 +162,13 @@ impl BulkAction {
                 validate_ident(old_name, "field name")?;
                 validate_ident(new_name, "new field name")
             }
-            BulkAction::RenameViewPrefix {
-                old_prefix,
-                new_prefix,
+            BulkAction::RenameViewKey {
+                old_key, new_key, ..
             } => {
-                validate_ident(old_prefix, "view slug prefix")?;
-                validate_ident(new_prefix, "new view slug prefix")
+                validate_ident(old_key, "view key")?;
+                validate_ident(new_key, "new view key")
             }
+            BulkAction::RemoveViewKey { key, .. } => validate_ident(key, "view key"),
             BulkAction::RenameTag { old_slug, new_slug } => {
                 validate_tag(old_slug)?;
                 validate_tag(new_slug)
@@ -346,8 +351,8 @@ async fn fetch_rel_paths(db: &SqlitePool, op: &BulkOp) -> Result<Vec<String>, St
             .map_err(|e| e.to_string())?;
             Ok(rows.into_iter().map(|(p,)| p).collect())
         }
-        BulkAction::RenameViewPrefix { old_prefix, .. } => {
-            fetch_paths_with_view_prefix(db, source_id, old_prefix).await
+        BulkAction::RenameViewKey { doc_ids, .. } | BulkAction::RemoveViewKey { doc_ids, .. } => {
+            fetch_paths_by_id(db, source_id, doc_ids).await
         }
         BulkAction::RenameTag { old_slug, .. } => {
             fetch_paths_with_tag(db, source_id, &tag_id(old_slug)).await
@@ -522,35 +527,59 @@ async fn execute(
             })
             .await
         }
-        BulkAction::RenameViewPrefix {
-            old_prefix,
-            new_prefix,
+        BulkAction::RenameViewKey {
+            old_key,
+            new_key,
+            doc_ids,
         } => {
-            sqlx::query(
-                "UPDATE documents
-                 SET properties = json_set(properties, '$.views',
-                     (SELECT json_group_object(
-                          CASE WHEN substr(je.key, 1, length(?1)) = ?1
-                               THEN ?2 || substr(je.key, length(?1) + 1)
-                               ELSE je.key END,
-                          CASE WHEN je.type IN ('object', 'array')
-                               THEN json(je.value) ELSE je.value END)
-                      FROM json_each(documents.properties, '$.views') je))
-                 WHERE source_id = ?3
-                   AND EXISTS (SELECT 1 FROM json_each(properties, '$.views') je
-                               WHERE substr(je.key, 1, length(?1)) = ?1)",
-            )
-            .bind(old_prefix)
-            .bind(new_prefix)
-            .bind(source_id)
-            .execute(db)
-            .await
-            .map_err(|e| e.to_string())?;
+            if !doc_ids.is_empty() {
+                let old_path = unit_path(old_key);
+                let new_path = unit_path(new_key);
+                let placeholders = doc_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                let sql = format!(
+                    "UPDATE documents
+                     SET properties = json_set(json_remove(properties, ?), ?, json(json_extract(properties, ?)))
+                     WHERE source_id = ? AND json_type(properties, ?) = 'object' AND id IN ({placeholders})"
+                );
+                let mut q = sqlx::query(AssertSqlSafe(sql))
+                    .bind(&old_path)
+                    .bind(&new_path)
+                    .bind(&old_path)
+                    .bind(source_id)
+                    .bind(&old_path);
+                for id in doc_ids {
+                    q = q.bind(id);
+                }
+                q.execute(db).await.map_err(|e| e.to_string())?;
+            }
 
-            let (from, to) = (old_prefix.clone(), new_prefix.clone());
+            let (from, to) = (old_key.clone(), new_key.clone());
             write_files(app, source_path, fm_paths, move |_, path| {
                 frontmatter::rewrite_frontmatter(path, |fm| {
-                    frontmatter::rename_view_prefix(fm, &from, &to);
+                    frontmatter::rename_unit_key(fm, &from, &to);
+                })
+            })
+            .await
+        }
+        BulkAction::RemoveViewKey { key, doc_ids } => {
+            if !doc_ids.is_empty() {
+                let path = unit_path(key);
+                let placeholders = doc_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                let sql = format!(
+                    "UPDATE documents SET properties = json_remove(properties, ?)
+                     WHERE source_id = ? AND id IN ({placeholders})"
+                );
+                let mut q = sqlx::query(AssertSqlSafe(sql)).bind(&path).bind(source_id);
+                for id in doc_ids {
+                    q = q.bind(id);
+                }
+                q.execute(db).await.map_err(|e| e.to_string())?;
+            }
+
+            let key = key.clone();
+            write_files(app, source_path, fm_paths, move |_, path| {
+                frontmatter::rewrite_frontmatter(path, |fm| {
+                    frontmatter::remove_unit_key(fm, &key);
                 })
             })
             .await
@@ -784,25 +813,6 @@ async fn fetch_paths_by_id(
     Ok(rows.into_iter().map(|(p,)| p).collect())
 }
 
-async fn fetch_paths_with_view_prefix(
-    db: &SqlitePool,
-    source_id: &str,
-    prefix: &str,
-) -> Result<Vec<String>, String> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT rel_path FROM documents
-         WHERE source_id = ?1 AND deleted_at IS NULL
-           AND EXISTS (SELECT 1 FROM json_each(properties, '$.views') je
-                       WHERE substr(je.key, 1, length(?2)) = ?2)",
-    )
-    .bind(source_id)
-    .bind(prefix)
-    .fetch_all(db)
-    .await
-    .map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().map(|(p,)| p).collect())
-}
-
 async fn fetch_paths_with_tag(
     db: &SqlitePool,
     source_id: &str,
@@ -827,6 +837,10 @@ fn json_unit_path(unit_key: &str) -> String {
 
 fn json_path(view_slug: &str, field: &str) -> String {
     format!("$.views.\"{view_slug}\".\"{field}\"")
+}
+
+fn unit_path(key: &str) -> String {
+    format!("$.views.\"{key}\"")
 }
 
 async fn fetch_paths_mentioning(

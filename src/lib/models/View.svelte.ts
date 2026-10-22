@@ -530,16 +530,37 @@ function resolveColumn(field: ViewField): string {
 			return 'd.updated_at';
 		case 'tags':
 			throw new Error(`tags field has no scalar column; handle separately`);
-		default:
-			return `json_extract(d.properties, ${propPath(field)})`;
+		default: {
+			const value = `json_extract(d.properties, ${propPath(field)})`;
+			if (!field.unit?.startsWith('folder:')) return value;
+			return `CASE WHEN ${unitScopeSql(field.unit)} THEN ${value} END`;
+		}
 	}
+}
+
+function sqlLit(s: string): string {
+	return `'${s.replace(/'/g, "''")}'`;
+}
+
+function unitScopeSql(unitId: string): string {
+	const src = `d.source_id = ${sqlLit(folderIdSource(unitId))}`;
+	if (isSourceRoot(unitId)) return src;
+	const below = sqlLit(`${unitId}/`);
+	return `${src} AND (d.folder_id = ${sqlLit(unitId)} OR substr(d.folder_id, 1, length(${below})) = ${below})`;
+}
+
+export function rowInUnit(row: Pick<MemberRow, 'source_id' | 'rel_path'>, unitId: string): boolean {
+	if (!unitId.startsWith('folder:')) return true;
+	if (row.source_id !== folderIdSource(unitId)) return false;
+	const path = folderIdPath(unitId);
+	return !path || row.rel_path.startsWith(`${path}/`);
 }
 
 /**
  * A unit view is 1:1 with an organization unit; a source is its root folder. The unit id both
  * scopes the view and names the frontmatter namespace its stateful props live under: tags key on
- * their bare slug, folders on their source-relative path wrapped in slashes (root is "/"). A tag
- * never ends with a slash and is never only slashes, so the two can't collide
+ * their bare slug, folders on their leaf name (root is "/"). A value only counts where the unit
+ * encloses the document, so same-named folders elsewhere never bleed into each other
  */
 export async function unitDisplayName(unitId: string): Promise<string> {
 	if (unitId === DELETED) return 'Deleted';
@@ -555,7 +576,80 @@ export function unitPropKey(unitId: string): string {
 }
 
 export function folderPropKey(path: string): string {
-	return path ? `/${path}/` : '/';
+	return path ? path.slice(path.lastIndexOf('/') + 1) : '/';
+}
+
+export function dirOf(relPath: string): string {
+	return relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : '';
+}
+
+export async function enclosingProjectKeys(sourceId: string, dir: string): Promise<string[]> {
+	const segs = dir.split('/').filter(Boolean);
+	const ids = [
+		folderId(sourceId, ''),
+		...segs.map((_, i) => folderId(sourceId, segs.slice(0, i + 1).join('/')))
+	];
+	const rows = await select<{ id: string }>(
+		`SELECT id FROM folders WHERE view = 1 AND id IN (${ids.map(() => '?').join(', ')})`,
+		ids
+	);
+	return rows.map((r) => folderPropKey(folderIdPath(r.id))).filter(isValidName);
+}
+
+export async function leftProjectKeys(
+	from: { sourceId: string; dir: string },
+	to: { sourceId: string; dir: string }
+): Promise<string[]> {
+	const was = await enclosingProjectKeys(from.sourceId, from.dir);
+	if (from.sourceId !== to.sourceId) return was;
+	const now = new Set(await enclosingProjectKeys(to.sourceId, to.dir));
+	return was.filter((k) => !now.has(k));
+}
+
+export async function docIdsWithKey(
+	sourceId: string,
+	folderId: string,
+	key: string
+): Promise<string[]> {
+	const path = `$.views."${pathSeg(key, 'unit key')}"`;
+	const below = isSourceRoot(folderId) ? folderId : `${folderId}/`;
+	const rows = await select<{ id: string }>(
+		`SELECT id FROM documents
+		 WHERE source_id = ?1 AND deleted_at IS NULL AND json_type(properties, ?2) = 'object'
+		   AND (folder_id = ?3 OR substr(folder_id, 1, length(?4)) = ?4)`,
+		[sourceId, path, folderId, below]
+	);
+	return rows.map((r) => r.id);
+}
+
+export async function renameViewKey(
+	sourceId: string,
+	folderId: string,
+	oldKey: string,
+	newKey: string
+): Promise<boolean> {
+	if (oldKey === newKey || !isValidName(oldKey) || !isValidName(newKey)) return true;
+	const docIds = await docIdsWithKey(sourceId, folderId, oldKey);
+	if (docIds.length === 0) return true;
+	const result = await invoke<BulkResult>('bulk_rename_view_key', {
+		sourceId,
+		oldKey,
+		newKey,
+		docIds
+	});
+	toastBulkFailures([result]);
+	return result.failed === 0 && !result.source_unreachable;
+}
+
+export async function removeViewKey(
+	sourceId: string,
+	key: string,
+	docIds: string[]
+): Promise<boolean> {
+	if (docIds.length === 0) return true;
+	const result = await invoke<BulkResult>('bulk_remove_view_key', { sourceId, key, docIds });
+	toastBulkFailures([result]);
+	return result.failed === 0 && !result.source_unreachable;
 }
 
 export async function seenOptionValues(field: ViewField): Promise<string[]> {
@@ -594,11 +688,15 @@ function compileFolderLeaf(op: string, value: unknown): CompiledFilter {
 	// with '/' (0x2F), whose successor is '0' (0x30); the source root has no separator before
 	// its children, so its bound comes from the successor of its trailing ':' (0x3A)
 	const id = String(value);
-	const upper = isSourceRoot(id) ? `${id.slice(0, -1)};` : `${id}0`;
-	const inFolder = {
-		sql: `(d.folder_id IS NOT NULL AND d.folder_id >= ? AND d.folder_id < ?)`,
-		params: [id, upper]
-	};
+	const inFolder = isSourceRoot(id)
+		? {
+				sql: `(d.folder_id IS NOT NULL AND d.folder_id >= ? AND d.folder_id < ?)`,
+				params: [id, `${id.slice(0, -1)};`]
+			}
+		: {
+				sql: `(d.folder_id IS NOT NULL AND (d.folder_id = ? OR (d.folder_id >= ? AND d.folder_id < ?)))`,
+				params: [id, `${id}/`, `${id}0`]
+			};
 	switch (op) {
 		case 'in':
 			return inFolder;
@@ -934,40 +1032,76 @@ async function loadViews(): Promise<Map<string, ViewJSON>> {
 	const rows = await select<{ id: string; accessed_at: number }>(
 		`SELECT id, accessed_at FROM folders WHERE view = 1`
 	);
-	await Promise.all(
+	const found = await Promise.all(
 		rows.map(async (row) => {
-			const home: ViewHome = {
-				kind: 'folder',
+			const text = await invoke<string | null>('view_file_read', {
 				sourceId: folderIdSource(row.id),
 				relDir: folderIdPath(row.id)
-			};
-			const text = await invoke<string | null>('view_file_read', {
-				sourceId: home.sourceId,
-				relDir: home.relDir
 			}).catch(() => null);
 			const json = text ? parseView(text) : null;
-			if (!json) return;
-			// the folder is the location, the ids inside follow a move made outside the app
-			const moved = !!json.unit && json.unit !== row.id;
-			const adopted = moved ? (remapIds(json, json.unit!, row.id, true) as ViewJSON) : json;
-			adopted.unit = row.id;
-			adopted.accessed_at = new Date(row.accessed_at);
-			if (moved) {
-				const oldPrefix = folderPropKey(folderIdPath(json.unit!));
-				const newPrefix = folderPropKey(home.relDir);
-				if (oldPrefix !== newPrefix) {
-					const result = await invoke<BulkResult>('bulk_rename_view_prefix', {
-						sourceId: home.sourceId,
-						oldPrefix,
-						newPrefix
-					}).catch(() => null);
-					if (result) toastBulkFailures([result]);
-				}
-			}
-			if (moved || !json.unit) void writeHome(home, adopted);
-			all.set(adopted.id, adopted);
+			return json && isValidName(folderPropKey(folderIdPath(row.id))) ? { row, json } : null;
 		})
 	);
+	const entries = found
+		.filter((e) => e !== null)
+		.sort((a, b) => b.row.id.length - a.row.id.length);
+
+	const dirty = new Set<string>();
+	const byId = new Map<string, typeof entries>();
+	for (const e of entries) byId.set(e.json.id, [...(byId.get(e.json.id) ?? []), e]);
+	for (const group of byId.values()) {
+		const keeper = group.find((e) => e.json.unit === e.row.id) ?? group[0];
+		for (const e of group) {
+			if (e !== keeper || all.has(e.json.id)) {
+				e.json = { ...e.json, id: uuidv4() };
+				dirty.add(e.json.id);
+			}
+		}
+	}
+	for (const e of entries) all.set(e.json.id, e.json);
+
+	const remapAll = (from: string, to: string) => {
+		if (from === to) return;
+		for (const [id, json] of all) {
+			const next = remapIds(json, from, to, true) as ViewJSON;
+			if (JSON.stringify(next) !== JSON.stringify(json)) {
+				all.set(id, next);
+				dirty.add(id);
+			}
+		}
+	};
+
+	for (const { row, json } of entries) {
+		const hint = json.unit;
+		const sourceId = folderIdSource(row.id);
+		const newPath = folderIdPath(row.id);
+		const newKey = folderPropKey(newPath);
+		const hintPath = hint ? folderIdPath(hint) : newPath;
+		const moved = !!hint && hint !== row.id;
+		let ok = true;
+		if (hintPath) ok = await renameViewKey(sourceId, row.id, `/${hintPath}/`, newKey);
+		if (ok && moved) ok = await renameViewKey(sourceId, row.id, folderPropKey(hintPath), newKey);
+		if (ok && moved) {
+			const copied = await select<{ id: string }>(`SELECT id FROM folders WHERE id = ?1`, [hint]);
+			if (copied.length === 0) {
+				remapAll(hint!, row.id);
+				if (folderIdSource(hint!) === sourceId)
+					await invoke('rekey_folder_frontmatter', {
+						id: sourceId,
+						oldDir: hintPath,
+						newDir: newPath
+					}).catch(() => {});
+			}
+		}
+		const live = all.get(json.id)!;
+		all.set(json.id, { ...live, unit: row.id, accessed_at: new Date(row.accessed_at) });
+		if (!ok) dirty.delete(json.id);
+		else if (moved || !hint) dirty.add(json.id);
+	}
+	for (const id of dirty) {
+		const v = all.get(id);
+		if (v) void writeHome(homeOf(v), v);
+	}
 	return all;
 }
 
@@ -1044,7 +1178,7 @@ export function remapIds(v: unknown, oldId: string, newId: string, subpaths = fa
 		return v;
 	}
 	if (Array.isArray(v)) return v.map((x) => remapIds(x, oldId, newId, subpaths));
-	if (v && typeof v === 'object') {
+	if (v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype) {
 		return Object.fromEntries(
 			Object.entries(v).map(([k, val]) => [k, remapIds(val, oldId, newId, subpaths)])
 		);
@@ -1377,7 +1511,7 @@ class View {
 			updated_at: this.updatedAt,
 			fields: this.ownFields,
 			filter: this.filter,
-			faces: this.faces,
+			faces: this.faces.map((f) => f.toJSON()),
 			state: this.state,
 			temporary: this.temporary,
 			emoji: this.emoji,
@@ -1531,6 +1665,7 @@ class View {
 	retarget(oldId: string, newId: string, subpaths = false): void {
 		const r = (v: unknown) => remapIds(v, oldId, newId, subpaths);
 		this.unit = r(this.unit) as string | null;
+		this.fields = this.fields.map((f) => (f.unit ? { ...f, unit: r(f.unit) as string } : f));
 		this.filter = r(this.filter) as FilterCompound;
 		for (const f of this.faces) f.additive_filter = r(f.additive_filter) as FilterCompound;
 		this.state = r(this.state) as Record<string, any>;
@@ -1604,12 +1739,6 @@ export function describeBulkFailure(r: BulkResult): string {
 		default:
 			return `${n} ${noun} couldn't be saved.`;
 	}
-}
-
-/** Move every `views.<oldPrefix>*` namespace to `<newPrefix>*`, e.g. when a folder is renamed */
-export async function renameUnitViewPrefix(oldPrefix: string, newPrefix: string): Promise<void> {
-	if (oldPrefix === newPrefix) return;
-	await bulkPerSource('bulk_rename_view_prefix', { oldPrefix, newPrefix });
 }
 
 export async function bulkPerSource(

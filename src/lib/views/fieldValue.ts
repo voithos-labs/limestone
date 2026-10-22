@@ -6,6 +6,7 @@ import {
 	fieldKey,
 	isBuiltinField,
 	isDerived,
+	rowInUnit,
 	BUILTIN_UNITS,
 	TODO_DONE,
 	isStatusField,
@@ -16,6 +17,7 @@ import { formatDateFriendly, formatDateISO, formatViewDate } from '#lib/views/da
 
 // reads a stateful field value (views.<unit key>.<field>) off a row's props
 export function rawStatefulValue(row: MemberRow, field: ViewField): unknown {
+	if (field.unit && !rowInUnit(row, field.unit)) return null;
 	try {
 		const props = JSON.parse(row.properties || '{}');
 		return props?.views?.[fieldKey(field)]?.[field.name] ?? null;
