@@ -149,7 +149,7 @@ async function otherNote(
 	note: string
 ): Promise<{ target: string; text: string } | null> {
 	const hit = await resolveWikiLink(vault.id, note);
-	if (!hit) return null;
+	if (!hit || !/\.md$/i.test(hit.rel_path)) return null;
 	try {
 		const raw = await readTextFile(`${vault.path}/${hit.rel_path}`);
 		const target = (await linkTargets(vault.id, [hit])).get(hit.id) ?? note;

@@ -58,6 +58,8 @@ import { SvelteMap } from 'svelte/reactivity';
 import { select } from '#lib/services/db.js';
 import { getSource, type Source } from '#lib/models/Source.js';
 import Tag, { type TagRow } from '#lib/models/Tag.js';
+import type MarkdownHandle from '#lib/models/MarkdownHandle.js';
+import type PdfHandle from '#lib/models/PdfHandle.js';
 
 /**
  * Yes I am using snakecase here, this is what they are in the db
@@ -79,6 +81,9 @@ export interface DocumentRow {
 }
 
 type DocumentPlace = { sourceId: string; relPath: string; title: string };
+type TaggedRow = DocumentRow & { tags_json: string | null };
+type DocCtor<T extends Doc> = new (row: DocumentRow, source: Source) => T;
+export type AnyDoc = MarkdownHandle | PdfHandle;
 
 // shared document state
 // protected (not public) such that outside code cannot call it
@@ -140,11 +145,24 @@ export default abstract class Doc {
 		Doc.places.set(this.id, { sourceId: source.id, relPath, title });
 	}
 
-	static async fromID<T extends Doc>(
-		this: new (row: DocumentRow, source: Source) => T,
-		id: string
-	): Promise<T> {
-		const [row] = await select<DocumentRow & { tags_json: string | null }>(
+	static async fromID<T extends Doc>(this: DocCtor<T>, id: string): Promise<T> {
+		return Doc.build(this, await Doc.selectRow(id));
+	}
+
+	static async load(id: string): Promise<AnyDoc> {
+		const row = await Doc.selectRow(id);
+		if (row.document_type === 'pdf') {
+			return (await import('#lib/models/PdfHandle.js')).default.fromRow(row);
+		}
+		return (await import('#lib/models/MarkdownHandle.js')).default.fromRow(row);
+	}
+
+	static fromRow<T extends Doc>(this: DocCtor<T>, row: TaggedRow): Promise<T> {
+		return Doc.build(this, row);
+	}
+
+	static async selectRow(id: string): Promise<TaggedRow> {
+		const [row] = await select<TaggedRow>(
 			`SELECT d.*,
                 (SELECT json_group_array(json_object(
                     'id', t.id, 'slug', t.slug, 'created_at', t.created_at,
@@ -157,7 +175,11 @@ export default abstract class Doc {
 			[id]
 		);
 		if (!row) throw new Error(`Document not found: ${id}`);
-		const doc = new this(row, await getSource(row.source_id));
+		return row;
+	}
+
+	private static async build<T extends Doc>(ctor: DocCtor<T>, row: TaggedRow): Promise<T> {
+		const doc = new ctor(row, await getSource(row.source_id));
 		const tags: TagRow[] = row.tags_json ? JSON.parse(row.tags_json) : [];
 		doc.tags = tags.filter((t) => t.id !== null).map((t) => new Tag(t));
 		await doc.hydrate();

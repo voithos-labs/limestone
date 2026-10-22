@@ -923,7 +923,7 @@ export class PreviewCache {
 				let hit = this.cache.get(key);
 				if (hit === undefined) {
 					const src = byId.get(r.source_id);
-					if (!src) return;
+					if (!src || r.document_type !== 'md') return;
 					try {
 						const raw = await readTextFile(`${src.path}/${r.rel_path}`);
 						const body = MarkdownHandle.deserialize(raw).body;

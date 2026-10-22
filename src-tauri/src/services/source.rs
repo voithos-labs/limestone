@@ -703,6 +703,13 @@ fn fs_birth_ms(path: &Path, fallback_mtime: i64) -> i64 {
         .unwrap_or(fallback_mtime)
 }
 
+pub(crate) fn document_type(rel_path: &str) -> &'static str {
+    match rel_path.rsplit_once('.') {
+        Some((_, ext)) if ext.eq_ignore_ascii_case("pdf") => "pdf",
+        _ => "md",
+    }
+}
+
 fn fs_mtime_ms(path: &Path) -> i64 {
     mtime_ms(path).unwrap_or(0)
 }
@@ -825,8 +832,8 @@ pub async fn apply_plan(
                 fm_date(fm, "created_at").unwrap_or_else(|| fs_birth_ms(&full_path, mtime));
             let accessed_at = fm_date(fm, "accessed_at").unwrap_or(mtime);
             sqlx::query(
-                "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at, document_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                  ON CONFLICT(id) DO UPDATE SET source_id = excluded.source_id, rel_path = excluded.rel_path,
                      title = excluded.title, mtime = excluded.mtime, properties = excluded.properties,
                      updated_at = excluded.updated_at, folder_id = NULL, deleted_at = NULL
@@ -842,6 +849,7 @@ pub async fn apply_plan(
             .bind(created_at)
             .bind(updated_at)
             .bind(accessed_at)
+            .bind(document_type(&doc.rel_path))
             .execute(&mut *tx)
             .await?
             .rows_affected()
@@ -1224,11 +1232,13 @@ pub async fn reconcile_source(
 
     let diff = diff_against_db(&db_entries, &fs_entries);
 
+    // only md is opened here
     let paths_to_read: Vec<String> = diff
         .new_paths
         .iter()
         .map(|(p, _)| p.clone())
         .chain(diff.modified.iter().map(|(p, _)| p.clone()))
+        .filter(|p| document_type(p) == "md")
         .collect();
     let frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
 
@@ -1511,6 +1521,29 @@ mod tests {
         views.sort();
         assert_eq!(views, vec!["".to_string(), "a/b".to_string()]);
         assert_eq!(walk.files.len(), 1);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn walk_picks_up_pdfs_outside_the_asset_folder() {
+        let tmp = std::env::temp_dir().join(format!("ls-walk-pdfs-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("assets/sub")).unwrap();
+        fs::create_dir_all(tmp.join("lectures")).unwrap();
+        fs::write(tmp.join("lectures/week3.PDF"), b"%PDF").unwrap();
+        fs::write(tmp.join("assets/sub/slides.pdf"), b"%PDF").unwrap();
+        fs::write(tmp.join("assetsx.pdf"), b"%PDF").unwrap();
+
+        let source = Source::new("t".into(), tmp.clone());
+        let mut files: Vec<String> = walk_source(&source, &["md", "pdf"])
+            .files
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+        files.sort();
+        assert_eq!(files, vec!["assetsx.pdf", "lectures/week3.PDF"]);
+        assert_eq!(document_type("lectures/week3.PDF"), "pdf");
+        assert_eq!(document_type("lectures/week3.md"), "md");
         let _ = fs::remove_dir_all(&tmp);
     }
 

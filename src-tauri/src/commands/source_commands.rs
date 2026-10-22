@@ -124,7 +124,7 @@ pub(crate) async fn run_reconcile(
 ) {
     let source_id = source.id.to_string();
     let (changed, skipped) =
-        services::reconcile_source(&source, &pool, &["md"], fm_buf_size, git_off)
+        services::reconcile_source(&source, &pool, &["md", "pdf"], fm_buf_size, git_off)
             .await
             .unwrap_or_else(|e| {
                 eprintln!("reconcile failed: {e}");

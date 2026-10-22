@@ -961,6 +961,7 @@ export interface MemberRow {
 	deleted_at: number | null;
 	properties: string;
 	source_id: string;
+	document_type: string;
 	writes_meta: number;
 }
 
@@ -1565,7 +1566,7 @@ class View {
 		const orderBy = sort.length ? compileSort(sort, this.fields) : '';
 
 		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.deleted_at, d.properties, d.source_id,
-				${WRITES_META_SQL} AS writes_meta
+				d.document_type, ${WRITES_META_SQL} AS writes_meta
 			FROM documents d
 			WHERE ${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
 
