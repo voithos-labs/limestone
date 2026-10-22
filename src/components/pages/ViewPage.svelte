@@ -21,7 +21,7 @@
 	import type { ViewFace, FilterLeaf, FilterNode } from '#lib/models/View.svelte.js';
 	import { listSavedViewJSON, unitDisplayName } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
-	import type { TabState } from '#lib/models/EditorState.svelte.js';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '#lib/models/Settings.svelte.js';
 	import {
 		listSources,
@@ -34,7 +34,7 @@
 	import type { GoneAction } from './GoneActions.svelte';
 	import catBox from '#assets/art/cat-box.txt?raw';
 	import SourceDialog from '../dialogs/SourceDialog.svelte';
-	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import Doc from '#lib/models/Doc.js';
 	import ViewHeader from '../views/ViewHeader.svelte';
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
@@ -784,9 +784,9 @@
 	}
 
 	function onOpenRow(rowId: string, newTab: boolean | 'side' = false) {
-		MarkdownHandle.fromID(rowId)
+		Doc.load(rowId)
 			.then((d) => {
-				const content = { type: 'markdown', handle: d } as const;
+				const content = TabState.docContent(d);
 				if (newTab === 'side') editor.beside().openDetail(content, view.slug);
 				else if (newTab || !tab) editor.openDoc(d);
 				else if (editor.peer) editor.peer.openDetail(content, view.slug);

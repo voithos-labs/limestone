@@ -37,6 +37,8 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+import PdfHandle from '#lib/models/PdfHandle.js';
+import type { AnyDoc } from '#lib/models/Doc.js';
 import View, { listSavedViewJSON, unitDisplayName } from '#lib/models/View.svelte.js';
 import type Session from '#lib/models/Session.svelte.js';
 
@@ -49,6 +51,7 @@ export type FocusTarget =
 
 export type TabContent =
 	| { type: 'markdown'; handle: MarkdownHandle }
+	| { type: 'pdf'; handle: PdfHandle }
 	| { type: 'view'; view: View }
 	| { type: 'new'; id: string }
 	| { type: 'home'; id: string }
@@ -66,6 +69,7 @@ type Visit = { content: TabContent; state: Record<string, any> };
 
 type TabJSONBase =
 	| { type: 'markdown'; handleId: string; state: Record<string, any>; pinned?: boolean }
+	| { type: 'pdf'; handleId: string; state: Record<string, any>; pinned?: boolean }
 	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any>; pinned?: boolean }
 	| { type: 'view-ref'; viewId: string; state: Record<string, any>; pinned?: boolean }
 	| { type: 'new'; id: string; state: Record<string, any>; pinned?: boolean }
@@ -102,6 +106,7 @@ export class TabState {
 	static idOf(content: TabContent): string {
 		switch (content.type) {
 			case 'markdown':
+			case 'pdf':
 				return content.handle.id;
 			case 'view':
 				return content.view.id;
@@ -124,6 +129,7 @@ export class TabState {
 	static titleOf(content: TabContent): string {
 		switch (content.type) {
 			case 'markdown':
+			case 'pdf':
 				return content.handle.title;
 			case 'view':
 				return content.view.slug;
@@ -164,8 +170,8 @@ export class TabState {
 		state: Record<string, any>,
 		pinned: boolean
 	): TabJSONBase {
-		if (content.type === 'markdown') {
-			return { type: 'markdown', handleId: content.handle.id, state, pinned };
+		if (content.type === 'markdown' || content.type === 'pdf') {
+			return { type: content.type, handleId: content.handle.id, state, pinned };
 		}
 		if (content.type === 'new' || content.type === 'home' || content.type === 'licenses') {
 			return { type: content.type, id: content.id, state, pinned };
@@ -176,8 +182,14 @@ export class TabState {
 		return { type: 'view', view: content.view.toJSON(), state, pinned };
 	}
 
-	static forDoc(doc: MarkdownHandle): TabState {
-		return new TabState({ type: 'markdown', handle: doc });
+	static docContent(doc: AnyDoc): TabContent {
+		return doc instanceof PdfHandle
+			? { type: 'pdf', handle: doc }
+			: { type: 'markdown', handle: doc };
+	}
+
+	static forDoc(doc: AnyDoc): TabState {
+		return new TabState(TabState.docContent(doc));
 	}
 
 	static forView(view: View): TabState {
@@ -227,6 +239,10 @@ export class TabState {
 		if (json.type === 'markdown') {
 			const handle = await MarkdownHandle.fromID(json.handleId);
 			return new TabState({ type: 'markdown', handle }, json.state ?? {}, json.pinned ?? false);
+		}
+		if (json.type === 'pdf') {
+			const handle = await PdfHandle.fromID(json.handleId);
+			return new TabState({ type: 'pdf', handle }, json.state ?? {}, json.pinned ?? false);
 		}
 		if (json.type === 'view' || json.type === 'view-ref') {
 			const saved =
@@ -352,7 +368,7 @@ class EditorState {
 		for (const tabJson of json.tabs ?? []) {
 			const id =
 				tabJson.tab_id ??
-				(tabJson.type === 'markdown'
+				(tabJson.type === 'markdown' || tabJson.type === 'pdf'
 					? tabJson.handleId
 					: tabJson.type === 'view'
 						? tabJson.view.id
@@ -423,10 +439,8 @@ class EditorState {
 	}
 
 	// `state` is merged into the tab's own, e.g. a heading for the editor to jump to once it opens
-	openDoc(doc: MarkdownHandle, state: Record<string, any> = {}) {
-		const existing = this.tabs.find(
-			(t) => t.content.type === 'markdown' && t.content.handle.id === doc.id
-		);
+	openDoc(doc: AnyDoc, state: Record<string, any> = {}) {
+		const existing = this.tabs.find((t) => TabState.idOf(t.content) === doc.id);
 		const tab = existing ?? TabState.forDoc(doc);
 		Object.assign(tab.state, state);
 		if (!existing) this.openTab(tab);
@@ -448,8 +462,8 @@ class EditorState {
 		this.swapContent(tab, { type: 'view', view }, tab.state);
 	}
 
-	showDocInTab(tab: TabState, doc: MarkdownHandle, state: Record<string, any> = {}) {
-		this.showInTab(tab, { type: 'markdown', handle: doc }, state);
+	showDocInTab(tab: TabState, doc: AnyDoc, state: Record<string, any> = {}) {
+		this.showInTab(tab, TabState.docContent(doc), state);
 	}
 
 	showSetupInTab(tab: TabState, state: Record<string, any> = {}) {

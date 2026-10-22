@@ -10,6 +10,7 @@
 	import ProjectSetup from '../pages/ProjectSetup.svelte';
 	import LicensesPage from '../pages/LicensesPage.svelte';
 	import DocumentEditor from '../editor/DocumentEditor.svelte';
+	import PdfViewer from '../editor/PdfViewer.svelte';
 	import UndoHint from '../overlays/UndoHint.svelte';
 
 	let {
@@ -55,6 +56,8 @@
 				<ViewPage view={tab.content.view} {tab} {editor} settings={session.settings} />
 			{:else if tab.content.type === 'markdown'}
 				<DocumentEditor bind:this={docEditor} {tab} {editor} settings={session.settings} />
+			{:else if tab.content.type === 'pdf'}
+				<PdfViewer {tab} />
 			{:else if tab.content.type === 'home'}
 				<HomePage {editor} {onAddSource} />
 			{:else if tab.content.type === 'new'}

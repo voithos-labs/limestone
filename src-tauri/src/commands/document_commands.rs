@@ -69,22 +69,40 @@ fn read_kind(e: &std::io::Error) -> &'static str {
     }
 }
 
+fn read_in_source<T>(
+    app: &AppHandle,
+    source_id: &str,
+    rel_path: &str,
+    read: impl FnOnce(&std::path::Path) -> std::io::Result<T>,
+) -> Result<T, ReadError> {
+    let fail = |kind| ReadError { kind };
+    let root = source_root(app, source_id).map_err(|_| fail("source_missing"))?;
+    if !root.is_dir() {
+        return Err(fail("source_missing"));
+    }
+    let path = resolve_in_source(&root, rel_path).map_err(|_| fail("not_found"))?;
+    read(&path).map_err(|e| match read_kind(&e) {
+        "permission" if std::fs::read_dir(&root).is_err() => fail("source_permission"),
+        kind => fail(kind),
+    })
+}
+
 #[tauri::command]
 pub fn read_document(
     app: AppHandle,
     source_id: String,
     rel_path: String,
 ) -> Result<String, ReadError> {
-    let fail = |kind| ReadError { kind };
-    let root = source_root(&app, &source_id).map_err(|_| fail("source_missing"))?;
-    if !root.is_dir() {
-        return Err(fail("source_missing"));
-    }
-    let path = resolve_in_source(&root, &rel_path).map_err(|_| fail("not_found"))?;
-    std::fs::read_to_string(&path).map_err(|e| match read_kind(&e) {
-        "permission" if std::fs::read_dir(&root).is_err() => fail("source_permission"),
-        kind => fail(kind),
-    })
+    read_in_source(&app, &source_id, &rel_path, |p| std::fs::read_to_string(p))
+}
+
+#[tauri::command]
+pub async fn read_document_bytes(
+    app: AppHandle,
+    source_id: String,
+    rel_path: String,
+) -> Result<tauri::ipc::Response, ReadError> {
+    read_in_source(&app, &source_id, &rel_path, |p| std::fs::read(p)).map(tauri::ipc::Response::new)
 }
 
 #[tauri::command]

@@ -1,4 +1,4 @@
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import Doc, { type DocumentRow } from './Doc';
 import type { Source } from './Source';
 
@@ -10,8 +10,13 @@ class PdfHandle extends Doc {
 		super(row, source);
 	}
 
-	get url(): string {
-		return convertFileSrc(`${this.source.path}/${this.relPath}`);
+	async loadBytes(): Promise<Uint8Array> {
+		const bytes = await invoke<ArrayBuffer>('read_document_bytes', {
+			sourceId: this.source.id,
+			relPath: this._relPath
+		});
+		await this.markAccessed();
+		return new Uint8Array(bytes);
 	}
 }
 

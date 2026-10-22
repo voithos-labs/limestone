@@ -29,6 +29,7 @@
 	import { registerFlush } from '#lib/services/platform.js';
 	import { onDocChanged, onSourceReconciled, sourceName } from '#lib/models/Source.js';
 	import MarkdownHandle, { readErrorKind, type ReadErrorKind } from '#lib/models/MarkdownHandle.js';
+	import Doc, { type AnyDoc } from '#lib/models/Doc.js';
 	import { lastHistoryText } from '#lib/services/history.js';
 	import GonePage from '../pages/GonePage.svelte';
 	import GoneActions, { type GoneAction } from '../pages/GoneActions.svelte';
@@ -984,9 +985,9 @@
 			if (heading) void jumpToHeading(heading);
 			return;
 		}
-		let doc: MarkdownHandle;
+		let doc: AnyDoc;
 		if (hit) {
-			doc = await MarkdownHandle.fromID(hit.id);
+			doc = await Doc.load(hit.id);
 		} else {
 			const slash = target.lastIndexOf('/');
 			doc = await MarkdownHandle.createFromTitle(h.source, {
@@ -996,7 +997,7 @@
 			touchLinkIndex();
 		}
 		const state = heading ? { [OPEN_AT_HEADING]: heading } : {};
-		if (side) editor.beside().openDetail({ type: 'markdown', handle: doc }, h.title);
+		if (side) editor.beside().openDetail(TabState.docContent(doc), h.title);
 		else if (newTab) editor.openDoc(doc, state);
 		else editor.showDocInTab(tab, doc, state);
 	}

@@ -9,7 +9,7 @@
 	import View, { listSavedViewJSON, coverArt } from '#lib/models/View.svelte.js';
 	import type { CoverArt, FilterNode, ViewField, ViewFieldType } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
-	import type { TabState } from '#lib/models/EditorState.svelte.js';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import type { SettingsState } from '#lib/models/Settings.svelte.js';
 	import Folder, {
 		folderId,
@@ -24,7 +24,7 @@
 		sourceName,
 		type Source
 	} from '#lib/models/Source.js';
-	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import Doc from '#lib/models/Doc.js';
 	import { mark } from '#lib/overlays.svelte.js';
 	import { addSourceRequest } from '#lib/overlays.svelte.js';
 	import { folderNameProblem } from '#lib/util/paths.js';
@@ -310,9 +310,9 @@
 	}
 
 	function onOpenRow(rowId: string, newTab: boolean | 'side' = false) {
-		MarkdownHandle.fromID(rowId)
+		Doc.load(rowId)
 			.then((d) => {
-				const content = { type: 'markdown', handle: d } as const;
+				const content = TabState.docContent(d);
 				if (newTab === 'side') editor.beside().openDetail(content, view.slug);
 				else if (newTab || !tab) editor.openDoc(d);
 				else if (editor.peer) editor.peer.openDetail(content, view.slug);

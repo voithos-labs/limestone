@@ -4,6 +4,7 @@
 	import type { Component } from 'svelte';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import Doc from '#lib/models/Doc.js';
 	import View, { coverArt, isBuiltinUnit, type CoverArt } from '#lib/models/View.svelte.js';
 	import Tag from '#lib/models/Tag.js';
 	import { listSources, sourceName, type Source } from '#lib/models/Source.js';
@@ -112,7 +113,7 @@
 
 	async function openNote(id: string, title: string) {
 		try {
-			editor.openDoc(await MarkdownHandle.fromID(id));
+			editor.openDoc(await Doc.load(id));
 		} catch (e) {
 			reportError(e, `${mark('note', title)} couldn't be opened.`);
 		}

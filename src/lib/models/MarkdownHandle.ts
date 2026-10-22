@@ -344,15 +344,7 @@ class MarkdownHandle extends Doc {
 			this.tags = await Tag.fromSlugs(tags);
 		}
 
-		// update accessed_at
-		const now = Date.now();
-		await execute(
-			`UPDATE documents
-             SET accessed_at = ?2
-             WHERE id = ?1`,
-			[this.id, now]
-		);
-		this.accessedAt = new Date(now);
+		await this.markAccessed();
 
 		this.recordHistory(body);
 		return body;

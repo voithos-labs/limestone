@@ -30,6 +30,7 @@
 		type Source
 	} from '#lib/models/Source.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import Doc from '#lib/models/Doc.js';
 	import Tag from '#lib/models/Tag.js';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
 	import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
@@ -210,7 +211,7 @@
 			icon: r.document_type === 'pdf' ? PdfIcon : TextAlignStart,
 			kind: 'doc',
 			match: r.match_indices,
-			run: async (newTab) => openContent(TabState.forDoc(await MarkdownHandle.fromID(r.id)), newTab)
+			run: async (newTab) => openContent(TabState.forDoc(await Doc.load(r.id)), newTab)
 		};
 	}
 
@@ -234,8 +235,7 @@
 						hint: [srcOf(d.source_id), dirOf(d.rel_path)].filter(Boolean).join(' / '),
 						icon: d.document_type === 'pdf' ? PdfIcon : TextAlignStart,
 						kind: 'doc' as const,
-						run: async (newTab) =>
-							openContent(TabState.forDoc(await MarkdownHandle.fromID(d.id)), newTab)
+						run: async (newTab) => openContent(TabState.forDoc(await Doc.load(d.id)), newTab)
 					}))
 				});
 			}

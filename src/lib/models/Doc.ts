@@ -55,7 +55,7 @@ One would hear so very oft?
 
 import { untrack } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
-import { select } from '#lib/services/db.js';
+import { execute, select } from '#lib/services/db.js';
 import { getSource, type Source } from '#lib/models/Source.js';
 import Tag, { type TagRow } from '#lib/models/Tag.js';
 import type MarkdownHandle from '#lib/models/MarkdownHandle.js';
@@ -184,6 +184,12 @@ export default abstract class Doc {
 		doc.tags = tags.filter((t) => t.id !== null).map((t) => new Tag(t));
 		await doc.hydrate();
 		return doc;
+	}
+
+	protected async markAccessed(): Promise<void> {
+		const now = Date.now();
+		await execute(`UPDATE documents SET accessed_at = ?2 WHERE id = ?1`, [this.id, now]);
+		this.accessedAt = new Date(now);
 	}
 
 	protected async hydrate(): Promise<void> {}

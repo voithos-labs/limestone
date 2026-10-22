@@ -9,7 +9,7 @@
 		sourceName,
 		type Source
 	} from '#lib/models/Source.js';
-	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import Doc from '#lib/models/Doc.js';
 	import Tag from '#lib/models/Tag.js';
 	import Folder, { folderId, folderIdSource } from '#lib/models/Folder.js';
 	import View, { DELETED, listSavedViewJSON } from '#lib/models/View.svelte.js';
@@ -175,7 +175,7 @@
 			editor.focusTab({ kind: 'tab', id: existing.id });
 			return;
 		}
-		const doc = await MarkdownHandle.fromID(result.id);
+		const doc = await Doc.load(result.id);
 		openInTab(TabState.forDoc(doc));
 	}
 

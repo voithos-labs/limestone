@@ -5,6 +5,7 @@
 	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import Doc, { type AnyDoc } from '#lib/models/Doc.js';
 	import { getDefaultSourceId, listSources, pickCreationSource } from '#lib/models/Source.js';
 	import { createMetaDate, deriveCreateContext, folderPath } from '#lib/views/FaceRows.svelte.js';
 	import { seedProperties } from '#lib/views/fieldValue.js';
@@ -14,6 +15,7 @@
 	import { searchDocuments } from '#lib/services/search.js';
 	import type { SearchResult } from '#lib/services/search.js';
 	import DocumentEditor from '../../editor/DocumentEditor.svelte';
+	import PdfViewer from '../../editor/PdfViewer.svelte';
 	import { untrack } from 'svelte';
 	import { onSourceReconciled } from '#lib/models/Source.js';
 
@@ -201,10 +203,10 @@
 		return bag;
 	}
 
-	let guess: { id: string; handle: Promise<MarkdownHandle> } | null = null;
+	let guess: { id: string; handle: Promise<AnyDoc> } | null = null;
 	const lastId = untrack(() => tab?.state.doc_active);
 	if (typeof lastId === 'string') {
-		const handle = MarkdownHandle.fromID(lastId);
+		const handle = Doc.load(lastId);
 		handle.catch(() => {});
 		guess = { id: lastId, handle };
 	}
@@ -215,14 +217,14 @@
 			docTab = null;
 			return;
 		}
-		if (untrack(() => docTab)?.handle?.id === id) return;
-		const opening = guess?.id === id ? guess.handle : MarkdownHandle.fromID(id);
+		if (untrack(() => docTab)?.id === id) return;
+		const opening = guess?.id === id ? guess.handle : Doc.load(id);
 		guess = null;
 		let cancelled = false;
 		opening
 			.then((h) => {
 				if (cancelled) return;
-				docTab = new TabState({ type: 'markdown', handle: h }, docStateFor(h.id));
+				docTab = new TabState(TabState.docContent(h), docStateFor(h.id));
 				if (tab) tab.state.doc_active = h.id;
 			})
 			.catch((e) => console.error('open doc failed', e));
@@ -311,16 +313,20 @@
 >
 	{#if docTab}
 		{#key docTab.id}
-			<DocumentEditor
-				bind:this={docEditor}
-				tab={docTab}
-				{editor}
-				{settings}
-				{flow}
-				{findBarAnchor}
-				{dockTarget}
-				showOpenFolder={false}
-			/>
+			{#if docTab.content.type === 'pdf'}
+				<PdfViewer tab={docTab} {flow} />
+			{:else}
+				<DocumentEditor
+					bind:this={docEditor}
+					tab={docTab}
+					{editor}
+					{settings}
+					{flow}
+					{findBarAnchor}
+					{dockTarget}
+					showOpenFolder={false}
+				/>
+			{/if}
 		{/key}
 	{:else if rowsLoaded && !activeDocId}
 		<div class="doc-empty">
