@@ -107,6 +107,20 @@ pub fn run() {
                 .unwrap()
         })
         .setup(move |app| {
+            // Built here rather than from the config so the page can read the clipboard (menu
+            // Paste): the config has no switch for it, and Windows prompts and Linux refuses without it.
+            let main_config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|w| w.label == "main")
+                .ok_or("tauri.conf.json has no main window")?
+                .clone();
+            tauri::WebviewWindowBuilder::from_config(app.handle(), &main_config)?
+                .enable_clipboard_access()
+                .build()?;
+
             #[cfg(desktop)]
             {
                 app.handle()
