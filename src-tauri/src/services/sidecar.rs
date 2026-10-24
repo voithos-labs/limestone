@@ -5,6 +5,9 @@
 //! our annotation tooling to simply use a normal doc UUID, and promoting basic file types into
 //! full documents with tags and other metadata, a pdf can even be a todo
 //!
+//! for Daniel ;; when you go to add citations to a given pdf, the sidecar has to be inited,
+//! it's not created 'by default' but only when it's needed, e.g. to store a tag
+//! 
 
 use crate::services::fs::{atomic_write, mtime_ms};
 use serde_json::{Map, Value};
