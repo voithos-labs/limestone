@@ -326,6 +326,7 @@ pub const VIEW_FILE: &str = ".limestone.view.json";
 
 pub struct WalkResult {
     pub files: Vec<(String, i64)>,
+    pub sizes: HashMap<String, u64>,
     pub dirs: Vec<String>,
     pub repos: HashSet<String>,
     pub views: HashSet<String>,
@@ -337,6 +338,7 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
     let source_path = &source.path;
     let ignore = build_ignore(source);
     let mut files = Vec::new();
+    let mut sizes = HashMap::new();
     let mut dirs = Vec::new();
     let mut skipped = 0;
 
@@ -433,13 +435,16 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
             continue;
         }
 
-        let mtime = entry
-            .metadata()
-            .ok()
+        let meta = entry.metadata().ok();
+        let mtime = meta
+            .as_ref()
             .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
+        if let Some(m) = meta.filter(|_| !ext.eq_ignore_ascii_case("md")) {
+            sizes.insert(rel_path.clone(), m.len());
+        }
 
         files.push((rel_path, mtime));
     }
@@ -448,6 +453,7 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
     let views = std::mem::take(&mut *found_views.lock().unwrap());
     WalkResult {
         files,
+        sizes,
         dirs,
         repos,
         views,
@@ -763,9 +769,7 @@ pub async fn apply_plan(
     let now = Utc::now().timestamp_millis();
     let mut unlinked_tags: Vec<String> = Vec::new();
     for id in &plan.delete_ids {
-        if crate::services::fs::history_dir(source_path, id).is_dir()
-            || sidecar::exists(source_path, id)
-        {
+        if crate::services::fs::history_dir(source_path, id).is_dir() {
             sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2")
                 .bind(now)
                 .bind(id)
@@ -773,6 +777,7 @@ pub async fn apply_plan(
                 .await?;
             continue;
         }
+        let _ = sidecar::touch(source_path, id);
         let tag_ids: Vec<String> =
             sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")
                 .bind(id)
@@ -1172,43 +1177,99 @@ pub async fn index_document(
 }
 
 // todo: generalize for sidecars
-fn adopt_moved_pdfs(
-    source_path: &Path,
-    sidecars: &mut [Sidecar],
-    fs_entries: &[(String, i64)],
-    new_paths: &[(String, i64)],
-) {
-    let on_disk: HashSet<&str> = fs_entries.iter().map(|(p, _)| p.as_str()).collect();
-    let claimed: HashSet<&str> = sidecars
-        .iter()
-        .map(|s| s.path.as_str())
-        .filter(|p| on_disk.contains(p))
-        .collect();
-    let candidates: Vec<(String, i64, u64)> = new_paths
-        .iter()
-        .filter(|(p, _)| document_type(p) == "pdf" && !claimed.contains(p.as_str()))
-        .filter_map(|(p, m)| Some((p.clone(), *m, fs::metadata(source_path.join(p)).ok()?.len())))
-        .collect();
-    let stray: Vec<usize> = (0..sidecars.len())
-        .filter(|&i| !on_disk.contains(sidecars[i].path.as_str()))
-        .collect();
-    let fits = |s: &Sidecar, (_, m, size): &(String, i64, u64)| *m == s.mtime && *size == s.size;
+type Candidate<'a> = (&'a str, i64, u64);
 
-    let mut adopted: Vec<(usize, String)> = Vec::new();
-    for &i in &stray {
-        let mut matches = candidates.iter().filter(|c| fits(&sidecars[i], c));
+fn pick_adoptions<'a>(strays: &[&Sidecar], candidates: &[Candidate<'a>]) -> Vec<(usize, &'a str)> {
+    let fits = |s: &Sidecar, (_, m, size): &Candidate| *m == s.mtime && *size == s.size;
+    let mut picked = Vec::new();
+    for (i, s) in strays.iter().enumerate() {
+        let mut matches = candidates.iter().filter(|c| fits(s, c));
         let (Some(only), None) = (matches.next(), matches.next()) else {
             continue;
         };
-        if stray.iter().filter(|&&j| fits(&sidecars[j], only)).count() == 1 {
-            adopted.push((i, only.0.clone()));
+        if strays.iter().filter(|t| fits(t, only)).count() == 1 {
+            picked.push((i, only.0));
         }
     }
-    for (i, path) in adopted {
-        if sidecar::relocate(source_path, &sidecars[i].id, &path).is_ok() {
-            sidecars[i].path = path;
+    picked
+}
+
+async fn claim_pdfs(
+    db: &SqlitePool,
+    source_id: &str,
+    source_path: &Path,
+    files: &[(String, i64)],
+    sizes: &HashMap<String, u64>,
+) -> sqlx::Result<HashSet<String>> {
+    let on_disk: HashMap<&str, i64> = files.iter().map(|(p, m)| (p.as_str(), *m)).collect();
+    let local = sidecar::load_all(source_path);
+    for s in &local {
+        let (Some(&m), Some(&size)) = (on_disk.get(s.path.as_str()), sizes.get(&s.path)) else {
+            continue;
+        };
+        if m != s.mtime || size != s.size {
+            let _ = sidecar::relocate(source_path, &s.id, &s.path);
         }
     }
+
+    let claimed: HashSet<&str> = local
+        .iter()
+        .map(|s| s.path.as_str())
+        .filter(|p| on_disk.contains_key(p))
+        .collect();
+    let candidates: Vec<Candidate> = files
+        .iter()
+        .filter(|(p, _)| document_type(p) == "pdf" && !claimed.contains(p.as_str()))
+        .filter_map(|(p, m)| Some((p.as_str(), *m, *sizes.get(p)?)))
+        .collect();
+    if candidates.is_empty() {
+        return Ok(HashSet::new());
+    }
+
+    let mut strays: Vec<(Option<PathBuf>, Sidecar)> = local
+        .into_iter()
+        .filter(|s| !on_disk.contains_key(s.path.as_str()))
+        .map(|s| (None, s))
+        .collect();
+    let others: Vec<String> = sqlx::query_scalar("SELECT path FROM sources WHERE id != ?1")
+        .bind(source_id)
+        .fetch_all(db)
+        .await?;
+    for root in others.into_iter().map(PathBuf::from).filter(|r| r.is_dir()) {
+        for s in sidecar::load_all(&root) {
+            if !root.join(&s.path).exists() {
+                strays.push((Some(root.clone()), s));
+            }
+        }
+    }
+
+    let refs: Vec<&Sidecar> = strays.iter().map(|(_, s)| s).collect();
+    let mut adopted = HashSet::new();
+    for (i, path) in pick_adoptions(&refs, &candidates) {
+        let (home, s) = &strays[i];
+        let moved = match home {
+            None => sidecar::relocate(source_path, &s.id, path).is_ok(),
+            Some(root) => {
+                sidecar::move_between(root, source_path, &s.id, path).is_ok()
+                    && sidecar::exists(source_path, &s.id)
+            }
+        };
+        if !moved {
+            continue;
+        }
+        if home.is_some() {
+            sqlx::query(
+                "UPDATE documents SET source_id = ?1, rel_path = '/' || id, folder_id = NULL
+                 WHERE id = ?2",
+            )
+            .bind(source_id)
+            .bind(&s.id)
+            .execute(db)
+            .await?;
+        }
+        adopted.insert(path.to_string());
+    }
+    Ok(adopted)
 }
 
 // ENTRY POINT
@@ -1248,13 +1309,15 @@ pub async fn reconcile_source(
 
     let WalkResult {
         files: fs_entries,
+        sizes,
         dirs: fs_dirs,
         repos,
         views,
         skipped,
     } = walk_source(source, extensions);
 
-    let mut sidecars = sidecar::load_all(source_path);
+    let adopted = claim_pdfs(db, source_id, source_path, &fs_entries, &sizes).await?;
+    let sidecars = sidecar::load_all(source_path);
     let fs_entries: Vec<(String, i64)> = {
         let written: HashMap<&str, i64> = sidecars
             .iter()
@@ -1296,7 +1359,15 @@ pub async fn reconcile_source(
         .map(|(id, path, mtime, _)| (id, (path, mtime)))
         .collect();
 
-    let diff = diff_against_db(&db_entries, &fs_entries);
+    let mut diff = diff_against_db(&db_entries, &fs_entries);
+    let fs_mtimes: HashMap<&str, i64> = fs_entries.iter().map(|(p, m)| (p.as_str(), *m)).collect();
+    diff.unchanged.retain(|p| {
+        let forced = adopted.contains(p);
+        if forced {
+            diff.modified.push((p.clone(), fs_mtimes[p.as_str()]));
+        }
+        !forced
+    });
 
     // only md is opened here
     let paths_to_read: Vec<String> = diff
@@ -1308,7 +1379,6 @@ pub async fn reconcile_source(
         .collect();
     let mut frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
 
-    adopt_moved_pdfs(source_path, &mut sidecars, &fs_entries, &diff.new_paths);
     let claimed: HashMap<&str, &Sidecar> = sidecars.iter().map(|s| (s.path.as_str(), s)).collect();
     for (path, _) in diff.new_paths.iter().chain(diff.modified.iter()) {
         if let Some(s) = claimed.get(path.as_str()) {
@@ -1625,32 +1695,35 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
     }
 
-    #[test]
-    fn moved_pdf_brings_its_sidecar_when_size_and_mtime_match() {
-        let root = std::env::temp_dir().join(format!("ls-adopt-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(root.join("a")).unwrap();
-        fs::create_dir_all(root.join("b")).unwrap();
-        fs::write(root.join("a/doc.pdf"), b"%PDF-1.7").unwrap();
-        fs::write(root.join("b/other.pdf"), b"%PDF-1.7 but longer").unwrap();
-        let id = "6f1c1d2e-0000-4000-8000-000000000002";
-        sidecar::rewrite(&root, id, "a/doc.pdf", |m| {
-            m.as_object_mut()
-                .unwrap()
-                .insert("tags".into(), serde_json::json!(["exam"]));
-        })
-        .unwrap();
-        fs::rename(root.join("a/doc.pdf"), root.join("b/doc.pdf")).unwrap();
+    fn stray(id: &str, size: u64, mtime: i64) -> Sidecar {
+        Sidecar {
+            id: id.into(),
+            path: format!("gone/{id}.pdf"),
+            size,
+            mtime,
+            written: 0,
+            meta: serde_json::json!({}),
+        }
+    }
 
-        let entries: Vec<(String, i64)> = ["b/doc.pdf", "b/other.pdf"]
-            .iter()
-            .map(|p| (p.to_string(), fs_mtime_ms(&root.join(p))))
-            .collect();
-        let mut sidecars = sidecar::load_all(&root);
-        adopt_moved_pdfs(&root, &mut sidecars, &entries, &entries);
-        assert_eq!(sidecars[0].path, "b/doc.pdf");
-        assert_eq!(sidecar::load_all(&root)[0].path, "b/doc.pdf");
-        let _ = fs::remove_dir_all(&root);
+    #[test]
+    fn a_stray_follows_its_sole_size_and_mtime_match() {
+        let a = stray("a", 100, 1);
+        let b = stray("b", 200, 2);
+        let candidates = [("x/moved.pdf", 1, 100), ("x/other.pdf", 9, 100)];
+        assert_eq!(
+            pick_adoptions(&[&a, &b], &candidates),
+            vec![(0, "x/moved.pdf")]
+        );
+    }
+
+    #[test]
+    fn ambiguous_matches_adopt_nothing() {
+        let a = stray("a", 100, 1);
+        let twin = stray("twin", 100, 1);
+        assert!(pick_adoptions(&[&a, &twin], &[("x/moved.pdf", 1, 100)]).is_empty());
+        let copies = [("x/one.pdf", 1, 100), ("x/two.pdf", 1, 100)];
+        assert!(pick_adoptions(&[&a], &copies).is_empty());
     }
 
     #[test]

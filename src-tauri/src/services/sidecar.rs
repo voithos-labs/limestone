@@ -151,6 +151,25 @@ pub fn move_between(from_root: &Path, to_root: &Path, id: &str, rel_path: &str) 
     remove(from_root, id)
 }
 
+pub fn touch(source_path: &Path, id: &str) -> io::Result<()> {
+    let Some(path) = sidecar_path(source_path, id) else {
+        return Ok(());
+    };
+    match fs::read(&path) {
+        Ok(bytes) => atomic_write(&path, &bytes),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn sweep_strays(source_path: &Path, cutoff: i64) {
+    for s in load_all(source_path) {
+        if s.written < cutoff && !source_path.join(&s.path).exists() {
+            let _ = remove(source_path, &s.id);
+        }
+    }
+}
+
 pub fn remove(source_path: &Path, id: &str) -> io::Result<()> {
     let Some(path) = sidecar_path(source_path, id) else {
         return Ok(());
@@ -216,6 +235,27 @@ mod tests {
         assert_eq!(moved[0].meta, serde_json::json!({ "status": "reading" }));
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&other);
+    }
+
+    #[test]
+    fn a_stray_is_retired_only_after_its_pdf_has_been_gone_past_the_cutoff() {
+        let root = tmp("stray");
+        rewrite(&root, ID, "a/doc.pdf", |m| {
+            m.as_object_mut()
+                .unwrap()
+                .insert("tags".into(), serde_json::json!(["exam"]));
+        })
+        .unwrap();
+        touch(&root, ID).unwrap();
+        let touched = load_all(&root)[0].written;
+        sweep_strays(&root, touched + 1);
+        assert!(exists(&root, ID), "kept while its pdf is still on disk");
+        fs::remove_file(root.join("a/doc.pdf")).unwrap();
+        sweep_strays(&root, touched);
+        assert!(exists(&root, ID), "kept until the cutoff passes its touch");
+        sweep_strays(&root, touched + 1);
+        assert!(!exists(&root, ID));
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

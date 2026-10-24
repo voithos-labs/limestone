@@ -645,7 +645,7 @@ pub async fn delete_document(
         return Ok(false);
     };
 
-    if history_dir(&root, &id).is_dir() || sidecar::exists(&root, &id) {
+    if history_dir(&root, &id).is_dir() {
         sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2 AND source_id = ?3")
             .bind(chrono::Utc::now().timestamp_millis())
             .bind(&id)
@@ -655,6 +655,7 @@ pub async fn delete_document(
             .map_err(OpError::from)?;
         return Ok(true);
     }
+    sidecar::touch(&root, &id).map_err(OpError::from)?;
 
     let tag_ids: Vec<String> =
         sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")

@@ -177,6 +177,7 @@ pub(crate) async fn sweep_expired(app: &AppHandle, pool: &sqlx::SqlitePool, sour
         return;
     }
     let cutoff = chrono::Utc::now().timestamp_millis() - days * 24 * 60 * 60 * 1000;
+    sidecar::sweep_strays(&source.path, cutoff);
     let expired: Vec<String> = match sqlx::query_scalar(
         "SELECT id FROM documents WHERE source_id = ?1 AND deleted_at < ?2",
     )

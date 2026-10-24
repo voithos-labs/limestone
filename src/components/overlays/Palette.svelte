@@ -53,6 +53,7 @@
 		emoji?: string;
 		kind: 'doc' | 'view' | 'folder' | 'tag' | 'source' | 'command';
 		match?: number[];
+		deleted?: boolean;
 		run: (newTab: boolean) => void | Promise<void>;
 	};
 	type Section = { title: string; items: Item[] };
@@ -207,10 +208,11 @@
 		return {
 			id: r.id,
 			label: r.title,
-			hint: r.deleted ? [where, 'deleted'].filter(Boolean).join(' · ') : where,
+			hint: where,
 			icon: r.document_type === 'pdf' ? PdfIcon : TextAlignStart,
 			kind: 'doc',
 			match: r.match_indices,
+			deleted: r.deleted,
 			run: async (newTab) => openContent(TabState.forDoc(await Doc.load(r.id)), newTab)
 		};
 	}
@@ -437,6 +439,7 @@
 							<button
 								class="row"
 								class:active={i === active}
+								class:deleted={item.deleted}
 								data-active={i === active ? '' : undefined}
 								type="button"
 								onmouseenter={() => (active = i)}
@@ -623,6 +626,11 @@
 		white-space: nowrap;
 		text-overflow: ellipsis;
 		font-size: 13.5px;
+	}
+
+	.row.deleted .label {
+		color: var(--color-text-secondary);
+		text-decoration: line-through;
 	}
 
 	.label :global(mark) {

@@ -161,6 +161,7 @@
 
 	.result.deleted .result-title {
 		color: var(--color-text-secondary);
+		text-decoration: line-through;
 	}
 
 	.result-deleted {
