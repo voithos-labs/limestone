@@ -58,6 +58,9 @@ import { SvelteMap } from 'svelte/reactivity';
 import { execute, select } from '#lib/services/db.js';
 import { getSource, type Source } from '#lib/models/Source.js';
 import Tag, { type TagRow } from '#lib/models/Tag.js';
+import { leftProjectKeys, removeViewKey } from '#lib/models/View.svelte.js';
+import { LinkRewriteFailure, rewriteLinksForMove } from '#lib/services/links.svelte.js';
+import { isRetryable, toasts, mark } from '#lib/overlays.svelte.js';
 import type MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import type PdfHandle from '#lib/models/PdfHandle.js';
 
@@ -81,7 +84,16 @@ export interface DocumentRow {
 }
 
 type DocumentPlace = { sourceId: string; relPath: string; title: string };
+function dirOf(relPath: string): string {
+	return relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : '';
+}
+
 type TaggedRow = DocumentRow & { tags_json: string | null };
+
+function tagsOf(row: TaggedRow): Tag[] {
+	const tags: TagRow[] = row.tags_json ? JSON.parse(row.tags_json) : [];
+	return tags.filter((t) => t.id !== null).map((t) => new Tag(t));
+}
 type DocCtor<T extends Doc> = new (row: DocumentRow, source: Source) => T;
 export type AnyDoc = MarkdownHandle | PdfHandle;
 
@@ -180,10 +192,61 @@ export default abstract class Doc {
 
 	private static async build<T extends Doc>(ctor: DocCtor<T>, row: TaggedRow): Promise<T> {
 		const doc = new ctor(row, await getSource(row.source_id));
-		const tags: TagRow[] = row.tags_json ? JSON.parse(row.tags_json) : [];
-		doc.tags = tags.filter((t) => t.id !== null).map((t) => new Tag(t));
+		doc.tags = tagsOf(row);
 		await doc.hydrate();
 		return doc;
+	}
+
+	protected async reload(): Promise<void> {
+		const row = await Doc.selectRow(this.id);
+		this.tags = tagsOf(row);
+		this.properties = JSON.parse(row.properties);
+	}
+
+	async refreshMeta(): Promise<void> {}
+
+	async refreshPath(): Promise<boolean> {
+		const [row] = await select<{ source_id: string; rel_path: string; title: string }>(
+			`SELECT source_id, rel_path, title FROM documents WHERE id = ?1`,
+			[this.id]
+		);
+		if (!row) return false;
+		const movedSource = row.source_id !== this.source.id;
+		if (!movedSource && row.rel_path === this._relPath && row.title === this._title) return false;
+		this.updateLocation(
+			movedSource ? await getSource(row.source_id) : this.source,
+			row.rel_path,
+			row.title
+		);
+		if (movedSource) await this.refreshMeta();
+		return true;
+	}
+
+	protected async stripLeftProjects(oldSourceId: string, oldRelPath: string): Promise<void> {
+		const left = await leftProjectKeys(
+			{ sourceId: oldSourceId, dir: dirOf(oldRelPath) },
+			{ sourceId: this.source.id, dir: dirOf(this._relPath) }
+		);
+		const views = this.properties.views as Record<string, unknown> | undefined;
+		for (const key of left) {
+			if (!views || !(key in views)) continue;
+			if (await removeViewKey(this.source.id, key, [this.id])) delete views[key];
+		}
+	}
+
+	protected async updateLinks(oldRelPath: string): Promise<void> {
+		try {
+			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this._relPath);
+		} catch (e) {
+			console.error('link rewrite failed', e);
+			let message = `Links to ${mark('note', this.title)} still use its old name`;
+			if (e instanceof LinkRewriteFailure && e.failed > 0)
+				message += ` in ${e.failed} ${e.failed === 1 ? 'note' : 'notes'}`;
+			if (e instanceof LinkRewriteFailure && e.reason) message += `: ${e.reason}`;
+			else message += '.';
+			const retry = { label: 'Retry', run: () => void this.updateLinks(oldRelPath) };
+			toasts.push(message, { action: isRetryable(e) ? retry : undefined });
+		}
 	}
 
 	protected async markAccessed(): Promise<void> {

@@ -36,6 +36,7 @@
 use crate::services::body::fold_tag;
 use crate::services::frontmatter;
 use crate::services::fs::{atomic_write, clean_location, mtime_ms};
+use crate::services::sidecar::{self, Sidecar};
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -744,7 +745,11 @@ pub async fn apply_plan(
         .collect();
 
     // duplicates get a fresh id written back so they stay stable across runs
-    for doc in plan.docs.iter().filter(|d| d.rewrite_id) {
+    for doc in plan
+        .docs
+        .iter()
+        .filter(|d| d.rewrite_id && document_type(&d.rel_path) == "md")
+    {
         let id = doc.id.clone();
         let _ = frontmatter::rewrite_frontmatter(&source_path.join(&doc.rel_path), move |fm| {
             if let Some(obj) = fm.as_object_mut() {
@@ -758,7 +763,9 @@ pub async fn apply_plan(
     let now = Utc::now().timestamp_millis();
     let mut unlinked_tags: Vec<String> = Vec::new();
     for id in &plan.delete_ids {
-        if crate::services::fs::history_dir(source_path, id).is_dir() {
+        if crate::services::fs::history_dir(source_path, id).is_dir()
+            || sidecar::exists(source_path, id)
+        {
             sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2")
                 .bind(now)
                 .bind(id)
@@ -1119,7 +1126,11 @@ pub async fn index_document(
     fm_buffer_size: usize,
 ) -> sqlx::Result<()> {
     let full = source_path.join(rel_path);
-    let fm = read_frontmatter(&full, fm_buffer_size);
+    let fm = if document_type(rel_path) == "pdf" {
+        sidecar::read(source_path, doc_id).ok().flatten()
+    } else {
+        read_frontmatter(&full, fm_buffer_size)
+    };
     let title = Path::new(rel_path)
         .file_stem()
         .and_then(|s| s.to_str())
@@ -1158,6 +1169,46 @@ pub async fn index_document(
 
     tx.commit().await?;
     Ok(())
+}
+
+// todo: generalize for sidecars
+fn adopt_moved_pdfs(
+    source_path: &Path,
+    sidecars: &mut [Sidecar],
+    fs_entries: &[(String, i64)],
+    new_paths: &[(String, i64)],
+) {
+    let on_disk: HashSet<&str> = fs_entries.iter().map(|(p, _)| p.as_str()).collect();
+    let claimed: HashSet<&str> = sidecars
+        .iter()
+        .map(|s| s.path.as_str())
+        .filter(|p| on_disk.contains(p))
+        .collect();
+    let candidates: Vec<(String, i64, u64)> = new_paths
+        .iter()
+        .filter(|(p, _)| document_type(p) == "pdf" && !claimed.contains(p.as_str()))
+        .filter_map(|(p, m)| Some((p.clone(), *m, fs::metadata(source_path.join(p)).ok()?.len())))
+        .collect();
+    let stray: Vec<usize> = (0..sidecars.len())
+        .filter(|&i| !on_disk.contains(sidecars[i].path.as_str()))
+        .collect();
+    let fits = |s: &Sidecar, (_, m, size): &(String, i64, u64)| *m == s.mtime && *size == s.size;
+
+    let mut adopted: Vec<(usize, String)> = Vec::new();
+    for &i in &stray {
+        let mut matches = candidates.iter().filter(|c| fits(&sidecars[i], c));
+        let (Some(only), None) = (matches.next(), matches.next()) else {
+            continue;
+        };
+        if stray.iter().filter(|&&j| fits(&sidecars[j], only)).count() == 1 {
+            adopted.push((i, only.0.clone()));
+        }
+    }
+    for (i, path) in adopted {
+        if sidecar::relocate(source_path, &sidecars[i].id, &path).is_ok() {
+            sidecars[i].path = path;
+        }
+    }
 }
 
 // ENTRY POINT
@@ -1203,6 +1254,21 @@ pub async fn reconcile_source(
         skipped,
     } = walk_source(source, extensions);
 
+    let mut sidecars = sidecar::load_all(source_path);
+    let fs_entries: Vec<(String, i64)> = {
+        let written: HashMap<&str, i64> = sidecars
+            .iter()
+            .map(|s| (s.path.as_str(), s.written))
+            .collect();
+        fs_entries
+            .into_iter()
+            .map(|(p, m)| {
+                let m = written.get(p.as_str()).map_or(m, |w| m.max(*w));
+                (p, m)
+            })
+            .collect()
+    };
+
     let mut tx = db.begin().await?;
     sync_folder_dirs(&mut tx, source_id, &fs_dirs, &repos, &views).await?;
     tx.commit().await?;
@@ -1240,7 +1306,19 @@ pub async fn reconcile_source(
         .chain(diff.modified.iter().map(|(p, _)| p.clone()))
         .filter(|p| document_type(p) == "md")
         .collect();
-    let frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
+    let mut frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
+
+    adopt_moved_pdfs(source_path, &mut sidecars, &fs_entries, &diff.new_paths);
+    let claimed: HashMap<&str, &Sidecar> = sidecars.iter().map(|s| (s.path.as_str(), s)).collect();
+    for (path, _) in diff.new_paths.iter().chain(diff.modified.iter()) {
+        if let Some(s) = claimed.get(path.as_str()) {
+            let mut fm = s.meta.clone();
+            if let Some(obj) = fm.as_object_mut() {
+                obj.insert("id".into(), serde_json::Value::String(s.id.clone()));
+            }
+            frontmatter.push((path.clone(), Some(fm)));
+        }
+    }
 
     let foreign_ids: HashSet<String> =
         sqlx::query_scalar("SELECT id FROM documents WHERE source_id != ?1 AND deleted_at IS NULL")
@@ -1545,6 +1623,34 @@ mod tests {
         assert_eq!(document_type("lectures/week3.PDF"), "pdf");
         assert_eq!(document_type("lectures/week3.md"), "md");
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn moved_pdf_brings_its_sidecar_when_size_and_mtime_match() {
+        let root = std::env::temp_dir().join(format!("ls-adopt-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("a")).unwrap();
+        fs::create_dir_all(root.join("b")).unwrap();
+        fs::write(root.join("a/doc.pdf"), b"%PDF-1.7").unwrap();
+        fs::write(root.join("b/other.pdf"), b"%PDF-1.7 but longer").unwrap();
+        let id = "6f1c1d2e-0000-4000-8000-000000000002";
+        sidecar::rewrite(&root, id, "a/doc.pdf", |m| {
+            m.as_object_mut()
+                .unwrap()
+                .insert("tags".into(), serde_json::json!(["exam"]));
+        })
+        .unwrap();
+        fs::rename(root.join("a/doc.pdf"), root.join("b/doc.pdf")).unwrap();
+
+        let entries: Vec<(String, i64)> = ["b/doc.pdf", "b/other.pdf"]
+            .iter()
+            .map(|p| (p.to_string(), fs_mtime_ms(&root.join(p))))
+            .collect();
+        let mut sidecars = sidecar::load_all(&root);
+        adopt_moved_pdfs(&root, &mut sidecars, &entries, &entries);
+        assert_eq!(sidecars[0].path, "b/doc.pdf");
+        assert_eq!(sidecar::load_all(&root)[0].path, "b/doc.pdf");
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

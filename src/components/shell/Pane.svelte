@@ -57,7 +57,7 @@
 			{:else if tab.content.type === 'markdown'}
 				<DocumentEditor bind:this={docEditor} {tab} {editor} settings={session.settings} />
 			{:else if tab.content.type === 'pdf'}
-				<PdfViewer {tab} />
+				<PdfViewer {tab} {editor} />
 			{:else if tab.content.type === 'home'}
 				<HomePage {editor} {onAddSource} />
 			{:else if tab.content.type === 'new'}

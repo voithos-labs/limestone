@@ -4,7 +4,9 @@ use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
 use crate::services::fs::{
     atomic_write, history_dir, is_taken, move_file, mtime_ms, resolve_in_source, validate_file_name,
 };
-use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
+use crate::services::{
+    document_type, fm_properties, frontmatter, index_document, sidecar, sync_folders, sync_tags,
+};
 use crate::AppData;
 use serde::Serialize;
 use serde_json::Value;
@@ -33,8 +35,10 @@ async fn sync_file_tags(
     path: &Path,
     mut tags: Vec<String>,
 ) -> Result<(), OpError> {
-    if let Ok(contents) = std::fs::read_to_string(path) {
-        merge_body_tags(&mut tags, frontmatter::split_content(&contents).1);
+    if !is_pdf(&path.to_string_lossy()) {
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            merge_body_tags(&mut tags, frontmatter::split_content(&contents).1);
+        }
     }
     let mut tx = db.begin().await.map_err(OpError::from)?;
     sqlx::query("UPDATE documents SET mtime = ?1 WHERE id = ?2")
@@ -45,6 +49,24 @@ async fn sync_file_tags(
         .map_err(OpError::from)?;
     sync_tags(&mut tx, id, &tags).await.map_err(OpError::from)?;
     tx.commit().await.map_err(OpError::from)
+}
+
+fn is_pdf(rel_path: &str) -> bool {
+    document_type(rel_path) == "pdf"
+}
+
+fn rewrite_meta(
+    root: &Path,
+    id: &str,
+    rel_path: &str,
+    full_path: &Path,
+    mutate: impl Fn(&mut Value),
+) -> std::io::Result<()> {
+    if is_pdf(rel_path) {
+        sidecar::rewrite(root, id, rel_path, mutate)
+    } else {
+        frontmatter::rewrite_frontmatter(full_path, mutate)
+    }
 }
 
 fn root_of(app: &AppHandle, source_id: &str) -> Result<std::path::PathBuf, OpError> {
@@ -310,7 +332,7 @@ pub async fn set_document_tags(
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
     let fm_tags = tags.clone();
-    frontmatter::rewrite_frontmatter(&full_path, move |fm| {
+    rewrite_meta(&root, &id, &rel_path, &full_path, move |fm| {
         if let Some(obj) = fm.as_object_mut() {
             if fm_tags.is_empty() {
                 obj.shift_remove("tags");
@@ -343,8 +365,16 @@ pub fn read_document_tags(
     app: AppHandle,
     source_id: String,
     rel_path: String,
+    id: Option<String>,
 ) -> Result<DocumentTags, OpError> {
     let root = root_of(&app, &source_id)?;
+    if is_pdf(&rel_path) {
+        let fm = id.and_then(|id| sidecar::read(&root, &id).ok().flatten());
+        return Ok(DocumentTags {
+            frontmatter: fm_tags(fm.as_ref()),
+            body: Vec::new(),
+        });
+    }
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
     let contents = std::fs::read_to_string(&full_path).map_err(OpError::from)?;
     let (fm, body) = frontmatter::split_content(&contents);
@@ -395,7 +425,18 @@ pub async fn rename_document(
     if is_taken(&old_full, &new_full) {
         return Err(OpError::named("already_exists", &new_name));
     }
+    let doc_id: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2 AND deleted_at IS NULL",
+    )
+    .bind(&source_id)
+    .bind(&rel_path)
+    .fetch_optional(&app_data.db)
+    .await
+    .map_err(OpError::from)?;
     std::fs::rename(&old_full, &new_full).map_err(OpError::from)?;
+    if let Some(id) = doc_id.filter(|_| is_pdf(&new_rel)) {
+        sidecar::relocate(&root, &id, &new_rel).map_err(OpError::from)?;
+    }
 
     let title = std::path::Path::new(&new_name)
         .file_stem()
@@ -438,7 +479,7 @@ pub async fn save_document_meta(
     // Patch frontmatter on fs
     let c = created_at.clone();
     let u = updated_at.clone();
-    frontmatter::rewrite_frontmatter(&full_path, |fm| {
+    rewrite_meta(&root, &id, &rel_path, &full_path, |fm| {
         if let Some(obj) = fm.as_object_mut() {
             if let Some(c) = &c {
                 obj.insert(
@@ -518,6 +559,14 @@ pub async fn move_document(
     .map_err(OpError::from)?;
 
     if let Some(doc_id) = doc_id {
+        if is_pdf(&new_rel_path) {
+            if dest_source_id != source_id {
+                sidecar::move_between(&root, &dest_source, &doc_id, &new_rel_path)
+            } else {
+                sidecar::relocate(&root, &doc_id, &new_rel_path)
+            }
+            .map_err(OpError::from)?;
+        }
         let mut assets: Vec<(String, bool)> = Vec::new();
         if dest_source_id != source_id {
             assets = sqlx::query_as(
@@ -596,7 +645,7 @@ pub async fn delete_document(
         return Ok(false);
     };
 
-    if history_dir(&root, &id).is_dir() {
+    if history_dir(&root, &id).is_dir() || sidecar::exists(&root, &id) {
         sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2 AND source_id = ?3")
             .bind(chrono::Utc::now().timestamp_millis())
             .bind(&id)

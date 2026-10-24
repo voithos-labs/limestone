@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::commands::source_commands::find_source;
 use crate::services::fs::{atomic_write, history_dir, history_root};
-use crate::services::Source;
+use crate::services::{sidecar, Source};
 
 pub(crate) const DELETED_RETENTION_DAYS: &str = "sources.deleted_retention_days";
 
@@ -211,6 +211,7 @@ pub(crate) async fn purge_row(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.to_string()),
     }
+    sidecar::remove(source_path, doc_id).map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query(
         "DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = ?1)",

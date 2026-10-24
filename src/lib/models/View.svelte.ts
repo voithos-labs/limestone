@@ -770,7 +770,7 @@ function compileDateOnlyLeaf(
 	}
 }
 
-const WRITES_META_SQL = `COALESCE((SELECT f.writes_meta FROM folders f WHERE f.id = d.folder_id), 1)`;
+const WRITES_META_SQL = `CASE WHEN d.document_type = 'pdf' THEN 1 ELSE COALESCE((SELECT f.writes_meta FROM folders f WHERE f.id = d.folder_id), 1) END`;
 
 function compileLeafSql(field: ViewField, op: string, value: unknown): CompiledFilter {
 	if (field.type === 'metadata') {

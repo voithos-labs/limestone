@@ -3,6 +3,7 @@
 	import { reportError, type ReportError } from '#lib/overlays.svelte.js';
 	import { moveNote } from '#lib/views/move.svelte.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import type { AnyDoc } from '#lib/models/Doc.js';
 	import { sourceName, listSources, onSourceReconciled, type Source } from '#lib/models/Source.js';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
 	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
@@ -66,7 +67,7 @@
 		onEnter,
 		onError = reportError
 	}: {
-		handle: MarkdownHandle;
+		handle: AnyDoc;
 		onDelete?: () => void;
 		onDuplicated?: (copy: MarkdownHandle) => void;
 		loaded?: boolean;
@@ -87,6 +88,8 @@
 		onEnter?: () => void;
 		onError?: ReportError;
 	} = $props();
+
+	const isNote = $derived(handle instanceof MarkdownHandle);
 
 	let fmMenuOpen = $state(false);
 	let fmAnchor: HTMLElement | null = $state(null);
@@ -416,11 +419,15 @@
 	const menuItems: MenuEntry[] = $derived([
 		...(actionsInMenu
 			? ([
-					{
-						value: 'history',
-						label: historyOpen ? 'Hide history' : 'Show history',
-						icon: History
-					},
+					...(isNote
+						? [
+								{
+									value: 'history',
+									label: historyOpen ? 'Hide history' : 'Show history',
+									icon: History
+								}
+							]
+						: []),
 					...(showProps
 						? [
 								{
@@ -436,7 +443,9 @@
 		...(onOpenFolder
 			? [{ value: 'parent', label: 'Go to folder', icon: FolderOpen } as MenuEntry]
 			: []),
-		{ value: 'duplicate', label: 'Duplicate document', icon: Copy },
+		...(isNote
+			? [{ value: 'duplicate', label: 'Duplicate document', icon: Copy } as MenuEntry]
+			: []),
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
 		confirmingDelete
 			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
@@ -572,15 +581,22 @@
 				<div class="top-actions">
 					{#if !actionsInMenu}
 						<span class="collapsible" bind:offsetWidth={actionsMeasured}>
-							<button
-								class="props-chip history-chip"
-								class:open={historyOpen}
-								title={historyOpen ? 'Hide history' : 'Show history'}
-								onclick={() => (historyOpen = !historyOpen)}
-							>
-								<History size={12} strokeWidth={1.75} />
-								<span>Updated {formatDateFriendly(handle.updatedAt)}</span>
-							</button>
+							{#if isNote}
+								<button
+									class="props-chip history-chip"
+									class:open={historyOpen}
+									title={historyOpen ? 'Hide history' : 'Show history'}
+									onclick={() => (historyOpen = !historyOpen)}
+								>
+									<History size={12} strokeWidth={1.75} />
+									<span>Updated {formatDateFriendly(handle.updatedAt)}</span>
+								</button>
+							{:else}
+								<span class="props-chip history-chip meta-off">
+									<History size={12} strokeWidth={1.75} />
+									<span>Updated {formatDateFriendly(handle.updatedAt)}</span>
+								</span>
+							{/if}
 							{#if showProps}
 								<button
 									class="props-chip"

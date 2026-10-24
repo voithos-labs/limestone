@@ -314,7 +314,7 @@
 	{#if docTab}
 		{#key docTab.id}
 			{#if docTab.content.type === 'pdf'}
-				<PdfViewer tab={docTab} {flow} />
+				<PdfViewer tab={docTab} {editor} {flow} showOpenFolder={false} />
 			{:else}
 				<DocumentEditor
 					bind:this={docEditor}

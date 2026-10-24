@@ -4,7 +4,7 @@
 	import View from '#lib/models/View.svelte.js';
 	import type { MemberRow, ViewField } from '#lib/models/View.svelte.js';
 	import { describeBulkFailure } from '#lib/models/View.svelte.js';
-	import type MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import type Doc from '#lib/models/Doc.js';
 	import { rawStatefulValue, withStatefulValue } from '#lib/views/fieldValue.js';
 	import { formatDateCompact } from '#lib/views/dateFormat.js';
 	import { dueState } from '#lib/views/fieldValue.js';
@@ -17,7 +17,7 @@
 		handle,
 		version = 0,
 		onRemove
-	}: { handle: MarkdownHandle; version?: number; onRemove: () => void } = $props();
+	}: { handle: Doc; version?: number; onRemove: () => void } = $props();
 
 	const TODO = 'tag:todo';
 	let view = $state<View | null>(null);

@@ -4,6 +4,7 @@ pub mod frontmatter;
 pub mod fs;
 mod fts_index;
 mod settings;
+pub mod sidecar;
 mod source;
 mod user;
 
@@ -15,5 +16,7 @@ pub use source::{
     load_source_config, reconcile_source, save_source_config, Source, SourceRecord, Sources,
     VIEW_FILE,
 };
-pub(crate) use source::{folder_id, sync_folder_meta, sync_folders, sync_tags, upsert_folder};
+pub(crate) use source::{
+    document_type, folder_id, sync_folder_meta, sync_folders, sync_tags, upsert_folder,
+};
 pub use user::User;

@@ -33,6 +33,7 @@ import {
 } from '#lib/models/Source.js';
 import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
 import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+import Doc from '#lib/models/Doc.js';
 import { sanitizeSegment } from '#lib/util/paths.js';
 import { tagId } from '#lib/models/Tag.js';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
@@ -453,7 +454,11 @@ export class FaceRows {
 	}
 
 	private readTags(row: MemberRow): Promise<{ frontmatter: string[]; body: string[] }> {
-		return invoke('read_document_tags', { sourceId: row.source_id, relPath: row.rel_path });
+		return invoke('read_document_tags', {
+			sourceId: row.source_id,
+			relPath: row.rel_path,
+			id: row.id
+		});
 	}
 
 	async textTags(row: MemberRow): Promise<Map<string, number>> {
@@ -495,7 +500,7 @@ export class FaceRows {
 				});
 			}
 			if (on || kept.length !== frontmatter.length) {
-				const doc = await MarkdownHandle.fromID(rowId);
+				const doc = await Doc.load(rowId);
 				await doc.setTags(on ? [...kept, slug] : kept);
 			}
 			const tags = (await this.fetchTags([row]))[rowId] ?? [];
@@ -524,7 +529,7 @@ export class FaceRows {
 		const prev = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		this.patchRow(rowId, { title: title.trim() });
 		try {
-			const doc = await MarkdownHandle.fromID(rowId);
+			const doc = await Doc.load(rowId);
 			await doc.rename(title.trim());
 			this.patchRow(rowId, { title: doc.title });
 		} catch (e) {
@@ -536,10 +541,10 @@ export class FaceRows {
 	async delete(rowId: string): Promise<void> {
 		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		try {
-			const doc = await MarkdownHandle.fromID(rowId);
+			const doc = await Doc.load(rowId);
 			const kept = await doc.delete();
 			this.dropRow(rowId);
-			if (!kept) return;
+			if (!kept || !(doc instanceof MarkdownHandle)) return;
 			history.push(this.view().id, {
 				back: () => this.restoreDoc(doc),
 				forward: async () => {
@@ -582,7 +587,7 @@ export class FaceRows {
 	async purge(rowId: string): Promise<void> {
 		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		try {
-			const doc = await MarkdownHandle.fromID(rowId);
+			const doc = await Doc.load(rowId);
 			await doc.purge();
 			this.dropRow(rowId);
 		} catch (e) {

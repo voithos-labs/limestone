@@ -32,14 +32,12 @@ import * as yaml from 'js-yaml';
 // Internal
 import { select, execute } from '#lib/services/db.js';
 import { addChangeHistory, moveHistory, removeHistory } from '#lib/services/history.js';
-import { LinkRewriteFailure, rewriteLinksForMove } from '#lib/services/links.svelte.js';
-import { isRetryable, toasts, mark } from '#lib/overlays.svelte.js';
+import { mark } from '#lib/overlays.svelte.js';
 import { sanitizeSegment } from '#lib/util/paths.js';
-import { creationSource, defaultNoteDir, getSource, noteSelfWrite, type Source } from './Source';
+import { creationSource, defaultNoteDir, noteSelfWrite, type Source } from './Source';
 import Tag, { tagSlug } from './Tag';
 import Folder from './Folder';
 import Doc, { type DocumentRow } from './Doc';
-import { leftProjectKeys, removeViewKey } from './View.svelte';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
@@ -404,7 +402,7 @@ class MarkdownHandle extends Doc {
 		this.inRepo = meta.repo;
 	}
 
-	async refreshMeta(): Promise<void> {
+	override async refreshMeta(): Promise<void> {
 		this.applyMeta(await Folder.metaAt(this.source.id, dirOf(this._relPath)));
 	}
 
@@ -501,25 +499,6 @@ class MarkdownHandle extends Doc {
 		}
 	}
 
-	async refreshPath(): Promise<boolean> {
-		const [row] = await select<{ source_id: string; rel_path: string; title: string }>(
-			`SELECT source_id, rel_path, title
-             FROM documents
-             WHERE id = ?1`,
-			[this.id]
-		);
-		if (!row) return false;
-		const movedSource = row.source_id !== this.source.id;
-		if (!movedSource && row.rel_path === this._relPath && row.title === this._title) return false;
-		this.updateLocation(
-			movedSource ? await getSource(row.source_id) : this.source,
-			row.rel_path,
-			row.title
-		);
-		if (movedSource) await this.refreshMeta();
-		return true;
-	}
-
 	async moveToPath(newRelPath: string): Promise<void> {
 		await this.ensureFile();
 		const oldRelPath = this._relPath;
@@ -532,33 +511,6 @@ class MarkdownHandle extends Doc {
 		await this.refreshMeta();
 		await this.updateLinks(oldRelPath);
 		await this.stripLeftProjects(this.source.id, oldRelPath);
-	}
-
-	private async stripLeftProjects(oldSourceId: string, oldRelPath: string): Promise<void> {
-		const left = await leftProjectKeys(
-			{ sourceId: oldSourceId, dir: dirOf(oldRelPath) },
-			{ sourceId: this.source.id, dir: dirOf(this._relPath) }
-		);
-		const views = this.properties.views as Record<string, unknown> | undefined;
-		for (const key of left) {
-			if (!views || !(key in views)) continue;
-			if (await removeViewKey(this.source.id, key, [this.id])) delete views[key];
-		}
-	}
-
-	private async updateLinks(oldRelPath: string): Promise<void> {
-		try {
-			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this._relPath);
-		} catch (e) {
-			console.error('link rewrite failed', e);
-			let message = `Links to ${mark('note', this.title)} still use its old name`;
-			if (e instanceof LinkRewriteFailure && e.failed > 0)
-				message += ` in ${e.failed} ${e.failed === 1 ? 'note' : 'notes'}`;
-			if (e instanceof LinkRewriteFailure && e.reason) message += `: ${e.reason}`;
-			else message += '.';
-			const retry = { label: 'Retry', run: () => void this.updateLinks(oldRelPath) };
-			toasts.push(message, { action: isRetryable(e) ? retry : undefined });
-		}
 	}
 
 	/**

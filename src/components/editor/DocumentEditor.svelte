@@ -45,12 +45,10 @@
 	import { noteLinkMenu } from './note-links';
 	import { tagMenu } from './body-tags';
 	import { appEditorShortcut, registerDocumentEditor } from '#lib/shortcuts.js';
-	import { TabState, type TabContent } from '#lib/models/EditorState.svelte.js';
-	import { getViewIcon } from '#lib/views/filterDisplay.js';
-	import { LayoutList, TextAlignStart } from '@lucide/svelte';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import type EditorStateModel from '#lib/models/EditorState.svelte.js';
 	import DocumentHero from './DocumentHero.svelte';
-	import { metaDialog } from '#lib/overlays.svelte.js';
+	import { backPlace, forwardPlace, openFolder, openFolderMeta } from './tabPlaces.js';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
 	import HistoryPanel from './HistoryPanel.svelte';
 	import { portal } from '#lib/util/dom.js';
@@ -79,49 +77,11 @@
 	} = $props();
 
 	let handle = $derived(tab.handle);
-	// the folder the document sits in, opened in this tab so Back comes straight here
-	function onOpenFolder(unitId: string, name: string, newTab = false) {
-		if (!editor) return;
-		View.forUnit(unitId, name)
-			.then((v) => (newTab ? editor.openView(v) : editor.showViewInTab(tab, v)))
-			.catch((e) => console.error('open folder failed', e));
-	}
-
-	// the folder in a tab of its own, the document staying where it is, with its setting open
-	function onFolderMeta(unitId: string, name: string) {
-		if (!editor) return;
-		View.forUnit(unitId, name)
-			.then((v) => {
-				editor.openView(v);
-				metaDialog.show(unitId);
-			})
-			.catch((e) => console.error('open folder failed', e));
-	}
-
-	function describe(content: TabContent) {
-		const view = content.type === 'view' ? content.view : undefined;
-		return {
-			label: TabState.titleOf(content),
-			icon: view ? getViewIcon(view) : TextAlignStart,
-			emoji: view?.emoji
-		};
-	}
-
-	const back = $derived.by(() => {
-		if (!editor) return undefined;
-		const prev = tab.back?.content;
-		if (prev) return { ...describe(prev), go: () => editor!.goBack(tab) };
-		if (tab.detail) {
-			return { label: tab.detail, icon: LayoutList, go: () => editor!.closeTab(tab.id, false) };
-		}
-		return undefined;
-	});
-
-	const forward = $derived.by(() => {
-		const next = tab.next?.content;
-		if (!next || !editor) return undefined;
-		return { ...describe(next), go: () => editor!.goForward(tab) };
-	});
+	const onOpenFolder = (unitId: string, name: string, newTab = false) =>
+		openFolder(editor, tab, unitId, name, newTab);
+	const onFolderMeta = (unitId: string, name: string) => openFolderMeta(editor, unitId, name);
+	const back = $derived(backPlace(editor, tab));
+	const forward = $derived(forwardPlace(editor, tab));
 	let instance = $state<EditorInstance>();
 	let wrapperEl = $state<HTMLDivElement | null>(null);
 	// aragonite's own `.editor` element, which is the scroller outside flow mode. Found by query

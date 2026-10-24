@@ -15,7 +15,8 @@
 use crate::services::body;
 use crate::services::frontmatter;
 use crate::services::fs::{atomic_write, resolve_in_source};
-use crate::services::source::tag_id;
+use crate::services::sidecar;
+use crate::services::source::{document_type, tag_id};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -405,6 +406,18 @@ async fn execute(
 ) -> Result<BulkResult, String> {
     let source_id = &op.source_id;
     let rel_paths = op.rel_paths.clone().unwrap_or_default();
+    let pdf_ids: Arc<HashMap<String, String>> = Arc::new(
+        sqlx::query_as(
+            "SELECT rel_path, id FROM documents
+             WHERE source_id = ?1 AND document_type = 'pdf' AND deleted_at IS NULL",
+        )
+        .bind(source_id)
+        .fetch_all(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .collect(),
+    );
     let blocked: Arc<HashSet<String>> = Arc::new(op.fm_blocked.iter().cloned().collect());
     let fm_paths: Vec<String> = rel_paths
         .iter()
@@ -436,8 +449,8 @@ async fn execute(
             }
 
             let (slug, field, value) = (view_slug.clone(), field_name.clone(), value.clone());
-            write_files(app, source_path, fm_paths, move |_, path| {
-                frontmatter::rewrite_frontmatter(path, |fm| {
+            write_files(app, source_path, &pdf_ids, fm_paths, move |_, target| {
+                target.rewrite_frontmatter(|fm| {
                     frontmatter::set_view_field(fm, &slug, &field, value.clone());
                 })
             })
@@ -463,8 +476,8 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (slug, from, to) = (view_slug.clone(), old_name.clone(), new_name.clone());
-            write_files(app, source_path, fm_paths, move |_, path| {
-                frontmatter::rewrite_frontmatter(path, |fm| {
+            write_files(app, source_path, &pdf_ids, fm_paths, move |_, target| {
+                target.rewrite_frontmatter(|fm| {
                     frontmatter::rename_view_field(fm, &slug, &from, &to);
                 })
             })
@@ -487,8 +500,8 @@ async fn execute(
             .map_err(|e| e.to_string())?;
 
             let (slug, field) = (view_slug.clone(), field_name.clone());
-            write_files(app, source_path, fm_paths, move |_, path| {
-                frontmatter::rewrite_frontmatter(path, |fm| {
+            write_files(app, source_path, &pdf_ids, fm_paths, move |_, target| {
+                target.rewrite_frontmatter(|fm| {
                     frontmatter::remove_view_field(fm, &slug, &field);
                 })
             })
@@ -520,8 +533,8 @@ async fn execute(
                 old_value.clone(),
                 new_value.clone(),
             );
-            write_files(app, source_path, fm_paths, move |_, path| {
-                frontmatter::rewrite_frontmatter(path, |fm| {
+            write_files(app, source_path, &pdf_ids, fm_paths, move |_, target| {
+                target.rewrite_frontmatter(|fm| {
                     frontmatter::rename_view_option(fm, &slug, &field, &from, &to);
                 })
             })
@@ -554,8 +567,8 @@ async fn execute(
             }
 
             let (from, to) = (old_key.clone(), new_key.clone());
-            write_files(app, source_path, fm_paths, move |_, path| {
-                frontmatter::rewrite_frontmatter(path, |fm| {
+            write_files(app, source_path, &pdf_ids, fm_paths, move |_, target| {
+                target.rewrite_frontmatter(|fm| {
                     frontmatter::rename_unit_key(fm, &from, &to);
                 })
             })
@@ -577,8 +590,8 @@ async fn execute(
             }
 
             let key = key.clone();
-            write_files(app, source_path, fm_paths, move |_, path| {
-                frontmatter::rewrite_frontmatter(path, |fm| {
+            write_files(app, source_path, &pdf_ids, fm_paths, move |_, target| {
+                target.rewrite_frontmatter(|fm| {
                     frontmatter::remove_unit_key(fm, &key);
                 })
             })
@@ -646,9 +659,8 @@ async fn execute(
 
             let (from, to) = (old_slug.clone(), new_slug.clone());
             let blocked = blocked.clone();
-            write_files(app, source_path, rel_paths, move |rel, path| {
-                frontmatter::rewrite_document(
-                    path,
+            write_files(app, source_path, &pdf_ids, rel_paths, move |rel, target| {
+                target.rewrite_document(
                     (!blocked.contains(rel)).then_some(&|fm: &mut Value| {
                         frontmatter::rename_tag(fm, &from, &to);
                         frontmatter::rename_unit_key(fm, &from, &to);
@@ -681,9 +693,8 @@ async fn execute(
 
             let slug = slug.clone();
             let blocked = blocked.clone();
-            write_files(app, source_path, rel_paths, move |rel, path| {
-                frontmatter::rewrite_document(
-                    path,
+            write_files(app, source_path, &pdf_ids, rel_paths, move |rel, target| {
+                target.rewrite_document(
                     (!blocked.contains(rel))
                         .then_some(&|fm: &mut Value| frontmatter::remove_tag(fm, &slug)),
                     &|text| body::rewrite_tags(text, &slug, None),
@@ -693,18 +704,53 @@ async fn execute(
         }
         BulkAction::RewriteLinks { replacements } => {
             let replacements = replacements.clone();
-            write_files(app, source_path, rel_paths, move |_, path| {
-                frontmatter::rewrite_document(path, None, &|text| {
-                    body::rewrite_links(text, &replacements)
-                })
+            write_files(app, source_path, &pdf_ids, rel_paths, move |_, target| {
+                target.rewrite_document(None, &|text| body::rewrite_links(text, &replacements))
             })
             .await
         }
         BulkAction::StripFrontmatter { .. } => {
-            write_files(app, source_path, rel_paths, |_, path| {
-                frontmatter::strip_frontmatter(path)
+            write_files(app, source_path, &pdf_ids, rel_paths, |_, target| {
+                target.strip_frontmatter()
             })
             .await
+        }
+    }
+}
+
+enum Target<'a> {
+    File(&'a Path),
+    Sidecar {
+        root: &'a Path,
+        id: &'a str,
+        rel: &'a str,
+    },
+}
+
+impl Target<'_> {
+    fn rewrite_frontmatter(&self, mutate: impl Fn(&mut Value)) -> std::io::Result<()> {
+        match self {
+            Target::File(path) => frontmatter::rewrite_frontmatter(path, mutate),
+            Target::Sidecar { root, id, rel } => sidecar::rewrite(root, id, rel, mutate),
+        }
+    }
+
+    fn rewrite_document(
+        &self,
+        mutate_fm: Option<&dyn Fn(&mut Value)>,
+        mutate_body: &dyn Fn(&str) -> Option<String>,
+    ) -> std::io::Result<()> {
+        match (self, mutate_fm) {
+            (Target::File(path), _) => frontmatter::rewrite_document(path, mutate_fm, mutate_body),
+            (Target::Sidecar { .. }, Some(mutate)) => self.rewrite_frontmatter(mutate),
+            (Target::Sidecar { .. }, None) => Ok(()),
+        }
+    }
+
+    fn strip_frontmatter(&self) -> std::io::Result<()> {
+        match self {
+            Target::File(path) => frontmatter::strip_frontmatter(path),
+            Target::Sidecar { .. } => Ok(()),
         }
     }
 }
@@ -712,8 +758,9 @@ async fn execute(
 async fn write_files(
     app: &AppHandle,
     source_path: &Path,
+    pdf_ids: &Arc<HashMap<String, String>>,
     rel_paths: Vec<String>,
-    write: impl Fn(&str, &Path) -> std::io::Result<()> + Send + Sync + 'static,
+    write: impl Fn(&str, &Target) -> std::io::Result<()> + Send + Sync + 'static,
 ) -> Result<BulkResult, String> {
     let total = rel_paths.len();
     if total == 0 {
@@ -726,6 +773,7 @@ async fn write_files(
     }
     let app = app.clone();
     let source_path = source_path.to_path_buf();
+    let pdf_ids = pdf_ids.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
         let done = AtomicUsize::new(0);
@@ -733,7 +781,19 @@ async fn write_files(
         let step = (total / 50).max(50);
 
         rel_paths.par_iter().for_each(|rel| {
-            let written = resolve_in_source(&source_path, rel).and_then(|path| write(rel, &path));
+            let written =
+                resolve_in_source(&source_path, rel).and_then(|path| match pdf_ids.get(rel) {
+                    Some(id) => write(
+                        rel,
+                        &Target::Sidecar {
+                            root: &source_path,
+                            id,
+                            rel,
+                        },
+                    ),
+                    None if document_type(rel) == "pdf" => Ok(()),
+                    None => write(rel, &Target::File(&path)),
+                });
             match written {
                 Ok(()) => {
                     let n = done.fetch_add(1, Ordering::Relaxed) + 1;
@@ -766,7 +826,7 @@ async fn write_files(
 async fn fetch_blocked_paths(db: &SqlitePool, source_id: &str) -> Result<HashSet<String>, String> {
     let rows: Vec<(String,)> = sqlx::query_as(
         "SELECT d.rel_path FROM documents d JOIN folders f ON f.id = d.folder_id
-         WHERE d.source_id = ?1 AND f.writes_meta = 0",
+         WHERE d.source_id = ?1 AND f.writes_meta = 0 AND d.document_type = 'md'",
     )
     .bind(source_id)
     .fetch_all(db)
