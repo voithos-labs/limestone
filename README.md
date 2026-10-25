@@ -2,42 +2,27 @@
 
 > [limestone.app](https://limestone.app/), [voithoslabs.com](https://voithoslabs.com/)
 
-> [!WARNING]
-> Limestone is still in pre-release state, expect bugs.
+**Note taking, tasks, projects, etc. all local, all markdown `.md`, no account needed.**
 
-Note taking, tasks, projects, etc. all local, all markdown `.md`, no account needed.
+## Monthly major updates
 
-(all featured art is made by humans, let bots write code)
+<img width="1319" height="805" alt="image" src="https://github.com/user-attachments/assets/452a9f6e-4622-4c71-931b-ad710572b27e" />
 
-## Monthly major updates, see the new project overhaul:
-
-<img width="987" height="766" alt="image" src="https://github.com/user-attachments/assets/1a3d7e50-6ffc-4274-9f76-82e3249acbc5" />
 
 ## We are looking for macOS and Linux testers!
 
 Want the incredible honour of being listed as a contributor (a digital, somewhat worthless status), in exchange for your
 free labor? Start today by downloading and sending us all your issues and concerns!
 
-## Editor
+## Details
 
-The editor is [aragonite](https://github.com/voithos-labs/aragonite), the block editor we wrote for this, and it comes
-from npm now (`@voithos-labs/aragonite`). The old CodeMirror editor is gone. Things worth knowing:
+Limestone is entirely local, and all its data lives in markdown, json, and some binary files (edit history). The DB is a rebuildable cache.
 
-- A note is edited in one of two modes, Live or Source, set under Settings > Editor and applied to every open document.
-- Live hides the markdown, so it gets a small formatting bar when you select text.
-- Images are standard markdown, `![alt](cat.png)`. Paste an image and it's saved into the source's asset folder and
-  embedded for you. Obsidian-style `![[cat.png]]` embeds still render, so a vault brought over keeps its images.
-- `Ctrl+F` finds, `Ctrl+H` replaces, `Ctrl+=` and `Ctrl+-` zoom.
-
-Everything else about the editor (every shortcut, plugins, theming) is in
-aragonite's [consumer guide](https://github.com/voithos-labs/aragonite/blob/main/docs/guide/consumer-guide.md). A copy
-ships in the package too, under `node_modules/@voithos-labs/aragonite/docs/guide/`.
+The rich markdown editor is [aragonite](https://github.com/voithos-labs/aragonite), our in-house solution.
 
 ## Development
 
-Good entry point to explore the code base is
-Session ([see file](https://github.com/voithos-labs/limestone/blob/main/src/lib/models/Session.svelte.ts)), as well as
-`src/lib/models` ([see folder](https://github.com/voithos-labs/limestone/tree/main/src/lib/models)).
+Good entry point to explore the code base is the SQLite schema ([see file](https://github.com/voithos-labs/limestone/blob/main/src-tauri/sql/schema.sql)), as well as `src/lib/models` ([see folder](https://github.com/voithos-labs/limestone/tree/main/src/lib/models)).
 
 ---
 
@@ -80,3 +65,5 @@ The Limestone and Voithos Labs names, logo, and icons are **not** covered by tha
 license. See [TRADEMARKS.md](TRADEMARKS.md) before forking or redistributing.
 
 Peace be with you
+
+(all featured art is made by humans, let bots write code)
