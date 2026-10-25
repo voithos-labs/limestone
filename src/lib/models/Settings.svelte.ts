@@ -78,15 +78,16 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 					{ value: 'linux', label: 'Linux' }
 				]
 			},
-			...(hostWindowStyle() === 'windows'
+			...(hostWindowStyle() !== 'linux'
 				? [
 						{
 							key: 'appearance.mica',
 							type: 'boolean',
 							control: 'toggle',
-							label: 'Mica Background',
+							label:
+								hostWindowStyle() === 'macos' ? 'Translucent Window (beta)' : 'Translucent Window',
 							description:
-								'Tint the window background from the desktop wallpaper, like Windows 11 apps. Windows 11 only.'
+								'Let the desktop show through the window background. Mica on Windows 11, vibrancy on macOS.'
 						} satisfies SettingDef
 					]
 				: []),

@@ -117,9 +117,10 @@ pub fn run() {
                 .find(|w| w.label == "main")
                 .ok_or("tauri.conf.json has no main window")?
                 .clone();
-            let main_builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &main_config)?
-                .enable_clipboard_access();
-            #[cfg(windows)]
+            let main_builder =
+                tauri::WebviewWindowBuilder::from_config(app.handle(), &main_config)?
+                    .enable_clipboard_access();
+            #[cfg(any(windows, target_os = "macos"))]
             let main_builder = main_builder.transparent(true);
             main_builder.build()?;
 

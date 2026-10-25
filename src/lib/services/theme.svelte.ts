@@ -31,8 +31,7 @@ export const STONE_DARK: Theme = {
 		// A var(), not the accent's literal: applyAccent rewrites --color-accent at runtime, and
 		// the editor mixes its selection and search washes over this, so they follow the reader.
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
@@ -53,8 +52,7 @@ export const STONE_LIGHT: Theme = {
 		'color-accent-primary': '#567B67',
 		'color-error': '#d03025',
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
@@ -74,8 +72,7 @@ export const SOFT_DARK: Theme = {
 		'color-accent-primary': '#567B67',
 		'color-error': '#ff5f57',
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
@@ -96,8 +93,7 @@ export const SOFT_LIGHT: Theme = {
 		'color-accent-primary': '#567B67',
 		'color-error': '#d03025',
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
@@ -117,8 +113,7 @@ export const HIGH_CONTRAST_DARK: Theme = {
 		'color-error': '#ff8f87',
 		'focus-ring': '#ffffff',
 		'focus-border': '#ffffff',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
@@ -139,8 +134,7 @@ export const HIGH_CONTRAST_LIGHT: Theme = {
 		'color-error': '#85110a',
 		'focus-ring': '#000000',
 		'focus-border': '#000000',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
@@ -160,8 +154,7 @@ export const GRAPHITE: Theme = {
 		'color-accent-primary': '#409cff',
 		'color-error': '#ff6961',
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '6px',
-		'radius-surface': '12px'
+		'radius-ui': '6px'
 	}
 };
 
@@ -180,8 +173,7 @@ export const FLUENT: Theme = {
 		'color-accent-primary': '#4cc2ff',
 		'color-error': '#ff99a4',
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
@@ -200,8 +192,7 @@ export const INK: Theme = {
 		'color-accent-primary': '#ff9f0a',
 		'color-error': '#ff6961',
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '6px',
-		'radius-surface': '12px'
+		'radius-ui': '6px'
 	}
 };
 
@@ -221,8 +212,7 @@ export const MIDNIGHT: Theme = {
 		'color-accent-primary': '#64d2ff',
 		'color-error': '#ff7b72',
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '6px',
-		'radius-surface': '12px'
+		'radius-ui': '6px'
 	}
 };
 
