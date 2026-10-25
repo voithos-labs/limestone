@@ -146,6 +146,10 @@ html {
 	background: var(--color-bg);
 }
 
+:root[data-mica] {
+	background: linear-gradient(to bottom, var(--mica-wash, transparent), transparent 140px);
+}
+
 body {
 	color: var(--color-text-primary);
 	font-family: var(--font-ui);

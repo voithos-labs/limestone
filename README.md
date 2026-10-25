@@ -13,20 +13,31 @@ Note taking, tasks, projects, etc. all local, all markdown `.md`, no account nee
 
 <img width="987" height="766" alt="image" src="https://github.com/user-attachments/assets/1a3d7e50-6ffc-4274-9f76-82e3249acbc5" />
 
+## We are looking for macOS and Linux testers!
+
+Want the incredible honour of being listed as a contributor (a digital, somewhat worthless status), in exchange for your
+free labor? Start today by downloading and sending us all your issues and concerns!
+
 ## Editor
 
-The editor is [aragonite](https://github.com/voithos-labs/aragonite), the block editor we wrote for this, and it comes from npm now (`@voithos-labs/aragonite`). The old CodeMirror editor is gone. Things worth knowing:
+The editor is [aragonite](https://github.com/voithos-labs/aragonite), the block editor we wrote for this, and it comes
+from npm now (`@voithos-labs/aragonite`). The old CodeMirror editor is gone. Things worth knowing:
 
 - A note is edited in one of two modes, Live or Source, set under Settings > Editor and applied to every open document.
 - Live hides the markdown, so it gets a small formatting bar when you select text.
-- Images are standard markdown, `![alt](cat.png)`. Paste an image and it's saved into the source's asset folder and embedded for you. Obsidian-style `![[cat.png]]` embeds still render, so a vault brought over keeps its images.
+- Images are standard markdown, `![alt](cat.png)`. Paste an image and it's saved into the source's asset folder and
+  embedded for you. Obsidian-style `![[cat.png]]` embeds still render, so a vault brought over keeps its images.
 - `Ctrl+F` finds, `Ctrl+H` replaces, `Ctrl+=` and `Ctrl+-` zoom.
 
-Everything else about the editor (every shortcut, plugins, theming) is in aragonite's [consumer guide](https://github.com/voithos-labs/aragonite/blob/main/docs/guide/consumer-guide.md). A copy ships in the package too, under `node_modules/@voithos-labs/aragonite/docs/guide/`.
+Everything else about the editor (every shortcut, plugins, theming) is in
+aragonite's [consumer guide](https://github.com/voithos-labs/aragonite/blob/main/docs/guide/consumer-guide.md). A copy
+ships in the package too, under `node_modules/@voithos-labs/aragonite/docs/guide/`.
 
 ## Development
 
-Good entry point to explore the code base is Session ([see file](https://github.com/voithos-labs/limestone/blob/main/src/lib/models/Session.svelte.ts)), as well as `src/lib/models` ([see folder](https://github.com/voithos-labs/limestone/tree/main/src/lib/models)).
+Good entry point to explore the code base is
+Session ([see file](https://github.com/voithos-labs/limestone/blob/main/src/lib/models/Session.svelte.ts)), as well as
+`src/lib/models` ([see folder](https://github.com/voithos-labs/limestone/tree/main/src/lib/models)).
 
 ---
 
@@ -46,7 +57,8 @@ cd ../limestone
 npm i --install-links ../aragonite
 ```
 
-(a copy, not a symlink. A symlink puts aragonite's own node_modules on the type path and you end up with two sveltes arguing over what a `Snippet` is.) Don't commit the package.json and lockfile changes that leaves behind.
+(a copy, not a symlink. A symlink puts aragonite's own node_modules on the type path and you end up with two sveltes
+arguing over what a `Snippet` is.) Don't commit the package.json and lockfile changes that leaves behind.
 
 Formating:
 

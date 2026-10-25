@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Component } from 'svelte';
 import { GitBranch, Trash2 } from '@lucide/svelte';
+import { hostWindowStyle } from '#lib/services/platform.js';
 
 export type SettingValue =
 	string | number | boolean | null | SettingValue[] | { [key: string]: SettingValue };
@@ -52,6 +53,18 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 		label: 'Appearance',
 		settings: [
 			{
+				key: 'appearance.mode',
+				type: 'string',
+				control: 'select',
+				label: 'Mode',
+				description: 'Dark or light, or follow the system.',
+				options: [
+					{ value: 'system', label: 'System' },
+					{ value: 'dark', label: 'Dark' },
+					{ value: 'light', label: 'Light' }
+				]
+			},
+			{
 				key: 'appearance.window_style',
 				type: 'string',
 				control: 'select',
@@ -65,6 +78,19 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 					{ value: 'linux', label: 'Linux' }
 				]
 			},
+			...(hostWindowStyle() !== 'linux'
+				? [
+						{
+							key: 'appearance.mica',
+							type: 'boolean',
+							control: 'toggle',
+							label:
+								hostWindowStyle() === 'macos' ? 'Translucent Window (beta)' : 'Translucent Window',
+							description:
+								'Let the desktop show through the window background. Mica on Windows 11, vibrancy on macOS.'
+						} satisfies SettingDef
+					]
+				: []),
 			{
 				key: 'appearance.compact_tabs',
 				type: 'boolean',

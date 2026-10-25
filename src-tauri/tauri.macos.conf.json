@@ -3,6 +3,7 @@
 		"icon": ["icons/macos/icon.icns"]
 	},
 	"app": {
+		"macOSPrivateApi": true,
 		"windows": [
 			{
 				"label": "main",
