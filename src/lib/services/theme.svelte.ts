@@ -235,10 +235,10 @@ export const BUILTIN_THEMES: Record<string, Theme> = {
 	'stone-light': STONE_LIGHT,
 	'soft-light': SOFT_LIGHT,
 	'high-contrast-light': HIGH_CONTRAST_LIGHT,
-	'graphite': GRAPHITE,
-	'fluent': FLUENT,
-	'ink': INK,
-	'midnight': MIDNIGHT
+	graphite: GRAPHITE,
+	fluent: FLUENT,
+	ink: INK,
+	midnight: MIDNIGHT
 };
 
 // ── Accents ─────────────────────────────────────────────────────────────────────────

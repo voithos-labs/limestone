@@ -226,7 +226,8 @@ class Session {
 	async applyCurrentTheme() {
 		const type = this.themeType;
 		const theme =
-			(await this.themeStore.get<Theme>(this.activeTheme)) ?? BUILTIN_THEMES[DEFAULT_THEME_KEYS[type]];
+			(await this.themeStore.get<Theme>(this.activeTheme)) ??
+			BUILTIN_THEMES[DEFAULT_THEME_KEYS[type]];
 		applyTheme(theme);
 		const accent = await getSetting<string>('appearance.accent');
 		applyAccent(accent, theme.type);
