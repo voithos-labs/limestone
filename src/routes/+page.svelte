@@ -5,6 +5,7 @@
 	import { getCurrentWebview } from '@tauri-apps/api/webview';
 	import TopBar from '../components/shell/TopBar.svelte';
 	import { flushAll } from '#lib/services/platform.js';
+	import { applyMica, currentThemeBackdrop, currentThemeType } from '#lib/services/theme.svelte.js';
 	import Session from '#lib/models/Session.svelte.js';
 	import Pane from '../components/shell/Pane.svelte';
 	import Palette from '../components/overlays/Palette.svelte';
@@ -71,6 +72,19 @@
 	$effect(() => {
 		const percent = session?.settings.get<number>('appearance.ui_scale_percent');
 		if (percent && percent > 0) getCurrentWebview().setZoom(percent / 100);
+	});
+
+	$effect(() => {
+		if (!session) return;
+		const s = session;
+		s.activeTheme;
+		untrack(() => void s.applyCurrentTheme());
+	});
+
+	$effect(() => {
+		if (!session) return;
+		const enabled = session.settings.get<boolean>('appearance.mica') ?? false;
+		void applyMica(enabled, currentThemeType(), currentThemeBackdrop());
 	});
 
 	$effect(() => {

@@ -18,9 +18,15 @@ import {
 	applyAccent,
 	applyTheme,
 	BUILTIN_THEMES,
-	DEFAULT_THEME,
+	DEFAULT_THEME_KEYS,
 	type Theme
 } from '#lib/services/theme.svelte.js';
+
+export interface ThemeEntry {
+	key: string;
+	name: string;
+	type: 'dark' | 'light';
+}
 
 export interface ViewTab {
 	kind: string;
@@ -30,14 +36,21 @@ export interface ViewTab {
 // ── App state store (state.json) ─────────────────────────────────────────────────────
 
 export interface AppState {
-	activeTheme: string;
+	themeDark: string;
+	themeLight: string;
 	editors: EditorJSON[];
 	viewTabs?: ViewTab[];
 }
 
 const DEFAULTS: AppState = {
-	activeTheme: 'default-dark',
+	themeDark: DEFAULT_THEME_KEYS.dark,
+	themeLight: DEFAULT_THEME_KEYS.light,
 	editors: []
+};
+
+const LEGACY_THEME_KEYS: Record<string, string> = {
+	'default-dark': 'stone-dark',
+	'default-light': 'stone-light'
 };
 
 const APP_STATE_VERSION = 1;
@@ -59,11 +72,21 @@ async function getAppStore(): Promise<Store> {
 
 async function loadAppState(): Promise<AppState> {
 	const s = await getAppStore();
-	return {
-		activeTheme: (await s.get<string>('activeTheme')) ?? DEFAULTS.activeTheme,
+	const state: AppState = {
+		themeDark: (await s.get<string>('themeDark')) ?? DEFAULTS.themeDark,
+		themeLight: (await s.get<string>('themeLight')) ?? DEFAULTS.themeLight,
 		editors: (await s.get<EditorJSON[]>('editors')) ?? DEFAULTS.editors,
 		viewTabs: (await s.get<ViewTab[]>('viewTabs')) ?? []
 	};
+	const legacy = await s.get<string>('activeTheme');
+	if (legacy) {
+		const key = LEGACY_THEME_KEYS[legacy] ?? legacy;
+		const type = BUILTIN_THEMES[key]?.type;
+		if (type === 'dark') state.themeDark = key;
+		else if (type === 'light') state.themeLight = key;
+		await s.delete('activeTheme');
+	}
+	return state;
 }
 
 async function updateAppState(partial: Partial<AppState>): Promise<void> {
@@ -79,7 +102,9 @@ class Session {
 	editors: EditorState[] = $state([]);
 	focusSignal = $state(0);
 	private current: EditorState | null = $state(null);
-	activeTheme: string = $state(''); // ;;;;;; replace the current theme config here, managed here
+	themeDark: string = $state(DEFAULT_THEME_KEYS.dark);
+	themeLight: string = $state(DEFAULT_THEME_KEYS.light);
+	systemDark = $state(false);
 	// sources: Source[];
 	missingSources = new SvelteSet<string>();
 	viewTabs: Map<string, ViewTab> = new Map();
@@ -89,7 +114,8 @@ class Session {
 
 	private constructor(
 		editors: EditorState[],
-		activeTheme: string,
+		themeDark: string,
+		themeLight: string,
 		themeStore: Store,
 		settings: SettingsState,
 		viewTabs?: ViewTab[]
@@ -97,7 +123,8 @@ class Session {
 		this.editors = editors;
 		this.settings = settings;
 		for (const e of editors) e.session = this;
-		this.activeTheme = activeTheme;
+		this.themeDark = themeDark;
+		this.themeLight = themeLight;
 		this.themeStore = themeStore;
 		if (viewTabs) {
 			for (const vt of viewTabs) this.viewTabs.set(vt.kind, vt);
@@ -135,7 +162,19 @@ class Session {
 			editors.push(new EditorState());
 		}
 
-		let session = new Session(editors, state.activeTheme, themeStore, settings, state.viewTabs);
+		let session = new Session(
+			editors,
+			state.themeDark,
+			state.themeLight,
+			themeStore,
+			settings,
+			state.viewTabs
+		);
+		const systemQuery = window.matchMedia('(prefers-color-scheme: dark)');
+		session.systemDark = systemQuery.matches;
+		systemQuery.addEventListener('change', (e) => {
+			session.systemDark = e.matches;
+		});
 		await session.applyCurrentTheme();
 		return session;
 	}
@@ -174,8 +213,20 @@ class Session {
 
 	// ── Theme ───────────────────────────────────────────────────────────────────────────
 
+	get themeType(): 'dark' | 'light' {
+		const mode = this.settings.get<string>('appearance.mode');
+		if (mode === 'dark' || mode === 'light') return mode;
+		return this.systemDark ? 'dark' : 'light';
+	}
+
+	get activeTheme(): string {
+		return this.themeType === 'dark' ? this.themeDark : this.themeLight;
+	}
+
 	async applyCurrentTheme() {
-		const theme = (await this.themeStore.get<Theme>(this.activeTheme)) ?? DEFAULT_THEME;
+		const type = this.themeType;
+		const theme =
+			(await this.themeStore.get<Theme>(this.activeTheme)) ?? BUILTIN_THEMES[DEFAULT_THEME_KEYS[type]];
 		applyTheme(theme);
 		const accent = await getSetting<string>('appearance.accent');
 		applyAccent(accent, theme.type);
@@ -184,7 +235,8 @@ class Session {
 	async setTheme(name: string) {
 		const theme = await this.themeStore.get<Theme>(name);
 		if (!theme) return;
-		this.activeTheme = name;
+		if (theme.type === 'dark') this.themeDark = name;
+		else this.themeLight = name;
 		await this.applyCurrentTheme();
 		await this.persist();
 	}
@@ -193,15 +245,21 @@ class Session {
 		await this.themeStore.set(key, theme);
 	}
 
-	async listThemes(): Promise<string[]> {
-		return (await this.themeStore.keys()).sort((a, b) => a.localeCompare(b));
+	async listThemes(): Promise<ThemeEntry[]> {
+		const entries: ThemeEntry[] = [];
+		for (const key of await this.themeStore.keys()) {
+			const theme = await this.themeStore.get<Theme>(key);
+			if (theme) entries.push({ key, name: theme.name, type: theme.type });
+		}
+		return entries.sort((a, b) => a.name.localeCompare(b.name));
 	}
 
 	// ── Serialization ───────────────────────────────────────────────────────────────────
 	toJSON(): AppState {
 		return {
 			editors: this.editors.map((e) => e.toJSON()),
-			activeTheme: this.activeTheme,
+			themeDark: this.themeDark,
+			themeLight: this.themeLight,
 			viewTabs: [...this.viewTabs.values()]
 		};
 	}

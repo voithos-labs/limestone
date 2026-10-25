@@ -12,7 +12,7 @@
 		type SettingDef,
 		type SettingValue
 	} from '#lib/models/Settings.svelte.js';
-	import { ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent } from '#lib/services/theme.svelte.js';
+	import { ACCENT_PRESETS, resolveAccent } from '#lib/services/theme.svelte.js';
 	import {
 		getDefaultSourceId,
 		listSources,
@@ -31,7 +31,7 @@
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
 	import type { MenuEntry, MenuItem } from '#lib/overlays.svelte.js';
 	import type Session from '#lib/models/Session.svelte.js';
-	import type { ViewTab } from '#lib/models/Session.svelte.js';
+	import type { ThemeEntry, ViewTab } from '#lib/models/Session.svelte.js';
 	import {
 		actions,
 		keyTokens,
@@ -89,7 +89,7 @@
 
 	let activeSection = $state('');
 	let contentEl: HTMLElement | null = $state(null);
-	let themes: string[] = $state([]);
+	let themes: ThemeEntry[] = $state([]);
 	let customKeys: string[] = $state([]);
 	let confirmingReset = $state(false);
 	let resetBusy = $state(false);
@@ -293,7 +293,13 @@
 	// ── Accent ───────────────────────────────────────────────────────────────
 	let accentSetting = $state('default');
 
-	const themeType = $derived(BUILTIN_THEMES[session.activeTheme]?.type ?? 'dark');
+	const themeType = $derived(session.themeType);
+	const activeThemeName = $derived(
+		themes.find((t) => t.key === session.activeTheme)?.name ?? session.activeTheme
+	);
+	const modeDef = $derived(
+		appearanceCategory?.settings.find((d) => d.key === 'appearance.mode') ?? null
+	);
 	const accentIsCustom = $derived(accentSetting.startsWith('#'));
 
 	function swatchColor(key: string): string {
@@ -449,7 +455,9 @@
 	// ── App-styled dropdowns (native <select> option lists can't match our menus) ─
 	let themeMenuOpen = $state(false);
 	let themeAnchor: HTMLElement | null = $state(null);
-	const themeItems = $derived<MenuEntry[]>(themes.map((name) => ({ value: name, label: name })));
+	const themeItems = $derived<MenuEntry[]>(
+		themes.filter((t) => t.type === themeType).map((t) => ({ value: t.key, label: t.name }))
+	);
 
 	let selectMenuOpen = $state(false);
 	let selectAnchor: HTMLElement | null = $state(null);
@@ -529,7 +537,7 @@
 				bind:this={themeAnchor}
 				onclick={() => (themeMenuOpen = !themeMenuOpen)}
 			>
-				<span class="chip-select-value">{session.activeTheme}</span>
+				<span class="chip-select-value">{activeThemeName}</span>
 				<ChevronDown size={13} strokeWidth={2} />
 			</button>
 		</div>
@@ -1000,10 +1008,11 @@
 			{:else if activeCategory}
 				<section class="group">
 					{#if activeCategory.id === 'appearance'}
+						{#if modeDef}{@render settingItem(modeDef)}{/if}
 						{@render themeItem()}
 						{@render accentItem()}
 					{/if}
-					{#each activeCategory.settings as def (def.key)}
+					{#each activeCategory.settings.filter((d) => d !== modeDef) as def (def.key)}
 						{@render settingItem(def)}
 					{/each}
 				</section>

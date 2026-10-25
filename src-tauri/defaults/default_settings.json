@@ -1,8 +1,10 @@
 {
 	"version": 1,
 	"appearance": {
+		"mode": "system",
 		"accent": "default",
 		"window_style": "auto",
+		"mica": false,
 		"compact_tabs": true,
 		"compact_doc_header": false,
 		"collapse_pinned_tabs": true,

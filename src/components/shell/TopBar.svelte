@@ -597,6 +597,16 @@
 		align-self: flex-end;
 	}
 
+	:global(:root[data-mica]) .divider,
+	:global(:root[data-mica]) .pin-divider {
+		background: var(--color-surface);
+	}
+
+	:global(:root[data-mica][data-theme-type='dark']) .divider,
+	:global(:root[data-mica][data-theme-type='dark']) .pin-divider {
+		background: var(--color-ui-muted);
+	}
+
 	/* ── Tabs scroll container ── */
 	.tabs-scroll {
 		display: flex;
