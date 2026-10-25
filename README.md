@@ -8,7 +8,6 @@
 
 <img width="1319" height="805" alt="image" src="https://github.com/user-attachments/assets/452a9f6e-4622-4c71-931b-ad710572b27e" />
 
-
 ## We are looking for macOS and Linux testers!
 
 Want the incredible honour of being listed as a contributor (a digital, somewhat worthless status), in exchange for your
