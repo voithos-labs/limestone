@@ -64,20 +64,24 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 					{ value: 'light', label: 'Light' }
 				]
 			},
-			{
-				key: 'appearance.window_style',
-				type: 'string',
-				control: 'select',
-				label: 'Window Style',
-				description:
-					'Where the window controls and logo sit in the top bar. Detected from your platform unless you pick one.',
-				options: [
-					{ value: 'auto', label: 'Automatic' },
-					{ value: 'windows', label: 'Windows' },
-					{ value: 'macos', label: 'macOS' },
-					{ value: 'linux', label: 'Linux' }
-				]
-			},
+			...(hostWindowStyle() === 'linux'
+				? [
+						{
+							key: 'appearance.window_style',
+							type: 'string',
+							control: 'select',
+							label: 'Window Style',
+							description:
+								'Where the window controls and logo sit in the top bar. Detected from your platform unless you pick one.',
+							options: [
+								{ value: 'auto', label: 'Automatic' },
+								{ value: 'windows', label: 'Windows' },
+								{ value: 'macos', label: 'macOS' },
+								{ value: 'linux', label: 'Linux' }
+							]
+						} satisfies SettingDef
+					]
+				: []),
 			...(hostWindowStyle() !== 'linux'
 				? [
 						{
@@ -91,6 +95,17 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 						} satisfies SettingDef
 					]
 				: []),
+			{
+				key: 'appearance.folders',
+				type: 'string',
+				control: 'select',
+				label: 'Folders',
+				description: 'Only a user interface change. Projects are folders either way.',
+				options: [
+					{ value: 'show', label: 'Folders are cool' },
+					{ value: 'hide', label: "Don't make me think about folders" }
+				]
+			},
 			{
 				key: 'appearance.compact_tabs',
 				type: 'boolean',

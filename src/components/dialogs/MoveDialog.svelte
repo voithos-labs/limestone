@@ -383,12 +383,23 @@
 <style>
 	.overlay {
 		position: fixed;
-		inset: 0;
+		inset: var(--nav-bar-height) 0 0;
 		z-index: 900;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		background: rgba(0, 0, 0, 0.4);
+	}
+
+	.overlay::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: calc(-1 * var(--nav-bar-height));
+		height: var(--nav-bar-height);
+		background: inherit;
+		pointer-events: none;
 	}
 
 	.dialog {

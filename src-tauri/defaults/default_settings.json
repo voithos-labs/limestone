@@ -4,6 +4,7 @@
 		"mode": "system",
 		"accent": "default",
 		"window_style": "auto",
+		"folders": "show",
 		"mica": false,
 		"compact_tabs": true,
 		"compact_doc_header": false,

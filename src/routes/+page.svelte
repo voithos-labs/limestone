@@ -11,6 +11,7 @@
 	import Palette from '../components/overlays/Palette.svelte';
 	import MetadataDialog from '../components/dialogs/MetadataDialog.svelte';
 	import MoveConflictDialog from '../components/dialogs/MoveConflictDialog.svelte';
+	import WelcomeDialog from '../components/dialogs/WelcomeDialog.svelte';
 	import { addSourceRequest } from '#lib/overlays.svelte.js';
 	import ContextMenu from '../components/overlays/ContextMenu.svelte';
 	import { actionForKey, keyCapture } from '#lib/shortcuts.js';
@@ -278,6 +279,7 @@
 	<Palette {session} onAddSource={addSource} />
 	<MetadataDialog />
 	<MoveConflictDialog {session} />
+	<WelcomeDialog {session} />
 {/if}
 
 <style>

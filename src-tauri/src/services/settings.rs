@@ -40,10 +40,20 @@ impl JsonSettingsStore {
     }
 
     pub fn load_defaults(&self) -> Value {
-        self.default_json
+        let mut defaults = self
+            .default_json
             .as_ref()
             .and_then(|s| serde_json::from_str::<Value>(s).ok())
-            .unwrap_or(Value::Object(Default::default()))
+            .unwrap_or(Value::Object(Default::default()));
+        // windows specific settings
+        #[cfg(windows)]
+        if let Some(appearance) = defaults
+            .get_mut("appearance")
+            .and_then(Value::as_object_mut)
+        {
+            appearance.insert("mica".into(), Value::Bool(true));
+        }
+        defaults
     }
 
     /// Load to memory for cahcing
