@@ -88,6 +88,16 @@
 		void applyMica(enabled, currentThemeType(), currentThemeBackdrop());
 	});
 
+	let micaTimer: ReturnType<typeof setTimeout> | null = null;
+	function reapplyMica() {
+		if (!session?.settings.get<boolean>('appearance.mica')) return;
+		if (micaTimer) clearTimeout(micaTimer);
+		micaTimer = setTimeout(
+			() => void applyMica(true, currentThemeType(), currentThemeBackdrop()),
+			150
+		);
+	}
+
 	$effect(() => {
 		const maxWidth = session?.settings.get<number>('appearance.max_page_width');
 		if (maxWidth && maxWidth > 0) {
@@ -244,7 +254,12 @@
 	}
 </script>
 
-<svelte:window onkeydowncapture={onKeydown} onkeydown={onArrowScroll} />
+<svelte:window
+	onkeydowncapture={onKeydown}
+	onkeydown={onArrowScroll}
+	onfocus={reapplyMica}
+	onresize={reapplyMica}
+/>
 
 {#if session}
 	{@const [first, second] = session.editors}
