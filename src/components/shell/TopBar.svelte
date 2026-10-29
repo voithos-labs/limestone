@@ -103,7 +103,7 @@
 				},
 				action: () => editor.showPreview(TabState.forView(v))
 			})),
-			{ divider: true },
+			...(bmViews.length ? [{ divider: true } as CtxEntry] : []),
 			{ label: 'New project', icon: Plus, action: () => openProjectSetup(editor) }
 		];
 	}
@@ -521,7 +521,7 @@
 	.nav-bar {
 		display: grid;
 		grid-template-columns: var(--pane-cols, 1fr);
-		height: 42px;
+		height: var(--nav-bar-height);
 		width: 100%;
 		background: transparent;
 		overflow: hidden;

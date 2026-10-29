@@ -6,6 +6,7 @@
 	import type { FilterLeaf, FilterNode, ViewField } from '#lib/models/View.svelte.js';
 	import { onSourceReconciled } from '#lib/models/Source.js';
 	import { folderIdPath, folderIdSource } from '#lib/models/Folder.js';
+	import { foldersHidden as foldersHiddenSetting } from '#lib/models/Settings.svelte.js';
 	import ListFace from './ListFace.svelte';
 	import SectionHead from '../SectionHead.svelte';
 	import {
@@ -269,11 +270,14 @@
 	let foldersHidden = $state(0);
 
 	const subfolders = $derived.by(() => {
+		const hide = foldersHiddenSetting();
+		const pool = hide ? allFolders.filter((f) => projects.has(f.id)) : allFolders;
 		if (query)
-			return allFolders
+			return pool
 				.filter((f) => underBase(f) && f.slug.toLowerCase().includes(query))
 				.sort((a, b) => a.slug.localeCompare(b.slug));
-		return allFolders.filter((f) => f.parentId === folderBase);
+		if (hide) return pool.filter(underBase).sort((a, b) => a.slug.localeCompare(b.slug));
+		return pool.filter((f) => f.parentId === folderBase);
 	});
 	const relDir = (f: Folder) => {
 		const base = folderBase ? folderIdPath(folderBase) : '';
@@ -422,7 +426,9 @@
 		<section data-id={sec.id} class:dragging={dragId === sec.id}>
 			<div class="sec">
 				<SectionHead
-					title={DASH_SECTION_LABEL[sec.id]}
+					title={sec.id === 'folders' && foldersHiddenSetting()
+						? 'Projects'
+						: DASH_SECTION_LABEL[sec.id]}
 					count={sec.id === 'todo'
 						? searching && todoTotal >= 0
 							? todoTotal

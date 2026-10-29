@@ -11,6 +11,7 @@
 	import Palette from '../components/overlays/Palette.svelte';
 	import MetadataDialog from '../components/dialogs/MetadataDialog.svelte';
 	import MoveConflictDialog from '../components/dialogs/MoveConflictDialog.svelte';
+	import WelcomeDialog from '../components/dialogs/WelcomeDialog.svelte';
 	import { addSourceRequest } from '#lib/overlays.svelte.js';
 	import ContextMenu from '../components/overlays/ContextMenu.svelte';
 	import { actionForKey, keyCapture } from '#lib/shortcuts.js';
@@ -86,6 +87,16 @@
 		const enabled = session.settings.get<boolean>('appearance.mica') ?? false;
 		void applyMica(enabled, currentThemeType(), currentThemeBackdrop());
 	});
+
+	let micaTimer: ReturnType<typeof setTimeout> | null = null;
+	function reapplyMica() {
+		if (!session?.settings.get<boolean>('appearance.mica')) return;
+		if (micaTimer) clearTimeout(micaTimer);
+		micaTimer = setTimeout(
+			() => void applyMica(true, currentThemeType(), currentThemeBackdrop()),
+			150
+		);
+	}
 
 	$effect(() => {
 		const maxWidth = session?.settings.get<number>('appearance.max_page_width');
@@ -243,7 +254,12 @@
 	}
 </script>
 
-<svelte:window onkeydowncapture={onKeydown} onkeydown={onArrowScroll} />
+<svelte:window
+	onkeydowncapture={onKeydown}
+	onkeydown={onArrowScroll}
+	onfocus={reapplyMica}
+	onresize={reapplyMica}
+/>
 
 {#if session}
 	{@const [first, second] = session.editors}
@@ -278,6 +294,7 @@
 	<Palette {session} onAddSource={addSource} />
 	<MetadataDialog />
 	<MoveConflictDialog {session} />
+	<WelcomeDialog {session} />
 {/if}
 
 <style>

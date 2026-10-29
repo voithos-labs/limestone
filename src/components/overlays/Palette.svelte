@@ -31,6 +31,7 @@
 	import DocHandle from '#lib/models/DocHandle.js';
 	import Tag from '#lib/models/Tag.js';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
+	import { foldersHidden } from '#lib/models/Settings.svelte.js';
 	import View, { listSavedViewJSON } from '#lib/models/View.svelte.js';
 	import { actions, keyTokens, type Action } from '#lib/shortcuts.js';
 	import { highlightTitle } from '#lib/util/dom.js';
@@ -299,7 +300,13 @@
 				emoji: v.emoji
 			}));
 		const units = new Set(saved.map((v) => v.unit).filter((u): u is string => !!u));
-		hits = [...views, ...docs.filter((r) => !(r.kind === 'group' && units.has(r.id)))].slice(0, 30);
+		const hide = foldersHidden();
+		hits = [
+			...views,
+			...docs.filter(
+				(r) => !(r.kind === 'group' && (units.has(r.id) || (hide && r.group_type === 'folder')))
+			)
+		].slice(0, 30);
 	}
 
 	$effect(() => {

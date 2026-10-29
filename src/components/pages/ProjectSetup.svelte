@@ -16,10 +16,11 @@
 	import type { Component } from 'svelte';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import { TabState } from '#lib/models/EditorState.svelte.js';
-	import View, { ViewFace, sanitizeName } from '#lib/models/View.svelte.js';
-	import type { ViewFieldType } from '#lib/models/View.svelte.js';
+	import View, { sanitizeName } from '#lib/models/View.svelte.js';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
+	import { foldersHidden } from '#lib/models/Settings.svelte.js';
 	import { listSources, getDefaultSourceId, sourceName, type Source } from '#lib/models/Source.js';
+	import { applyProjectTemplate } from '#lib/views/project.svelte.js';
 	import { mark } from '#lib/overlays.svelte.js';
 	import { addSourceRequest } from '#lib/overlays.svelte.js';
 	import { palette } from '#lib/overlays.svelte.js';
@@ -104,70 +105,11 @@
 		{ id: 'empty', label: 'Empty folder', hint: 'Just the folder, no project', icon: FolderIcon }
 	];
 	// setting up a place that already exists has no use for "just make the folder"
-	const off = (t: Template) => !!unitId && t.id === 'empty';
-	const offHint = $derived(unitKind === 'tag' ? 'Already a tag' : 'Already a folder');
+	const off = (t: Template) => t.id === 'empty' && (!!unitId || foldersHidden());
+	const offHint = $derived(
+		!unitId ? 'Folders are hidden' : unitKind === 'tag' ? 'Already a tag' : 'Already a folder'
+	);
 	let picked = $state(0);
-
-	const TODO = 'tag:todo';
-
-	function applyTemplate(view: View, id: string) {
-		const of = (t: ViewFieldType) => view.fields.find((f) => f.type === t)?.id ?? '';
-		const title = of('title');
-		const tags = of('tags');
-		const updated = of('updated_at');
-		const keep = (ids: string[]) => ids.filter(Boolean);
-		const onlyTodo = {
-			op: 'and' as const,
-			children: [{ field_id: tags, op: 'has_any', value: [TODO] }]
-		};
-		const todoList = () =>
-			ViewFace.create(
-				'list',
-				keep([`${TODO}/done`, title, tags, `${TODO}/due`]),
-				onlyTodo,
-				[{ field_id: `${TODO}/due`, direction: 'asc', nulls: 'last' }],
-				{ right: [`${TODO}/due`], hide_tag: TODO, group_by: `${TODO}/done` }
-			);
-		switch (id) {
-			case 'project': {
-				const dash = ViewFace.create('dashboard');
-				const tasks = todoList();
-				tasks.name = 'Todo List';
-				const board = ViewFace.create(
-					'kanban',
-					keep([title, tags, `${TODO}/due`, updated]),
-					onlyTodo,
-					[],
-					{ group_by: `${TODO}/status`, right: [`${TODO}/due`, updated], hide_tag: TODO }
-				);
-				board.name = 'Todo Board';
-				const docs = ViewFace.create(
-					'list',
-					keep([title, tags, updated]),
-					{ op: 'and', children: [{ field_id: tags, op: 'has_none', value: [TODO] }] },
-					[],
-					{ layout: 'grid' }
-				);
-				docs.name = 'Documents';
-				view.faces = [dash, tasks, board, docs];
-				break;
-			}
-			case 'todo':
-				view.faces = [todoList()];
-				break;
-			case 'journal':
-				view.faces = [ViewFace.create('journal', keep([title, tags, updated]))];
-				break;
-			case 'grid':
-				view.faces = [
-					ViewFace.create('list', keep([title, tags, updated]), undefined, [], { layout: 'grid' })
-				];
-				break;
-			default:
-				view.faces = [ViewFace.create('list', keep([title, tags, updated]))];
-		}
-		view.state.active_face_id = view.faces[0].id;
-	}
 
 	async function create(template: string) {
 		if (busy || !ready) {
@@ -195,7 +137,7 @@
 				return;
 			}
 			if (emoji) view.emoji = emoji;
-			applyTemplate(view, template);
+			applyProjectTemplate(view, template);
 			await view.save();
 			editor.replaceTab(tab.id, TabState.forView(view));
 		} catch (e) {

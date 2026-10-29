@@ -65,7 +65,7 @@ import {
 import { execute, select } from '#lib/services/db.js';
 import { toasts } from '#lib/overlays.svelte.js';
 import { resolveRelativeDate, wallClockToMs } from '#lib/views/dateFormat.js';
-import { appSettings } from '#lib/models/Settings.svelte.js';
+import { appSettings, foldersHidden } from '#lib/models/Settings.svelte.js';
 
 export type ViewFaceType =
 	'list' | 'masonry' | 'dashboard' | 'doc' | 'kanban' | 'calendar' | 'pinned' | 'journal';
@@ -1525,7 +1525,7 @@ class View {
 	get subfolder(): string | null {
 		const sub = this.state.folder as string | undefined;
 		const unit = this.unit;
-		if (!sub || !unit?.startsWith('folder:') || sub === unit) return null;
+		if (!sub || !unit?.startsWith('folder:') || sub === unit || foldersHidden()) return null;
 		if (folderIdSource(sub) !== folderIdSource(unit)) return null;
 		const base = folderIdPath(unit);
 		return folderIdPath(sub).startsWith(base ? `${base}/` : '') ? sub : null;

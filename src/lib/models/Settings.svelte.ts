@@ -25,6 +25,7 @@ export interface SettingDef {
 	label: string;
 	icon?: Component;
 	description?: string;
+	group?: string;
 	min?: number;
 	max?: number;
 	step?: number;
@@ -56,6 +57,7 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				key: 'appearance.mode',
 				type: 'string',
 				control: 'select',
+				group: 'Theme',
 				label: 'Mode',
 				description: 'Dark or light, or follow the system.',
 				options: [
@@ -64,26 +66,13 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 					{ value: 'light', label: 'Light' }
 				]
 			},
-			{
-				key: 'appearance.window_style',
-				type: 'string',
-				control: 'select',
-				label: 'Window Style',
-				description:
-					'Where the window controls and logo sit in the top bar. Detected from your platform unless you pick one.',
-				options: [
-					{ value: 'auto', label: 'Automatic' },
-					{ value: 'windows', label: 'Windows' },
-					{ value: 'macos', label: 'macOS' },
-					{ value: 'linux', label: 'Linux' }
-				]
-			},
 			...(hostWindowStyle() !== 'linux'
 				? [
 						{
 							key: 'appearance.mica',
 							type: 'boolean',
 							control: 'toggle',
+							group: 'Theme',
 							label:
 								hostWindowStyle() === 'macos' ? 'Translucent Window (beta)' : 'Translucent Window',
 							description:
@@ -91,10 +80,30 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 						} satisfies SettingDef
 					]
 				: []),
+			...(hostWindowStyle() === 'linux'
+				? [
+						{
+							key: 'appearance.window_style',
+							type: 'string',
+							control: 'select',
+							group: 'Tabs',
+							label: 'Window Style',
+							description:
+								'Where the window controls and logo sit in the top bar. Detected from your platform unless you pick one.',
+							options: [
+								{ value: 'auto', label: 'Automatic' },
+								{ value: 'windows', label: 'Windows' },
+								{ value: 'macos', label: 'macOS' },
+								{ value: 'linux', label: 'Linux' }
+							]
+						} satisfies SettingDef
+					]
+				: []),
 			{
 				key: 'appearance.compact_tabs',
 				type: 'boolean',
 				control: 'toggle',
+				group: 'Tabs',
 				label: 'Compact Tabs',
 				description: 'Use smaller tabs in the top bar.'
 			},
@@ -102,6 +111,7 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				key: 'appearance.collapse_pinned_tabs',
 				type: 'boolean',
 				control: 'toggle',
+				group: 'Tabs',
 				label: 'Collapse Pinned Tabs',
 				description: 'Shrink pinned tabs down to just their icon.'
 			},
@@ -109,6 +119,7 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				key: 'appearance.ui_scale_percent',
 				type: 'number',
 				control: 'select',
+				group: 'Interface',
 				label: 'UI Scale',
 				description: 'Scale of the entire interface.',
 				min: 25,
@@ -124,6 +135,7 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				key: 'appearance.max_page_width',
 				type: 'number',
 				control: 'select',
+				group: 'Interface',
 				label: 'Document Width',
 				description: 'How wide a document reads, in pixels.',
 				min: 400,
@@ -137,6 +149,7 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 				key: 'appearance.max_view_width',
 				type: 'number',
 				control: 'select',
+				group: 'Interface',
 				label: 'Page Width',
 				description: 'How wide pages other than documents read, in pixels.',
 				min: 400,
@@ -355,4 +368,8 @@ export class SettingsState {
 export let appSettings: SettingsState | null = null;
 export function registerSettings(s: SettingsState): void {
 	appSettings = s;
+}
+
+export function foldersHidden(): boolean {
+	return appSettings?.get<string>('general.folders') === 'hide';
 }

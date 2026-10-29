@@ -28,7 +28,8 @@
 		"auto_install": false
 	},
 	"general": {
-		"action_hints": true
+		"action_hints": true,
+		"folders": "show"
 	},
 	"todo": {
 		"statuses": [
