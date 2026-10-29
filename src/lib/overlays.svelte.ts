@@ -115,7 +115,7 @@ export function describeError(e: unknown, fallback: string): string {
 		case 'not_found':
 			return "The file couldn't be found. It may have been moved or deleted outside Limestone.";
 		case 'permission':
-			return "The file is read-only or you don't have permission to change it.";
+			return "The file is read-only, held by a sync tool, or you don't have permission to change it.";
 		case 'locked':
 			return 'The file is open in another app. Close it there and try again.';
 		case 'no_space':
