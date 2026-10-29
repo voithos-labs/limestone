@@ -26,6 +26,7 @@
 	import SourceDialog from '../dialogs/SourceDialog.svelte';
 	import SourceMenu from '../dialogs/SourceMenu.svelte';
 	import Toggle from '../ui/Toggle.svelte';
+	import FolderStyleTiles from '../ui/FolderStyleTiles.svelte';
 	import { updater } from '#lib/services/updater.svelte.js';
 	import Menu from '../ui/Menu.svelte';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
@@ -98,6 +99,17 @@
 	}
 
 	let activeCategory = $derived(SETTINGS_REGISTRY.find((c) => c.id === activeSection));
+	const categoryGroups = $derived.by(() => {
+		const groups: { label: string; defs: SettingDef[] }[] = [];
+		for (const def of activeCategory?.settings ?? []) {
+			if (def === modeDef) continue;
+			const label = def.group ?? '';
+			let group = groups.find((g) => g.label === label);
+			if (!group) groups.push((group = { label, defs: [] }));
+			group.defs.push(def);
+		}
+		return groups;
+	});
 
 	// ── Settings search ───────────────────────────────────────────────────────
 	let searchQuery = $state('');
@@ -834,6 +846,14 @@
 				</section>
 
 				<section class="group">
+					{@render groupHead('Folders')}
+					<FolderStyleTiles
+						value={settings.get<string>('general.folders') ?? 'show'}
+						onPick={(v) => settings.set('general.folders', v)}
+					/>
+				</section>
+
+				<section class="group">
 					{@render groupHead('This device')}
 					<div class="row">
 						<div class="row-info">
@@ -1006,16 +1026,19 @@
 					</section>
 				{/if}
 			{:else if activeCategory}
-				<section class="group">
-					{#if activeCategory.id === 'appearance'}
-						{#if modeDef}{@render settingItem(modeDef)}{/if}
-						{@render themeItem()}
-						{@render accentItem()}
-					{/if}
-					{#each activeCategory.settings.filter((d) => d !== modeDef) as def (def.key)}
-						{@render settingItem(def)}
-					{/each}
-				</section>
+				{#each categoryGroups as group, i (group.label)}
+					<section class="group">
+						{#if group.label}{@render groupHead(group.label)}{/if}
+						{#if activeCategory.id === 'appearance' && i === 0}
+							{#if modeDef}{@render settingItem(modeDef)}{/if}
+							{@render themeItem()}
+							{@render accentItem()}
+						{/if}
+						{#each group.defs as def (def.key)}
+							{@render settingItem(def)}
+						{/each}
+					</section>
+				{/each}
 			{/if}
 		</div>
 	</div>

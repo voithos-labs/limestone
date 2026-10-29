@@ -12,6 +12,7 @@
 	import DocHandle from '#lib/models/DocHandle.js';
 	import Tag from '#lib/models/Tag.js';
 	import Folder, { folderId, folderIdSource } from '#lib/models/Folder.js';
+	import { foldersHidden } from '#lib/models/Settings.svelte.js';
 	import View, { DELETED, listSavedViewJSON } from '#lib/models/View.svelte.js';
 	import { searchDocuments } from '#lib/services/search.js';
 	import SearchResultRow from './SearchResultRow.svelte';
@@ -117,7 +118,13 @@
 		results = [
 			...deletedPlace,
 			...viewResults,
-			...docResults.filter((r) => !(r.kind === 'group' && projectUnits.has(r.id)))
+			...docResults.filter(
+				(r) =>
+					!(
+						r.kind === 'group' &&
+						(projectUnits.has(r.id) || (foldersHidden() && r.group_type === 'folder'))
+					)
+			)
 		].slice(0, 25);
 		resultsFor = q;
 	}

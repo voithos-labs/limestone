@@ -18,6 +18,7 @@
 	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import View, { sanitizeName } from '#lib/models/View.svelte.js';
 	import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
+	import { foldersHidden } from '#lib/models/Settings.svelte.js';
 	import { listSources, getDefaultSourceId, sourceName, type Source } from '#lib/models/Source.js';
 	import { applyProjectTemplate } from '#lib/views/project.svelte.js';
 	import { mark } from '#lib/overlays.svelte.js';
@@ -104,8 +105,10 @@
 		{ id: 'empty', label: 'Empty folder', hint: 'Just the folder, no project', icon: FolderIcon }
 	];
 	// setting up a place that already exists has no use for "just make the folder"
-	const off = (t: Template) => !!unitId && t.id === 'empty';
-	const offHint = $derived(unitKind === 'tag' ? 'Already a tag' : 'Already a folder');
+	const off = (t: Template) => t.id === 'empty' && (!!unitId || foldersHidden());
+	const offHint = $derived(
+		!unitId ? 'Folders are hidden' : unitKind === 'tag' ? 'Already a tag' : 'Already a folder'
+	);
 	let picked = $state(0);
 
 	async function create(template: string) {

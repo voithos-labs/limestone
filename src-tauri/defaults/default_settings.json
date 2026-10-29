@@ -4,7 +4,6 @@
 		"mode": "system",
 		"accent": "default",
 		"window_style": "auto",
-		"folders": "show",
 		"mica": false,
 		"compact_tabs": true,
 		"compact_doc_header": false,
@@ -29,7 +28,8 @@
 		"auto_install": false
 	},
 	"general": {
-		"action_hints": true
+		"action_hints": true,
+		"folders": "show"
 	},
 	"todo": {
 		"statuses": [

@@ -1,15 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import {
-		ChevronDown,
-		Eye,
-		EyeOff,
-		Folder,
-		FolderTree,
-		GitBranch,
-		Info,
-		LayoutPanelTop
-	} from '@lucide/svelte';
+	import { ChevronDown, Eye, EyeOff, Folder, GitBranch, LayoutPanelTop } from '@lucide/svelte';
 	import { slide } from 'svelte/transition';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
 	import { documentDir, join } from '@tauri-apps/api/path';
@@ -28,6 +19,7 @@
 	import { describeError, type MenuEntry, type MenuItem } from '#lib/overlays.svelte.js';
 	import { seedWelcomeProject } from '#lib/views/welcome.js';
 	import Menu from '../ui/Menu.svelte';
+	import FolderStyleTiles from '../ui/FolderStyleTiles.svelte';
 	import Toggle from '../ui/Toggle.svelte';
 	import FolderValueEditor from '../views/editors/FolderValueEditor.svelte';
 
@@ -49,23 +41,8 @@
 	let assetMenuOpen = $state(false);
 	let assetMenuAnchor: HTMLElement | null = $state(null);
 	let sample = $state(true);
-	const FOLDERS_KEY = 'appearance.folders';
+	const FOLDERS_KEY = 'general.folders';
 	const folders = $derived(session.settings.get<string>(FOLDERS_KEY) ?? 'show');
-	const FOLDER_STYLES = [
-		{
-			value: 'show',
-			label: 'Folders are cool',
-			hint: 'Organise notes by folder, like on disk',
-			icon: FolderTree
-		},
-		{
-			value: 'hide',
-			label: "Don't make me think about folders",
-			hint: 'Tags and projects do the sorting',
-			icon: LayoutPanelTop,
-			info: 'This is only a user interface change. Projects are folders, this just lets you use the app and disk without thinking about it.'
-		}
-	];
 	let busy = $state(false);
 	let error = $state('');
 
@@ -256,24 +233,7 @@
 
 			<div class="divider"></div>
 
-			<div class="tiles">
-				{#each FOLDER_STYLES as t (t.value)}
-					{@const Icon = t.icon}
-					<button
-						class="tile"
-						class:picked={folders === t.value}
-						type="button"
-						onclick={() => session.settings.set(FOLDERS_KEY, t.value)}
-					>
-						<span class="tile-icon"><Icon size={18} strokeWidth={1.5} /></span>
-						{#if t.info}
-							<span class="tile-info" title={t.info}><Info size={13} strokeWidth={1.75} /></span>
-						{/if}
-						<span class="tile-label">{t.label}</span>
-						<span class="tile-hint">{t.hint}</span>
-					</button>
-				{/each}
-			</div>
+			<FolderStyleTiles value={folders} onPick={(v) => session.settings.set(FOLDERS_KEY, v)} />
 
 			<div class="card">
 				<div class="card-text">
@@ -498,75 +458,6 @@
 		height: 1px;
 		margin: 2px 0;
 		background: var(--chip-divider);
-	}
-
-	.tiles {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 10px;
-	}
-
-	.tile {
-		position: relative;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 3px;
-		padding: 12px 14px;
-		border: 1px solid var(--color-border);
-		border-radius: 10px;
-		background: transparent;
-		font: inherit;
-		text-align: left;
-		color: inherit;
-		cursor: pointer;
-		transition:
-			background-color 100ms ease,
-			border-color 100ms ease;
-	}
-
-	.tile:hover {
-		background: var(--chip-bg);
-	}
-
-	.tile.picked {
-		border-color: var(--color-accent);
-		background: var(--accent-a9);
-	}
-
-	.tile-info {
-		position: absolute;
-		top: 10px;
-		right: 10px;
-		display: inline-flex;
-		color: var(--color-ui-dulled);
-		cursor: help;
-	}
-
-	.tile-info:hover {
-		color: var(--color-ui-muted);
-	}
-
-	.tile-icon {
-		display: inline-flex;
-		margin-bottom: 6px;
-		color: var(--color-ui-muted);
-	}
-
-	.tile.picked .tile-icon {
-		color: var(--color-accent);
-	}
-
-	.tile-label {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.tile-hint {
-		font-size: 12px;
-		line-height: 1.4;
-		color: var(--color-ui-muted);
 	}
 
 	.card {
