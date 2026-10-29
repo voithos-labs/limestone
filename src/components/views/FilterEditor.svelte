@@ -2,6 +2,7 @@
 	import { Plus } from '@lucide/svelte';
 	import type { Component } from 'svelte';
 	import type View from '#lib/models/View.svelte.js';
+	import { foldersHidden } from '#lib/models/Settings.svelte.js';
 	import type {
 		FilterCompound,
 		ViewField,
@@ -195,7 +196,11 @@
 		pendingFocusLeaf = filter.children[filter.children.length - 1] as FilterLeaf;
 	}
 
-	const fieldPickerItems = $derived(fieldMenuEntries(filterFields));
+	const fieldPickerItems = $derived(
+		fieldMenuEntries(
+			foldersHidden() ? filterFields.filter((f: ViewField) => f.type !== 'folder') : filterFields
+		)
+	);
 
 	let addEl: HTMLButtonElement | null = $state(null);
 	let addOpen = $state(false);
