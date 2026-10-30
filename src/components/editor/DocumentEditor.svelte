@@ -1347,12 +1347,17 @@
 		height: auto;
 	}
 
-	/* In flow the host stacks entries and spaces them itself, so the hero's room above the
-	   title is pulled back past the host's own gap, and the room below it is a step tighter
-	   than on a page. */
+	/* In flow the host spaces entries itself, so the hero drops its top room and sits a step
+	   tighter below. Dropped, not pulled up: the hero is positioned, so an overhang would sit
+	   on the host's header and take its clicks. A back card keeps the room for its row. */
 	.doc-editor.flow :global(.hero-inner) {
-		margin-top: -40px;
+		margin-top: -6px;
+		padding-top: 0;
 		padding-bottom: 16px;
+	}
+
+	.doc-editor.flow :global(.hero-inner:has(> .back-slot)) {
+		padding-top: 34px;
 	}
 
 	/* The app pane already draws the frame, and the native scrollbar would double up with
