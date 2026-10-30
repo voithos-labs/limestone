@@ -1,13 +1,14 @@
 <script lang="ts">
 	import {
 		describeError,
+		errorKind,
 		isRetryable,
 		reportError,
 		splitMessage,
 		undoHint
 	} from '#lib/overlays.svelte.js';
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { Editor } from '@voithos-labs/aragonite';
+	import { Editor } from '@voithos-labs/aragonite/svelte';
 	import type {
 		DecorationSourceHandle,
 		EditorInstance,
@@ -359,9 +360,10 @@
 	// ── Save: edit events, debounced, writing back what the editor serialized ───────────
 
 	const SAVE_DEBOUNCE_MS = 250;
-	const SAVE_RETRY_MS = 1000;
+	const SAVE_RETRY_MS = 500;
+	const SAVE_RETRIES = 3;
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
-	let saveRetried = false;
+	let saveAttempts = 0;
 	// The editor a pending save reads from, so a flush that runs after `instance` is unbound (tab
 	// teardown) still gets the text that was typed.
 	let pendingEditor: EditorInstance | null = null;
@@ -394,18 +396,18 @@
 			.saveContent(body, opts)
 			.then(() => {
 				savedBody = body;
-				saveRetried = false;
+				saveAttempts = 0;
 				if (saveProblem && problem === saveProblem) problem = null;
 				saveProblem = null;
 				if (historyOpen && history?.atPresent) void history.load();
 			})
 			.catch((e) => {
-				if (!saveRetried && isRetryable(e)) {
-					saveRetried = true;
+				if (saveAttempts < SAVE_RETRIES && (isRetryable(e) || errorKind(e) === 'permission')) {
+					saveAttempts++;
 					saveTimer = setTimeout(() => flushSave({ ...opts, body }), SAVE_RETRY_MS);
 					return;
 				}
-				saveRetried = false;
+				saveAttempts = 0;
 				saveProblem = reportProblem(e, "This note couldn't be saved.", () => flushSave());
 			})
 			.finally(() => {
@@ -1306,12 +1308,17 @@
 		height: auto;
 	}
 
-	/* In flow the host stacks entries and spaces them itself, so the hero's room above the
-	   title is pulled back past the host's own gap, and the room below it is a step tighter
-	   than on a page. */
+	/* In flow the host spaces entries itself, so the hero drops its top room and sits a step
+	   tighter below. Dropped, not pulled up: the hero is positioned, so an overhang would sit
+	   on the host's header and take its clicks. A back card keeps the room for its row. */
 	.doc-editor.flow :global(.hero-inner) {
-		margin-top: -40px;
+		margin-top: -6px;
+		padding-top: 0;
 		padding-bottom: 16px;
+	}
+
+	.doc-editor.flow :global(.hero-inner:has(> .back-slot)) {
+		padding-top: 34px;
 	}
 
 	/* The app pane already draws the frame, and the native scrollbar would double up with

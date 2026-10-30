@@ -10,8 +10,10 @@ export function hostWindowStyle(): WindowStyle {
 }
 
 export function resolveWindowStyle(setting: string | null): WindowStyle {
+	const host = hostWindowStyle();
+	if (host !== 'linux') return host;
 	if (setting === 'windows' || setting === 'macos' || setting === 'linux') return setting;
-	return hostWindowStyle();
+	return host;
 }
 
 const flushers = new Set<() => Promise<void> | void>();

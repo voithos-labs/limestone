@@ -22,7 +22,7 @@
 	import { listSavedViewJSON, unitDisplayName } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import { TabState } from '#lib/models/EditorState.svelte.js';
-	import type { SettingsState } from '#lib/models/Settings.svelte.js';
+	import { foldersHidden, type SettingsState } from '#lib/models/Settings.svelte.js';
 	import {
 		listSources,
 		removeSource,
@@ -554,7 +554,7 @@
 		const todo = { value: 'new-todo', label: 'New todo', icon: SquareCheck };
 		if (view.unit && isBuiltinUnit(view.unit)) return [todo];
 		const items = [{ value: 'new-note', label: 'New note', icon: FilePlus }, todo];
-		if (unitKind === 'folder')
+		if (unitKind === 'folder' && !foldersHidden())
 			items.push({ value: 'new-folder', label: 'New folder', icon: FolderPlus });
 		return items;
 	});

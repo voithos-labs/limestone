@@ -7,6 +7,7 @@
 	import { sourceName, listSources, onSourceReconciled, type Source } from '#lib/models/Source.js';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
 	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import { foldersHidden } from '#lib/models/Settings.svelte.js';
 	import type Tag from '#lib/models/Tag.js';
 	import { tagId } from '#lib/models/Tag.js';
 	import { formatDateFriendly } from '#lib/views/dateFormat.js';
@@ -226,7 +227,8 @@
 		}
 		return null;
 	});
-	const locParts = $derived(project ? dirParts.slice(project.depth) : dirParts);
+	const hideFolders = $derived(foldersHidden());
+	const locParts = $derived(hideFolders ? [] : project ? dirParts.slice(project.depth) : dirParts);
 	const fullPath = $derived([srcName, ...dirParts].join(' / '));
 
 	const currentFolderId = $derived.by(() => {
@@ -240,6 +242,12 @@
 		// );
 
 		return folderId(source.id, dir);
+	});
+	const locPlace = $derived.by(() => {
+		if (!hideFolders)
+			return { id: currentFolderId, name: dirParts.at(-1) ?? srcName, kind: 'folder' };
+		if (project) return { id: project.unit, name: project.slug, kind: 'project' };
+		return { id: folderId(source.id, ''), name: srcName, kind: 'source' };
 	});
 
 	// ── Title rename ───────────────────────────────────────────────────────────
@@ -441,7 +449,7 @@
 				] as MenuEntry[])
 			: []),
 		...(onOpenFolder
-			? [{ value: 'parent', label: 'Go to folder', icon: FolderOpen } as MenuEntry]
+			? [{ value: 'parent', label: `Go to ${locPlace.kind}`, icon: FolderOpen } as MenuEntry]
 			: []),
 		...(isNote
 			? [{ value: 'duplicate', label: 'Duplicate document', icon: Copy } as MenuEntry]
@@ -491,7 +499,7 @@
 		menuOpen = false;
 		if (value === 'history') historyOpen = !historyOpen;
 		if (value === 'props') propsOpen = !propsOpen;
-		if (value === 'parent') onOpenFolder?.(currentFolderId, dirParts.at(-1) ?? srcName);
+		if (value === 'parent') onOpenFolder?.(locPlace.id, locPlace.name);
 		if (value === 'duplicate') duplicateDoc();
 		if (value === 'reveal') revealDoc();
 		if (value === 'confirm-delete') onDelete?.();
@@ -657,8 +665,8 @@
 						<button
 							class="loc-open"
 							type="button"
-							title="Open folder in a new tab"
-							onclick={() => onOpenFolder(currentFolderId, dirParts.at(-1) ?? srcName, true)}
+							title="Open {locPlace.kind} in a new tab"
+							onclick={() => onOpenFolder(locPlace.id, locPlace.name, true)}
 						>
 							<ArrowUpRight size={12} />
 						</button>

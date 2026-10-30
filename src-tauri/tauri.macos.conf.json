@@ -3,6 +3,7 @@
 		"icon": ["icons/macos/icon.icns"]
 	},
 	"app": {
+		"macOSPrivateApi": true,
 		"windows": [
 			{
 				"label": "main",
@@ -14,7 +15,8 @@
 				"decorations": true,
 				"titleBarStyle": "Overlay",
 				"hiddenTitle": true,
-				"trafficLightPosition": { "x": 14, "y": 20 }
+				"trafficLightPosition": { "x": 14, "y": 20 },
+				"create": false
 			}
 		]
 	}

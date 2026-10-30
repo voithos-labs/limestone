@@ -12,6 +12,7 @@
 	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
 	import { listSources, sourceName, type Source } from '#lib/models/Source.js';
 	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import { foldersHidden } from '#lib/models/Settings.svelte.js';
 	import FolderChips from '../views/FolderChips.svelte';
 	import { isMove, readMove, movingNow, canMoveInto, moveInto } from '#lib/views/move.svelte.js';
 	import { folderNameProblem, nameGuard } from '#lib/util/paths.js';
@@ -44,6 +45,7 @@
 		sources.map((s): Place => ({ id: folderId(s.id, ''), slug: sourceName(s) }))
 	);
 	const multiSource = $derived(sources.length > 1);
+	const hideFolders = $derived(foldersHidden());
 
 	const q = $derived(query.trim().toLowerCase());
 
@@ -57,9 +59,11 @@
 	}
 
 	const places = $derived.by((): Place[] => {
-		if (q) return folders.filter((f) => under(f) && f.slug.toLowerCase().includes(q));
+		const pool = hideFolders ? folders.filter((f) => projects.has(f.id)) : folders;
+		if (q) return pool.filter((f) => under(f) && f.slug.toLowerCase().includes(q));
 		if (at === null) return sourcePlaces;
-		return folders.filter((f) => f.parentId === at);
+		if (hideFolders) return pool.filter(under).sort((a, b) => a.slug.localeCompare(b.slug));
+		return pool.filter((f) => f.parentId === at);
 	});
 
 	const sections = $derived.by(() => {
@@ -299,7 +303,7 @@
 						>
 					{/each}
 				</nav>
-				{#if at !== null}
+				{#if at !== null && !hideFolders}
 					<span class="new-chip" class:naming>
 						<button
 							class="new-btn"
@@ -383,12 +387,23 @@
 <style>
 	.overlay {
 		position: fixed;
-		inset: 0;
+		inset: var(--nav-bar-height) 0 0;
 		z-index: 900;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		background: rgba(0, 0, 0, 0.4);
+	}
+
+	.overlay::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: calc(-1 * var(--nav-bar-height));
+		height: var(--nav-bar-height);
+		background: inherit;
+		pointer-events: none;
 	}
 
 	.dialog {

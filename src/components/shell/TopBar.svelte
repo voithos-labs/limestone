@@ -104,7 +104,7 @@
 				},
 				action: () => editor.showPreview(TabState.forView(v))
 			})),
-			{ divider: true },
+			...(bmViews.length ? [{ divider: true } as CtxEntry] : []),
 			{ label: 'New project', icon: Plus, action: () => openProjectSetup(editor) }
 		];
 	}
@@ -526,7 +526,7 @@
 	.nav-bar {
 		display: grid;
 		grid-template-columns: var(--pane-cols, 1fr);
-		height: 42px;
+		height: var(--nav-bar-height);
 		width: 100%;
 		background: transparent;
 		overflow: hidden;
@@ -600,6 +600,16 @@
 		border-radius: 999px;
 		flex-shrink: 0;
 		align-self: flex-end;
+	}
+
+	:global(:root[data-mica]) .divider,
+	:global(:root[data-mica]) .pin-divider {
+		background: var(--color-surface);
+	}
+
+	:global(:root[data-mica][data-theme-type='dark']) .divider,
+	:global(:root[data-mica][data-theme-type='dark']) .pin-divider {
+		background: var(--color-ui-muted);
 	}
 
 	/* ── Tabs scroll container ── */

@@ -1,4 +1,4 @@
-import type { ViewFace } from '#lib/models/View.svelte.js';
+import View, { ViewFace, type ViewFieldType } from '#lib/models/View.svelte.js';
 import EditorState, { TabState } from '#lib/models/EditorState.svelte.js';
 import { exists } from '@tauri-apps/plugin-fs';
 import { listSources, sourceName } from '#lib/models/Source.js';
@@ -38,6 +38,67 @@ export function dashboardSections(face: ViewFace): DashSection[] {
 		if (!seen.has(d.id)) out.splice(Math.min(i, out.length), 0, d);
 	});
 	return out;
+}
+
+const TODO = 'tag:todo';
+
+export function applyProjectTemplate(view: View, id: string) {
+	const of = (t: ViewFieldType) => view.fields.find((f) => f.type === t)?.id ?? '';
+	const title = of('title');
+	const tags = of('tags');
+	const updated = of('updated_at');
+	const keep = (ids: string[]) => ids.filter(Boolean);
+	const onlyTodo = {
+		op: 'and' as const,
+		children: [{ field_id: tags, op: 'has_any', value: [TODO] }]
+	};
+	const todoList = () =>
+		ViewFace.create(
+			'list',
+			keep([`${TODO}/done`, title, tags, `${TODO}/due`]),
+			onlyTodo,
+			[{ field_id: `${TODO}/due`, direction: 'asc', nulls: 'last' }],
+			{ right: [`${TODO}/due`], hide_tag: TODO, group_by: `${TODO}/done` }
+		);
+	switch (id) {
+		case 'project': {
+			const dash = ViewFace.create('dashboard');
+			const tasks = todoList();
+			tasks.name = 'Todo List';
+			const board = ViewFace.create(
+				'kanban',
+				keep([title, tags, `${TODO}/due`, updated]),
+				onlyTodo,
+				[],
+				{ group_by: `${TODO}/status`, right: [`${TODO}/due`, updated], hide_tag: TODO }
+			);
+			board.name = 'Todo Board';
+			const docs = ViewFace.create(
+				'list',
+				keep([title, tags, updated]),
+				{ op: 'and', children: [{ field_id: tags, op: 'has_none', value: [TODO] }] },
+				[],
+				{ layout: 'grid' }
+			);
+			docs.name = 'Documents';
+			view.faces = [dash, tasks, board, docs];
+			break;
+		}
+		case 'todo':
+			view.faces = [todoList()];
+			break;
+		case 'journal':
+			view.faces = [ViewFace.create('journal', keep([title, tags, updated]))];
+			break;
+		case 'grid':
+			view.faces = [
+				ViewFace.create('list', keep([title, tags, updated]), undefined, [], { layout: 'grid' })
+			];
+			break;
+		default:
+			view.faces = [ViewFace.create('list', keep([title, tags, updated]))];
+	}
+	view.state.active_face_id = view.faces[0].id;
 }
 
 export type SetupUnit = { id: string; name: string };

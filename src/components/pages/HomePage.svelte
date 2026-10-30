@@ -202,7 +202,7 @@
 		{:else if !projects.length}
 			<p class="empty">
 				<Bookmark size={14} strokeWidth={1.75} />
-				Add a source to get started.
+				Nothing here yet. Start with a note or a project.
 			</p>
 		{/if}
 	</div>

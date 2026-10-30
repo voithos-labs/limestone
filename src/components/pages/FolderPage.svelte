@@ -10,7 +10,10 @@
 	import type { CoverArt, FilterNode, ViewField, ViewFieldType } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import { TabState } from '#lib/models/EditorState.svelte.js';
-	import type { SettingsState } from '#lib/models/Settings.svelte.js';
+	import {
+		foldersHidden as foldersHiddenSetting,
+		type SettingsState
+	} from '#lib/models/Settings.svelte.js';
 	import Folder, {
 		folderId,
 		folderIdPath,
@@ -89,6 +92,7 @@
 	const sourceId = $derived(folderIdSource(unitId));
 	const path = $derived(folderIdPath(unitId));
 	const isRoot = $derived(isSourceRoot(unitId));
+	const hideFolders = $derived(foldersHiddenSetting());
 
 	let source: Source | null = $state(null);
 	let folders: Folder[] = $state([]);
@@ -227,7 +231,7 @@
 	// ── The face: this unit's own list, the whole subtree unless narrowed to direct children ──
 	const face = $derived(view.faces.find((f) => f.type === 'list') ?? view.faces[0]);
 	const layout = $derived(face?.config.layout === 'list' ? 'list' : 'masonry');
-	const deep = $derived(view.state.deep !== false);
+	const deep = $derived(hideFolders || view.state.deep !== false);
 	const folderField = $derived(view.fields.find((f: ViewField) => f.type === 'folder'));
 
 	// sort: one key on a built-in field; an unset face sorts newest-modified first already
@@ -371,11 +375,11 @@
 	let newFolderOpen = $state(false);
 
 	let fabEl: HTMLButtonElement | null = $state(null);
-	const fabItems = [
+	const fabItems = $derived([
 		{ value: 'new-note', label: 'New note', icon: FilePlus },
 		{ value: 'new-todo', label: 'New todo', icon: SquareCheck },
-		{ value: 'new-folder', label: 'New folder', icon: FolderPlus }
-	];
+		...(hideFolders ? [] : [{ value: 'new-folder', label: 'New folder', icon: FolderPlus }])
+	]);
 
 	async function newDoc(todo: boolean) {
 		try {
@@ -572,9 +576,9 @@
 							{#if root?.repo}
 								<GitBranch size={13} strokeWidth={1.75} />
 							{/if}
-							{source ? sourceName(source) : ''}
+							{hideFolders && !isRoot ? crumbs.at(-1)?.slug : source ? sourceName(source) : ''}
 						</button>
-						{#each crumbs as c, i (c.path)}
+						{#each hideFolders ? [] : crumbs as c, i (c.path)}
 							<ChevronRight size={14} strokeWidth={2} class="sep" />
 							<button
 								class="crumb"
@@ -641,7 +645,7 @@
 					</div>
 				{/if}
 
-				{#if plainChildren.length > 0}
+				{#if plainChildren.length > 0 && !hideFolders}
 					<div class="section-label">
 						{@render fold('folders', 'Folders')}
 						{#if !folded.folders && (foldersHidden > 0 || foldersShowAll)}
@@ -690,16 +694,18 @@
 							<span>{sortLabel}</span>
 							<ChevronDown size={12} strokeWidth={2} />
 						</button>
-						<button
-							class="lay"
-							class:on={deep}
-							type="button"
-							title={deep ? 'Including subfolders' : 'This folder only'}
-							aria-pressed={deep}
-							onclick={() => (view.state.deep = !deep)}
-						>
-							<FolderTree size={14} strokeWidth={1.75} />
-						</button>
+						{#if !hideFolders}
+							<button
+								class="lay"
+								class:on={deep}
+								type="button"
+								title={deep ? 'Including subfolders' : 'This folder only'}
+								aria-pressed={deep}
+								onclick={() => (view.state.deep = !deep)}
+							>
+								<FolderTree size={14} strokeWidth={1.75} />
+							</button>
+						{/if}
 						<span class="layout" role="group" aria-label="Layout">
 							<button
 								class="lay"

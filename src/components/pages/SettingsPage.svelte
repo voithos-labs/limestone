@@ -12,7 +12,7 @@
 		type SettingDef,
 		type SettingValue
 	} from '#lib/models/Settings.svelte.js';
-	import { ACCENT_PRESETS, BUILTIN_THEMES, resolveAccent } from '#lib/services/theme.svelte.js';
+	import { ACCENT_PRESETS, resolveAccent } from '#lib/services/theme.svelte.js';
 	import {
 		getDefaultSourceId,
 		listSources,
@@ -26,12 +26,13 @@
 	import SourceDialog from '../dialogs/SourceDialog.svelte';
 	import SourceMenu from '../dialogs/SourceMenu.svelte';
 	import Toggle from '../ui/Toggle.svelte';
+	import FolderStyleTiles from '../ui/FolderStyleTiles.svelte';
 	import { updater } from '#lib/services/updater.svelte.js';
 	import Menu from '../ui/Menu.svelte';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
 	import type { MenuEntry, MenuItem } from '#lib/overlays.svelte.js';
 	import type Session from '#lib/models/Session.svelte.js';
-	import type { ViewTab } from '#lib/models/Session.svelte.js';
+	import type { ThemeEntry, ViewTab } from '#lib/models/Session.svelte.js';
 	import {
 		actions,
 		keyTokens,
@@ -89,7 +90,7 @@
 
 	let activeSection = $state('');
 	let contentEl: HTMLElement | null = $state(null);
-	let themes: string[] = $state([]);
+	let themes: ThemeEntry[] = $state([]);
 	let customKeys: string[] = $state([]);
 	let confirmingReset = $state(false);
 	let resetBusy = $state(false);
@@ -98,6 +99,17 @@
 	}
 
 	let activeCategory = $derived(SETTINGS_REGISTRY.find((c) => c.id === activeSection));
+	const categoryGroups = $derived.by(() => {
+		const groups: { label: string; defs: SettingDef[] }[] = [];
+		for (const def of activeCategory?.settings ?? []) {
+			if (def === modeDef) continue;
+			const label = def.group ?? '';
+			let group = groups.find((g) => g.label === label);
+			if (!group) groups.push((group = { label, defs: [] }));
+			group.defs.push(def);
+		}
+		return groups;
+	});
 
 	// ── Settings search ───────────────────────────────────────────────────────
 	let searchQuery = $state('');
@@ -293,7 +305,13 @@
 	// ── Accent ───────────────────────────────────────────────────────────────
 	let accentSetting = $state('default');
 
-	const themeType = $derived(BUILTIN_THEMES[session.activeTheme]?.type ?? 'dark');
+	const themeType = $derived(session.themeType);
+	const activeThemeName = $derived(
+		themes.find((t) => t.key === session.activeTheme)?.name ?? session.activeTheme
+	);
+	const modeDef = $derived(
+		appearanceCategory?.settings.find((d) => d.key === 'appearance.mode') ?? null
+	);
 	const accentIsCustom = $derived(accentSetting.startsWith('#'));
 
 	function swatchColor(key: string): string {
@@ -449,7 +467,9 @@
 	// ── App-styled dropdowns (native <select> option lists can't match our menus) ─
 	let themeMenuOpen = $state(false);
 	let themeAnchor: HTMLElement | null = $state(null);
-	const themeItems = $derived<MenuEntry[]>(themes.map((name) => ({ value: name, label: name })));
+	const themeItems = $derived<MenuEntry[]>(
+		themes.filter((t) => t.type === themeType).map((t) => ({ value: t.key, label: t.name }))
+	);
 
 	let selectMenuOpen = $state(false);
 	let selectAnchor: HTMLElement | null = $state(null);
@@ -529,7 +549,7 @@
 				bind:this={themeAnchor}
 				onclick={() => (themeMenuOpen = !themeMenuOpen)}
 			>
-				<span class="chip-select-value">{session.activeTheme}</span>
+				<span class="chip-select-value">{activeThemeName}</span>
 				<ChevronDown size={13} strokeWidth={2} />
 			</button>
 		</div>
@@ -826,6 +846,14 @@
 				</section>
 
 				<section class="group">
+					{@render groupHead('Folders')}
+					<FolderStyleTiles
+						value={settings.get<string>('general.folders') ?? 'show'}
+						onPick={(v) => settings.set('general.folders', v)}
+					/>
+				</section>
+
+				<section class="group">
 					{@render groupHead('This device')}
 					<div class="row">
 						<div class="row-info">
@@ -998,15 +1026,19 @@
 					</section>
 				{/if}
 			{:else if activeCategory}
-				<section class="group">
-					{#if activeCategory.id === 'appearance'}
-						{@render themeItem()}
-						{@render accentItem()}
-					{/if}
-					{#each activeCategory.settings as def (def.key)}
-						{@render settingItem(def)}
-					{/each}
-				</section>
+				{#each categoryGroups as group, i (group.label)}
+					<section class="group">
+						{#if group.label}{@render groupHead(group.label)}{/if}
+						{#if activeCategory.id === 'appearance' && i === 0}
+							{#if modeDef}{@render settingItem(modeDef)}{/if}
+							{@render themeItem()}
+							{@render accentItem()}
+						{/if}
+						{#each group.defs as def (def.key)}
+							{@render settingItem(def)}
+						{/each}
+					</section>
+				{/each}
 			{/if}
 		</div>
 	</div>
@@ -1387,6 +1419,7 @@
 	.chip-select-value {
 		flex: 1;
 		min-width: 0;
+		line-height: 1.35;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		text-align: left;

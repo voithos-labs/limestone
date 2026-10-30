@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
+
 const DEFAULT_FONT = 'Inter, system-ui, sans-serif';
 
 // ── Themes ──────────────────────────────────────────────────────────────────────────
@@ -7,11 +9,14 @@ export interface Theme {
 	type: 'dark' | 'light';
 	variables: Record<string, string>;
 	fontFamily?: string;
+	backdrop?: 'mica' | 'mica-alt';
+	wash?: string;
 }
 
-export const DEFAULT_DARK: Theme = {
-	name: 'Default Dark',
+export const STONE_DARK: Theme = {
+	name: 'Stone',
 	type: 'dark',
+	wash: 'rgba(255, 255, 255, 0.045)',
 	variables: {
 		'color-bg': '#2d3033',
 		'color-surface': '#1A1C1D',
@@ -26,14 +31,15 @@ export const DEFAULT_DARK: Theme = {
 		// A var(), not the accent's literal: applyAccent rewrites --color-accent at runtime, and
 		// the editor mixes its selection and search washes over this, so they follow the reader.
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
-export const DEFAULT_LIGHT: Theme = {
-	name: 'Default Light',
+export const STONE_LIGHT: Theme = {
+	name: 'Stone',
 	type: 'light',
+	backdrop: 'mica-alt',
+	wash: 'rgba(0, 0, 0, 0.04)',
 	variables: {
 		'color-bg': '#ece6e9',
 		'color-surface': '#FFFFFF',
@@ -46,14 +52,14 @@ export const DEFAULT_LIGHT: Theme = {
 		'color-accent-primary': '#567B67',
 		'color-error': '#d03025',
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
 export const SOFT_DARK: Theme = {
-	name: 'Soft Dark',
+	name: 'Soft',
 	type: 'dark',
+	wash: 'rgba(255, 255, 255, 0.045)',
 	variables: {
 		'color-bg': '#2c2c2a',
 		'color-surface': '#1a1a19',
@@ -66,14 +72,15 @@ export const SOFT_DARK: Theme = {
 		'color-accent-primary': '#567B67',
 		'color-error': '#ff5f57',
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
 export const SOFT_LIGHT: Theme = {
-	name: 'Soft Light',
+	name: 'Soft',
 	type: 'light',
+	backdrop: 'mica-alt',
+	wash: 'rgba(0, 0, 0, 0.04)',
 	variables: {
 		'color-bg': '#dfddd7',
 		'color-surface': '#efeee9',
@@ -86,13 +93,12 @@ export const SOFT_LIGHT: Theme = {
 		'color-accent-primary': '#567B67',
 		'color-error': '#d03025',
 		'color-selection': 'var(--color-accent)',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
 export const HIGH_CONTRAST_DARK: Theme = {
-	name: 'High Contrast Dark',
+	name: 'High Contrast',
 	type: 'dark',
 	variables: {
 		'color-bg': '#1e2124',
@@ -107,14 +113,14 @@ export const HIGH_CONTRAST_DARK: Theme = {
 		'color-error': '#ff8f87',
 		'focus-ring': '#ffffff',
 		'focus-border': '#ffffff',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
 export const HIGH_CONTRAST_LIGHT: Theme = {
-	name: 'High Contrast Light',
+	name: 'High Contrast',
 	type: 'light',
+	backdrop: 'mica-alt',
 	variables: {
 		'color-bg': '#dcdee1',
 		'color-surface': '#ffffff',
@@ -128,20 +134,101 @@ export const HIGH_CONTRAST_LIGHT: Theme = {
 		'color-error': '#85110a',
 		'focus-ring': '#000000',
 		'focus-border': '#000000',
-		'radius-ui': '4px',
-		'radius-surface': '8px'
+		'radius-ui': '4px'
 	}
 };
 
-export const DEFAULT_THEME = DEFAULT_DARK;
+export const GRAPHITE: Theme = {
+	name: 'Graphite',
+	type: 'dark',
+	wash: 'rgba(255, 255, 255, 0.045)',
+	variables: {
+		'color-bg': '#333337',
+		'color-surface': '#1b1b1d',
+		'color-border': '#424247',
+		'color-text-primary': '#f5f5f7',
+		'color-text-secondary': '#d4d4d8',
+		'color-ui-dulled': '#a9a9ae',
+		'color-ui-muted': '#8e8e93',
+		'color-accent': '#409cff',
+		'color-accent-primary': '#409cff',
+		'color-error': '#ff6961',
+		'color-selection': 'var(--color-accent)',
+		'radius-ui': '6px'
+	}
+};
+
+export const FLUENT: Theme = {
+	name: 'Fluent',
+	type: 'dark',
+	variables: {
+		'color-bg': '#191919',
+		'color-surface': '#323232',
+		'color-border': '#4a4a4a',
+		'color-text-primary': '#ffffff',
+		'color-text-secondary': '#cfcfcf',
+		'color-ui-dulled': '#a6a6a6',
+		'color-ui-muted': '#8f8f8f',
+		'color-accent': '#4cc2ff',
+		'color-accent-primary': '#4cc2ff',
+		'color-error': '#ff99a4',
+		'color-selection': 'var(--color-accent)',
+		'radius-ui': '4px'
+	}
+};
+
+export const INK: Theme = {
+	name: 'Ink',
+	type: 'dark',
+	variables: {
+		'color-bg': '#222226',
+		'color-surface': '#050507',
+		'color-border': '#303036',
+		'color-text-primary': '#ededf0',
+		'color-text-secondary': '#c9c9cf',
+		'color-ui-dulled': '#9d9da4',
+		'color-ui-muted': '#86868d',
+		'color-accent': '#ff9f0a',
+		'color-accent-primary': '#ff9f0a',
+		'color-error': '#ff6961',
+		'color-selection': 'var(--color-accent)',
+		'radius-ui': '6px'
+	}
+};
+
+export const MIDNIGHT: Theme = {
+	name: 'Midnight',
+	type: 'dark',
+	wash: 'rgba(255, 255, 255, 0.045)',
+	variables: {
+		'color-bg': '#2a3140',
+		'color-surface': '#141922',
+		'color-border': '#36405a',
+		'color-text-primary': '#eef1f6',
+		'color-text-secondary': '#c9d0dc',
+		'color-ui-dulled': '#9aa3b4',
+		'color-ui-muted': '#848d9e',
+		'color-accent': '#64d2ff',
+		'color-accent-primary': '#64d2ff',
+		'color-error': '#ff7b72',
+		'color-selection': 'var(--color-accent)',
+		'radius-ui': '6px'
+	}
+};
+
+export const DEFAULT_THEME_KEYS = { dark: 'stone-dark', light: 'stone-light' } as const;
 
 export const BUILTIN_THEMES: Record<string, Theme> = {
-	'default-dark': DEFAULT_DARK,
+	'stone-dark': STONE_DARK,
 	'soft-dark': SOFT_DARK,
 	'high-contrast-dark': HIGH_CONTRAST_DARK,
-	'default-light': DEFAULT_LIGHT,
+	'stone-light': STONE_LIGHT,
 	'soft-light': SOFT_LIGHT,
-	'high-contrast-light': HIGH_CONTRAST_LIGHT
+	'high-contrast-light': HIGH_CONTRAST_LIGHT,
+	graphite: GRAPHITE,
+	fluent: FLUENT,
+	ink: INK,
+	midnight: MIDNIGHT
 };
 
 // ── Accents ─────────────────────────────────────────────────────────────────────────
@@ -256,6 +343,12 @@ export function currentThemeType(): 'dark' | 'light' {
 	return themeType;
 }
 
+let themeBackdrop = $state<'mica' | 'mica-alt'>('mica');
+
+export function currentThemeBackdrop(): 'mica' | 'mica-alt' {
+	return themeBackdrop;
+}
+
 export function applyAccent(setting: string | null, type: 'dark' | 'light') {
 	if (!setting || setting === 'default') return;
 	const resolved = resolveAccent(setting, type);
@@ -294,6 +387,23 @@ export function applyTheme(theme: Theme) {
 	root.style.setProperty('--font-ui', theme.fontFamily ?? DEFAULT_FONT);
 	root.dataset.themeType = theme.type;
 	themeType = theme.type;
+	themeBackdrop = theme.backdrop ?? 'mica';
+	root.style.setProperty('--mica-wash', theme.wash ?? 'transparent');
 	root.style.background = theme.variables['color-backdrop'] ?? '';
 	document.body.style.background = '';
+}
+
+export async function applyMica(
+	enabled: boolean,
+	type: 'dark' | 'light',
+	backdrop: 'mica' | 'mica-alt'
+) {
+	let on = enabled;
+	try {
+		await invoke('set_mica', { enabled, dark: type === 'dark', alt: backdrop === 'mica-alt' });
+	} catch (e) {
+		console.warn('mica unavailable:', e);
+		on = false;
+	}
+	document.documentElement.toggleAttribute('data-mica', on);
 }
