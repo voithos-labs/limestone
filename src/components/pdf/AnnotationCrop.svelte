@@ -9,7 +9,7 @@
 		annotation,
 		maxHeight
 	}: {
-		annotation: Pick<AnnotationFields, 'pdf' | 'page' | 'kind' | 'rects' | 'strokes'>;
+		annotation: Pick<AnnotationFields, 'pdf' | 'page' | 'kind' | 'rects' | 'strokes' | 'edition'>;
 		maxHeight?: number;
 	} = $props();
 
@@ -39,6 +39,7 @@
 			const signal = (controller = new AbortController()).signal;
 			renderCrop(canvas, {
 				pdf: annotation.pdf,
+				edition: annotation.edition,
 				page: annotation.page,
 				rect: r,
 				width,

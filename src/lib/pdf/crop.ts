@@ -2,6 +2,8 @@ import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { select } from '#lib/services/db.js';
 import { getSource } from '#lib/models/Source.js';
 import { openPdf } from './open.js';
+import { editionPath } from './edition.js';
+import { exists } from '@tauri-apps/plugin-fs';
 import type { PageRect } from './annotation.js';
 
 /** Draws a box of a PDF page into a canvas, for anything that shows a region outside the viewer. */
@@ -11,6 +13,8 @@ import type { PageRect } from './annotation.js';
 export interface Crop {
 	/** The PDF's document id. */
 	pdf: string;
+	/** The edition the box was marked on; its preserved copy is drawn when there is one. */
+	edition?: string;
 	page: number;
 	rect: PageRect;
 	/** CSS pixels wide; the height follows from the box's shape. */
@@ -25,8 +29,8 @@ export interface Crop {
  * small region costs no more than a large one.
  */
 export async function renderCrop(canvas: HTMLCanvasElement, crop: Crop): Promise<void> {
-	const { pdf, page, rect, maxHeight, signal } = crop;
-	const doc = await loadPdf(pdf);
+	const { pdf, edition, page, rect, maxHeight, signal } = crop;
+	const doc = await loadPdf(pdf, edition);
 	signal?.throwIfAborted();
 	const p = await doc.getPage(page);
 	signal?.throwIfAborted();
@@ -74,17 +78,18 @@ export function unionRect(rects: PageRect[]): PageRect | null {
 const CACHE_SIZE = 4;
 const loaded = new Map<string, Promise<PDFDocumentProxy>>();
 
-function loadPdf(pdfId: string): Promise<PDFDocumentProxy> {
-	const hit = loaded.get(pdfId);
+function loadPdf(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
+	const key = `${pdfId}@${edition ?? ''}`;
+	const hit = loaded.get(key);
 	if (hit) {
-		loaded.delete(pdfId);
-		loaded.set(pdfId, hit);
+		loaded.delete(key);
+		loaded.set(key, hit);
 		return hit;
 	}
-	const next = openById(pdfId);
-	loaded.set(pdfId, next);
+	const next = openById(pdfId, edition);
+	loaded.set(key, next);
 	next.catch(() => {
-		if (loaded.get(pdfId) === next) loaded.delete(pdfId);
+		if (loaded.get(key) === next) loaded.delete(key);
 	});
 	while (loaded.size > CACHE_SIZE) {
 		const [oldest, doc] = loaded.entries().next().value!;
@@ -96,17 +101,19 @@ function loadPdf(pdfId: string): Promise<PDFDocumentProxy> {
 
 // Opens the file itself rather than through PdfHandle.open, which marks the PDF opened:
 // a note showing a crop isn't the reader opening the PDF.
-async function openById(pdfId: string): Promise<PDFDocumentProxy> {
+async function openById(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
 	const [row] = await select<{ source_id: string; rel_path: string }>(
 		`SELECT source_id, rel_path FROM documents WHERE id = ?1 AND document_type = 'pdf'`,
 		[pdfId]
 	);
 	if (!row) throw new Error(`no pdf with id ${pdfId}`);
 	const source = await getSource(row.source_id);
+	// a box marked on bytes since replaced is drawn from those bytes, while they're kept
+	const preserved = edition && (await exists(`${source.path}/${editionPath(edition)}`));
 	const task = await openPdf({
 		sourceId: source.id,
 		sourcePath: source.path,
-		relPath: row.rel_path
+		relPath: preserved ? editionPath(edition) : row.rel_path
 	});
 	return task.promise;
 }
