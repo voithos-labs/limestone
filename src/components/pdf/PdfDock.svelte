@@ -4,7 +4,7 @@
 
 <script lang="ts">
 	import type { Component, Snippet } from 'svelte';
-	import { Highlighter, Pen, SquareDashed, TextCursor } from '@lucide/svelte';
+	import { Highlighter, Moon, Pen, SquareDashed, TextCursor } from '@lucide/svelte';
 
 	let {
 		tool = $bindable('select'),
@@ -12,7 +12,9 @@
 		pages,
 		zoom,
 		disabled = false,
+		dark = false,
 		onZoomReset,
+		onToggleDark,
 		tray
 	}: {
 		tool?: PdfTool;
@@ -23,7 +25,10 @@
 		zoom: number;
 		/** Annotating isn't possible here; only selecting text is. */
 		disabled?: boolean;
+		/** Whether pages are shown with dark colors. */
+		dark?: boolean;
 		onZoomReset: () => void;
+		onToggleDark: () => void;
 		/** Options for the current tool, stacked above the dock. */
 		tray?: Snippet;
 	} = $props();
@@ -73,6 +78,16 @@
 		<span class="sep"></span>
 		<button class="zoom" type="button" title="Reset zoom" onclick={onZoomReset}>
 			{Math.round(zoom * 100)}%
+		</button>
+		<span class="sep"></span>
+		<button
+			class="tool"
+			class:on={dark}
+			type="button"
+			title={dark ? 'Original page colors' : 'Dark pages'}
+			onclick={onToggleDark}
+		>
+			<Moon size={14} strokeWidth={1.75} />
 		</button>
 	</div>
 </div>

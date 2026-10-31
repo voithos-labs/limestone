@@ -36,6 +36,7 @@
 	} from '#lib/pdf/citation.js';
 	import { linkIndex } from '#lib/services/links.svelte.js';
 	import { appEditorShortcut } from '#lib/shortcuts.js';
+	import { currentThemeType } from '#lib/services/theme.svelte.js';
 	import DocumentHero from './DocumentHero.svelte';
 	import { backPlace, forwardPlace, openFolder, openFolderMeta } from './tabPlaces.js';
 	import GonePage from '../pages/GonePage.svelte';
@@ -81,6 +82,12 @@
 	let paneW = $state(0);
 	// the reading column a note gets, which the page and its margin share
 	let columnMax = $state(MAX_PAGE_WIDTH);
+	// dark pages follow the app's theme until this PDF's own toggle says otherwise
+	const savedDark = untrack(() => tab.state.pdf_dark);
+	let darkChoice = $state<boolean | undefined>(
+		typeof savedDark === 'boolean' ? savedDark : undefined
+	);
+	const dark = $derived(darkChoice ?? currentThemeType() === 'dark');
 	const savedZoom = untrack(() => tab.state.pdf_zoom);
 	let zoom = $state(typeof savedZoom === 'number' ? savedZoom : 1);
 	const column = $derived(Math.min(columnMax, paneW - SIDE_PAD * 2));
@@ -760,6 +767,7 @@
 	class="pdf-viewer"
 	class:flow
 	class:drawing={tool === 'region' || tool === 'ink'}
+	class:dark-pages={dark}
 	bind:this={rootEl}
 >
 	<div
@@ -917,6 +925,11 @@
 			{zoom}
 			disabled={!annotations.writable}
 			onZoomReset={() => setZoom(1)}
+			{dark}
+			onToggleDark={() => {
+				darkChoice = !dark;
+				tab.state.pdf_dark = darkChoice;
+			}}
 			tray={tool === 'ink' ? inkTray : undefined}
 		/>
 	{/if}
@@ -1080,6 +1093,21 @@
 		border-radius: 4px;
 		background: #fff;
 		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+	}
+
+	/* Dark pages are a display filter: the file and every stored mark keep their own colors. Ink
+	   inverts with its paper so graphite stays visible; highlights don't, so amber stays amber. */
+	.dark-pages .page {
+		background: #1f1f1f;
+	}
+
+	.dark-pages .page :global(canvas),
+	.dark-pages .page :global(svg.ink) {
+		filter: invert(0.88) hue-rotate(180deg);
+	}
+
+	.dark-pages .page :global(.highlight) {
+		mix-blend-mode: normal;
 	}
 
 	.drawing .page {
