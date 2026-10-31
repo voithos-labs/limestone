@@ -380,8 +380,13 @@ class MarkdownHandle extends Doc {
 		this.tags = await Tag.fromSlugs(tags);
 	}
 
-	async saveContent(body: string, opts: { rebuildFrontmatter?: boolean } = {}): Promise<void> {
+	/** `properties` replaces those top-level keys, applied over what's on disk. */
+	async saveContent(
+		body: string,
+		opts: { rebuildFrontmatter?: boolean; properties?: Record<string, unknown> } = {}
+	): Promise<void> {
 		await this.refreshMetaFromDisk(); // this is hmm possibly not needed
+		if (opts.properties) this.properties = { ...this.properties, ...opts.properties };
 		this.updatedAt = new Date();
 		const contents = await this.serialize(body, opts.rebuildFrontmatter);
 		const mtime = await invoke<number>('write_document', {

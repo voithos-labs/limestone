@@ -12,6 +12,8 @@ export interface Toast {
 	message: string;
 	action?: ToastAction;
 	variant: ToastVariant;
+	/** Text shown verbatim under the message, such as what was just copied. */
+	code?: string;
 }
 
 export type MarkKind = 'source' | 'project' | 'folder' | 'tag' | 'note';
@@ -39,14 +41,20 @@ class ToastController {
 
 	push(
 		message: string,
-		opts: { action?: ToastAction; timeout?: number; variant?: ToastVariant; sticky?: boolean } = {}
+		opts: {
+			action?: ToastAction;
+			timeout?: number;
+			variant?: ToastVariant;
+			sticky?: boolean;
+			code?: string;
+		} = {}
 	): number {
-		const shown = this.items.find((t) => t.message === message);
+		const shown = this.items.find((t) => t.message === message && t.code === opts.code);
 		if (shown) return shown.id;
 		const id = ++this.seq;
 		this.items = [
 			...this.items,
-			{ id, message, action: opts.action, variant: opts.variant ?? 'error' }
+			{ id, message, action: opts.action, variant: opts.variant ?? 'error', code: opts.code }
 		];
 		const timeout = opts.sticky ? 0 : (opts.timeout ?? (opts.action ? 0 : 5000));
 		if (timeout > 0) setTimeout(() => this.dismiss(id), timeout);

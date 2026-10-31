@@ -38,6 +38,7 @@
 					<div class="card-body">
 						<span class="card-title"><MarkText text={title} /></span>
 						<span class="card-detail"><MarkText text={detail} /></span>
+						{#if t.code}<span class="card-code">{t.code}</span>{/if}
 						{#if t.action}
 							<div class="card-actions">
 								<button class="toast-action" onclick={() => act(t)}>{t.action.label}</button>
@@ -141,6 +142,19 @@
 		font-size: 12px;
 		line-height: 1.45;
 		color: var(--color-text-secondary);
+	}
+
+	.card-code {
+		margin-top: 6px;
+		padding: 6px 8px;
+		border-radius: 5px;
+		background: var(--chip-bg);
+		font-family: var(--font-mono);
+		font-size: 11.5px;
+		color: var(--color-text-primary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.card-actions {

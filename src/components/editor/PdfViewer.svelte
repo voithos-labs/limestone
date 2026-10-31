@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 	import type {
 		PDFDocumentLoadingTask,
@@ -11,18 +12,25 @@
 	import type { TabState } from '#lib/models/EditorState.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import { readErrorKind, type ReadErrorKind } from '#lib/models/MarkdownHandle.js';
+	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 	import { sourceName } from '#lib/models/Source.js';
-	import { mark, reportError } from '#lib/overlays.svelte.js';
+	import { mark, reportError, type MenuEntry } from '#lib/overlays.svelte.js';
+	import type { Annotation, AnnotationColor, PageRect } from '#lib/pdf/annotation.js';
+	import PdfAnnotations from '#lib/pdf/annotations.svelte.js';
+	import { boxTarget, pagePoint, textTarget, type TextTarget } from '#lib/pdf/anchor.js';
+	import { copyCitation, copyLink } from '#lib/pdf/citation.js';
+	import { appEditorShortcut } from '#lib/shortcuts.js';
 	import DocumentHero from './DocumentHero.svelte';
 	import { backPlace, forwardPlace, openFolder, openFolderMeta } from './tabPlaces.js';
 	import GonePage from '../pages/GonePage.svelte';
 	import type { GoneAction } from '../pages/GoneActions.svelte';
 	import ScrollThumb from '../ui/ScrollThumb.svelte';
-	import PdfIcon from '../ui/PdfIcon.svelte';
-	import { ChevronDown } from '@lucide/svelte';
-	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
-	import { folderDir } from '#lib/views/fieldValue.js';
-	import { isValidSegment, nameGuard, segmentProblem } from '#lib/util/paths.js';
+	import Menu from '../ui/Menu.svelte';
+	import PageMarks from '../pdf/PageMarks.svelte';
+	import SideNotes from '../pdf/SideNotes.svelte';
+	import SelectionMenu from '../pdf/SelectionMenu.svelte';
+	import PdfDock, { type PdfTool } from '../pdf/PdfDock.svelte';
+	import { MessageSquare, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
 	import type PdfHandle from '#lib/models/PdfHandle.js';
 
 	let {
@@ -37,11 +45,13 @@
 
 	const MAX_PAGE_WIDTH = 1000;
 	const SIDE_PAD = 24;
-	const HERO_COLUMN = 300;
-	const HERO_GAP = 32;
 	const MIN_PAGE_WIDTH = 560;
+	const RAIL_WIDTH = 300;
+	const RAIL_GAP = 24;
+	const PAGE_GAP = 10;
 	const RESIZE_SETTLE_MS = 120;
 	const KEEP_MARGIN = '1200px 0px';
+	const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 
 	const handle = $derived(tab.content.type === 'pdf' ? tab.content.handle : null);
 
@@ -51,20 +61,18 @@
 	let failure: Failure | null = $state(null);
 	let attempt = $state(0);
 	let paneW = $state(0);
-	let paneH = $state(0);
-	const side = $derived(!flow && paneW >= HERO_COLUMN + HERO_GAP + MIN_PAGE_WIDTH + SIDE_PAD * 2);
-	const width = $derived(
-		Math.max(
-			0,
-			Math.min(MAX_PAGE_WIDTH, paneW - SIDE_PAD * 2 - (side ? HERO_COLUMN + HERO_GAP : 0))
-		)
+	// the reading column a note gets, which the page and its margin share
+	let columnMax = $state(MAX_PAGE_WIDTH);
+	const savedZoom = untrack(() => tab.state.pdf_zoom);
+	let zoom = $state(typeof savedZoom === 'number' ? savedZoom : 1);
+	const column = $derived(Math.min(columnMax, paneW - SIDE_PAD * 2));
+	// the margin rail takes room only once a page beside it still reads comfortably
+	const rail = $derived(column >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_WIDTH);
+	const fitWidth = $derived(
+		Math.max(0, Math.min(MAX_PAGE_WIDTH, column - (rail ? RAIL_GAP + RAIL_WIDTH : 0)))
 	);
-	let heroOpen = $state(false);
-	let title = $state('');
-	let titleTaken = $state(false);
-	let titleCheck = 0;
-	const ext = $derived(handle?.relPath.match(/\.[^./]+$/)?.[0] ?? '.pdf');
-	const titleIllegal = $derived(title.trim() !== '' && !isValidSegment(`${title.trim()}${ext}`));
+	const width = $derived(Math.round(fitWidth * zoom));
+	const columnWidth = $derived(width + (rail ? RAIL_GAP + RAIL_WIDTH : 0));
 	let rootEl: HTMLDivElement | undefined = $state();
 	let scrollEl: HTMLDivElement | undefined = $state();
 	let io: IntersectionObserver | null = $state.raw(null);
@@ -76,57 +84,6 @@
 	const onOpenFolder = (unitId: string, name: string, newTab = false) =>
 		openFolder(editor, tab, unitId, name, newTab);
 	const onFolderMeta = (unitId: string, name: string) => openFolderMeta(editor, unitId, name);
-
-	$effect(() => {
-		title = handle?.title ?? '';
-	});
-
-	function titleCandidate(next: string): string {
-		const dir = folderDir(handle?.relPath ?? '');
-		return dir ? `${dir}/${next}${ext}` : `${next}${ext}`;
-	}
-
-	$effect(() => {
-		const h = handle;
-		const next = title.trim();
-		const token = ++titleCheck;
-		if (!h || !next || next === h.title) {
-			titleTaken = !next;
-			return;
-		}
-		if (titleCandidate(next).toLowerCase() === h.relPath.toLowerCase()) {
-			titleTaken = false;
-			return;
-		}
-		MarkdownHandle.pathTaken(h.source, titleCandidate(next))
-			.then((taken) => {
-				if (token === titleCheck) titleTaken = taken;
-			})
-			.catch(() => {});
-	});
-
-	async function commitTitle() {
-		const h = handle;
-		if (!h) return;
-		const next = title.trim();
-		if (!next || next === h.title || titleIllegal || titleTaken) {
-			title = h.title;
-			return;
-		}
-		try {
-			await h.rename(next);
-		} catch (e) {
-			title = h.title;
-			reportError(e, `${mark('note', h.title)} couldn't be renamed.`);
-		}
-	}
-
-	function onTitleKeydown(e: KeyboardEvent) {
-		if (e.key !== 'Enter' && e.key !== 'Escape') return;
-		e.preventDefault();
-		if (e.key === 'Escape' && handle) title = handle.title;
-		(e.currentTarget as HTMLInputElement).blur();
-	}
 
 	async function deleteDoc() {
 		const h = handle;
@@ -189,7 +146,8 @@
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const measure = () => {
 			paneW = el.clientWidth;
-			paneH = el.clientHeight;
+			const page = getComputedStyle(el).getPropertyValue('--page-max-width');
+			columnMax = parseFloat(page) || MAX_PAGE_WIDTH;
 		};
 		measure();
 		const ro = new ResizeObserver(() => {
@@ -289,6 +247,263 @@
 		};
 	}
 
+	// ── Zoom and position ───────────────────────────────────────────────────
+
+	let pagesEl: HTMLDivElement | undefined = $state();
+	let currentPage = $state(1);
+
+	/** Each page's top within the pages column, from the ratios, so unrendered pages count too. */
+	const pageTops = $derived.by(() => {
+		const tops: number[] = [];
+		let y = 0;
+		for (const ratio of ratios) {
+			tops.push(y);
+			y += width / ratio + PAGE_GAP;
+		}
+		return tops;
+	});
+
+	function setZoom(next: number) {
+		const scroller = scrollEl;
+		const before =
+			scroller && scroller.scrollHeight ? scroller.scrollTop / scroller.scrollHeight : 0;
+		zoom = Math.min(ZOOM_STEPS.at(-1)!, Math.max(ZOOM_STEPS[0], next));
+		tab.state.pdf_zoom = zoom;
+		// the same place stays in view once the pages have taken their new size
+		requestAnimationFrame(() => {
+			if (scroller) scroller.scrollTop = before * scroller.scrollHeight;
+		});
+	}
+
+	function stepZoom(dir: 1 | -1) {
+		const i = ZOOM_STEPS.findIndex((z) => z >= zoom - 0.001);
+		setZoom(ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, i + dir))]);
+	}
+
+	function onWheel(e: WheelEvent) {
+		if (!e.ctrlKey && !e.metaKey) return;
+		e.preventDefault();
+		stepZoom(e.deltaY < 0 ? 1 : -1);
+	}
+
+	function onWindowKey(e: KeyboardEvent) {
+		if (flow || !(e.ctrlKey || e.metaKey) || !rootEl?.isConnected) return;
+		const shortcut = appEditorShortcut(e);
+		if (shortcut) stepZoom(shortcut === 'zoom-in' ? 1 : -1);
+		else if (e.key === '0') setZoom(1);
+		else return;
+		e.preventDefault();
+	}
+
+	function trackPage() {
+		const scroller = scrollEl;
+		if (!scroller || !pagesEl) return;
+		const pagesTop = pagesEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+		const y = scroller.clientHeight / 3 - pagesTop;
+		let n = 1;
+		while (n < pageTops.length && pageTops[n] <= y) n++;
+		currentPage = n;
+	}
+
+	// ── Annotations ─────────────────────────────────────────────────────────
+
+	const annotations = new PdfAnnotations(() => handle as PdfHandle);
+	$effect(() => {
+		if (!handle) return;
+		return annotations.watch();
+	});
+
+	const byPage = $derived.by(() => {
+		const map = new Map<number, Annotation[]>();
+		for (const a of annotations.items) map.set(a.page, [...(map.get(a.page) ?? []), a]);
+		return map;
+	});
+
+	let tool: PdfTool = $state('select');
+	let color: AnnotationColor = $state('amber');
+	let activeId: string | null = $state(null);
+	let editingId: string | null = $state(null);
+	let menu: { x: number; y: number; page: number; target: TextTarget } | null = $state(null);
+	let draft: { page: number; from: { x: number; y: number }; rect: PageRect | null } | null =
+		$state(null);
+	let moreFor: Annotation | null = $state(null);
+	let moreAnchor: HTMLElement | null = $state(null);
+
+	// a bare highlight stays out of the margin until it's picked or given a comment
+	const notes = $derived(
+		annotations.items.filter((a) => a.comment || a.id === activeId || a.id === editingId)
+	);
+
+	function anchorY(a: Annotation): number {
+		const ratio = ratios[a.page - 1] ?? ratios[0] ?? 1;
+		// the note's text starts below its card padding, so the card rises to meet the passage
+		return (pageTops[a.page - 1] ?? 0) + (a.rects[0]?.[1] ?? 0) * (width / ratio) - 10;
+	}
+
+	function pageAt(target: EventTarget | Node | null): HTMLElement | null {
+		const el = target instanceof Element ? target : (target as Node | null)?.parentElement;
+		return (el?.closest('.page') as HTMLElement | null) ?? null;
+	}
+
+	function pageNumber(page: HTMLElement): number {
+		return Number(page.dataset.page);
+	}
+
+	async function addHighlight(page: number, target: TextTarget, comment = '') {
+		try {
+			return await annotations.create(
+				{
+					page,
+					kind: 'highlight',
+					color,
+					rects: target.rects,
+					quote: target.quote,
+					prefix: target.prefix,
+					suffix: target.suffix
+				},
+				comment
+			);
+		} catch (e) {
+			reportError(e, "The highlight couldn't be saved.");
+			return null;
+		}
+	}
+
+	function onPagesPointerDown(e: PointerEvent) {
+		if (tool !== 'region' || e.button !== 0) return;
+		const page = pageAt(e.target);
+		if (!page) return;
+		e.preventDefault();
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		draft = { page: pageNumber(page), from: { x: e.clientX, y: e.clientY }, rect: null };
+	}
+
+	function onPagesPointerMove(e: PointerEvent) {
+		if (!draft) return;
+		const page = pagesEl?.querySelector<HTMLElement>(`.page[data-page="${draft.page}"]`);
+		if (page) draft.rect = boxTarget(draft.from, { x: e.clientX, y: e.clientY }, page);
+	}
+
+	async function onPagesPointerUp(e: PointerEvent) {
+		if (draft) {
+			const { page, rect } = draft;
+			draft = null;
+			if (!rect) return;
+			try {
+				const a = await annotations.create({ page, kind: 'region', color: 'sky', rects: [rect] });
+				activeId = editingId = a.id;
+			} catch (err) {
+				reportError(err, "The region couldn't be saved.");
+			}
+			return;
+		}
+		if (e.button !== 0 || !(tool === 'select' || tool === 'highlight')) return;
+		const selection = window.getSelection();
+		if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+			pickAt(e);
+			return;
+		}
+		const range = selection.getRangeAt(0);
+		const page = pageAt(range.startContainer);
+		const target = page && textTarget(range, page);
+		if (!page || !target) return;
+		if (tool === 'highlight') {
+			selection.removeAllRanges();
+			await addHighlight(pageNumber(page), target);
+			return;
+		}
+		const end = range.getClientRects();
+		const last = end[end.length - 1];
+		const box = rootEl!.getBoundingClientRect();
+		menu = {
+			x: Math.min(last.left - box.left, box.width - 212),
+			y: last.bottom - box.top + 8,
+			page: pageNumber(page),
+			target
+		};
+	}
+
+	/** A click on a mark picks its annotation; a click anywhere else lets go of it. */
+	function pickAt(e: PointerEvent) {
+		const page = pageAt(e.target);
+		const [x, y] = page ? pagePoint(e, page) : [0, 0];
+		const hit = page
+			? (byPage.get(pageNumber(page)) ?? []).find((a) =>
+					a.rects.some((r) => x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3])
+				)
+			: undefined;
+		activeId = hit?.id ?? null;
+		if (editingId && editingId !== activeId) editingId = null;
+	}
+
+	async function fromMenu(run: (a: Annotation) => unknown) {
+		const m = menu;
+		menu = null;
+		window.getSelection()?.removeAllRanges();
+		if (!m) return;
+		const a = await addHighlight(m.page, m.target);
+		if (a) await run(a);
+	}
+
+	async function saveComment(a: Annotation, comment: string) {
+		try {
+			await annotations.setComment(a.id, comment);
+		} catch (e) {
+			reportError(e, "The comment couldn't be saved.");
+		}
+	}
+
+	async function cite(a: Annotation) {
+		try {
+			await copyCitation(a.title);
+		} catch (e) {
+			reportError(e, "The citation couldn't be copied.");
+		}
+	}
+
+	async function link(a: Annotation) {
+		try {
+			await copyLink(a.title);
+		} catch (e) {
+			reportError(e, "The link couldn't be copied.");
+		}
+	}
+
+	async function removeAnnotation(a: Annotation) {
+		if (activeId === a.id) activeId = null;
+		try {
+			await annotations.remove(a.id);
+		} catch (e) {
+			reportError(e, "The annotation couldn't be deleted.");
+		}
+	}
+
+	const moreItems: MenuEntry[] = [
+		{ value: 'open', label: 'Open as note', icon: SquareArrowOutUpRight },
+		{ kind: 'divider' },
+		{ value: 'delete', label: 'Delete', icon: Trash2, danger: true }
+	];
+
+	function onMoreSelect(value: string) {
+		const a = moreFor;
+		moreFor = null;
+		if (!a) return;
+		if (value === 'delete') void removeAnnotation(a);
+		else if (value === 'open')
+			MarkdownHandle.fromID(a.id)
+				.then((doc) => editor?.openDoc(doc))
+				.catch((e) => reportError(e, "The annotation's note couldn't be opened."));
+	}
+
+	function onWindowKeyForMarks(e: KeyboardEvent) {
+		if (!activeId || editingId || (e.key !== 'Delete' && e.key !== 'Backspace')) return;
+		const focused = document.activeElement as HTMLElement | null;
+		if (focused && (focused.isContentEditable || /^(INPUT|TEXTAREA)$/.test(focused.tagName)))
+			return;
+		const a = annotations.items.find((x) => x.id === activeId);
+		if (a) void removeAnnotation(a);
+	}
+
 	const notice = $derived.by(() => {
 		if (!failure || !handle) return null;
 		const src = sourceName(handle.source);
@@ -354,82 +569,151 @@
 	});
 </script>
 
-{#snippet hero(h: PdfHandle)}
-	<DocumentHero
-		handle={h}
-		loaded
-		onDelete={deleteDoc}
-		bind:propsOpen
-		{back}
-		{forward}
-		{onOpenFolder}
-		{showOpenFolder}
-		{onFolderMeta}
-	/>
+<svelte:window
+	onkeydown={(e) => {
+		onWindowKey(e);
+		onWindowKeyForMarks(e);
+	}}
+/>
+
+{#snippet heroExtra()}
+	{#if annotations.items.length}
+		<span class="meta-sep"></span>
+		<span class="ann-count">
+			<MessageSquare size={12} strokeWidth={1.75} />
+			{annotations.items.length}
+			{annotations.items.length === 1 ? 'annotation' : 'annotations'}
+		</span>
+	{/if}
 {/snippet}
 
-<div class="pdf-viewer" class:flow bind:this={rootEl}>
-	<div class="scroll" bind:this={scrollEl}>
-		<div class="layout">
-			{#if handle && side}
-				<aside class="side" style:max-height="{paneH}px">{@render hero(handle)}</aside>
+<div class="pdf-viewer" class:flow class:region-tool={tool === 'region'} bind:this={rootEl}>
+	<div
+		class="scroll"
+		role="presentation"
+		bind:this={scrollEl}
+		onscroll={trackPage}
+		onwheel={onWheel}
+		onpointerdown={(e) => {
+			const el = e.target as Element;
+			if (!el.closest('.pages, .rail')) activeId = null;
+		}}
+	>
+		<div class="column" style:width="{columnWidth}px">
+			{#if handle}
+				<DocumentHero
+					{handle}
+					loaded
+					onDelete={deleteDoc}
+					bind:propsOpen
+					{back}
+					{forward}
+					{onOpenFolder}
+					{showOpenFolder}
+					{onFolderMeta}
+					extra={heroExtra}
+				/>
 			{/if}
-			<div class="body" style:width="{width}px">
-				{#if notice}
-					<GonePage headline={notice.headline} detail={notice.detail} {actions} />
-				{:else if pdf && width > 0}
-					<div class="pages">
+			{#if notice}
+				<GonePage headline={notice.headline} detail={notice.detail} {actions} />
+			{:else if pdf && width > 0}
+				<div class="reading">
+					<div
+						class="pages"
+						role="presentation"
+						bind:this={pagesEl}
+						onpointerdown={onPagesPointerDown}
+						onpointermove={onPagesPointerMove}
+						onpointerup={onPagesPointerUp}
+					>
 						{#each ratios as ratio, i (i)}
 							<div
 								class="page"
+								data-page={i + 1}
 								style:width="{width}px"
 								style:aspect-ratio={ratio}
 								{@attach pageView(i + 1)}
 							>
+								<PageMarks
+									marks={byPage.get(i + 1) ?? []}
+									{activeId}
+									draft={draft?.page === i + 1 ? draft.rect : null}
+								/>
 								<div class="textLayer"></div>
 							</div>
 						{/each}
 					</div>
-				{/if}
-			</div>
-		</div>
-	</div>
-	{#if handle && !flow && !side}
-		<div class="hero-card" class:open={heroOpen}>
-			<div class="card-head">
-				<PdfIcon size={14} />
-				<input
-					class="card-title"
-					class:invalid={titleTaken || titleIllegal}
-					title={titleIllegal
-						? (segmentProblem(`${title.trim()}${ext}`) ?? undefined)
-						: titleTaken
-							? 'A file with this name is already in this folder.'
-							: undefined}
-					bind:value={title}
-					use:nameGuard
-					onblur={commitTitle}
-					onkeydown={onTitleKeydown}
-					spellcheck="false"
-				/>
-				<button
-					class="card-expand"
-					type="button"
-					title={heroOpen ? 'Hide details' : 'Show details'}
-					onclick={() => (heroOpen = !heroOpen)}
-				>
-					<ChevronDown size={14} strokeWidth={1.75} />
-				</button>
-			</div>
-			{#if heroOpen}
-				<div class="card-body">{@render hero(handle)}</div>
+					{#if rail}
+						<div class="rail" style:left="{width + RAIL_GAP}px">
+							<SideNotes
+								{notes}
+								{anchorY}
+								{activeId}
+								{editingId}
+								onActivate={(a) => (activeId = a.id)}
+								onEdit={(a) => {
+									editingId = a?.id ?? null;
+									if (a) activeId = a.id;
+								}}
+								onSave={saveComment}
+								onCite={cite}
+								onLink={link}
+								onMore={(a, anchor) => {
+									moreFor = a;
+									moreAnchor = anchor;
+								}}
+							/>
+						</div>
+					{/if}
+				</div>
 			{/if}
 		</div>
+	</div>
+	{#if menu}
+		<SelectionMenu
+			x={menu.x}
+			y={menu.y}
+			{color}
+			writable={annotations.writable}
+			onColor={(c) => {
+				color = c;
+				void fromMenu(() => {});
+			}}
+			onComment={() =>
+				fromMenu((a) => {
+					activeId = editingId = a.id;
+				})}
+			onCite={() => fromMenu(cite)}
+			onCopyText={() => {
+				const quote = menu?.target.quote ?? '';
+				menu = null;
+				void navigator.clipboard.writeText(quote);
+			}}
+			onClose={() => (menu = null)}
+		/>
+	{/if}
+	{#if pdf && !flow && !notice}
+		<PdfDock
+			bind:tool
+			page={currentPage}
+			pages={ratios.length}
+			{zoom}
+			disabled={!annotations.writable}
+			onZoomReset={() => setZoom(1)}
+		/>
 	{/if}
 	{#if !flow}
 		<ScrollThumb scroller={scrollEl} />
 	{/if}
 </div>
+
+<Menu
+	open={!!moreFor}
+	anchor={moreAnchor}
+	items={moreItems}
+	onSelect={onMoreSelect}
+	minWidth={160}
+/>
 
 <style>
 	.pdf-viewer {
@@ -456,135 +740,57 @@
 		overflow: visible;
 	}
 
-	.layout {
-		display: flex;
-		align-items: flex-start;
-		justify-content: center;
-		gap: 32px;
-		padding: 48px 24px 96px;
+	/* The header shares the pages' column, the way a note's shares its text's. */
+	.column {
+		max-width: 100%;
+		margin: 0 auto;
+		padding: 0 0 96px;
 	}
 
-	.flow .layout {
-		padding-top: 0;
-	}
-
-	.side {
-		position: sticky;
-		top: 0;
-		flex-shrink: 0;
-		width: 300px;
-		margin-top: -48px;
-		overflow-y: auto;
-		scrollbar-width: none;
-	}
-
-	.side::-webkit-scrollbar {
-		display: none;
-	}
-
-	.side :global(.hero-inner) {
+	.column :global(.hero-inner) {
 		max-width: none;
 		padding-right: 0;
 		padding-left: 0;
 	}
 
-	.body {
-		flex-shrink: 1;
-		min-width: 0;
+	/* In flow the host spaces entries itself, as it does for a note's hero. */
+	.flow .column :global(.hero-inner) {
+		margin-top: -6px;
+		padding-top: 0;
+		padding-bottom: 16px;
+	}
+
+	.meta-sep {
+		flex-shrink: 0;
+		width: 1px;
+		height: 16px;
+		margin: 0 4px;
+		background: var(--color-border);
+	}
+
+	.ann-count {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		height: 24px;
+		padding: 0 6px;
+	}
+
+	.reading {
+		position: relative;
 	}
 
 	.pages {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
+		align-items: flex-start;
 		gap: 10px;
 	}
 
-	.hero-card {
+	.rail {
 		position: absolute;
-		top: 12px;
-		left: 12px;
-		z-index: 5;
-		display: flex;
-		flex-direction: column;
-		width: min(260px, calc(100% - 24px));
-		max-height: calc(100% - 24px);
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		background: var(--color-bg);
-		box-shadow: var(--menu-shadow);
-	}
-
-	.hero-card.open {
-		width: min(380px, calc(100% - 24px));
-	}
-
-	.card-head {
-		display: flex;
-		flex-shrink: 0;
-		align-items: center;
-		gap: 6px;
-		height: 34px;
-		padding: 0 4px 0 10px;
-		color: var(--color-ui-muted);
-	}
-
-	.card-title {
-		flex: 1;
-		min-width: 0;
-		padding: 0;
-		border: none;
-		outline: none;
-		background: transparent;
-		color: var(--color-text-primary);
-		font-size: 13px;
-		font-weight: 500;
-		text-overflow: ellipsis;
-	}
-
-	.card-title.invalid {
-		text-decoration: underline;
-		text-decoration-color: var(--error-fg);
-		text-underline-offset: 3px;
-	}
-
-	.card-expand {
-		display: inline-flex;
-		flex-shrink: 0;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		padding: 0;
-		border: none;
-		border-radius: 6px;
-		background: transparent;
-		color: var(--color-ui-muted);
-		cursor: pointer;
-		transition: transform 120ms ease;
-	}
-
-	.card-expand:hover {
-		background: var(--chip-bg);
-		color: var(--color-text-primary);
-	}
-
-	.open .card-expand {
-		transform: rotate(180deg);
-	}
-
-	.card-body {
-		overflow-y: auto;
-		border-top: 1px solid var(--color-border);
-	}
-
-	.card-body :global(.hero-inner) {
-		max-width: none;
-		padding: 12px 14px;
-	}
-
-	.card-body :global(.title-left) {
-		display: none;
+		top: 0;
+		width: 300px;
 	}
 
 	.page {
@@ -594,6 +800,15 @@
 		border-radius: 4px;
 		background: #fff;
 		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+	}
+
+	.region-tool .page {
+		cursor: crosshair;
+		user-select: none;
+	}
+
+	.region-tool .textLayer {
+		pointer-events: none;
 	}
 
 	.page :global(canvas) {
@@ -608,7 +823,7 @@
 		--min-font-size-inv: calc(1 / var(--min-font-size));
 		position: absolute;
 		inset: 0;
-		z-index: 0;
+		z-index: 1;
 		overflow: clip;
 		line-height: 1;
 		text-align: initial;

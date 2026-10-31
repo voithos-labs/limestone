@@ -42,7 +42,7 @@
 		Bookmark
 	} from '@lucide/svelte';
 	import { tagIcon } from '#lib/views/filterDisplay.js';
-	import { onMount, untrack, type Component } from 'svelte';
+	import { onMount, untrack, type Component, type Snippet } from 'svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { flushAll } from '#lib/services/platform.js';
 
@@ -66,7 +66,8 @@
 		onTextTag,
 		onRemoveTextTag,
 		onEnter,
-		onError = reportError
+		onError = reportError,
+		extra
 	}: {
 		handle: AnyDoc;
 		onDelete?: () => void;
@@ -88,6 +89,8 @@
 		onRemoveTextTag?: (slug: string) => Promise<void>;
 		onEnter?: () => void;
 		onError?: ReportError;
+		/** The document type's own items, at the end of the meta row. */
+		extra?: Snippet;
 	} = $props();
 
 	const isNote = $derived(handle instanceof MarkdownHandle);
@@ -750,6 +753,7 @@
 						{onError}
 					/>
 				{/if}
+				{@render extra?.()}
 			</div>
 		</div>
 	</div>
