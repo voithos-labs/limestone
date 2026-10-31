@@ -15,7 +15,16 @@
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 	import { sourceName } from '#lib/models/Source.js';
 	import { mark, reportError, type MenuEntry } from '#lib/overlays.svelte.js';
-	import type { Annotation, AnnotationColor, PageRect } from '#lib/pdf/annotation.js';
+	import {
+		INK_COLORS,
+		type Annotation,
+		type AnnotationColor,
+		type InkColor,
+		type InkWidth,
+		type PageRect
+	} from '#lib/pdf/annotation.js';
+	import { inLasso, nearStroke, simplify, strokesBox, type LooseStroke } from '#lib/pdf/ink.js';
+	import LooseInk from '#lib/pdf/looseInk.svelte.js';
 	import PdfAnnotations from '#lib/pdf/annotations.svelte.js';
 	import { boxTarget, pagePoint, textTarget, type TextTarget } from '#lib/pdf/anchor.js';
 	import {
@@ -37,7 +46,9 @@
 	import SideNotes from '../pdf/SideNotes.svelte';
 	import SelectionMenu from '../pdf/SelectionMenu.svelte';
 	import PdfDock, { type PdfTool } from '../pdf/PdfDock.svelte';
-	import { MessageSquare, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
+	import InkTray, { type InkMode } from '../pdf/InkTray.svelte';
+	import { INK_RGB } from '../pdf/colors.js';
+	import { MessageSquare, Quote, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
 	import type PdfHandle from '#lib/models/PdfHandle.js';
 
 	let {
@@ -386,6 +397,96 @@
 	let moreFor: Annotation | null = $state(null);
 	let moreAnchor: HTMLElement | null = $state(null);
 
+	// ── Ink ─────────────────────────────────────────────────────────────────
+
+	let inkColor: InkColor = $state('graphite');
+	let inkWidth: InkWidth = $state('fine');
+	let inkMode: InkMode = $state('pen');
+	let gesture: { page: number; points: number[] } | null = $state(null);
+	const ERASER_RADIUS = 0.012;
+
+	const looseInk = new LooseInk(() => handle as PdfHandle);
+	$effect(() => {
+		if (!handle) return;
+		looseInk.load().catch((e) => console.error('ink load failed', e));
+		return () => void looseInk.flush();
+	});
+
+	const looseByPage = $derived.by(() => {
+		const map = new Map<number, LooseStroke[]>();
+		for (const s of looseInk.strokes) map.set(s.page, [...(map.get(s.page) ?? []), s]);
+		return map;
+	});
+
+	const activeInk = $derived(
+		annotations.items.find((a) => a.id === activeId && a.kind === 'ink') ?? null
+	);
+
+	function aspectOf(page: number): number {
+		return 1 / (ratios[page - 1] ?? ratios[0] ?? 1);
+	}
+
+	function pageEl(page: number): HTMLElement | null {
+		return pagesEl?.querySelector<HTMLElement>(`.page[data-page="${page}"]`) ?? null;
+	}
+
+	function inkAt(e: PointerEvent) {
+		const g = gesture;
+		const page = g && pageEl(g.page);
+		if (!g || !page) return;
+		const [x, y] = pagePoint(e, page);
+		if (inkMode === 'eraser') {
+			looseInk.take(
+				(s) => s.page === g.page && nearStroke(s, x, y, ERASER_RADIUS, aspectOf(g.page))
+			);
+			return;
+		}
+		const n = g.points.length;
+		if (n && Math.hypot(x - g.points[n - 2], y - g.points[n - 1]) < 0.0015) return;
+		g.points.push(x, y);
+	}
+
+	async function endInk() {
+		const g = gesture;
+		gesture = null;
+		if (!g || inkMode === 'eraser') return;
+		if (inkMode === 'pen') {
+			if (g.points.length >= 2) {
+				const points = simplify(g.points, aspectOf(g.page));
+				looseInk.add({ page: g.page, color: inkColor, width: inkWidth, points });
+			}
+			return;
+		}
+		const taken = looseInk.take((s) => s.page === g.page && inLasso(s, g.points));
+		if (taken.length === 0) return;
+		const strokes = taken.map(({ page: _page, ...stroke }) => stroke);
+		try {
+			const a = await annotations.create({
+				page: g.page,
+				kind: 'ink',
+				color: 'amber',
+				rects: [strokesBox(strokes)],
+				strokes
+			});
+			activeId = editingId = a.id;
+		} catch (e) {
+			for (const s of taken) looseInk.add(s);
+			reportError(e, "The ink couldn't be grouped.");
+		}
+	}
+
+	async function recolorInk(a: Annotation) {
+		const next =
+			INK_COLORS[(INK_COLORS.indexOf(a.strokes?.[0]?.color ?? 'graphite') + 1) % INK_COLORS.length];
+		try {
+			await annotations.setFields(a.id, {
+				strokes: (a.strokes ?? []).map((s) => ({ ...s, color: next }))
+			});
+		} catch (e) {
+			reportError(e, "The ink's color couldn't be changed.");
+		}
+	}
+
 	// a bare highlight stays out of the margin until it's picked or given a comment
 	const notes = $derived(
 		annotations.items.filter((a) => a.comment || a.id === activeId || a.id === editingId)
@@ -427,21 +528,31 @@
 	}
 
 	function onPagesPointerDown(e: PointerEvent) {
-		if (tool !== 'region' || e.button !== 0) return;
+		if ((tool !== 'region' && tool !== 'ink') || e.button !== 0) return;
 		const page = pageAt(e.target);
 		if (!page) return;
 		e.preventDefault();
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		if (tool === 'ink') {
+			gesture = { page: pageNumber(page), points: [] };
+			inkAt(e);
+			return;
+		}
 		draft = { page: pageNumber(page), from: { x: e.clientX, y: e.clientY }, rect: null };
 	}
 
 	function onPagesPointerMove(e: PointerEvent) {
+		if (gesture) inkAt(e);
 		if (!draft) return;
 		const page = pagesEl?.querySelector<HTMLElement>(`.page[data-page="${draft.page}"]`);
 		if (page) draft.rect = boxTarget(draft.from, { x: e.clientX, y: e.clientY }, page);
 	}
 
 	async function onPagesPointerUp(e: PointerEvent) {
+		if (gesture) {
+			await endInk();
+			return;
+		}
 		if (draft) {
 			const { page, rect } = draft;
 			draft = null;
@@ -630,6 +741,10 @@
 	}}
 />
 
+{#snippet inkTray()}
+	<InkTray bind:color={inkColor} bind:width={inkWidth} bind:mode={inkMode} />
+{/snippet}
+
 {#snippet heroExtra()}
 	{#if annotations.items.length}
 		<span class="meta-sep"></span>
@@ -641,7 +756,12 @@
 	{/if}
 {/snippet}
 
-<div class="pdf-viewer" class:flow class:region-tool={tool === 'region'} bind:this={rootEl}>
+<div
+	class="pdf-viewer"
+	class:flow
+	class:drawing={tool === 'region' || tool === 'ink'}
+	bind:this={rootEl}
+>
 	<div
 		class="scroll"
 		role="presentation"
@@ -650,7 +770,7 @@
 		onwheel={onWheel}
 		onpointerdown={(e) => {
 			const el = e.target as Element;
-			if (!el.closest('.pages, .rail')) activeId = null;
+			if (!el.closest('.pages, .rail, .ink-menu')) activeId = null;
 		}}
 	>
 		<div class="column" style:width="{columnWidth}px">
@@ -690,13 +810,54 @@
 							>
 								<PageMarks
 									marks={byPage.get(i + 1) ?? []}
+									aspect={1 / ratio}
 									{activeId}
 									draft={draft?.page === i + 1 ? draft.rect : null}
+									loose={looseByPage.get(i + 1)}
+									drawing={gesture?.page === i + 1 && inkMode === 'pen'
+										? { color: inkColor, width: inkWidth, points: gesture.points }
+										: null}
+									lasso={gesture?.page === i + 1 && inkMode === 'lasso' ? gesture.points : null}
 								/>
 								<div class="textLayer"></div>
 							</div>
 						{/each}
 					</div>
+					{#if activeInk?.rects[0]}
+						{@const r = activeInk.rects[0]}
+						{@const pen = activeInk.strokes?.[0]?.color ?? 'graphite'}
+						<div
+							class="ink-menu"
+							style:left="{Math.max(0, r[0] * width - 22)}px"
+							style:top="{(pageTops[activeInk.page - 1] ?? 0) +
+								(r[1] + r[3]) * width * aspectOf(activeInk.page) +
+								14}px"
+						>
+							<button class="on" type="button" onclick={() => (editingId = activeInk.id)}>
+								<MessageSquare size={12} strokeWidth={1.75} />Comment
+							</button>
+							<button type="button" onclick={() => cite(activeInk)}>
+								<Quote size={12} strokeWidth={1.75} />Copy citation
+							</button>
+							<span class="sep"></span>
+							<button
+								class="square"
+								type="button"
+								title="Change the ink's color"
+								onclick={() => recolorInk(activeInk)}
+							>
+								<span class="dot" style:--ink={INK_RGB[pen]}></span>
+							</button>
+							<button
+								class="square muted"
+								type="button"
+								title="Delete"
+								onclick={() => removeAnnotation(activeInk)}
+							>
+								<Trash2 size={13} strokeWidth={1.75} />
+							</button>
+						</div>
+					{/if}
 					{#if rail}
 						<div class="rail" style:left="{width + RAIL_GAP}px">
 							<SideNotes
@@ -756,6 +917,7 @@
 			{zoom}
 			disabled={!annotations.writable}
 			onZoomReset={() => setZoom(1)}
+			tray={tool === 'ink' ? inkTray : undefined}
 		/>
 	{/if}
 	{#if !flow}
@@ -843,6 +1005,68 @@
 		gap: 10px;
 	}
 
+	/* the ink group's menu, under the group like the design's */
+	.ink-menu {
+		position: absolute;
+		z-index: 4;
+		display: flex;
+		align-items: center;
+		gap: 1px;
+		padding: 3px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-bg);
+		box-shadow: var(--menu-shadow);
+		font-family: var(--font-ui);
+		font-size: 12px;
+		color: var(--color-text-secondary);
+		white-space: nowrap;
+	}
+
+	.ink-menu button {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		height: 24px;
+		padding: 0 8px;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.ink-menu button.on,
+	.ink-menu button:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.ink-menu button.square {
+		justify-content: center;
+		width: 24px;
+		padding: 0;
+	}
+
+	.ink-menu button.muted {
+		color: var(--color-ui-muted);
+	}
+
+	.ink-menu .sep {
+		width: 1px;
+		height: 14px;
+		margin: 0 3px;
+		background: var(--color-border);
+	}
+
+	.ink-menu .dot {
+		width: 11px;
+		height: 11px;
+		border-radius: 999px;
+		background: rgb(var(--ink));
+	}
+
 	.rail {
 		position: absolute;
 		top: 0;
@@ -858,12 +1082,12 @@
 		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 	}
 
-	.region-tool .page {
+	.drawing .page {
 		cursor: crosshair;
 		user-select: none;
 	}
 
-	.region-tool .textLayer {
+	.drawing .textLayer {
 		pointer-events: none;
 	}
 

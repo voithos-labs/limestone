@@ -1,10 +1,10 @@
 <script lang="ts" module>
-	export type PdfTool = 'select' | 'highlight' | 'region';
+	export type PdfTool = 'select' | 'highlight' | 'region' | 'ink';
 </script>
 
 <script lang="ts">
 	import type { Component, Snippet } from 'svelte';
-	import { Highlighter, SquareDashed, TextCursor } from '@lucide/svelte';
+	import { Highlighter, Pen, SquareDashed, TextCursor } from '@lucide/svelte';
 
 	let {
 		tool = $bindable('select'),
@@ -31,7 +31,8 @@
 	const TOOLS: { id: PdfTool; label: string; key?: string; icon: Component }[] = [
 		{ id: 'select', label: 'Select text', icon: TextCursor },
 		{ id: 'highlight', label: 'Highlight', key: 'H', icon: Highlighter },
-		{ id: 'region', label: 'Region', key: 'R', icon: SquareDashed }
+		{ id: 'region', label: 'Region', key: 'R', icon: SquareDashed },
+		{ id: 'ink', label: 'Ink', key: 'P', icon: Pen }
 	];
 
 	function onWindowKey(e: KeyboardEvent) {

@@ -384,6 +384,37 @@ pub fn read_document_tags(
     })
 }
 
+/// a pdf's loose ink strokes, kept in its sidecar until a lasso groups them into an annotation
+#[tauri::command]
+pub fn read_pdf_ink(app: AppHandle, source_id: String, id: String) -> Result<Value, OpError> {
+    let root = root_of(&app, &source_id)?;
+    let meta = sidecar::read(&root, &id).map_err(OpError::from)?;
+    Ok(meta
+        .and_then(|m| m.get("ink").cloned())
+        .unwrap_or_else(|| Value::Array(Vec::new())))
+}
+
+#[tauri::command]
+pub fn save_pdf_ink(
+    app: AppHandle,
+    id: String,
+    source_id: String,
+    rel_path: String,
+    ink: Value,
+) -> Result<(), OpError> {
+    let root = root_of(&app, &source_id)?;
+    sidecar::rewrite(&root, &id, &rel_path, move |meta| {
+        if let Some(obj) = meta.as_object_mut() {
+            if ink.as_array().is_some_and(|strokes| strokes.is_empty()) {
+                obj.shift_remove("ink");
+            } else {
+                obj.insert("ink".to_string(), ink);
+            }
+        }
+    })
+    .map_err(OpError::from)
+}
+
 #[tauri::command]
 pub async fn strip_document_tag(
     app_data: State<'_, AppData>,

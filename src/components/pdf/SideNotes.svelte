@@ -3,7 +3,7 @@
 	import { ArrowUpRight, Ellipsis, GripVertical, Link, Pencil, Quote } from '@lucide/svelte';
 	import type { Annotation } from '#lib/pdf/annotation.js';
 	import { citationEmbed, type Citing } from '#lib/pdf/citation.js';
-	import { ANNOTATION_RGB } from './colors.js';
+	import { annotationRgb } from './colors.js';
 
 	let {
 		notes,
@@ -97,7 +97,7 @@
 			class:active={a.id === activeId || editing}
 			data-note={a.id}
 			style:top="{tops.get(a.id) ?? 0}px"
-			style:--ann={ANNOTATION_RGB[a.color]}
+			style:--ann={annotationRgb(a)}
 			bind:offsetHeight={heights[a.id]}
 		>
 			<span
@@ -122,7 +122,9 @@
 				<span class="bar"></span>
 				<div class="body">
 					{#if a.kind === 'ink'}
-						<span class="kind"><Pencil size={11} strokeWidth={2} />Ink</span>
+						<span class="kind"
+							><Pencil size={11} strokeWidth={2} />Ink{editing && !a.comment ? ' · new' : ''}</span
+						>
 					{/if}
 					{#if editing}
 						<textarea

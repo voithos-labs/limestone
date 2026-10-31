@@ -12,6 +12,13 @@ export type AnnotationKind = 'highlight' | 'region' | 'ink';
 /** A box on a page as fractions of the page's width and height: `[x, y, w, h]`, top-left origin. */
 export type PageRect = [number, number, number, number];
 
+/** One ink stroke: page fractions as a flat `[x0, y0, x1, y1, …]` list, plus its pen. */
+export interface InkStroke {
+	color: InkColor;
+	width: InkWidth;
+	points: number[];
+}
+
 export interface AnnotationFields {
 	pdf: string;
 	page: number;
@@ -21,6 +28,7 @@ export interface AnnotationFields {
 	quote?: string;
 	prefix?: string;
 	suffix?: string;
+	strokes?: InkStroke[];
 	edition?: string;
 }
 
@@ -35,6 +43,12 @@ export interface Annotation extends AnnotationFields {
 
 export const ANNOTATION_COLORS = ['amber', 'sage', 'sky', 'rose', 'violet'] as const;
 export type AnnotationColor = (typeof ANNOTATION_COLORS)[number];
+
+export const INK_COLORS = ['graphite', 'pink', 'blue', 'green'] as const;
+export type InkColor = (typeof INK_COLORS)[number];
+
+export const INK_WIDTHS = ['fine', 'medium', 'marker'] as const;
+export type InkWidth = (typeof INK_WIDTHS)[number];
 
 /** The frontmatter key an annotation note's fields live under. */
 export const ANNOTATION_KEY = 'annotation';
@@ -56,8 +70,32 @@ export function readAnnotation(properties: Record<string, unknown>): AnnotationF
 		page: a.page as number,
 		kind: a.kind,
 		color: isColor(a.color) ? a.color : 'amber',
-		rects: Array.isArray(a.rects) ? a.rects.filter(isRect) : []
+		rects: Array.isArray(a.rects) ? a.rects.map(parseRect).filter(isRect) : [],
+		...(Array.isArray(a.strokes) ? { strokes: a.strokes.map(parseStroke).filter(isStroke) } : {})
 	} as AnnotationFields;
+}
+
+/**
+ * The fields as they're written to frontmatter: a rect as `x y w h` and a stroke's points as
+ * `x,y x,y …`, so a note stays a few readable lines rather than one number per line.
+ */
+export function storedFields(fields: AnnotationFields): Record<string, unknown> {
+	// ink wears its strokes' colors, so a highlight color would only mislead a reader
+	const { color, ...rest } = fields;
+	return {
+		...(fields.kind === 'ink' ? rest : { ...rest, color }),
+		rects: fields.rects.map((r) => r.join(' ')),
+		...(fields.strokes
+			? {
+					strokes: fields.strokes.map((s) => ({
+						...s,
+						points: pairs(s.points)
+							.map(([x, y]) => `${x},${y}`)
+							.join(' ')
+					}))
+				}
+			: {})
+	};
 }
 
 /**
@@ -118,6 +156,40 @@ function isColor(v: unknown): v is AnnotationColor {
 	return ANNOTATION_COLORS.includes(v as AnnotationColor);
 }
 
+export function isStroke(v: unknown): v is InkStroke {
+	if (!v || typeof v !== 'object') return false;
+	const s = v as Record<string, unknown>;
+	return (
+		INK_COLORS.includes(s.color as InkColor) &&
+		INK_WIDTHS.includes(s.width as InkWidth) &&
+		Array.isArray(s.points) &&
+		s.points.length >= 2 &&
+		s.points.every((n) => Number.isFinite(n))
+	);
+}
+
+function parseRect(v: unknown): unknown {
+	return typeof v === 'string' ? v.trim().split(/\s+/).map(Number) : v;
+}
+
+function parseStroke(v: unknown): unknown {
+	if (!v || typeof v !== 'object' || typeof (v as InkStroke).points !== 'string') return v;
+	const text = (v as { points: string }).points;
+	return {
+		...v,
+		points: text
+			.trim()
+			.split(/[\s,]+/)
+			.map(Number)
+	};
+}
+
+function pairs(points: number[]): [number, number][] {
+	const out: [number, number][] = [];
+	for (let i = 0; i + 1 < points.length; i += 2) out.push([points[i], points[i + 1]]);
+	return out;
+}
+
 function isRect(v: unknown): v is PageRect {
-	return Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number');
+	return Array.isArray(v) && v.length === 4 && v.every((n) => Number.isFinite(n));
 }
