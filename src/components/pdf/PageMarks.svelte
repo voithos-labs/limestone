@@ -131,7 +131,7 @@
 	.marks > .ink-group {
 		border: 1px dashed var(--color-accent);
 		border-radius: 4px;
-		background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+		background: var(--accent-a9);
 	}
 
 	.ink {
@@ -147,6 +147,6 @@
 
 	.lasso {
 		stroke: var(--color-accent);
-		fill: color-mix(in srgb, var(--color-accent) 6%, transparent);
+		fill: var(--accent-a9);
 	}
 </style>
