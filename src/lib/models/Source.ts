@@ -154,8 +154,17 @@ const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 const selfWrites = new Map<string, number>();
 
+const selfWriteListeners = new Set<(sourceId: string, relPath: string) => void>();
+
 export function noteSelfWrite(sourceId: string, relPath: string, mtime: number): void {
 	selfWrites.set(`${sourceId}/${relPath}`, mtime);
+	for (const cb of selfWriteListeners) cb(sourceId, relPath);
+}
+
+/** The app's own writes, which `onFsChanged` and reconciling both leave out. */
+export function onSelfWrite(cb: (sourceId: string, relPath: string) => void): () => void {
+	selfWriteListeners.add(cb);
+	return () => selfWriteListeners.delete(cb);
 }
 
 function isSelfWrite(e: FsChanged): boolean {

@@ -8,6 +8,7 @@ import { mermaidPlugin } from '@voithos-labs/aragonite/plugins/mermaid';
 import { mermaidRenderer } from '@voithos-labs/aragonite/plugins/mermaid/renderer';
 import { slashCommandsPlugin } from '@voithos-labs/aragonite/plugins/slash-commands';
 import { tocPlugin } from '@voithos-labs/aragonite/plugins/toc';
+import { annotationEmbedsPlugin } from './annotation-embeds';
 import { wikiImageEmbedsPlugin } from './image-embeds';
 import { wikiLinksPlugin } from './wikilinks';
 import type { EditorPluginEntry } from '@voithos-labs/aragonite';
@@ -27,5 +28,6 @@ export const EDITOR_PLUGINS: readonly EditorPluginEntry[] = [
 	slashCommandsPlugin(),
 	tocPlugin(),
 	wikiImageEmbedsPlugin(),
+	annotationEmbedsPlugin(),
 	wikiLinksPlugin()
 ];

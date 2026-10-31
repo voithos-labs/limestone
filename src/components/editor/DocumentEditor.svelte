@@ -41,6 +41,8 @@
 	import { resolveWikiLink, touchLinkIndex } from '#lib/services/links.svelte.js';
 	import { joinRel, targetStem } from '#lib/services/links.svelte.js';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
+	import { OPEN_ANNOTATION_EVENT, type OpenAnnotationDetail } from './annotation-embeds';
+	import { openAtAnnotation } from '#lib/pdf/citation.js';
 	import { historyDecorations } from './history-decorations';
 	import { bodyTags, createTagStepper, type BodyTag } from './body-tags';
 	import { findHeading } from './note-links';
@@ -994,11 +996,22 @@
 		else if (kind === 'tag') void openTagView(target, side, inNewTab);
 	}
 
+	function onOpenAnnotation(e: Event): void {
+		if (!editor) return;
+		openAtAnnotation(editor, (e as CustomEvent<OpenAnnotationDetail>).detail).catch((err) =>
+			reportError(err, "The PDF couldn't be opened.")
+		);
+	}
+
 	$effect(() => {
 		const el = wrapperEl;
 		if (!el) return;
 		el.addEventListener(ACTIVATE_EVENT, onActivate);
-		return () => el.removeEventListener(ACTIVATE_EVENT, onActivate);
+		el.addEventListener(OPEN_ANNOTATION_EVENT, onOpenAnnotation);
+		return () => {
+			el.removeEventListener(ACTIVATE_EVENT, onActivate);
+			el.removeEventListener(OPEN_ANNOTATION_EVENT, onOpenAnnotation);
+		};
 	});
 
 	const MIME_EXTS: Record<string, string> = {
