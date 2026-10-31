@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { Ellipsis, GripVertical, Link, Pencil, Quote } from '@lucide/svelte';
+	import { ArrowUpRight, Ellipsis, GripVertical, Link, Pencil, Quote } from '@lucide/svelte';
 	import type { Annotation } from '#lib/pdf/annotation.js';
-	import { citationEmbed } from '#lib/pdf/citation.js';
+	import { citationEmbed, type Citing } from '#lib/pdf/citation.js';
 	import { ANNOTATION_RGB } from './colors.js';
 
 	let {
@@ -10,6 +10,8 @@
 		anchorY,
 		activeId = null,
 		editingId = null,
+		citedBy = new Map(),
+		onOpenNote,
 		onActivate,
 		onEdit,
 		onSave,
@@ -23,6 +25,9 @@
 		anchorY: (a: Annotation) => number;
 		activeId?: string | null;
 		editingId?: string | null;
+		/** The notes citing each annotation, by annotation id. */
+		citedBy?: Map<string, Citing[]>;
+		onOpenNote: (id: string) => void;
 		onActivate: (a: Annotation) => void;
 		onEdit: (a: Annotation | null) => void;
 		onSave: (a: Annotation, comment: string) => void;
@@ -132,6 +137,23 @@
 					{:else}
 						<span class="comment empty">Add a comment…</span>
 					{/if}
+					{#if citedBy.get(a.id)?.length}
+						<div class="cites">
+							{#each citedBy.get(a.id) ?? [] as c (c.id)}
+								<button
+									class="cite"
+									type="button"
+									title={c.line || c.title}
+									onclick={(e) => {
+										e.stopPropagation();
+										onOpenNote(c.id);
+									}}
+								>
+									<ArrowUpRight size={10} strokeWidth={2} />{c.title}
+								</button>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			</div>
 			{#if !editing}
@@ -222,6 +244,37 @@
 		gap: 5px;
 		font-size: 11px;
 		color: var(--color-ui-muted);
+	}
+
+	.cites {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin-top: 2px;
+	}
+
+	.cite {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		max-width: 100%;
+		height: 20px;
+		padding: 0 7px;
+		border: 0;
+		border-radius: 999px;
+		background: var(--chip-bg);
+		color: var(--color-text-secondary);
+		font: inherit;
+		font-size: 11px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		cursor: pointer;
+	}
+
+	.cite:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
 	}
 
 	textarea {

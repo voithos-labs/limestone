@@ -33,6 +33,7 @@
 	import Doc, { type AnyDoc } from '#lib/models/Doc.js';
 	import { lastHistoryText } from '#lib/services/history.js';
 	import GonePage from '../pages/GonePage.svelte';
+	import AnnotationSource from '../pdf/AnnotationSource.svelte';
 	import GoneActions, { type GoneAction } from '../pages/GoneActions.svelte';
 	import DocHistory, { type HistoryVersion } from '#lib/models/DocHistory.svelte.js';
 	import View from '#lib/models/View.svelte.js';
@@ -1095,6 +1096,10 @@
 	});
 </script>
 
+{#snippet annotationSource()}
+	{#if handle}<AnnotationSource noteId={handle.id} properties={handle.properties} {editor} />{/if}
+{/snippet}
+
 {#snippet documentHeader()}
 	{#if handle}
 		<DocumentHero
@@ -1116,6 +1121,7 @@
 			onRemoveTextTag={removeTextTag}
 			onEnter={focusStart}
 			onError={reportProblem}
+			extra={annotationSource}
 		/>
 		{@render docNotices()}
 	{/if}
@@ -1177,6 +1183,7 @@
 			onRemoveTextTag={removeTextTag}
 			onEnter={focusStart}
 			onError={reportProblem}
+			extra={annotationSource}
 		/>
 		{@render docNotices()}
 	{/if}

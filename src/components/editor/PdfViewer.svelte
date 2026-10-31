@@ -18,7 +18,14 @@
 	import type { Annotation, AnnotationColor, PageRect } from '#lib/pdf/annotation.js';
 	import PdfAnnotations from '#lib/pdf/annotations.svelte.js';
 	import { boxTarget, pagePoint, textTarget, type TextTarget } from '#lib/pdf/anchor.js';
-	import { copyCitation, copyLink } from '#lib/pdf/citation.js';
+	import {
+		OPEN_AT_ANNOTATION,
+		citedIn,
+		copyCitation,
+		copyLink,
+		type Citing
+	} from '#lib/pdf/citation.js';
+	import { linkIndex } from '#lib/services/links.svelte.js';
 	import { appEditorShortcut } from '#lib/shortcuts.js';
 	import DocumentHero from './DocumentHero.svelte';
 	import { backPlace, forwardPlace, openFolder, openFolderMeta } from './tabPlaces.js';
@@ -319,6 +326,56 @@
 		return map;
 	});
 
+	// which notes cite each annotation, asked again whenever the index or the list changes
+	let citedBy: Map<string, Citing[]> = $state(new Map());
+	$effect(() => {
+		const items = annotations.items;
+		void linkIndex.version;
+		let cancelled = false;
+		void Promise.all(
+			items.map((a) =>
+				citedIn(a.title, a.id)
+					.catch(() => [])
+					.then((c): [string, Citing[]] => [a.id, c])
+			)
+		).then((entries) => {
+			if (!cancelled) citedBy = new Map(entries);
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	// Opened at an annotation (from a citation): land on its passage once both have loaded.
+	$effect(() => {
+		const id = tab.state[OPEN_AT_ANNOTATION];
+		if (typeof id !== 'string' || !pdf || !pagesEl) return;
+		const a = annotations.items.find((x) => x.id === id);
+		if (!a) return;
+		delete tab.state[OPEN_AT_ANNOTATION];
+		activeId = a.id;
+		requestAnimationFrame(() => scrollToAnnotation(a));
+	});
+
+	function scrollToAnnotation(a: Annotation) {
+		const scroller = scrollEl;
+		if (flow || !scroller || !pagesEl) {
+			pagesEl?.querySelector(`.page[data-page="${a.page}"]`)?.scrollIntoView({ block: 'start' });
+			return;
+		}
+		const pagesTop =
+			pagesEl.getBoundingClientRect().top -
+			scroller.getBoundingClientRect().top +
+			scroller.scrollTop;
+		scroller.scrollTo({ top: pagesTop + anchorY(a) - scroller.clientHeight / 3 });
+	}
+
+	function openNote(id: string) {
+		MarkdownHandle.fromID(id)
+			.then((doc) => editor?.openDoc(doc))
+			.catch((e) => reportError(e, "The note couldn't be opened."));
+	}
+
 	let tool: PdfTool = $state('select');
 	let color: AnnotationColor = $state('amber');
 	let activeId: string | null = $state(null);
@@ -489,10 +546,7 @@
 		moreFor = null;
 		if (!a) return;
 		if (value === 'delete') void removeAnnotation(a);
-		else if (value === 'open')
-			MarkdownHandle.fromID(a.id)
-				.then((doc) => editor?.openDoc(doc))
-				.catch((e) => reportError(e, "The annotation's note couldn't be opened."));
+		else if (value === 'open') openNote(a.id);
 	}
 
 	function onWindowKeyForMarks(e: KeyboardEvent) {
@@ -650,6 +704,8 @@
 								{anchorY}
 								{activeId}
 								{editingId}
+								{citedBy}
+								onOpenNote={openNote}
 								onActivate={(a) => (activeId = a.id)}
 								onEdit={(a) => {
 									editingId = a?.id ?? null;
