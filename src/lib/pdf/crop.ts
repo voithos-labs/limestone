@@ -1,7 +1,7 @@
-import { invoke } from '@tauri-apps/api/core';
 import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { select } from '#lib/services/db.js';
+import { getSource } from '#lib/models/Source.js';
+import { openPdf } from './open.js';
 import type { PageRect } from './annotation.js';
 
 /** Draws a box of a PDF page into a canvas, for anything that shows a region outside the viewer. */
@@ -81,7 +81,7 @@ function loadPdf(pdfId: string): Promise<PDFDocumentProxy> {
 		loaded.set(pdfId, hit);
 		return hit;
 	}
-	const next = openPdf(pdfId);
+	const next = openById(pdfId);
 	loaded.set(pdfId, next);
 	next.catch(() => {
 		if (loaded.get(pdfId) === next) loaded.delete(pdfId);
@@ -94,18 +94,19 @@ function loadPdf(pdfId: string): Promise<PDFDocumentProxy> {
 	return next;
 }
 
-// Reads the bytes itself rather than through PdfHandle.loadBytes, which marks the PDF opened:
+// Opens the file itself rather than through PdfHandle.open, which marks the PDF opened:
 // a note showing a crop isn't the reader opening the PDF.
-async function openPdf(pdfId: string): Promise<PDFDocumentProxy> {
+async function openById(pdfId: string): Promise<PDFDocumentProxy> {
 	const [row] = await select<{ source_id: string; rel_path: string }>(
 		`SELECT source_id, rel_path FROM documents WHERE id = ?1 AND document_type = 'pdf'`,
 		[pdfId]
 	);
 	if (!row) throw new Error(`no pdf with id ${pdfId}`);
-	const [lib, bytes] = await Promise.all([
-		import('pdfjs-dist/legacy/build/pdf.mjs'),
-		invoke<ArrayBuffer>('read_document_bytes', { sourceId: row.source_id, relPath: row.rel_path })
-	]);
-	lib.GlobalWorkerOptions.workerSrc = workerUrl;
-	return lib.getDocument({ data: new Uint8Array(bytes) }).promise;
+	const source = await getSource(row.source_id);
+	const task = await openPdf({
+		sourceId: source.id,
+		sourcePath: source.path,
+		relPath: row.rel_path
+	});
+	return task.promise;
 }

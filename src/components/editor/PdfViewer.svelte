@@ -7,7 +7,6 @@
 		RenderTask,
 		TextLayer
 	} from 'pdfjs-dist/legacy/build/pdf.mjs';
-	import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import type { TabState } from '#lib/models/EditorState.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
@@ -25,6 +24,7 @@
 	} from '#lib/pdf/annotation.js';
 	import { inLasso, nearStroke, simplify, strokesBox, type LooseStroke } from '#lib/pdf/ink.js';
 	import LooseInk from '#lib/pdf/looseInk.svelte.js';
+	import { pdfLib, type PdfLib } from '#lib/pdf/open.js';
 	import PdfAnnotations from '#lib/pdf/annotations.svelte.js';
 	import { boxTarget, pagePoint, textTarget, type TextTarget } from '#lib/pdf/anchor.js';
 	import {
@@ -48,6 +48,7 @@
 	import SelectionMenu from '../pdf/SelectionMenu.svelte';
 	import PdfDock, { type PdfTool } from '../pdf/PdfDock.svelte';
 	import InkTray, { type InkMode } from '../pdf/InkTray.svelte';
+	import PdfDigest from '../pdf/PdfDigest.svelte';
 	import { INK_RGB } from '../pdf/colors.js';
 	import { MessageSquare, Quote, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
 	import type PdfHandle from '#lib/models/PdfHandle.js';
@@ -60,7 +61,6 @@
 	}: { tab: TabState; editor?: EditorState; flow?: boolean; showOpenFolder?: boolean } = $props();
 
 	type Failure = ReadErrorKind | 'password' | 'damaged';
-	type PdfLib = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
 	const MAX_PAGE_WIDTH = 1000;
 	const SIDE_PAD = 24;
@@ -141,14 +141,11 @@
 		failure = null;
 		void (async () => {
 			try {
-				const [mod, data] = await Promise.all([
-					import('pdfjs-dist/legacy/build/pdf.mjs'),
-					h.loadBytes()
-				]);
-				if (cancelled) return;
+				const [mod, opening] = await Promise.all([pdfLib(), h.open()]);
+				// closed while opening: the cleanup ran before there was a task to stop
+				if (cancelled) return void opening.destroy();
+				task = opening;
 				lib = mod;
-				mod.GlobalWorkerOptions.workerSrc = workerUrl;
-				task = mod.getDocument({ data });
 				const doc = await task.promise;
 				if (cancelled) return;
 				const first = (await doc.getPage(1)).getViewport({ scale: 1 });
@@ -392,6 +389,21 @@
 		MarkdownHandle.fromID(id)
 			.then((doc) => editor?.openDoc(doc))
 			.catch((e) => reportError(e, "The note couldn't be opened."));
+	}
+
+	// ── Pages and digest ────────────────────────────────────────────────────
+
+	let mode: 'pages' | 'digest' = $state(
+		untrack(() => tab.state.pdf_mode) === 'digest' ? 'digest' : 'pages'
+	);
+	const markedPages = $derived(new Set(annotations.items.map((a) => a.page)).size);
+	// the digest's passages read in the editor's own face, as a note's text does
+	const editorFont = $derived(editor?.session?.settings.get<string>('editor.font') ?? 'sans-serif');
+
+	function setMode(next: 'pages' | 'digest') {
+		mode = next;
+		tab.state.pdf_mode = next;
+		menu = null;
 	}
 
 	let tool: PdfTool = $state('select');
@@ -753,14 +765,33 @@
 {/snippet}
 
 {#snippet heroExtra()}
-	{#if annotations.items.length}
+	{@const count = annotations.items.length}
+	{#if count}
 		<span class="meta-sep"></span>
 		<span class="ann-count">
-			<MessageSquare size={12} strokeWidth={1.75} />
-			{annotations.items.length}
-			{annotations.items.length === 1 ? 'annotation' : 'annotations'}
+			{#if mode === 'pages'}<MessageSquare size={12} strokeWidth={1.75} />{/if}
+			{count}
+			{count === 1 ? 'annotation' : 'annotations'}
+			{#if mode === 'digest'}· {markedPages} {markedPages === 1 ? 'page' : 'pages'}{/if}
 		</span>
 	{/if}
+	<span class="meta-fill"></span>
+	<span class="modes" role="tablist">
+		<button
+			class:on={mode === 'pages'}
+			type="button"
+			role="tab"
+			aria-selected={mode === 'pages'}
+			onclick={() => setMode('pages')}>Pages</button
+		>
+		<button
+			class:on={mode === 'digest'}
+			type="button"
+			role="tab"
+			aria-selected={mode === 'digest'}
+			onclick={() => setMode('digest')}>Digest</button
+		>
+	</span>
 {/snippet}
 
 <div
@@ -798,6 +829,18 @@
 			{/if}
 			{#if notice}
 				<GonePage headline={notice.headline} detail={notice.detail} {actions} />
+			{:else if mode === 'digest'}
+				<div class="digest" style:--font-editor={editorFont}>
+					<PdfDigest
+						annotations={annotations.items}
+						{citedBy}
+						onGoTo={(a) => {
+							tab.state[OPEN_AT_ANNOTATION] = a.id;
+							setMode('pages');
+						}}
+						onOpenNote={openNote}
+					/>
+				</div>
 			{:else if pdf && width > 0}
 				<div class="reading">
 					<div
@@ -917,7 +960,7 @@
 			onClose={() => (menu = null)}
 		/>
 	{/if}
-	{#if pdf && !flow && !notice}
+	{#if pdf && !flow && !notice && mode === 'pages'}
 		<PdfDock
 			bind:tool
 			page={currentPage}
@@ -997,6 +1040,41 @@
 		height: 16px;
 		margin: 0 4px;
 		background: var(--color-border);
+	}
+
+	.meta-fill {
+		flex: 1;
+	}
+
+	/* the design's Pages | Digest switch, at the far end of the meta row */
+	.modes {
+		display: flex;
+		gap: 2px;
+		padding: 2px;
+		border-radius: 7px;
+		background: var(--chip-bg);
+	}
+
+	.modes button {
+		display: inline-flex;
+		align-items: center;
+		height: 20px;
+		padding: 0 9px;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-ui-muted);
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.modes button.on {
+		background: var(--chip-seg-active);
+		color: var(--color-text-primary);
+	}
+
+	.digest {
+		padding-top: 10px;
 	}
 
 	.ann-count {

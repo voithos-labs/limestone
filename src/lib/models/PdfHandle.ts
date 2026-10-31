@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import Doc, { type DocumentRow } from './Doc';
 import type { Source } from './Source';
 import { tagSlug } from './Tag';
+import { openPdf } from '#lib/pdf/open.js';
+import type { PDFDocumentLoadingTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 function stemOf(relPath: string): string {
 	return relPath.slice(relPath.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '');
@@ -19,13 +21,15 @@ class PdfHandle extends Doc {
 		super(row, source);
 	}
 
-	async loadBytes(): Promise<Uint8Array> {
-		const bytes = await invoke<ArrayBuffer>('read_document_bytes', {
+	/** Starts loading the PDF in pdf.js, reading only the parts it asks for. */
+	async open(): Promise<PDFDocumentLoadingTask> {
+		const task = await openPdf({
 			sourceId: this.source.id,
+			sourcePath: this.source.path,
 			relPath: this._relPath
 		});
 		await this.markAccessed();
-		return new Uint8Array(bytes);
+		return task;
 	}
 
 	async fetchTags(): Promise<void> {

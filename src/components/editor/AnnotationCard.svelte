@@ -10,12 +10,11 @@
 		ANNOTATION_KEY,
 		annotationComment,
 		readAnnotation,
-		type AnnotationFields,
-		type PageRect
+		runOn,
+		type AnnotationFields
 	} from '#lib/pdf/annotation.js';
-	import { renderCrop, unionRect } from '#lib/pdf/crop.js';
-	import { annotationRgb, INK_RGB } from '../pdf/colors';
-	import { strokePath } from '#lib/pdf/ink.js';
+	import { annotationRgb } from '../pdf/colors';
+	import AnnotationCrop from '../pdf/AnnotationCrop.svelte';
 	import PdfIcon from '../ui/PdfIcon.svelte';
 	import {
 		OPEN_ANNOTATION_EVENT,
@@ -50,10 +49,7 @@
 	const fields = $derived(found?.fields);
 	const pdfTitle = $derived(found?.pdfTitle ?? named?.pdfTitle ?? target);
 	const page = $derived(fields?.page ?? named?.page);
-	const crop = $derived(
-		fields && fields.kind !== 'highlight' ? padded(unionRect(fields.rects), fields.kind) : null
-	);
-	const suffix = $derived(fields?.suffix ? joinSuffix(fields.suffix) : '');
+	const suffix = $derived(fields?.suffix ? runOn(fields.suffix) : '');
 	const reading = $derived(getPresentationMode() === 'reading');
 
 	$effect(() => {
@@ -127,53 +123,6 @@
 		return name.toLowerCase() === target.toLowerCase();
 	}
 
-	// ink sits right at its box's edge, so its crop gets a margin to keep the strokes whole
-	function padded(rect: PageRect | null, kind: AnnotationFields['kind']): PageRect | null {
-		if (!rect || kind !== 'ink') return rect;
-		const m = 0.015;
-		const x = Math.max(0, rect[0] - m);
-		const y = Math.max(0, rect[1] - m);
-		return [x, y, Math.min(1, rect[0] + rect[2] + m) - x, Math.min(1, rect[1] + rect[3] + m) - y];
-	}
-
-	// the suffix is the words after the quote, cut at a word, so it reads on from the highlight
-	function joinSuffix(text: string): string {
-		const lead = /^[,.;:!?)\]]/.test(text) ? '' : ' ';
-		const tail = /[.!?]["')\]]?$/.test(text) ? '' : '…';
-		return `${lead}${text}${tail}`;
-	}
-
-	function drawCrop(box: HTMLElement) {
-		const canvas = box.querySelector('canvas')!;
-		let controller: AbortController | null = null;
-		let drawnWidth = 0;
-		const draw = () => {
-			const a = found;
-			const rect = crop;
-			const width = Math.floor(box.clientWidth);
-			if (!a || !rect || width <= 0 || width === drawnWidth) return;
-			drawnWidth = width;
-			controller?.abort();
-			const signal = (controller = new AbortController()).signal;
-			renderCrop(canvas, {
-				pdf: a.fields.pdf,
-				page: a.fields.page,
-				rect,
-				width,
-				maxHeight: CROP_MAX_HEIGHT,
-				signal
-			}).catch(() => {
-				if (!signal.aborted) drawnWidth = 0;
-			});
-		};
-		const ro = new ResizeObserver(draw);
-		ro.observe(box);
-		return () => {
-			ro.disconnect();
-			controller?.abort();
-		};
-	}
-
 	function open(): void {
 		if (!found || !el) return;
 		const detail: OpenAnnotationDetail = { pdf: found.fields.pdf, id: found.id };
@@ -221,19 +170,8 @@
 		</span>
 		{#if fields?.kind === 'highlight' && fields.quote}
 			<span class="quote"><span class="mark">{fields.quote}</span>{suffix}</span>
-		{:else if crop}
-			{#key `${fields?.pdf} ${fields?.page} ${crop.join()}`}
-				<span class="crop" {@attach drawCrop}>
-					<canvas width="0" height="0"></canvas>
-					{#if fields?.strokes?.length}
-						<svg viewBox={crop.join(' ')} preserveAspectRatio="none" aria-hidden="true">
-							{#each fields.strokes as s, i (i)}
-								<path d={strokePath(s.points, 1)} stroke="rgb({INK_RGB[s.color]})" />
-							{/each}
-						</svg>
-					{/if}
-				</span>
-			{/key}
+		{:else if fields && fields.kind !== 'highlight'}
+			<AnnotationCrop annotation={fields} maxHeight={CROP_MAX_HEIGHT} />
 		{/if}
 		{#if found?.comment}
 			<span class="rule"></span>
@@ -298,33 +236,6 @@
 		background: rgb(var(--ann) / 0.28);
 		box-decoration-break: clone;
 		-webkit-box-decoration-break: clone;
-	}
-
-	.crop {
-		position: relative;
-		display: block;
-		align-self: flex-start;
-		line-height: 0;
-	}
-
-	.crop canvas {
-		max-width: 100%;
-		border-radius: 5px;
-	}
-
-	.crop svg {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		fill: none;
-		stroke-width: 2;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-	}
-
-	.crop path {
-		vector-effect: non-scaling-stroke;
 	}
 
 	.rule {

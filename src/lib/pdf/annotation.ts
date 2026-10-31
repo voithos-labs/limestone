@@ -129,6 +129,23 @@ export function annotationBody(quote: string | undefined, comment: string): stri
 	return text ? `${block}\n\n${text}\n` : `${block}\n`;
 }
 
+/**
+ * The words before a quote, set to read on into it. A prefix starting in lowercase was cut
+ * mid-sentence, which is the only sign of it the stored fields keep.
+ */
+export function leadIn(prefix: string): string {
+	const lead = /^\p{Ll}/u.test(prefix) ? '…' : '';
+	const gap = /[([{"'“‘]$/.test(prefix) ? '' : ' ';
+	return `${lead}${prefix}${gap}`;
+}
+
+/** The words after a quote, cut at a word, so they read on from the highlight. */
+export function runOn(suffix: string): string {
+	const lead = /^[,.;:!?)\]]/.test(suffix) ? '' : ' ';
+	const tail = /[.!?]["')\]]?$/.test(suffix) ? '' : '…';
+	return `${lead}${suffix}${tail}`;
+}
+
 /** The comment in a note body: everything after a leading blockquote, or the whole body. */
 export function annotationComment(body: string): string {
 	const lines = body.replace(/^\s*\n/, '').split('\n');
