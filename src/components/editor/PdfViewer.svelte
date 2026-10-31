@@ -13,7 +13,7 @@
 	import { readErrorKind, type ReadErrorKind } from '#lib/models/MarkdownHandle.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 	import { sourceName } from '#lib/models/Source.js';
-	import { mark, reportError, type MenuEntry } from '#lib/overlays.svelte.js';
+	import { mark, reportError, toasts, type MenuEntry } from '#lib/overlays.svelte.js';
 	import {
 		INK_COLORS,
 		type Annotation,
@@ -24,7 +24,7 @@
 	} from '#lib/pdf/annotation.js';
 	import { inLasso, nearStroke, simplify, strokesBox, type LooseStroke } from '#lib/pdf/ink.js';
 	import LooseInk from '#lib/pdf/looseInk.svelte.js';
-	import { pdfLib, type PdfLib } from '#lib/pdf/open.js';
+	import { openPdf, pdfLib, type PdfLib } from '#lib/pdf/open.js';
 	import PdfAnnotations from '#lib/pdf/annotations.svelte.js';
 	import { boxTarget, pagePoint, textTarget, type TextTarget } from '#lib/pdf/anchor.js';
 	import {
@@ -50,7 +50,9 @@
 	import InkTray, { type InkMode } from '../pdf/InkTray.svelte';
 	import PdfDigest from '../pdf/PdfDigest.svelte';
 	import { INK_RGB } from '../pdf/colors.js';
-	import { MessageSquare, Quote, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
+	import { History, MessageSquare, Quote, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
+	import { exists } from '@tauri-apps/plugin-fs';
+	import { editionOf, editionPath } from '#lib/pdf/edition.js';
 	import type PdfHandle from '#lib/models/PdfHandle.js';
 
 	let {
@@ -134,6 +136,7 @@
 
 	$effect(() => {
 		const h = handle;
+		const old = viewing;
 		void attempt;
 		if (!h) return;
 		let cancelled = false;
@@ -141,7 +144,16 @@
 		failure = null;
 		void (async () => {
 			try {
-				const [mod, opening] = await Promise.all([pdfLib(), h.open()]);
+				const [mod, opening] = await Promise.all([
+					pdfLib(),
+					old
+						? openPdf({
+								sourceId: h.source.id,
+								sourcePath: h.source.path,
+								relPath: editionPath(old)
+							})
+						: h.open()
+				]);
 				// closed while opening: the cleanup ran before there was a task to stop
 				if (cancelled) return void opening.destroy();
 				task = opening;
@@ -149,6 +161,10 @@
 				const doc = await task.promise;
 				if (cancelled) return;
 				const first = (await doc.getPage(1)).getViewport({ scale: 1 });
+				const edition = old ?? (await editionOf(doc));
+				if (cancelled) return;
+				if (!old) annotations.edition = edition;
+				shownEdition = edition;
 				ratios = Array.from({ length: doc.numPages }, () => first.width / first.height);
 				pdf = doc;
 			} catch (e) {
@@ -335,9 +351,38 @@
 		return annotations.watch();
 	});
 
+	// ── Editions ────────────────────────────────────────────────────────────
+
+	/** A preserved edition being read instead of the current file. */
+	let viewing: string | null = $state(null);
+	let shownEdition: string | null = $state(null);
+
+	// Marks made on other bytes aren't painted on these; one made before editions were recorded
+	// has no edition and shows everywhere.
+	const onEdition = (a: Annotation) => !a.edition || !shownEdition || a.edition === shownEdition;
+	const here = $derived(annotations.items.filter(onEdition));
+	const elsewhere = $derived(annotations.items.filter((a) => !onEdition(a)));
+	const canAnnotate = $derived(annotations.writable && !viewing);
+
+	async function openEdition(edition: string | null): Promise<boolean> {
+		const h = handle;
+		if (!h) return false;
+		if (edition && !(await exists(`${h.source.path}/${editionPath(edition)}`))) {
+			toasts.push(
+				"That edition wasn't preserved in this source: its marks can't be shown on the current file."
+			);
+			return false;
+		}
+		menu = null;
+		activeId = editingId = null;
+		tool = 'select';
+		viewing = edition;
+		return true;
+	}
+
 	const byPage = $derived.by(() => {
 		const map = new Map<number, Annotation[]>();
-		for (const a of annotations.items) map.set(a.page, [...(map.get(a.page) ?? []), a]);
+		for (const a of here) map.set(a.page, [...(map.get(a.page) ?? []), a]);
 		return map;
 	});
 
@@ -367,6 +412,13 @@
 		if (typeof id !== 'string' || !pdf || !pagesEl) return;
 		const a = annotations.items.find((x) => x.id === id);
 		if (!a) return;
+		if (!onEdition(a)) {
+			// its passage is on another edition's pages; this runs again once that edition loads
+			void openEdition(a.edition ?? null).then((ok) => {
+				if (!ok) delete tab.state[OPEN_AT_ANNOTATION];
+			});
+			return;
+		}
 		delete tab.state[OPEN_AT_ANNOTATION];
 		activeId = a.id;
 		requestAnimationFrame(() => scrollToAnnotation(a));
@@ -396,7 +448,7 @@
 	let mode: 'pages' | 'digest' = $state(
 		untrack(() => tab.state.pdf_mode) === 'digest' ? 'digest' : 'pages'
 	);
-	const markedPages = $derived(new Set(annotations.items.map((a) => a.page)).size);
+	const markedPages = $derived(new Set(here.map((a) => a.page)).size);
 	// the digest's passages read in the editor's own face, as a note's text does
 	const editorFont = $derived(editor?.session?.settings.get<string>('editor.font') ?? 'sans-serif');
 
@@ -437,9 +489,7 @@
 		return map;
 	});
 
-	const activeInk = $derived(
-		annotations.items.find((a) => a.id === activeId && a.kind === 'ink') ?? null
-	);
+	const activeInk = $derived(here.find((a) => a.id === activeId && a.kind === 'ink') ?? null);
 
 	function aspectOf(page: number): number {
 		return 1 / (ratios[page - 1] ?? ratios[0] ?? 1);
@@ -507,9 +557,7 @@
 	}
 
 	// a bare highlight stays out of the margin until it's picked or given a comment
-	const notes = $derived(
-		annotations.items.filter((a) => a.comment || a.id === activeId || a.id === editingId)
-	);
+	const notes = $derived(here.filter((a) => a.comment || a.id === activeId || a.id === editingId));
 
 	function anchorY(a: Annotation): number {
 		const ratio = ratios[a.page - 1] ?? ratios[0] ?? 1;
@@ -765,7 +813,7 @@
 {/snippet}
 
 {#snippet heroExtra()}
-	{@const count = annotations.items.length}
+	{@const count = here.length}
 	{#if count}
 		<span class="meta-sep"></span>
 		<span class="ann-count">
@@ -774,6 +822,21 @@
 			{count === 1 ? 'annotation' : 'annotations'}
 			{#if mode === 'digest'}· {markedPages} {markedPages === 1 ? 'page' : 'pages'}{/if}
 		</span>
+	{/if}
+	{#if viewing}
+		<button class="edition-chip" type="button" onclick={() => openEdition(null)}>
+			<History size={12} strokeWidth={1.75} />Earlier edition · back to the current file
+		</button>
+	{:else if elsewhere.length}
+		<button
+			class="edition-chip"
+			type="button"
+			title="Made on a version of this PDF that has since been replaced"
+			onclick={() => openEdition(elsewhere[0].edition ?? null)}
+		>
+			<History size={12} strokeWidth={1.75} />
+			{elsewhere.length} from an earlier edition
+		</button>
 	{/if}
 	<span class="meta-fill"></span>
 	<span class="modes" role="tablist">
@@ -832,7 +895,7 @@
 			{:else if mode === 'digest'}
 				<div class="digest" style:--font-editor={editorFont}>
 					<PdfDigest
-						annotations={annotations.items}
+						annotations={here}
 						{citedBy}
 						onGoTo={(a) => {
 							tab.state[OPEN_AT_ANNOTATION] = a.id;
@@ -942,7 +1005,7 @@
 			x={menu.x}
 			y={menu.y}
 			{color}
-			writable={annotations.writable}
+			writable={canAnnotate}
 			onColor={(c) => {
 				color = c;
 				void fromMenu(() => {});
@@ -966,7 +1029,7 @@
 			page={currentPage}
 			pages={ratios.length}
 			{zoom}
-			disabled={!annotations.writable}
+			disabled={!canAnnotate}
 			onZoomReset={() => setZoom(1)}
 			{dark}
 			onToggleDark={() => {
@@ -1040,6 +1103,25 @@
 		height: 16px;
 		margin: 0 4px;
 		background: var(--color-border);
+	}
+
+	.edition-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		height: 24px;
+		padding: 0 8px;
+		border: 0;
+		border-radius: 6px;
+		background: var(--chip-bg);
+		color: var(--color-text-secondary);
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.edition-chip:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
 	}
 
 	.meta-fill {

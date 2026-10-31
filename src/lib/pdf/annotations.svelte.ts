@@ -4,6 +4,7 @@ import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import type PdfHandle from '#lib/models/PdfHandle.js';
 import Folder from '#lib/models/Folder.js';
 import { onSourceReconciled } from '#lib/models/Source.js';
+import { preserveEdition } from './edition.js';
 import {
 	ANNOTATION_KEY,
 	annotationBody,
@@ -24,6 +25,8 @@ export default class PdfAnnotations {
 	items: Annotation[] = $state([]);
 	/** Whether this PDF's folder stores metadata, which annotations need. */
 	writable = $state(true);
+	/** The edition on screen, which new annotations are made on and preserve. */
+	edition: string | null = null;
 
 	private loadGen = 0;
 
@@ -60,7 +63,15 @@ export default class PdfAnnotations {
 		// The PDF's first metadata write creates its sidecar, which is what keeps its id when it's
 		// renamed or moved. Every note made here points at that id.
 		await pdf.saveMeta({ createdAt: pdf.createdAt });
-		const annotation: AnnotationFields = { pdf: pdf.id, ...fields };
+		// the bytes are kept before any note points at them
+		const edition = this.edition;
+		if (edition)
+			await preserveEdition({ sourcePath: pdf.source.path, relPath: pdf.relPath }, edition);
+		const annotation: AnnotationFields = {
+			pdf: pdf.id,
+			...fields,
+			...(edition ? { edition } : {})
+		};
 		const doc = await MarkdownHandle.createFromTitle(pdf.source, {
 			title: annotationTitle(pdf.title, fields.page, annotationLabel(fields.kind, fields.quote)),
 			dir: siblingDir(pdf.relPath, pdf.title),
