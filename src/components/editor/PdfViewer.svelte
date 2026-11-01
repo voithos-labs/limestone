@@ -108,14 +108,14 @@
 	const savedZoom = untrack(() => tab.state.pdf_zoom);
 	let zoom = $state(typeof savedZoom === 'number' ? savedZoom : 1);
 	const column = $derived(Math.min(columnMax, paneW - SIDE_PAD * 2));
-	// the margin rail takes room only once a page beside it still reads comfortably
-	const rail = $derived(column >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_WIDTH);
+	// The margin fits once a page beside it still reads comfortably. The page keeps the size it has
+	// beside the margin whether or not the margin shows, so showing it only moves the page.
+	const railFits = $derived(column >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_WIDTH);
 	const fitWidth = $derived(
-		Math.max(0, Math.min(MAX_PAGE_WIDTH, column - (rail ? RAIL_GAP + RAIL_WIDTH : 0)))
+		Math.max(0, Math.min(MAX_PAGE_WIDTH, column - (railFits ? RAIL_GAP + RAIL_WIDTH : 0)))
 	);
 	// a zoomed page never runs wider than the pane, which the column would squeeze it to anyway
 	const width = $derived(Math.round(Math.min(fitWidth * zoom, paneW)));
-	const columnWidth = $derived(width + (rail ? RAIL_GAP + RAIL_WIDTH : 0));
 	let rootEl: HTMLDivElement | undefined = $state();
 	let scrollEl: HTMLDivElement | undefined = $state();
 	// in flow the page scrolls, not the viewer
@@ -626,8 +626,20 @@
 		}
 	}
 
-	// a bare highlight stays out of the margin until it's picked or given a comment
-	const notes = $derived(here.filter((a) => a.comment || a.id === activeId || a.id === editingId));
+	let sidenotesOn = $state(untrack(() => tab.state.pdf_sidenotes) !== false);
+	// A bare highlight stays out of the margin until it's picked or given a comment. While
+	// sidenotes are hidden, only a comment being written shows.
+	const notes = $derived(
+		here.filter((a) => a.id === editingId || (sidenotesOn && (a.comment || a.id === activeId)))
+	);
+	// The margin opens with a PDF's first annotation, so an unmarked one reads centered.
+	const rail = $derived(railFits && (sidenotesOn ? here.length > 0 : editingId !== null));
+	const columnWidth = $derived(width + (rail ? RAIL_GAP + RAIL_WIDTH : 0));
+
+	function toggleSidenotes() {
+		sidenotesOn = !sidenotesOn;
+		tab.state.pdf_sidenotes = sidenotesOn;
+	}
 
 	function anchorY(a: Annotation): number {
 		const i = a.page - 1;
@@ -1122,6 +1134,9 @@
 			disabled={!canAnnotate}
 			onZoomReset={() => setZoom(1)}
 			{dark}
+			sidenotes={sidenotesOn}
+			sidenotesFit={railFits}
+			onToggleSidenotes={toggleSidenotes}
 			onToggleDark={() => {
 				darkChoice = !dark;
 				tab.state.pdf_dark = darkChoice;

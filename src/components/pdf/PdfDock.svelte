@@ -19,7 +19,7 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Moon } from '@lucide/svelte';
+	import { MessageSquare, Moon } from '@lucide/svelte';
 
 	let {
 		tool = $bindable('select'),
@@ -28,8 +28,11 @@
 		zoom,
 		disabled = false,
 		dark = false,
+		sidenotes = true,
+		sidenotesFit = true,
 		onZoomReset,
 		onToggleDark,
+		onToggleSidenotes,
 		tray
 	}: {
 		tool?: PdfTool;
@@ -42,8 +45,13 @@
 		disabled?: boolean;
 		/** Whether pages are shown with dark colors. */
 		dark?: boolean;
+		/** Whether comments show in the margin beside the pages. */
+		sidenotes?: boolean;
+		/** Whether the pane is wide enough for the margin at all. */
+		sidenotesFit?: boolean;
 		onZoomReset: () => void;
 		onToggleDark: () => void;
+		onToggleSidenotes: () => void;
 		/** Options for the current tool, stacked above the dock. */
 		tray?: Snippet;
 	} = $props();
@@ -79,6 +87,21 @@
 			onclick={onToggleDark}
 		>
 			<Moon size={14} strokeWidth={1.75} />
+		</button>
+		<span class="sep"></span>
+		<button
+			class="sidenotes"
+			class:on={sidenotes && sidenotesFit}
+			type="button"
+			title={!sidenotesFit
+				? 'The pane is too narrow for sidenotes'
+				: sidenotes
+					? 'Hide sidenotes'
+					: 'Show sidenotes'}
+			disabled={!sidenotesFit}
+			onclick={onToggleSidenotes}
+		>
+			<MessageSquare size={13} strokeWidth={1.75} />Sidenotes
 		</button>
 	</div>
 </div>
@@ -171,5 +194,32 @@
 
 	.zoom:hover {
 		color: var(--color-text-secondary);
+	}
+
+	.sidenotes {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		height: 26px;
+		padding: 0 8px;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.sidenotes:hover:not(:disabled, .on) {
+		color: var(--color-text-secondary);
+	}
+
+	.sidenotes.on {
+		color: var(--color-text-primary);
+	}
+
+	.sidenotes:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 </style>
