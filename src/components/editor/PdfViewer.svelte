@@ -634,7 +634,10 @@
 	);
 	// The margin opens with a PDF's first annotation, so an unmarked one reads centered.
 	const rail = $derived(railFits && (sidenotesOn ? here.length > 0 : editingId !== null));
-	const columnWidth = $derived(width + (rail ? RAIL_GAP + RAIL_WIDTH : 0));
+	// the digest reads at the full column whatever the sidenotes show, since it has no margin
+	const columnWidth = $derived(
+		width + ((mode === 'digest' ? railFits : rail) ? RAIL_GAP + RAIL_WIDTH : 0)
+	);
 
 	function toggleSidenotes() {
 		sidenotesOn = !sidenotesOn;
