@@ -1,10 +1,25 @@
 <script lang="ts" module>
+	import type { Component } from 'svelte';
+	import { Highlighter, Pen, SquareDashed, TextCursor } from '@lucide/svelte';
+
 	export type PdfTool = 'select' | 'highlight' | 'region' | 'ink';
+
+	const TOOLS: { id: PdfTool; label: string; key?: string; icon: Component }[] = [
+		{ id: 'select', label: 'Select text', icon: TextCursor },
+		{ id: 'highlight', label: 'Highlight', key: 'H', icon: Highlighter },
+		{ id: 'region', label: 'Region', key: 'R', icon: SquareDashed },
+		{ id: 'ink', label: 'Ink', key: 'P', icon: Pen }
+	];
+
+	/** The tool a single key picks, as its button's title shows. */
+	export function toolForKey(key: string): PdfTool | null {
+		return TOOLS.find((t) => t.key === key.toUpperCase())?.id ?? null;
+	}
 </script>
 
 <script lang="ts">
-	import type { Component, Snippet } from 'svelte';
-	import { Highlighter, Moon, Pen, SquareDashed, TextCursor } from '@lucide/svelte';
+	import type { Snippet } from 'svelte';
+	import { Moon } from '@lucide/svelte';
 
 	let {
 		tool = $bindable('select'),
@@ -32,31 +47,7 @@
 		/** Options for the current tool, stacked above the dock. */
 		tray?: Snippet;
 	} = $props();
-
-	const TOOLS: { id: PdfTool; label: string; key?: string; icon: Component }[] = [
-		{ id: 'select', label: 'Select text', icon: TextCursor },
-		{ id: 'highlight', label: 'Highlight', key: 'H', icon: Highlighter },
-		{ id: 'region', label: 'Region', key: 'R', icon: SquareDashed },
-		{ id: 'ink', label: 'Ink', key: 'P', icon: Pen }
-	];
-
-	function onWindowKey(e: KeyboardEvent) {
-		if (e.ctrlKey || e.metaKey || e.altKey || typingIn(e.target)) return;
-		if (e.key === 'Escape') {
-			tool = 'select';
-			return;
-		}
-		const hit = TOOLS.find((t) => t.key && t.key === e.key.toUpperCase());
-		if (hit && !disabled) tool = hit.id;
-	}
-
-	function typingIn(target: EventTarget | null): boolean {
-		const el = target as HTMLElement | null;
-		return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
-	}
 </script>
-
-<svelte:window onkeydown={onWindowKey} />
 
 <div class="dock-stack">
 	{@render tray?.()}

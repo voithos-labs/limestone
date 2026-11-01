@@ -1,5 +1,14 @@
 <script lang="ts" module>
 	export type InkMode = 'pen' | 'eraser' | 'lasso';
+
+	const MODE_KEYS: Record<string, InkMode | undefined> = { E: 'eraser', L: 'lasso' };
+
+	/** The mode a key switches to, as the tray's titles show; pressing it again goes back to the pen. */
+	export function modeForKey(mode: InkMode, key: string): InkMode | null {
+		const hit = MODE_KEYS[key.toUpperCase()];
+		if (!hit) return null;
+		return mode === hit ? 'pen' : hit;
+	}
 </script>
 
 <script lang="ts">
@@ -24,18 +33,7 @@
 		medium: 'Medium',
 		marker: 'Marker'
 	};
-
-	function onWindowKey(e: KeyboardEvent) {
-		const el = e.target as HTMLElement | null;
-		if (e.ctrlKey || e.metaKey || e.altKey) return;
-		if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
-		const key = e.key.toUpperCase();
-		if (key === 'E') mode = mode === 'eraser' ? 'pen' : 'eraser';
-		else if (key === 'L') mode = mode === 'lasso' ? 'pen' : 'lasso';
-	}
 </script>
-
-<svelte:window onkeydown={onWindowKey} />
 
 <div class="tray">
 	{#each INK_COLORS as c (c)}

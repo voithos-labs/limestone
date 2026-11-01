@@ -58,8 +58,8 @@
 	import PageMarks from '../pdf/PageMarks.svelte';
 	import SideNotes from '../pdf/SideNotes.svelte';
 	import SelectionMenu from '../pdf/SelectionMenu.svelte';
-	import PdfDock, { type PdfTool } from '../pdf/PdfDock.svelte';
-	import InkTray, { type InkMode } from '../pdf/InkTray.svelte';
+	import PdfDock, { toolForKey, type PdfTool } from '../pdf/PdfDock.svelte';
+	import InkTray, { modeForKey, type InkMode } from '../pdf/InkTray.svelte';
 	import PdfDigest from '../pdf/PdfDigest.svelte';
 	import { INK_RGB } from '../pdf/colors.js';
 	import { History, MessageSquare, Quote, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
@@ -412,8 +412,7 @@
 		stepZoom(e.deltaY < 0 ? 1 : -1);
 	}
 
-	function onWindowKey(e: KeyboardEvent) {
-		if (flow || !(e.ctrlKey || e.metaKey) || !rootEl?.isConnected) return;
+	function zoomKey(e: KeyboardEvent) {
 		const shortcut = appEditorShortcut(e);
 		if (shortcut) stepZoom(shortcut === 'zoom-in' ? 1 : -1);
 		else if (e.key === '0') setZoom(1);
@@ -798,15 +797,6 @@
 		else if (value === 'open') openNote(a.id);
 	}
 
-	function onWindowKeyForMarks(e: KeyboardEvent) {
-		if (!activeId || editingId || (e.key !== 'Delete' && e.key !== 'Backspace')) return;
-		const focused = document.activeElement as HTMLElement | null;
-		if (focused && (focused.isContentEditable || /^(INPUT|TEXTAREA)$/.test(focused.tagName)))
-			return;
-		const a = annotations.items.find((x) => x.id === activeId);
-		if (a) void removeAnnotation(a);
-	}
-
 	const notice = $derived.by(() => {
 		if (!failure || !handle) return null;
 		const src = sourceName(handle.source);
@@ -870,14 +860,41 @@
 		if (failure === 'not_found') return [];
 		return [{ label: 'Try again', strong: true, run: () => attempt++ }];
 	});
+
+	// ── Keys ────────────────────────────────────────────────────────────────
+
+	// Keys arrive through the window, which every pane shares, so only the pane being worked in
+	// takes them, and never while text is being typed.
+	const paneActive = $derived(!editor?.session || editor.session.active === editor);
+	const docked = $derived(!!pdf && !flow && !notice && mode === 'pages');
+
+	function onWindowKey(e: KeyboardEvent) {
+		if (!paneActive || !rootEl?.isConnected || typingIn(e.target)) return;
+		if (e.ctrlKey || e.metaKey) {
+			if (!flow) zoomKey(e);
+			return;
+		}
+		if (e.altKey) return;
+		if ((e.key === 'Delete' || e.key === 'Backspace') && activeId && !editingId) {
+			const a = annotations.items.find((x) => x.id === activeId);
+			if (a) void removeAnnotation(a);
+			return;
+		}
+		if (!docked) return;
+		const picked = toolForKey(e.key);
+		if (e.key === 'Escape') tool = 'select';
+		else if (picked) {
+			if (canAnnotate) tool = picked;
+		} else if (tool === 'ink') inkMode = modeForKey(inkMode, e.key) ?? inkMode;
+	}
+
+	function typingIn(target: EventTarget | null): boolean {
+		const el = target as HTMLElement | null;
+		return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+	}
 </script>
 
-<svelte:window
-	onkeydown={(e) => {
-		onWindowKey(e);
-		onWindowKeyForMarks(e);
-	}}
-/>
+<svelte:window onkeydown={onWindowKey} />
 
 {#snippet inkTray()}
 	<InkTray bind:color={inkColor} bind:width={inkWidth} bind:mode={inkMode} />
@@ -1096,7 +1113,7 @@
 			onClose={() => (menu = null)}
 		/>
 	{/if}
-	{#if pdf && !flow && !notice && mode === 'pages'}
+	{#if docked}
 		<PdfDock
 			bind:tool
 			page={currentPage}
