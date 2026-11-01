@@ -1,5 +1,5 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import type { PDFDocumentLoadingTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 /**
@@ -37,29 +37,57 @@ export async function openPdf(file: PdfFile): Promise<PDFDocumentLoadingTask> {
 	if (!head?.ok || !Number.isFinite(length)) throw await readFailure(file);
 
 	const initial = await fetchRange(url, 0, Math.min(length, FIRST_CHUNK));
+	const stop = new AbortController();
 	class Ranges extends lib.PDFDataRangeTransport {
 		requestDataRange(begin: number, end: number) {
-			fetchRange(url, begin, end)
-				.then((chunk) => this.onDataRange(begin, chunk))
-				.catch((e) => console.error('pdf range read failed', e));
+			fetchRange(url, begin, end, stop.signal)
+				.then((chunk) => {
+					if (!stop.signal.aborted) this.onDataRange(begin, chunk);
+				})
+				.catch((e) => {
+					if (!stop.signal.aborted) console.error('pdf range read failed', e);
+				});
+		}
+		// pdf.js calls this when the document is destroyed; reads still in flight have no reader
+		abort() {
+			stop.abort();
 		}
 	}
-	return lib.getDocument({
+	const task = lib.getDocument({
 		range: new Ranges(length, initial),
 		rangeChunkSize: CHUNK,
 		disableAutoFetch: true,
 		disableStream: true
 	});
+	lengths.set(task, length);
+	return task;
+}
+
+/**
+ * The byte length of a PDF opened here. pdf.js's own `getDownloadInfo` only answers once every
+ * byte has been read, which range loading never does for most files.
+ */
+export function fileLength(doc: PDFDocumentProxy): number | undefined {
+	return lengths.get(doc.loadingTask);
 }
 
 // ── Internal ────────────────────────────────────────────────────────────────
 
-// enough that a small file arrives whole in its first read, and a large one shows page one
+// Enough that a small file arrives whole in its first read, and a large one shows page one.
+// Measured, the chunk size barely changes how much a typical PDF reads (its page tree is
+// clustered); it only trades bytes for requests on a file whose page dictionaries are scattered.
 const FIRST_CHUNK = 1 << 20;
 const CHUNK = 1 << 18;
 
-async function fetchRange(url: string, begin: number, end: number): Promise<Uint8Array> {
-	const res = await fetch(url, { headers: { Range: `bytes=${begin}-${end - 1}` } });
+const lengths = new WeakMap<PDFDocumentLoadingTask, number>();
+
+async function fetchRange(
+	url: string,
+	begin: number,
+	end: number,
+	signal?: AbortSignal
+): Promise<Uint8Array> {
+	const res = await fetch(url, { headers: { Range: `bytes=${begin}-${end - 1}` }, signal });
 	if (!res.ok) throw new Error(`range ${begin}-${end} answered ${res.status}`);
 	return new Uint8Array(await res.arrayBuffer());
 }

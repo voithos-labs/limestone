@@ -5,6 +5,7 @@ import { openPdf } from './open.js';
 import { editionPath } from './edition.js';
 import { exists } from '@tauri-apps/plugin-fs';
 import type { PageRect } from './annotation.js';
+import { canvasScale } from './layout.js';
 
 /** Draws a box of a PDF page into a canvas, for anything that shows a region outside the viewer. */
 
@@ -22,6 +23,8 @@ export interface Crop {
 	/** Narrows a tall box until it fits this many CSS pixels high. */
 	maxHeight?: number;
 	signal?: AbortSignal;
+	/** The PDF already open on the box's edition, which saves opening a second copy of it. */
+	doc?: PDFDocumentProxy | null;
 }
 
 /**
@@ -30,7 +33,7 @@ export interface Crop {
  */
 export async function renderCrop(canvas: HTMLCanvasElement, crop: Crop): Promise<void> {
 	const { pdf, edition, page, rect, maxHeight, signal } = crop;
-	const doc = await loadPdf(pdf, edition);
+	const doc = crop.doc ?? (await loadPdf(pdf, edition));
 	signal?.throwIfAborted();
 	const p = await doc.getPage(page);
 	signal?.throwIfAborted();
@@ -40,7 +43,7 @@ export async function renderCrop(canvas: HTMLCanvasElement, crop: Crop): Promise
 	const width = maxHeight ? Math.min(crop.width, maxHeight * aspect) : crop.width;
 	const viewport = p.getViewport({ scale: width / (w * base.width) });
 	const height = width / aspect;
-	const dpr = window.devicePixelRatio || 1;
+	const dpr = canvasScale(width, height, window.devicePixelRatio || 1);
 	canvas.width = Math.max(1, Math.round(width * dpr));
 	canvas.height = Math.max(1, Math.round(height * dpr));
 	canvas.style.width = `${width}px`;

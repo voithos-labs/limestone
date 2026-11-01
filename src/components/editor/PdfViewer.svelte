@@ -4,6 +4,7 @@
 	import type {
 		PDFDocumentLoadingTask,
 		PDFDocumentProxy,
+		PDFPageProxy,
 		RenderTask,
 		TextLayer
 	} from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -27,6 +28,17 @@
 	import { openPdf, pdfLib, type PdfLib } from '#lib/pdf/open.js';
 	import PdfAnnotations from '#lib/pdf/annotations.svelte.js';
 	import { boxTarget, pagePoint, textTarget, type TextTarget } from '#lib/pdf/anchor.js';
+	import {
+		canvasScale,
+		holdRange,
+		keepPlace,
+		layoutPages,
+		pageAt as pageIndexAt,
+		pagesBetween,
+		type PageLayout,
+		type PageRange
+	} from '#lib/pdf/layout.js';
+	import { scrollParent } from '#lib/util/dom.js';
 	import {
 		OPEN_AT_ANNOTATION,
 		citedIn,
@@ -71,14 +83,17 @@
 	const RAIL_GAP = 24;
 	const PAGE_GAP = 10;
 	const RESIZE_SETTLE_MS = 120;
-	const KEEP_MARGIN = '1200px 0px';
+	// pages within this of the view are mounted and drawn, and stay until they're twice as far
+	const MOUNT_MARGIN = 1200;
+	const KEEP_MARGIN = 2400;
 	const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 
 	const handle = $derived(tab.content.type === 'pdf' ? tab.content.handle : null);
 
 	let lib: PdfLib | null = null;
 	let pdf: PDFDocumentProxy | null = $state.raw(null);
-	let ratios: number[] = $state([]);
+	// each page's width over height: page one's until a page is fetched and says otherwise
+	let ratios: number[] = $state.raw([]);
 	let failure: Failure | null = $state(null);
 	let attempt = $state(0);
 	let paneW = $state(0);
@@ -98,12 +113,13 @@
 	const fitWidth = $derived(
 		Math.max(0, Math.min(MAX_PAGE_WIDTH, column - (rail ? RAIL_GAP + RAIL_WIDTH : 0)))
 	);
-	const width = $derived(Math.round(fitWidth * zoom));
+	// a zoomed page never runs wider than the pane, which the column would squeeze it to anyway
+	const width = $derived(Math.round(Math.min(fitWidth * zoom, paneW)));
 	const columnWidth = $derived(width + (rail ? RAIL_GAP + RAIL_WIDTH : 0));
 	let rootEl: HTMLDivElement | undefined = $state();
 	let scrollEl: HTMLDivElement | undefined = $state();
-	let io: IntersectionObserver | null = $state.raw(null);
-	const watchers = new Map<Element, (visible: boolean) => void>();
+	// in flow the page scrolls, not the viewer
+	let hostScroller: HTMLElement | null = $state.raw(null);
 
 	let propsOpen = $state(false);
 	const back = $derived(backPlace(editor, tab));
@@ -200,58 +216,45 @@
 	});
 
 	$effect(() => {
-		const root = flow ? null : scrollEl;
-		if (!flow && !root) return;
-		const observer = new IntersectionObserver(
-			(entries) => {
-				for (const entry of entries) watchers.get(entry.target)?.(entry.isIntersecting);
-			},
-			{ root, rootMargin: KEEP_MARGIN }
-		);
-		io = observer;
-		return () => {
-			observer.disconnect();
-			io = null;
-		};
+		if (flow && rootEl) hostScroller = scrollParent(rootEl);
 	});
 
+	/** Draws page `n` while it's mounted; only pages near the view are. */
 	function pageView(n: number): Attachment<HTMLElement> {
 		return (node) => {
 			const doc = pdf;
 			const w = width;
-			const observer = io;
-			if (!doc || !lib || w <= 0 || !observer) return;
+			if (!doc || !lib || w <= 0) return;
 			const pdfLib = lib;
 			const textEl = node.querySelector<HTMLElement>('.textLayer')!;
+			let page: PDFPageProxy | null = null;
 			let render: RenderTask | null = null;
 			let text: TextLayer | null = null;
-			let shown = false;
+			let live = true;
 
-			const show = async () => {
-				if (shown) return;
-				shown = true;
-				const page = await doc.getPage(n);
-				if (!shown) return;
+			void (async () => {
+				page = await doc.getPage(n);
+				if (!live) return;
 				const base = page.getViewport({ scale: 1 });
-				ratios[n - 1] = base.width / base.height;
+				learnRatio(n, base.width / base.height);
 				const scale = w / base.width;
 				const viewport = page.getViewport({ scale });
-				const dpr = window.devicePixelRatio || 1;
+				const out = canvasScale(viewport.width, viewport.height, window.devicePixelRatio || 1);
 				const canvas = document.createElement('canvas');
-				canvas.width = Math.floor(viewport.width * dpr);
-				canvas.height = Math.floor(viewport.height * dpr);
+				canvas.width = Math.floor(viewport.width * out);
+				canvas.height = Math.floor(viewport.height * out);
 				render = page.render({
 					canvas,
 					canvasContext: canvas.getContext('2d')!,
 					viewport,
-					transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0]
+					transform: out === 1 ? undefined : [out, 0, 0, out, 0, 0]
 				});
 				try {
 					await render.promise;
 				} catch {
 					return;
 				}
-				if (!shown) return;
+				if (!live) return;
 				node.querySelector('canvas')?.remove();
 				node.prepend(canvas);
 				node.style.setProperty('--scale-factor', String(scale));
@@ -263,26 +266,24 @@
 				});
 				textEl.replaceChildren();
 				await text.render().catch(() => {});
-			};
+			})();
 
-			const hide = () => {
-				shown = false;
-				render?.cancel();
-				text?.cancel();
-				node.querySelector('canvas')?.remove();
-				textEl.replaceChildren();
-			};
-
-			watchers.set(node, (visible) => (visible ? void show() : hide()));
-			observer.observe(node);
 			return () => {
-				shown = false;
+				live = false;
 				render?.cancel();
 				text?.cancel();
-				observer.unobserve(node);
-				watchers.delete(node);
+				// A page leaving the window lets pdf.js drop its decoded resources; one redrawn at
+				// a new zoom keeps them.
+				if (n - 1 < mounted.first || n - 1 > mounted.last) page?.cleanup();
 			};
 		};
+	}
+
+	function learnRatio(n: number, ratio: number) {
+		if (ratios[n - 1] === ratio) return;
+		const next = ratios.slice();
+		next[n - 1] = ratio;
+		ratios = next;
 	}
 
 	// ── Zoom and position ───────────────────────────────────────────────────
@@ -290,27 +291,114 @@
 	let pagesEl: HTMLDivElement | undefined = $state();
 	let currentPage = $state(1);
 
-	/** Each page's top within the pages column, from the ratios, so unrendered pages count too. */
-	const pageTops = $derived.by(() => {
-		const tops: number[] = [];
-		let y = 0;
-		for (const ratio of ratios) {
-			tops.push(y);
-			y += width / ratio + PAGE_GAP;
+	/** Where every page sits, from the ratios, so pages that aren't mounted count too. */
+	const layout = $derived(layoutPages(ratios, width, PAGE_GAP));
+
+	let mounted: PageRange = $state.raw({ first: 0, last: -1 });
+	const shownPages = $derived.by(() => {
+		const out: number[] = [];
+		const last = Math.min(mounted.last, ratios.length - 1);
+		for (let i = mounted.first; i <= last; i++) out.push(i + 1);
+		return out;
+	});
+
+	/** The scroller, and the band of the pages column it shows. */
+	function view(): { el: HTMLElement; top: number; height: number } | null {
+		const pages = pagesEl;
+		const el = flow ? (hostScroller ?? document.scrollingElement) : scrollEl;
+		if (!pages || !(el instanceof HTMLElement)) return null;
+		const top = el === document.scrollingElement ? 0 : el.getBoundingClientRect().top;
+		return { el, top: top - pages.getBoundingClientRect().top, height: el.clientHeight };
+	}
+
+	// The view's top in pages coordinates as last seen, kept exact across a correction the
+	// browser rounds to its pixels, so a run of corrections doesn't drift.
+	let viewTop = 0;
+	let wrote: { scrollTop: number; viewTop: number } | null = null;
+
+	function scrollBy(v: { el: HTMLElement; top: number }, delta: number) {
+		const was = v.el.scrollTop;
+		v.el.scrollTop += delta;
+		// the page's end can clamp the write, and then what moved is what counts
+		const moved = v.el.scrollTop - was;
+		wrote = {
+			scrollTop: v.el.scrollTop,
+			viewTop: v.top + (Math.abs(moved - delta) < 1 ? delta : moved)
+		};
+		viewTop = wrote.viewTop;
+	}
+
+	function updateWindow() {
+		const v = view();
+		if (!v) return;
+		if (wrote?.scrollTop === v.el.scrollTop) viewTop = wrote.viewTop;
+		else {
+			wrote = null;
+			viewTop = v.top;
 		}
-		return tops;
+		const bottom = v.top + v.height;
+		const next = holdRange(
+			mounted,
+			pagesBetween(layout, v.top - MOUNT_MARGIN, bottom + MOUNT_MARGIN),
+			pagesBetween(layout, v.top - KEEP_MARGIN, bottom + KEEP_MARGIN)
+		);
+		if (next.first !== mounted.first || next.last !== mounted.last) mounted = next;
+		if (!flow) currentPage = pageIndexAt(layout.tops, v.top + v.height / 3) + 1;
+	}
+
+	$effect(() => {
+		const pages = pagesEl;
+		const el = flow ? hostScroller : scrollEl;
+		if (!pages || (!flow && !el)) return;
+		const target: HTMLElement | Window = el ?? window;
+		const onScroll = () => updateWindow();
+		target.addEventListener('scroll', onScroll, { passive: true });
+		const ro = new ResizeObserver(onScroll);
+		ro.observe(el ?? document.documentElement);
+		// The header above the pages can change height while the reader is down in them (its
+		// properties load late); with the browser's anchoring off, that's held here too. A page
+		// changing size has already been held by the time this runs, so it finds nothing to do.
+		const holdHeader = () => {
+			const v = view();
+			if (!v || viewTop <= 0) return;
+			const delta = viewTop - v.top;
+			if (Math.abs(delta) >= 0.5) scrollBy(v, delta);
+		};
+		const columnRo = new ResizeObserver(holdHeader);
+		untrack(updateWindow);
+		const column = pages.closest('.column');
+		if (column) columnRo.observe(column);
+		return () => {
+			target.removeEventListener('scroll', onScroll);
+			ro.disconnect();
+			columnRo.disconnect();
+		};
+	});
+
+	// When a page learns its real size, or a zoom or a resize changes every page's, the reader's
+	// place is held by scrolling the difference. The browser's own anchoring is off for the
+	// pages (see .reading), or it would correct a second time.
+	let placed: { layout: PageLayout; pages: HTMLElement } | null = null;
+	$effect(() => {
+		const next = layout;
+		const pages = pagesEl;
+		if (!pages) return;
+		untrack(() => {
+			const before = placed?.pages === pages ? placed.layout : null;
+			placed = { layout: next, pages };
+			const v = view();
+			// with the header still in view there's nothing above the reader to correct for
+			if (before && v && viewTop > 0) {
+				const delta = keepPlace(before, next, viewTop) - v.top;
+				if (Math.abs(delta) >= 0.5) scrollBy(v, delta);
+			}
+			updateWindow();
+		});
 	});
 
 	function setZoom(next: number) {
-		const scroller = scrollEl;
-		const before =
-			scroller && scroller.scrollHeight ? scroller.scrollTop / scroller.scrollHeight : 0;
 		zoom = Math.min(ZOOM_STEPS.at(-1)!, Math.max(ZOOM_STEPS[0], next));
 		tab.state.pdf_zoom = zoom;
-		// the same place stays in view once the pages have taken their new size
-		requestAnimationFrame(() => {
-			if (scroller) scroller.scrollTop = before * scroller.scrollHeight;
-		});
 	}
 
 	function stepZoom(dir: 1 | -1) {
@@ -331,16 +419,6 @@
 		else if (e.key === '0') setZoom(1);
 		else return;
 		e.preventDefault();
-	}
-
-	function trackPage() {
-		const scroller = scrollEl;
-		if (!scroller || !pagesEl) return;
-		const pagesTop = pagesEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-		const y = scroller.clientHeight / 3 - pagesTop;
-		let n = 1;
-		while (n < pageTops.length && pageTops[n] <= y) n++;
-		currentPage = n;
 	}
 
 	// ── Annotations ─────────────────────────────────────────────────────────
@@ -424,17 +502,10 @@
 		requestAnimationFrame(() => scrollToAnnotation(a));
 	});
 
+	/** Brings an annotation's passage a third of the way down the view, mounted or not. */
 	function scrollToAnnotation(a: Annotation) {
-		const scroller = scrollEl;
-		if (flow || !scroller || !pagesEl) {
-			pagesEl?.querySelector(`.page[data-page="${a.page}"]`)?.scrollIntoView({ block: 'start' });
-			return;
-		}
-		const pagesTop =
-			pagesEl.getBoundingClientRect().top -
-			scroller.getBoundingClientRect().top +
-			scroller.scrollTop;
-		scroller.scrollTo({ top: pagesTop + anchorY(a) - scroller.clientHeight / 3 });
+		const v = view();
+		if (v) scrollBy(v, anchorY(a) - v.height / 3 - v.top);
 	}
 
 	function openNote(id: string) {
@@ -560,9 +631,9 @@
 	const notes = $derived(here.filter((a) => a.comment || a.id === activeId || a.id === editingId));
 
 	function anchorY(a: Annotation): number {
-		const ratio = ratios[a.page - 1] ?? ratios[0] ?? 1;
+		const i = a.page - 1;
 		// the note's text starts below its card padding, so the card rises to meet the passage
-		return (pageTops[a.page - 1] ?? 0) + (a.rects[0]?.[1] ?? 0) * (width / ratio) - 10;
+		return (layout.tops[i] ?? 0) + (a.rects[0]?.[1] ?? 0) * (layout.heights[i] ?? 0) - 10;
 	}
 
 	function pageAt(target: EventTarget | Node | null): HTMLElement | null {
@@ -868,7 +939,6 @@
 		class="scroll"
 		role="presentation"
 		bind:this={scrollEl}
-		onscroll={trackPage}
 		onwheel={onWheel}
 		onpointerdown={(e) => {
 			const el = e.target as Element;
@@ -897,6 +967,7 @@
 					<PdfDigest
 						annotations={here}
 						{citedBy}
+						doc={pdf}
 						onGoTo={(a) => {
 							tab.state[OPEN_AT_ANNOTATION] = a.id;
 							setMode('pages');
@@ -909,29 +980,31 @@
 					<div
 						class="pages"
 						role="presentation"
+						style:height="{layout.total}px"
 						bind:this={pagesEl}
 						onpointerdown={onPagesPointerDown}
 						onpointermove={onPagesPointerMove}
 						onpointerup={onPagesPointerUp}
 					>
-						{#each ratios as ratio, i (i)}
+						{#each shownPages as n (n)}
 							<div
 								class="page"
-								data-page={i + 1}
+								data-page={n}
+								style:top="{layout.tops[n - 1]}px"
 								style:width="{width}px"
-								style:aspect-ratio={ratio}
-								{@attach pageView(i + 1)}
+								style:height="{layout.heights[n - 1]}px"
+								{@attach pageView(n)}
 							>
 								<PageMarks
-									marks={byPage.get(i + 1) ?? []}
-									aspect={1 / ratio}
+									marks={byPage.get(n) ?? []}
+									aspect={aspectOf(n)}
 									{activeId}
-									draft={draft?.page === i + 1 ? draft.rect : null}
-									loose={looseByPage.get(i + 1)}
-									drawing={gesture?.page === i + 1 && inkMode === 'pen'
+									draft={draft?.page === n ? draft.rect : null}
+									loose={looseByPage.get(n)}
+									drawing={gesture?.page === n && inkMode === 'pen'
 										? { color: inkColor, width: inkWidth, points: gesture.points }
 										: null}
-									lasso={gesture?.page === i + 1 && inkMode === 'lasso' ? gesture.points : null}
+									lasso={gesture?.page === n && inkMode === 'lasso' ? gesture.points : null}
 								/>
 								<div class="textLayer"></div>
 							</div>
@@ -943,8 +1016,8 @@
 						<div
 							class="ink-menu"
 							style:left="{Math.max(0, r[0] * width - 22)}px"
-							style:top="{(pageTops[activeInk.page - 1] ?? 0) +
-								(r[1] + r[3]) * width * aspectOf(activeInk.page) +
+							style:top="{(layout.tops[activeInk.page - 1] ?? 0) +
+								(r[1] + r[3]) * (layout.heights[activeInk.page - 1] ?? 0) +
 								14}px"
 						>
 							<button class="on" type="button" onclick={() => (editingId = activeInk.id)}>
@@ -1167,15 +1240,16 @@
 		padding: 0 6px;
 	}
 
+	/* The viewer holds the reader's place itself as page sizes change; the browser's anchoring
+	   would move them a second time. */
 	.reading {
 		position: relative;
+		overflow-anchor: none;
 	}
 
+	/* Only the pages near the view exist, each placed at its computed top. */
 	.pages {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 10px;
+		position: relative;
 	}
 
 	/* the ink group's menu, under the group like the design's */
@@ -1247,8 +1321,8 @@
 	}
 
 	.page {
-		position: relative;
-		max-width: 100%;
+		position: absolute;
+		left: 0;
 		overflow: hidden;
 		border-radius: 4px;
 		background: #fff;

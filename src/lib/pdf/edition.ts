@@ -1,5 +1,6 @@
 import { copyFile, exists, mkdir, rename } from '@tauri-apps/plugin-fs';
 import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { fileLength } from './open.js';
 
 /**
  * Editions: which bytes an annotation was made on, and a preserved copy of them, so replacing a
@@ -21,7 +22,7 @@ export function editionPath(edition: string): string {
  * both identifiers and its exact length would go unnoticed.
  */
 export async function editionOf(doc: PDFDocumentProxy): Promise<string> {
-	const { length } = await doc.getDownloadInfo();
+	const length = fileLength(doc) ?? (await doc.getDownloadInfo()).length;
 	const text = `${doc.fingerprints.join('|')}|${length}`;
 	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
 	return [...new Uint8Array(digest)]

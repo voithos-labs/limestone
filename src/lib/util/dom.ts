@@ -64,3 +64,14 @@ export function highlightSnippet(raw: string): string {
 		.replaceAll(SNIPPET_MARK_END, '</mark>')
 		.replace(/<\/mark>(\s+)<mark>/g, '$1');
 }
+
+/** The nearest ancestor that scrolls vertically, or null when it's the page itself. */
+export function scrollParent(el: Element): HTMLElement | null {
+	let node = el.parentElement;
+	while (node && node !== document.body && node !== document.documentElement) {
+		const oy = getComputedStyle(node).overflowY;
+		if (oy === 'auto' || oy === 'scroll') return node;
+		node = node.parentElement;
+	}
+	return null;
+}

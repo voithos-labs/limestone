@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ArrowUpRight, Link, MessageSquare, TextAlignStart } from '@lucide/svelte';
+	import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import { leadIn, runOn, type Annotation } from '#lib/pdf/annotation.js';
 	import type { Citing } from '#lib/pdf/citation.js';
 	import AnnotationCrop from './AnnotationCrop.svelte';
@@ -9,6 +10,7 @@
 	let {
 		annotations,
 		citedBy,
+		doc = null,
 		onGoTo,
 		onOpenNote
 	}: {
@@ -16,6 +18,8 @@
 		annotations: Annotation[];
 		/** The notes citing each annotation, by annotation id. */
 		citedBy: Map<string, Citing[]>;
+		/** The open PDF these annotations were made on, for drawing their crops. */
+		doc?: PDFDocumentProxy | null;
 		onGoTo: (a: Annotation) => void;
 		onOpenNote: (id: string) => void;
 	} = $props();
@@ -101,7 +105,7 @@
 					<p class="passage">{before}<span class="mark">{a.quote}</span>{after}</p>
 				{:else}
 					<div class="shot">
-						<AnnotationCrop annotation={a} maxHeight={CROP_MAX_HEIGHT} />
+						<AnnotationCrop annotation={a} maxHeight={CROP_MAX_HEIGHT} {doc} />
 					</div>
 				{/if}
 				{#if a.comment}

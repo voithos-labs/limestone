@@ -1,17 +1,25 @@
 <script lang="ts">
+	import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import type { AnnotationFields, PageRect } from '#lib/pdf/annotation.js';
 	import { renderCrop, unionRect } from '#lib/pdf/crop.js';
 	import { strokePath } from '#lib/pdf/ink.js';
+	import { scrollParent } from '#lib/util/dom.js';
 	import { INK_RGB } from './colors.js';
 
 	/** A region or ink annotation drawn from its page, with the ink laid over the crop. */
 	let {
 		annotation,
-		maxHeight
+		maxHeight,
+		doc = null
 	}: {
 		annotation: Pick<AnnotationFields, 'pdf' | 'page' | 'kind' | 'rects' | 'strokes' | 'edition'>;
 		maxHeight?: number;
+		/** The PDF already open on the annotation's edition, when the caller has it. */
+		doc?: PDFDocumentProxy | null;
 	} = $props();
+
+	// how far outside the scroller's view a crop starts drawing, so it's there when it scrolls in
+	const NEAR = '600px 0px';
 
 	const rect = $derived(padded(unionRect(annotation.rects), annotation.kind));
 
@@ -25,18 +33,23 @@
 	}
 
 	// The full-width box is what's measured; the canvas inside can come out narrower when
-	// maxHeight bites, and the frame hugging it keeps the ink overlay on the drawing.
+	// maxHeight bites, and the frame hugging it keeps the ink overlay on the drawing. Nothing is
+	// drawn until the box nears the view, and a drawing it leaves unfinished is dropped.
 	function draw(box: HTMLElement) {
 		const canvas = box.querySelector('canvas')!;
+		const shared = doc;
 		let controller: AbortController | null = null;
+		let drawing = false;
 		let drawnWidth = 0;
+		let near = false;
 		const redraw = () => {
 			const r = rect;
 			const width = Math.floor(box.clientWidth);
-			if (!r || width <= 0 || width === drawnWidth) return;
+			if (!near || !r || width <= 0 || width === drawnWidth) return;
 			drawnWidth = width;
 			controller?.abort();
 			const signal = (controller = new AbortController()).signal;
+			drawing = true;
 			renderCrop(canvas, {
 				pdf: annotation.pdf,
 				edition: annotation.edition,
@@ -44,15 +57,34 @@
 				rect: r,
 				width,
 				maxHeight,
-				signal
-			}).catch(() => {
-				if (!signal.aborted) drawnWidth = 0;
-			});
+				signal,
+				doc: shared
+			})
+				.catch(() => {
+					if (!signal.aborted) drawnWidth = 0;
+				})
+				.finally(() => {
+					if (!signal.aborted) drawing = false;
+				});
 		};
 		const ro = new ResizeObserver(redraw);
 		ro.observe(box);
+		const io = new IntersectionObserver(
+			([entry]) => {
+				near = entry.isIntersecting;
+				if (near) redraw();
+				else if (drawing) {
+					controller?.abort();
+					drawing = false;
+					drawnWidth = 0;
+				}
+			},
+			{ root: scrollParent(box), rootMargin: NEAR }
+		);
+		io.observe(box);
 		return () => {
 			ro.disconnect();
+			io.disconnect();
 			controller?.abort();
 		};
 	}
