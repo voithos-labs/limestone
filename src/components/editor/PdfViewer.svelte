@@ -122,6 +122,8 @@
 		typeof savedDark === 'boolean' ? savedDark : undefined
 	);
 	const dark = $derived(darkChoice ?? currentThemeType() === 'dark');
+	// pages take the theme's paper and text colors while they're as light or dark as the theme
+	const themed = $derived(dark === (currentThemeType() === 'dark'));
 	const savedZoom = untrack(() => tab.state.pdf_zoom);
 	let zoom = $state(typeof savedZoom === 'number' ? savedZoom : 1);
 	const column = $derived(Math.min(columnMax, paneW - SIDE_PAD * 2));
@@ -1214,6 +1216,7 @@
 	class:flow
 	class:drawing={acting === 'region' || acting === 'ink'}
 	class:dark-pages={dark}
+	class:themed
 	bind:this={rootEl}
 >
 	<div
@@ -1276,6 +1279,8 @@
 								style:height="{layout.heights[n - 1]}px"
 								{@attach pageView(n)}
 							>
+								<div class="tone paper"></div>
+								<div class="tone print"></div>
 								<PageMarks
 									page={n}
 									marks={byPage.get(n) ?? []}
@@ -1632,23 +1637,64 @@
 	}
 
 	.page {
+		--paper: #fff;
+		--print: #000;
 		position: absolute;
 		left: 0;
 		overflow: hidden;
+		isolation: isolate;
 		border-radius: 4px;
 		background: #fff;
 		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 	}
 
-	/* Dark pages are a display filter: the file and every stored mark keep their own colors. Ink
+	/* Page colors are a display filter: the file and every stored mark keep their own. Two layers
+	   over the canvas move its white to the paper color and its black to the print color. */
+	.tone {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+	}
+
+	.paper {
+		background: var(--paper);
+		mix-blend-mode: multiply;
+	}
+
+	.print {
+		background: var(--print);
+		mix-blend-mode: lighten;
+	}
+
+	.themed .page {
+		--paper: var(--color-surface);
+		--print: var(--color-text-primary);
+	}
+
+	/* Dark pages invert first, so the layers lift black paper and dim white print instead. Ink
 	   inverts with its paper so graphite stays visible; highlights don't, so amber stays amber. */
 	.dark-pages .page {
-		background: #1f1f1f;
+		--paper: #1f1f1f;
+		--print: #e0e0e0;
+		background: #000;
+	}
+
+	.dark-pages.themed .page {
+		--paper: var(--color-bg);
+		--print: var(--color-text-primary);
+	}
+
+	.dark-pages .paper {
+		mix-blend-mode: lighten;
+	}
+
+	.dark-pages .print {
+		mix-blend-mode: darken;
 	}
 
 	.dark-pages .page :global(canvas),
 	.dark-pages .page :global(svg.ink) {
-		filter: invert(0.88) hue-rotate(180deg);
+		filter: invert(1) hue-rotate(180deg);
 	}
 
 	.dark-pages .page :global(.highlight) {
