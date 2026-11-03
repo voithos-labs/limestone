@@ -2,8 +2,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { select } from '#lib/services/db.js';
 import { getSource } from '#lib/models/Source.js';
 import { openPdf } from './open.js';
-import { editionPath } from './edition.js';
-import { exists } from '@tauri-apps/plugin-fs';
+import { editionPath, isPreserved } from './edition.js';
 import type { PageRect } from './annotation.js';
 import { canvasScale } from './layout.js';
 
@@ -75,13 +74,11 @@ export function unionRect(rects: PageRect[]): PageRect | null {
 	return x1 > x0 && y1 > y0 ? [x0, y0, x1 - x0, y1 - y0] : null;
 }
 
-// ── Internal ────────────────────────────────────────────────────────────────
-
-// several cards for one PDF share its loaded document, and a few PDFs stay open between notes
-const CACHE_SIZE = 4;
-const loaded = new Map<string, Promise<PDFDocumentProxy>>();
-
-function loadPdf(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
+/**
+ * A PDF opened by its document id, from the edition's preserved copy when there is one and its
+ * current file otherwise. A few stay open, so callers share them and never destroy one.
+ */
+export function loadPdf(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
 	const key = `${pdfId}@${edition ?? ''}`;
 	const hit = loaded.get(key);
 	if (hit) {
@@ -102,6 +99,12 @@ function loadPdf(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
 	return next;
 }
 
+// ── Internal ────────────────────────────────────────────────────────────────
+
+// several cards for one PDF share its loaded document, and a few PDFs stay open between notes
+const CACHE_SIZE = 4;
+const loaded = new Map<string, Promise<PDFDocumentProxy>>();
+
 // Opens the file itself rather than through PdfHandle.open, which marks the PDF opened:
 // a note showing a crop isn't the reader opening the PDF.
 async function openById(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
@@ -112,7 +115,7 @@ async function openById(pdfId: string, edition?: string): Promise<PDFDocumentPro
 	if (!row) throw new Error(`no pdf with id ${pdfId}`);
 	const source = await getSource(row.source_id);
 	// a box marked on bytes since replaced is drawn from those bytes, while they're kept
-	const preserved = edition && (await exists(`${source.path}/${editionPath(edition)}`));
+	const preserved = edition && (await isPreserved(source.path, edition));
 	const task = await openPdf({
 		sourceId: source.id,
 		sourcePath: source.path,

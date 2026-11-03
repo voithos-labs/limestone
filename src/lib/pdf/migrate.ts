@@ -13,9 +13,9 @@ import type { TextTarget } from './anchor.js';
 /** Why an annotation stays unplaced: its text changed, or its edition's copy wasn't kept. */
 export type Unplaced = 'changed' | 'unpreserved';
 
-/** Where an annotation goes on the new edition, with a re-found highlight's new text. */
+/** Where an annotation goes on the new edition, with a re-found highlight's text or moved ink. */
 export type Placement = Pick<AnnotationFields, 'page' | 'rects'> &
-	Partial<Pick<AnnotationFields, 'quote' | 'prefix' | 'suffix'>>;
+	Partial<Pick<AnnotationFields, 'quote' | 'prefix' | 'suffix' | 'strokes'>>;
 
 /** A place in a page's text, counted as the viewer's text layer reads it: a space ends a line. */
 export interface TextPoint {
@@ -187,7 +187,8 @@ async function findQuote(
 	}
 	if (!best) return null;
 	const target = await select(best.from, best.to);
-	return target && { page: best.from.page, ...target };
+	// a selection reading other words would mean the page's text was counted wrongly
+	return target?.quote === quote ? { page: best.from.page, ...target } : null;
 }
 
 /** Page numbers from `n` outward, nearest first. */

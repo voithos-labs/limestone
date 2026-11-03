@@ -100,10 +100,25 @@ export function strokesBox(strokes: InkStroke[]): PageRect {
 	return [round(x0), round(y0), round(x1 - x0), round(y1 - y0)];
 }
 
+/** The strokes moved so their box's top-left corner lands on a point, as near it as the page allows. */
+export function moveStrokes(strokes: InkStroke[], x: number, y: number): InkStroke[] {
+	const [bx, by, w, h] = strokesBox(strokes);
+	const dx = clamp(x, 0, 1 - w) - bx;
+	const dy = clamp(y, 0, 1 - h) - by;
+	return strokes.map((s) => ({
+		...s,
+		points: s.points.map((v, i) => round(v + (i % 2 ? dy : dx)))
+	}));
+}
+
 // ── Internal ────────────────────────────────────────────────────────────────
 
 function round(n: number): number {
 	return Math.round(n * 10000) / 10000;
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+	return Math.min(hi, Math.max(lo, n));
 }
 
 function segmentDistance(p: number[], i: number, a: number, b: number, aspect: number): number {

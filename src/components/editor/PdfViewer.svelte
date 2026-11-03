@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 	import type {
+		PageViewport,
 		PDFDocumentLoadingTask,
 		PDFDocumentProxy,
 		PDFPageProxy,
@@ -26,11 +27,20 @@
 		type InkWidth,
 		type PageRect
 	} from '#lib/pdf/annotation.js';
-	import { inLasso, nearStroke, simplify, strokesBox, type LooseStroke } from '#lib/pdf/ink.js';
+	import {
+		inLasso,
+		moveStrokes,
+		nearStroke,
+		simplify,
+		strokesBox,
+		type LooseStroke
+	} from '#lib/pdf/ink.js';
 	import LooseInk from '#lib/pdf/looseInk.svelte.js';
 	import { openPdf, pdfLib, type PdfLib } from '#lib/pdf/open.js';
 	import PdfAnnotations from '#lib/pdf/annotations.svelte.js';
-	import { boxTarget, pagePoint, textTarget, type TextTarget } from '#lib/pdf/anchor.js';
+	import { boxTarget, pagePoint, textRange, textTarget, type TextTarget } from '#lib/pdf/anchor.js';
+	import { carryOver, type Placement, type TextPoint, type Unplaced } from '#lib/pdf/migrate.js';
+	import { loadPdf } from '#lib/pdf/crop.js';
 	import {
 		canvasScale,
 		holdRange,
@@ -67,17 +77,11 @@
 	import InkTray, { modeForKey, type InkMode } from '../pdf/InkTray.svelte';
 	import PdfDigest from '../pdf/PdfDigest.svelte';
 	import AnnotationTicks from '../pdf/AnnotationTicks.svelte';
+	import NotPlaced from '../pdf/NotPlaced.svelte';
+	import PlaceHint from '../pdf/PlaceHint.svelte';
 	import { INK_RGB } from '../pdf/colors.js';
-	import {
-		History,
-		MessageSquare,
-		Pin,
-		Quote,
-		SquareArrowOutUpRight,
-		Trash2
-	} from '@lucide/svelte';
-	import { exists } from '@tauri-apps/plugin-fs';
-	import { editionDate, editionOf, editionPath } from '#lib/pdf/edition.js';
+	import { MessageSquare, Pin, Quote, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
+	import { editionDate, editionOf, editionPath, isPreserved } from '#lib/pdf/edition.js';
 	import type PdfHandle from '#lib/models/PdfHandle.js';
 
 	let {
@@ -239,7 +243,6 @@
 			const w = width;
 			if (!doc || !lib || w <= 0) return;
 			const pdfLib = lib;
-			const textEl = node.querySelector<HTMLElement>('.textLayer')!;
 			let page: PDFPageProxy | null = null;
 			let render: RenderTask | null = null;
 			let text: TextLayer | null = null;
@@ -270,14 +273,7 @@
 				if (!live) return;
 				node.querySelector('canvas')?.remove();
 				node.prepend(canvas);
-				node.style.setProperty('--scale-factor', String(scale));
-				node.style.setProperty('--total-scale-factor', String(scale));
-				text = new pdfLib.TextLayer({
-					textContentSource: page.streamTextContent(),
-					container: textEl,
-					viewport
-				});
-				textEl.replaceChildren();
+				text = layText(node, page, viewport, pdfLib);
 				await text.render().catch(() => {});
 			})();
 
@@ -290,6 +286,24 @@
 				if (n - 1 < mounted.first || n - 1 > mounted.last) page?.cleanup();
 			};
 		};
+	}
+
+	/** Lays a page's text out over it in `node`'s text layer, where it can be selected. */
+	function layText(
+		node: HTMLElement,
+		page: PDFPageProxy,
+		viewport: PageViewport,
+		pdfLib: PdfLib
+	): TextLayer {
+		node.style.setProperty('--scale-factor', String(viewport.scale));
+		node.style.setProperty('--total-scale-factor', String(viewport.scale));
+		const container = node.querySelector<HTMLElement>('.textLayer')!;
+		container.replaceChildren();
+		return new pdfLib.TextLayer({
+			textContentSource: page.streamTextContent(),
+			container,
+			viewport
+		});
 	}
 
 	function learnRatio(n: number, ratio: number) {
@@ -458,7 +472,7 @@
 	async function openEdition(edition: string | null): Promise<boolean> {
 		const h = handle;
 		if (!h) return false;
-		if (edition && !(await exists(`${h.source.path}/${editionPath(edition)}`))) {
+		if (edition && !(await isPreserved(h.source.path, edition))) {
 			toasts.push(
 				"That edition wasn't preserved in this source: its marks can't be shown on the current file."
 			);
@@ -466,9 +480,11 @@
 		}
 		viewingDay = edition && (await editionDate(h.source.id, edition));
 		menu = null;
-		activeId = editingId = null;
+		activeId = editingId = placing = null;
 		tool = 'select';
 		viewing = edition;
+		// carrying over works on the current file, so the question waits for the reader's return
+		if (edition && asking !== null) toasts.dismiss(asking);
 		return true;
 	}
 
@@ -778,12 +794,17 @@
 	}
 
 	function onPagesPointerDown(e: PointerEvent) {
-		if ((tool !== 'region' && tool !== 'ink') || e.button !== 0) return;
+		if ((acting !== 'region' && acting !== 'ink') || e.button !== 0) return;
 		const page = pageAt(e.target);
 		if (!page) return;
 		e.preventDefault();
+		if (placing?.kind === 'ink') {
+			const strokes = moveStrokes(placing.strokes ?? [], ...pagePoint(e, page));
+			void place(placing, { page: pageNumber(page), rects: [strokesBox(strokes)], strokes });
+			return;
+		}
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-		if (tool === 'ink') {
+		if (acting === 'ink') {
 			gesture = { page: pageNumber(page), points: [] };
 			inkAt(e);
 			return;
@@ -807,6 +828,7 @@
 			const { page, rect } = draft;
 			draft = null;
 			if (!rect) return;
+			if (placing) return void place(placing, { page, rects: [rect] });
 			try {
 				const a = await annotations.create({ page, kind: 'region', color: 'sky', rects: [rect] });
 				activeId = editingId = a.id;
@@ -815,7 +837,7 @@
 			}
 			return;
 		}
-		if (e.button !== 0 || !(tool === 'select' || tool === 'highlight')) return;
+		if (e.button !== 0 || !(acting === 'select' || acting === 'highlight')) return;
 		const selection = window.getSelection();
 		if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
 			pickAt(e);
@@ -825,9 +847,10 @@
 		const page = pageAt(range.startContainer);
 		const target = page && textTarget(range, page);
 		if (!page || !target) return;
-		if (tool === 'highlight') {
+		if (acting === 'highlight') {
 			selection.removeAllRanges();
-			await addHighlight(pageNumber(page), target);
+			if (placing) await place(placing, { page: pageNumber(page), ...target });
+			else await addHighlight(pageNumber(page), target);
 			return;
 		}
 		const end = range.getClientRects();
@@ -909,6 +932,116 @@
 		else if (value === 'open') openNote(a.id);
 	}
 
+	// ── Carrying over ───────────────────────────────────────────────────────
+
+	/** Why each annotation tried in this opening stayed unplaced. */
+	let unplaced: Map<string, Unplaced> = $state(new Map());
+	let carrying = $state(false);
+	/** An annotation waiting for its new spot on the pages. */
+	let placing = $state<Annotation | null>(null);
+	// while one waits, the pages act as the tool that made it
+	const acting: PdfTool = $derived(placing?.kind ?? tool);
+	// a hidden page copied to lay text out off screen, styled as the pages are
+	let probe: HTMLElement | undefined = $state();
+
+	let asking: number | null = null;
+	$effect(() => {
+		if (asking !== null || viewing || !annotations.loaded || !elsewhere.length) return;
+		const n = elsewhere.length;
+		asking = toasts.push(
+			`This PDF has changed since ${n} of its annotations ${n === 1 ? 'was' : 'were'} made`,
+			{ variant: 'info', action: { label: 'Carry them over', run: () => void carry() } }
+		);
+	});
+	$effect(() => () => {
+		if (asking !== null) toasts.dismiss(asking);
+	});
+
+	async function carry() {
+		const doc = pdf;
+		const h = handle;
+		const todo = elsewhere.filter((a) => !unplaced.has(a.id));
+		if (!doc || !h || viewing || carrying || !todo.length) return;
+		carrying = true;
+		if (asking !== null) toasts.dismiss(asking);
+		try {
+			const carried = await carryOver(todo, {
+				doc,
+				earlier: async (edition) =>
+					(await isPreserved(h.source.path, edition)) ? loadPdf(h.id, edition) : null,
+				select: (from, to) => selectOffscreen(doc, from, to)
+			});
+			for (const { id, placement } of carried.placed) await annotations.place(id, placement);
+			const left = carried.unplaced.map(({ id, reason }): [string, Unplaced] => [id, reason]);
+			unplaced = new Map([...unplaced, ...left]);
+			toasts.push(carriedMessage(carried.placed.length, left.length), { variant: 'info' });
+		} catch (e) {
+			reportError(e, "The annotations couldn't be carried over.");
+		} finally {
+			carrying = false;
+		}
+	}
+
+	function carriedMessage(placed: number, left: number): string {
+		const moved = placed
+			? `Carried over ${placed} annotation${placed === 1 ? '' : 's'}`
+			: 'None could be carried over';
+		return left ? `${moved}; ${left} need${left === 1 ? 's' : ''} placing by hand.` : `${moved}.`;
+	}
+
+	/** What a reader selecting `doc`'s text from `from` to `to` would make, laid out unseen. */
+	async function selectOffscreen(
+		doc: PDFDocumentProxy,
+		from: TextPoint,
+		to: TextPoint
+	): Promise<TextTarget | null> {
+		const template = probe;
+		const host = template?.parentElement;
+		const pdfLib = lib;
+		if (!template || !host || !pdfLib) return null;
+		const copies: HTMLElement[] = [];
+		try {
+			for (let n = from.page; n <= to.page; n++) {
+				const page = await doc.getPage(n);
+				const base = page.getViewport({ scale: 1 });
+				const viewport = page.getViewport({ scale: (width || MAX_PAGE_WIDTH) / base.width });
+				const copy = template.cloneNode(true) as HTMLElement;
+				copy.dataset.page = String(n);
+				copy.style.width = `${viewport.width}px`;
+				copy.style.height = `${viewport.height}px`;
+				host.append(copy);
+				copies.push(copy);
+				await layText(copy, page, viewport, pdfLib).render();
+			}
+			const layer = (copy: HTMLElement) => copy.querySelector('.textLayer')!;
+			const range = textRange(
+				{ layer: layer(copies[0]), offset: from.offset },
+				{ layer: layer(copies[copies.length - 1]), offset: to.offset }
+			);
+			return textTarget(range, copies[0]);
+		} finally {
+			for (const copy of copies) copy.remove();
+		}
+	}
+
+	function placeAgain(a: Annotation) {
+		if (mode !== 'pages') setMode('pages');
+		menu = null;
+		activeId = editingId = null;
+		placing = a;
+		requestAnimationFrame(() => scrollToAnnotation(a));
+	}
+
+	async function place(a: Annotation, placement: Placement) {
+		placing = null;
+		try {
+			await annotations.place(a.id, placement);
+			activeId = a.id;
+		} catch (e) {
+			reportError(e, "The annotation couldn't be placed.");
+		}
+	}
+
 	const notice = $derived.by(() => {
 		if (!failure || !handle) return null;
 		const src = sourceName(handle.source);
@@ -982,6 +1115,10 @@
 
 	function onWindowKey(e: KeyboardEvent) {
 		if (!paneActive || !rootEl?.isConnected || typingIn(e.target)) return;
+		if (e.key === 'Escape' && placing) {
+			placing = null;
+			return;
+		}
 		if (e.ctrlKey || e.metaKey) {
 			if (docked && tool === 'ink') inkHistoryKey(e);
 			if (!flow) zoomKey(e);
@@ -1026,6 +1163,10 @@
 	<InkTray bind:color={inkColor} bind:width={inkWidth} bind:mode={inkMode} />
 {/snippet}
 
+{#snippet placeHint()}
+	{#if placing}<PlaceHint kind={placing.kind} onCancel={() => (placing = null)} />{/if}
+{/snippet}
+
 {#snippet heroExtra()}
 	{#if viewing || elsewhere.length}<span class="meta-sep"></span>{/if}
 	{#if viewing}
@@ -1035,15 +1176,14 @@
 			· back to the current file
 		</button>
 	{:else if elsewhere.length}
-		<button
-			class="edition-chip"
-			type="button"
-			title="Made on a version of this PDF that has since been replaced"
-			onclick={() => openEdition(elsewhere[0].edition ?? null)}
-		>
-			<History size={12} strokeWidth={1.75} />
-			{elsewhere.length} from an earlier edition
-		</button>
+		<NotPlaced
+			annotations={elsewhere}
+			reasons={unplaced}
+			{carrying}
+			onCarry={carry}
+			onPlace={flow ? undefined : placeAgain}
+			onOpenEdition={openEdition}
+		/>
 	{/if}
 	<span class="meta-fill"></span>
 	{#if here.length}
@@ -1069,7 +1209,7 @@
 <div
 	class="pdf-viewer"
 	class:flow
-	class:drawing={tool === 'region' || tool === 'ink'}
+	class:drawing={acting === 'region' || acting === 'ink'}
 	class:dark-pages={dark}
 	bind:this={rootEl}
 >
@@ -1245,7 +1385,7 @@
 				darkChoice = !dark;
 				tab.state.pdf_dark = darkChoice;
 			}}
-			tray={tool === 'ink' ? inkTray : undefined}
+			tray={placing ? placeHint : tool === 'ink' ? inkTray : undefined}
 		/>
 	{/if}
 	{#if !flow}
@@ -1263,6 +1403,9 @@
 			}}
 		/>
 	{/if}
+	<div class="probe" aria-hidden="true">
+		<div class="page" bind:this={probe}><div class="textLayer"></div></div>
+	</div>
 </div>
 
 <Menu
@@ -1474,6 +1617,15 @@
 		position: absolute;
 		top: 0;
 		width: 300px;
+	}
+
+	/* copies of a page laid out unseen, to find where a passage's text sits */
+	.probe {
+		position: absolute;
+		inset: 0;
+		overflow: hidden;
+		visibility: hidden;
+		pointer-events: none;
 	}
 
 	.page {

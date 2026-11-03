@@ -17,6 +17,11 @@ export function editionPath(edition: string): string {
 	return `${EDITIONS_DIR}/${edition}.pdf`;
 }
 
+/** Whether a source keeps a copy of an edition's bytes. */
+export function isPreserved(sourcePath: string, edition: string): Promise<boolean> {
+	return exists(`${sourcePath}/${editionPath(edition)}`);
+}
+
 /**
  * A short id for the loaded file: the PDF's own identifiers plus its length. Hashing the bytes
  * would mean reading them all, which range loading avoids. A tool that rewrites a file but keeps
@@ -41,8 +46,8 @@ export async function preserveEdition(
 	pdf: { sourcePath: string; relPath: string },
 	edition: string
 ): Promise<void> {
+	if (await isPreserved(pdf.sourcePath, edition)) return;
 	const target = `${pdf.sourcePath}/${editionPath(edition)}`;
-	if (await exists(target)) return;
 	await mkdir(`${pdf.sourcePath}/${EDITIONS_DIR}`, { recursive: true });
 	const partial = `${target}.partial`;
 	await copyFile(`${pdf.sourcePath}/${pdf.relPath}`, partial);
