@@ -60,6 +60,7 @@
 	import Menu from '../ui/Menu.svelte';
 	import PageMarks from '../pdf/PageMarks.svelte';
 	import SideNotes from '../pdf/SideNotes.svelte';
+	import type { NoteActions } from '../pdf/SideNote.svelte';
 	import SelectionMenu from '../pdf/SelectionMenu.svelte';
 	import PdfDock, { toolForKey, type PdfTool } from '../pdf/PdfDock.svelte';
 	import InkTray, { modeForKey, type InkMode } from '../pdf/InkTray.svelte';
@@ -716,11 +717,28 @@
 		tab.state.pdf_sidenotes = sidenotesOn;
 	}
 
+	/** The top of an annotation's passage in the pages column, mounted or not. */
 	function anchorY(a: Annotation): number {
 		const i = a.page - 1;
-		// the note's text starts below its card padding, so the card rises to meet the passage
-		return (layout.tops[i] ?? 0) + (a.rects[0]?.[1] ?? 0) * (layout.heights[i] ?? 0) - 10;
+		return (layout.tops[i] ?? 0) + (a.rects[0]?.[1] ?? 0) * (layout.heights[i] ?? 0);
 	}
+
+	const noteActions: NoteActions = {
+		onOpenNote: openNote,
+		onActivate: (a) => (activeId = a.id),
+		onEdit: (a) => {
+			editingId = a?.id ?? null;
+			if (a) activeId = a.id;
+		},
+		onSave: saveComment,
+		onCite: cite,
+		onLink: link,
+		onMore: (a, anchor) => {
+			moreFor = a;
+			moreAnchor = anchor;
+			moreOpen = true;
+		}
+	};
 
 	function pageAt(target: EventTarget | Node | null): HTMLElement | null {
 		const el = target instanceof Element ? target : (target as Node | null)?.parentElement;
@@ -1158,27 +1176,7 @@
 					{/if}
 					{#if rail}
 						<div class="rail" style:left="{width + RAIL_GAP}px">
-							<SideNotes
-								{notes}
-								{anchorY}
-								{activeId}
-								{editingId}
-								{citedBy}
-								onOpenNote={openNote}
-								onActivate={(a) => (activeId = a.id)}
-								onEdit={(a) => {
-									editingId = a?.id ?? null;
-									if (a) activeId = a.id;
-								}}
-								onSave={saveComment}
-								onCite={cite}
-								onLink={link}
-								onMore={(a, anchor) => {
-									moreFor = a;
-									moreAnchor = anchor;
-									moreOpen = true;
-								}}
-							/>
+							<SideNotes {notes} {anchorY} {activeId} {editingId} {citedBy} {...noteActions} />
 						</div>
 					{/if}
 				</div>
