@@ -133,7 +133,7 @@ async function samePages(
 ): Promise<Placement | null> {
 	const pages = pagesOf(a);
 	if (pages.some((n) => n > old.count)) return null;
-	const to = await samePage(await old.face(a.page), a.page, next);
+	const to = await samePage(await old.face(a.page), a.page, old.count, next);
 	if (to === null) return null;
 	const shift = to - a.page;
 	for (const n of pages.slice(1)) {
@@ -145,8 +145,18 @@ async function samePages(
 	};
 }
 
-/** The page nearest `n` that reads and is shaped as `face` does. */
-async function samePage(face: PageFace, n: number, next: PageReader): Promise<number | null> {
+/**
+ * The page nearest `n` that reads and is shaped as `face` does. A page with no text (a scan) can
+ * only be told apart by its place, so it matches only itself, and only when no page was added or
+ * taken away.
+ */
+async function samePage(
+	face: PageFace,
+	n: number,
+	count: number,
+	next: PageReader
+): Promise<number | null> {
+	if (!face.text) return count === next.count && same(face, await next.face(n)) ? n : null;
 	for (const m of outward(n, next.count)) if (same(face, await next.face(m))) return m;
 	return null;
 }
