@@ -64,6 +64,7 @@
 	import PdfDock, { toolForKey, type PdfTool } from '../pdf/PdfDock.svelte';
 	import InkTray, { modeForKey, type InkMode } from '../pdf/InkTray.svelte';
 	import PdfDigest from '../pdf/PdfDigest.svelte';
+	import AnnotationTicks from '../pdf/AnnotationTicks.svelte';
 	import { INK_RGB } from '../pdf/colors.js';
 	import {
 		History,
@@ -1228,6 +1229,18 @@
 	{/if}
 	{#if !flow}
 		<ScrollThumb scroller={scrollEl} />
+	{/if}
+	{#if docked}
+		<AnnotationTicks
+			scroller={scrollEl}
+			pages={pagesEl}
+			annotations={here}
+			{anchorY}
+			onGoTo={(a) => {
+				activeId = a.id;
+				scrollToAnnotation(a);
+			}}
+		/>
 	{/if}
 </div>
 
