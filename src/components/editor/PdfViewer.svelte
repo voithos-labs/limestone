@@ -998,17 +998,19 @@
 		const template = probe;
 		const host = template?.parentElement;
 		const pdfLib = lib;
-		if (!template || !host || !pdfLib) return null;
+		if (!template || !host || !pdfLib) throw new Error('the viewer closed while carrying over');
+		const w = width || MAX_PAGE_WIDTH;
 		const copies: HTMLElement[] = [];
 		try {
 			for (let n = from.page; n <= to.page; n++) {
 				const page = await doc.getPage(n);
 				const base = page.getViewport({ scale: 1 });
-				const viewport = page.getViewport({ scale: (width || MAX_PAGE_WIDTH) / base.width });
+				const viewport = page.getViewport({ scale: w / base.width });
 				const copy = template.cloneNode(true) as HTMLElement;
 				copy.dataset.page = String(n);
-				copy.style.width = `${viewport.width}px`;
-				copy.style.height = `${viewport.height}px`;
+				// sized as a mounted page is, whose height is whole pixels
+				copy.style.width = `${w}px`;
+				copy.style.height = `${Math.round(viewport.height)}px`;
 				host.append(copy);
 				copies.push(copy);
 				await layText(copy, page, viewport, pdfLib).render();
