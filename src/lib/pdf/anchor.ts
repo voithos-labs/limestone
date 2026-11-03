@@ -16,30 +16,28 @@ export interface TextTarget {
 }
 
 /**
- * The target of a selection that starts in `page`'s text layer, cut at the end of that page so
- * one annotation always belongs to one page. Null when nothing selectable is left.
+ * The target of a selection that starts on `page` and may run on through the pages after it,
+ * which are its next siblings and carry their numbers in `data-page`. Null when the selection
+ * holds no text on `page`.
  */
 export function textTarget(range: Range, page: HTMLElement): TextTarget | null {
-	const layer = page.querySelector('.textLayer');
-	if (!layer || !layer.contains(range.startContainer)) return null;
-	const clipped = range.cloneRange();
-	if (!layer.contains(range.endContainer)) clipped.setEnd(layer, layer.childNodes.length);
-
-	const { text, start, end } = layerText(layer, clipped);
-	const quote = collapse(text.slice(start, end));
-	if (!quote) return null;
-	const box = page.getBoundingClientRect();
-	const rects = mergeLines([...clipped.getClientRects()].filter((r) => r.width > 0.5))
-		.map((r) => toFraction(r, box))
-		.filter((r) => r[2] > 0 && r[3] > 0);
-	if (rects.length === 0) return null;
-	const from = Math.max(0, start - CONTEXT);
-	const to = Math.min(text.length, end + CONTEXT);
-	// whole words at the far ends, which the digest shows as context; the edges by the quote stay
-	// exact because that's what finds the quote again
-	const prefix = text.slice(from, start).replace(from > 0 ? /^\S*\s/ : /^/, '');
-	const suffix = text.slice(end, to).replace(to < text.length ? /\s\S*$/ : /$/, '');
-	return { rects, quote, prefix: collapse(prefix), suffix: collapse(suffix) };
+	const parts: (TextTarget & { el: HTMLElement })[] = [];
+	for (let el: Element | null = page; el && range.intersectsNode(el); el = el.nextElementSibling) {
+		const part = pageTarget(range, el as HTMLElement);
+		if (part) parts.push({ ...part, el: el as HTMLElement });
+	}
+	const [first, last] = [parts[0], parts[parts.length - 1]];
+	if (first?.el !== page) return null;
+	return {
+		rects: parts.flatMap(({ el, rects }) =>
+			el === page
+				? rects
+				: rects.map(([x, y, w, h]): PageRect => [x, y, w, h, Number(el.dataset.page)])
+		),
+		quote: parts.map((p) => p.quote).join(' '),
+		prefix: first.prefix,
+		suffix: last.suffix
+	};
 }
 
 /** A box dragged between two client points, as a fraction rect of `page`. */
@@ -70,6 +68,40 @@ export function pagePoint(
 
 const CONTEXT = 48;
 const MIN_BOX_PX = 6;
+
+/** The part of a selection on one page, its rects as fractions of that page. */
+function pageTarget(range: Range, page: HTMLElement): TextTarget | null {
+	const layer = page.querySelector('.textLayer');
+	const clipped = layer && within(range, layer);
+	if (!layer || !clipped) return null;
+
+	const { text, start, end } = layerText(layer, clipped);
+	const quote = collapse(text.slice(start, end));
+	if (!quote) return null;
+	const box = page.getBoundingClientRect();
+	const rects = mergeLines([...clipped.getClientRects()].filter((r) => r.width > 0.5))
+		.map((r) => toFraction(r, box))
+		.filter((r) => r[2] > 0 && r[3] > 0);
+	if (rects.length === 0) return null;
+	const from = Math.max(0, start - CONTEXT);
+	const to = Math.min(text.length, end + CONTEXT);
+	// whole words at the far ends, which the digest shows as context; the edges by the quote stay
+	// exact because that's what finds the quote again
+	const prefix = text.slice(from, start).replace(from > 0 ? /^\S*\s/ : /^/, '');
+	const suffix = text.slice(end, to).replace(to < text.length ? /\s\S*$/ : /$/, '');
+	return { rects, quote, prefix: collapse(prefix), suffix: collapse(suffix) };
+}
+
+/** The part of `range` inside `node`, or null when they don't meet. */
+function within(range: Range, node: Node): Range | null {
+	const part = document.createRange();
+	part.selectNodeContents(node);
+	if (part.compareBoundaryPoints(Range.START_TO_START, range) < 0)
+		part.setStart(range.startContainer, range.startOffset);
+	if (part.compareBoundaryPoints(Range.END_TO_END, range) > 0)
+		part.setEnd(range.endContainer, range.endOffset);
+	return part.collapsed ? null : part;
+}
 
 /**
  * The page's text in reading order with where `range` starts and ends in it. The text layer ends

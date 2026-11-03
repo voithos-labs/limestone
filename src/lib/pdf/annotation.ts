@@ -9,8 +9,11 @@ import { sanitizeSegment } from '#lib/util/paths.js';
 
 export type AnnotationKind = 'highlight' | 'region' | 'ink';
 
-/** A box on a page as fractions of the page's width and height: `[x, y, w, h]`, top-left origin. */
-export type PageRect = [number, number, number, number];
+/**
+ * A box on a page as fractions of the page's width and height, top-left origin. `page` is set
+ * only on a highlight's rect on a later page than the annotation's own, and those come last.
+ */
+export type PageRect = [x: number, y: number, w: number, h: number, page?: number];
 
 /** One ink stroke: page fractions as a flat `[x0, y0, x1, y1, …]` list, plus its pen. */
 export interface InkStroke {
@@ -76,15 +79,18 @@ export function readAnnotation(properties: Record<string, unknown>): AnnotationF
 }
 
 /**
- * The fields as they're written to frontmatter: a rect as `x y w h` and a stroke's points as
- * `x,y x,y …`, so a note stays a few readable lines rather than one number per line.
+ * The fields as they're written to frontmatter: a rect as `x y w h` (`p4 x y w h` on another
+ * page) and a stroke's points as `x,y x,y …`, so a note stays a few readable lines rather than
+ * one number per line.
  */
 export function storedFields(fields: AnnotationFields): Record<string, unknown> {
 	// ink wears its strokes' colors, so a highlight color would only mislead a reader
 	const { color, ...rest } = fields;
 	return {
 		...(fields.kind === 'ink' ? rest : { ...rest, color }),
-		rects: fields.rects.map((r) => r.join(' ')),
+		rects: fields.rects.map(
+			([x, y, w, h, page]) => `${page ? `p${page} ` : ''}${x} ${y} ${w} ${h}`
+		),
 		...(fields.strokes
 			? {
 					strokes: fields.strokes.map((s) => ({
@@ -96,6 +102,16 @@ export function storedFields(fields: AnnotationFields): Record<string, unknown> 
 				}
 			: {})
 	};
+}
+
+/** The pages an annotation marks: its own, then any its highlight runs on to. */
+export function pagesOf(a: Pick<AnnotationFields, 'page' | 'rects'>): number[] {
+	return [...new Set([a.page, ...a.rects.map((r) => rectPage(r, a.page))])];
+}
+
+/** An annotation's rects on `page`, as fractions of that page. */
+export function rectsOn(a: Pick<AnnotationFields, 'page' | 'rects'>, page: number): PageRect[] {
+	return a.rects.filter((r) => rectPage(r, a.page) === page);
 }
 
 /**
@@ -186,7 +202,15 @@ export function isStroke(v: unknown): v is InkStroke {
 }
 
 function parseRect(v: unknown): unknown {
-	return typeof v === 'string' ? v.trim().split(/\s+/).map(Number) : v;
+	if (typeof v !== 'string') return v;
+	const [, page, box] = /^\s*(?:p(\d+)\s+)?(.*)$/s.exec(v)!;
+	const rect = box.trim().split(/\s+/).map(Number);
+	if (rect.length !== 4) return null;
+	return page ? [...rect, Number(page)] : rect;
+}
+
+function rectPage(r: PageRect, own: number): number {
+	return r[4] ?? own;
 }
 
 function parseStroke(v: unknown): unknown {
@@ -208,5 +232,9 @@ function pairs(points: number[]): [number, number][] {
 }
 
 function isRect(v: unknown): v is PageRect {
-	return Array.isArray(v) && v.length === 4 && v.every((n) => Number.isFinite(n));
+	return (
+		Array.isArray(v) &&
+		v.every((n) => Number.isFinite(n)) &&
+		(v.length === 4 || (v.length === 5 && Number.isInteger(v[4]) && v[4] >= 1))
+	);
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
-	import type { AnnotationFields, PageRect } from '#lib/pdf/annotation.js';
+	import { rectsOn, type AnnotationFields, type PageRect } from '#lib/pdf/annotation.js';
 	import { renderCrop, unionRect } from '#lib/pdf/crop.js';
 	import { strokePath } from '#lib/pdf/ink.js';
 	import { scrollParent } from '#lib/util/dom.js';
@@ -21,7 +21,7 @@
 	// how far outside the scroller's view a crop starts drawing, so it's there when it scrolls in
 	const NEAR = '600px 0px';
 
-	const rect = $derived(padded(unionRect(annotation.rects), annotation.kind));
+	const rect = $derived(padded(unionRect(rectsOn(annotation, annotation.page)), annotation.kind));
 
 	// ink sits right at its box's edge, so its crop gets a margin to keep the strokes whole
 	function padded(rect: PageRect | null, kind: AnnotationFields['kind']): PageRect | null {

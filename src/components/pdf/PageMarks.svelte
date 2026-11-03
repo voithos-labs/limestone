@@ -1,9 +1,10 @@
 <script lang="ts">
-	import type { Annotation, InkStroke, PageRect } from '#lib/pdf/annotation.js';
+	import { rectsOn, type Annotation, type InkStroke, type PageRect } from '#lib/pdf/annotation.js';
 	import { strokePath } from '#lib/pdf/ink.js';
 	import { ANNOTATION_RGB, INK_RGB, INK_STROKE } from './colors.js';
 
 	let {
+		page,
 		marks,
 		aspect,
 		activeId = null,
@@ -12,7 +13,8 @@
 		drawing = null,
 		lasso = null
 	}: {
-		/** The annotations on this page. */
+		page: number;
+		/** The annotations with marks on this page. */
 		marks: Annotation[];
 		/** The page's height over its width, the ink's viewBox height. */
 		aspect: number;
@@ -43,7 +45,7 @@
 
 <div class="marks" aria-hidden="true">
 	{#each boxes as a (a.id)}
-		{#each a.rects as r, i (i)}
+		{#each rectsOn(a, page) as r, i (i)}
 			<span
 				class={a.kind === 'region' ? 'region' : 'highlight'}
 				class:active={a.id === activeId}

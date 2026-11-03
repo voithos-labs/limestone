@@ -17,6 +17,8 @@
 	import { mark, reportError, toasts, type MenuEntry } from '#lib/overlays.svelte.js';
 	import {
 		INK_COLORS,
+		pagesOf,
+		rectsOn,
 		type Annotation,
 		type AnnotationColor,
 		type InkColor,
@@ -459,7 +461,7 @@
 
 	const byPage = $derived.by(() => {
 		const map = new Map<number, Annotation[]>();
-		for (const a of here) map.set(a.page, [...(map.get(a.page) ?? []), a]);
+		for (const a of here) for (const n of pagesOf(a)) map.set(n, [...(map.get(n) ?? []), a]);
 		return map;
 	});
 
@@ -751,11 +753,10 @@
 	function pickAt(e: PointerEvent) {
 		const page = pageAt(e.target);
 		const [x, y] = page ? pagePoint(e, page) : [0, 0];
-		const hit = page
-			? (byPage.get(pageNumber(page)) ?? []).find((a) =>
-					a.rects.some((r) => x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3])
-				)
-			: undefined;
+		const n = page ? pageNumber(page) : 0;
+		const hit = (byPage.get(n) ?? []).find((a) =>
+			rectsOn(a, n).some((r) => x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3])
+		);
 		activeId = hit?.id ?? null;
 		if (editingId && editingId !== activeId) editingId = null;
 	}
@@ -1025,6 +1026,7 @@
 								{@attach pageView(n)}
 							>
 								<PageMarks
+									page={n}
 									marks={byPage.get(n) ?? []}
 									aspect={aspectOf(n)}
 									{activeId}
