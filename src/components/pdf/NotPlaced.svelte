@@ -82,7 +82,7 @@
 				Not placed in this edition<span class="count">{annotations.length}</span>
 				{#if untried}
 					<button class="carry" type="button" disabled={carrying} onclick={onCarry}>
-						{carrying ? 'Carrying over…' : 'Carry them over'}
+						{carrying ? 'Carrying over…' : 'Carry over'}
 					</button>
 				{/if}
 			</div>
@@ -167,6 +167,7 @@
 		max-height: min(440px, 60vh);
 		padding: 6px;
 		overflow-y: auto;
+		scrollbar-width: none;
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		background: var(--color-bg);
@@ -184,6 +185,7 @@
 		font-weight: 600;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
+		white-space: nowrap;
 		color: var(--color-ui-muted);
 	}
 
@@ -249,6 +251,7 @@
 		font-weight: 400;
 		letter-spacing: normal;
 		text-transform: none;
+		white-space: nowrap;
 		cursor: pointer;
 	}
 
