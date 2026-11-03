@@ -1300,7 +1300,7 @@
 
 	/* The header shares the pages' column, the way a note's shares its text's. */
 	/* The column's top padding keeps the hero's back card in place until the reader scrolls past
-	   it, as a note's does; the hero gives the same room back. */
+	   it, and puts the title where a note's sits. */
 	.column {
 		max-width: 100%;
 		margin: 0 auto;
@@ -1309,7 +1309,8 @@
 
 	.column :global(.hero-inner) {
 		max-width: none;
-		padding: 18px 0 32px;
+		padding-right: 0;
+		padding-left: 0;
 	}
 
 	.column :global(.back-slot) {
