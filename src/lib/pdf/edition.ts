@@ -1,5 +1,6 @@
-import { copyFile, exists, mkdir, rename } from '@tauri-apps/plugin-fs';
+import { copyFile, exists, mkdir, rename, stat } from '@tauri-apps/plugin-fs';
 import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { getSource } from '#lib/models/Source.js';
 import { fileLength } from './open.js';
 
 /**
@@ -47,3 +48,30 @@ export async function preserveEdition(
 	await copyFile(`${pdf.sourcePath}/${pdf.relPath}`, partial);
 	await rename(partial, target);
 }
+
+/**
+ * The day an edition dates from, as "Oct 2" (with the year when it isn't this one), taken from
+ * its preserved copy's modified time. Null when that can't be read.
+ */
+export async function editionDate(sourceId: string, edition: string): Promise<string | null> {
+	const key = `${sourceId}/${edition}`;
+	const known = dates.get(key);
+	if (known) return known;
+	try {
+		const source = await getSource(sourceId);
+		const { mtime } = await stat(`${source.path}/${editionPath(edition)}`);
+		if (!mtime) return null;
+		const year = mtime.getFullYear() === new Date().getFullYear() ? undefined : 'numeric';
+		const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year });
+		const date = day.format(mtime);
+		dates.set(key, date);
+		return date;
+	} catch {
+		return null;
+	}
+}
+
+// ── Internal ────────────────────────────────────────────────────────────────
+
+// an edition's bytes never change, so neither does its date; a failed read is asked again
+const dates = new Map<string, string>();

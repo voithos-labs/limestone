@@ -65,9 +65,16 @@
 	import InkTray, { modeForKey, type InkMode } from '../pdf/InkTray.svelte';
 	import PdfDigest from '../pdf/PdfDigest.svelte';
 	import { INK_RGB } from '../pdf/colors.js';
-	import { History, MessageSquare, Quote, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
+	import {
+		History,
+		MessageSquare,
+		Pin,
+		Quote,
+		SquareArrowOutUpRight,
+		Trash2
+	} from '@lucide/svelte';
 	import { exists } from '@tauri-apps/plugin-fs';
-	import { editionOf, editionPath } from '#lib/pdf/edition.js';
+	import { editionDate, editionOf, editionPath } from '#lib/pdf/edition.js';
 	import type PdfHandle from '#lib/models/PdfHandle.js';
 
 	let {
@@ -435,6 +442,7 @@
 
 	/** A preserved edition being read instead of the current file. */
 	let viewing: string | null = $state(null);
+	let viewingDay: string | null = $state(null);
 	let shownEdition: string | null = $state(null);
 
 	// Marks made on other bytes aren't painted on these; one made before editions were recorded
@@ -453,6 +461,7 @@
 			);
 			return false;
 		}
+		viewingDay = edition && (await editionDate(h.source.id, edition));
 		menu = null;
 		activeId = editingId = null;
 		tool = 'select';
@@ -992,7 +1001,9 @@
 	{#if viewing || elsewhere.length}<span class="meta-sep"></span>{/if}
 	{#if viewing}
 		<button class="edition-chip" type="button" onclick={() => openEdition(null)}>
-			<History size={12} strokeWidth={1.75} />Earlier edition · back to the current file
+			<Pin size={12} strokeWidth={1.75} />
+			{#if viewingDay}<span class="day">{viewingDay} edition</span>{:else}Earlier edition{/if}
+			· back to the current file
 		</button>
 	{:else if elsewhere.length}
 		<button
@@ -1308,6 +1319,11 @@
 	.edition-chip:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
+	}
+
+	.edition-chip .day {
+		font-family: var(--font-mono);
+		font-size: 11px;
 	}
 
 	.meta-fill {

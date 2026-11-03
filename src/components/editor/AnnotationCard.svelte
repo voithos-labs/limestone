@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
-	import { Pen, SquareDashed } from '@lucide/svelte';
+	import { Pen, Pin, SquareDashed } from '@lucide/svelte';
 	import { imeOwnsKey, type InlineWidgetComponentProps } from '@voithos-labs/aragonite/plugin';
 	import { select } from '#lib/services/db.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
@@ -13,6 +13,7 @@
 		runOn,
 		type AnnotationFields
 	} from '#lib/pdf/annotation.js';
+	import { editionDate } from '#lib/pdf/edition.js';
 	import { annotationRgb } from '../pdf/colors';
 	import AnnotationCrop from '../pdf/AnnotationCrop.svelte';
 	import PdfIcon from '../ui/PdfIcon.svelte';
@@ -32,6 +33,7 @@
 		fields: AnnotationFields;
 		comment: string;
 		pdfTitle: string | null;
+		editionDay: string | null;
 	}
 
 	const CROP_MAX_HEIGHT = 320;
@@ -104,8 +106,8 @@
 		const { frontmatter, body } = MarkdownHandle.deserialize(raw);
 		const read = frontmatter && readAnnotation(frontmatter);
 		if (!read) return null;
-		const [pdf] = await select<{ title: string }>(
-			'SELECT title FROM documents WHERE id = ?1 AND deleted_at IS NULL',
+		const [pdf] = await select<{ title: string; source_id: string }>(
+			'SELECT title, source_id FROM documents WHERE id = ?1 AND deleted_at IS NULL',
 			[read.pdf]
 		);
 		return {
@@ -114,7 +116,8 @@
 			relPath: row.rel_path,
 			fields: read,
 			comment: annotationComment(body),
-			pdfTitle: pdf?.title ?? null
+			pdfTitle: pdf?.title ?? null,
+			editionDay: pdf && read.edition ? await editionDate(pdf.source_id, read.edition) : null
 		};
 	}
 
@@ -167,6 +170,11 @@
 				<PdfIcon size={12} />
 			{/if}
 			<span class="pdf">{pdfTitle}</span><span>· p. {page}</span>
+			{#if found?.editionDay}
+				<span class="edition" title="Pinned to the edition added {found.editionDay}">
+					<Pin size={10} strokeWidth={2} />{found.editionDay}
+				</span>
+			{/if}
 		</span>
 		{#if fields?.kind === 'highlight' && fields.quote}
 			<span class="quote"><span class="mark">{fields.quote}</span>{suffix}</span>
@@ -219,6 +227,20 @@
 		color: var(--color-text-secondary);
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.edition {
+		display: inline-flex;
+		flex-shrink: 0;
+		align-items: center;
+		gap: 4px;
+		height: 20px;
+		margin-left: auto;
+		padding: 0 7px;
+		border-radius: 999px;
+		background: var(--chip-bg);
+		font-family: var(--font-mono);
+		font-size: 0.875em;
 	}
 
 	.quote {
