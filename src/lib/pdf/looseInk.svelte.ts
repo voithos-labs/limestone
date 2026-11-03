@@ -6,7 +6,8 @@ import type { LooseStroke } from './ink.js';
 
 /** A PDF's loose ink: strokes drawn but not yet lassoed, kept in the PDF's sidecar. */
 export default class LooseInk {
-	strokes: LooseStroke[] = $state([]);
+	// raw, so `take` hands back the very strokes `add` stored and a history step can find them again
+	strokes: LooseStroke[] = $state.raw([]);
 
 	private saveTimer: ReturnType<typeof setTimeout> | undefined;
 	private pending = false;
@@ -21,8 +22,9 @@ export default class LooseInk {
 		);
 	}
 
-	add(stroke: LooseStroke): void {
-		this.strokes = [...this.strokes, stroke];
+	add(...strokes: LooseStroke[]): void {
+		if (strokes.length === 0) return;
+		this.strokes = [...this.strokes, ...strokes];
 		this.save();
 	}
 

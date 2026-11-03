@@ -14,7 +14,8 @@
 	import { readErrorKind, type ReadErrorKind } from '#lib/models/MarkdownHandle.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 	import { sourceName } from '#lib/models/Source.js';
-	import { mark, reportError, toasts, type MenuEntry } from '#lib/overlays.svelte.js';
+	import StepHistory, { type Step } from '#lib/models/StepHistory.svelte.js';
+	import { mark, reportError, toasts, undoHint, type MenuEntry } from '#lib/overlays.svelte.js';
 	import {
 		INK_COLORS,
 		pagesOf,
@@ -550,13 +551,20 @@
 	let inkWidth: InkWidth = $state('fine');
 	let inkMode: InkMode = $state('pen');
 	let gesture: { page: number; points: number[] } | null = $state(null);
+	// what the eraser takes during a gesture, kept out of `gesture` so the strokes stay raw
+	const erased: LooseStroke[] = [];
 	const ERASER_RADIUS = 0.012;
 
 	const looseInk = new LooseInk(() => handle as PdfHandle);
+	// undo and redo for the ink drawn while this PDF is open
+	const inkHistory = new StepHistory();
 	$effect(() => {
 		if (!handle) return;
 		looseInk.load().catch((e) => console.error('ink load failed', e));
-		return () => void looseInk.flush();
+		return () => {
+			void looseInk.flush();
+			inkHistory.clear();
+		};
 	});
 
 	const looseByPage = $derived.by(() => {
@@ -581,8 +589,10 @@
 		if (!g || !page) return;
 		const [x, y] = pagePoint(e, page);
 		if (inkMode === 'eraser') {
-			looseInk.take(
-				(s) => s.page === g.page && nearStroke(s, x, y, ERASER_RADIUS, aspectOf(g.page))
+			erased.push(
+				...looseInk.take(
+					(s) => s.page === g.page && nearStroke(s, x, y, ERASER_RADIUS, aspectOf(g.page))
+				)
 			);
 			return;
 		}
@@ -594,30 +604,76 @@
 	async function endInk() {
 		const g = gesture;
 		gesture = null;
+		const rubbed = erased.splice(0);
+		if (rubbed.length) recordInk(looseStep([], rubbed));
 		if (!g || inkMode === 'eraser') return;
 		if (inkMode === 'pen') {
 			if (g.points.length >= 2) {
 				const points = simplify(g.points, aspectOf(g.page));
-				looseInk.add({ page: g.page, color: inkColor, width: inkWidth, points });
+				const stroke = { page: g.page, color: inkColor, width: inkWidth, points };
+				looseInk.add(stroke);
+				recordInk(looseStep([stroke], []));
 			}
 			return;
 		}
 		const taken = looseInk.take((s) => s.page === g.page && inLasso(s, g.points));
 		if (taken.length === 0) return;
-		const strokes = taken.map(({ page: _page, ...stroke }) => stroke);
 		try {
-			const a = await annotations.create({
-				page: g.page,
-				kind: 'ink',
-				color: 'amber',
-				rects: [strokesBox(strokes)],
-				strokes
-			});
+			const a = await groupInk(taken);
 			activeId = editingId = a.id;
+			recordInk(groupStep(taken, a.id));
 		} catch (e) {
-			for (const s of taken) looseInk.add(s);
 			reportError(e, "The ink couldn't be grouped.");
 		}
+	}
+
+	/** Makes loose strokes from one page into an ink annotation, putting them back if it can't. */
+	async function groupInk(taken: LooseStroke[], comment = ''): Promise<Annotation> {
+		const strokes = taken.map(({ page: _page, ...stroke }) => stroke);
+		try {
+			return await annotations.create(
+				{ page: taken[0].page, kind: 'ink', color: 'amber', rects: [strokesBox(strokes)], strokes },
+				comment
+			);
+		} catch (e) {
+			looseInk.add(...taken);
+			throw e;
+		}
+	}
+
+	function recordInk(step: Step) {
+		// the newest change is what Ctrl+Z takes back, not an older delete's undo hint
+		undoHint.dismiss();
+		inkHistory.record(step);
+	}
+
+	/** Undo takes the `added` strokes away and puts the `removed` ones back; redo the reverse. */
+	function looseStep(added: LooseStroke[], removed: LooseStroke[]): Step {
+		const swap = (out: LooseStroke[], back: LooseStroke[]) => {
+			looseInk.take((s) => out.includes(s));
+			looseInk.add(...back);
+		};
+		return { undo: () => swap(added, removed), redo: () => swap(removed, added) };
+	}
+
+	/** Undo trashes the group's note and loosens its strokes; redo groups them in a new note. */
+	function groupStep(taken: LooseStroke[], id: string): Step {
+		let comment = '';
+		return {
+			undo: async () => {
+				// the note may be gone already, deleted from its menu
+				const note = annotations.items.find((a) => a.id === id);
+				if (note) await annotations.remove(id);
+				comment = note?.comment ?? '';
+				if (activeId === id) activeId = null;
+				if (editingId === id) editingId = null;
+				looseInk.add(...taken);
+			},
+			redo: async () => {
+				looseInk.take((s) => taken.includes(s));
+				id = (await groupInk(taken, comment)).id;
+			}
+		};
 	}
 
 	async function recolorInk(a: Annotation) {
@@ -891,6 +947,7 @@
 	function onWindowKey(e: KeyboardEvent) {
 		if (!paneActive || !rootEl?.isConnected || typingIn(e.target)) return;
 		if (e.ctrlKey || e.metaKey) {
+			if (docked && tool === 'ink') inkHistoryKey(e);
 			if (!flow) zoomKey(e);
 			return;
 		}
@@ -906,6 +963,17 @@
 		else if (picked) {
 			if (canAnnotate) tool = picked;
 		} else if (tool === 'ink') inkMode = modeForKey(inkMode, e.key) ?? inkMode;
+	}
+
+	/** Ctrl or Cmd with Z undoes the ink; with Y, or Shift+Z, redoes it. */
+	function inkHistoryKey(e: KeyboardEvent) {
+		const key = e.key.toLowerCase();
+		if (e.altKey || (key !== 'z' && key !== 'y')) return;
+		e.preventDefault();
+		const redo = key === 'y' || e.shiftKey;
+		(redo ? inkHistory.redo() : inkHistory.undo()).catch((err) =>
+			reportError(err, `The ink couldn't be ${redo ? 'redone' : 'undone'}.`)
+		);
 	}
 
 	function typingIn(target: EventTarget | null): boolean {
