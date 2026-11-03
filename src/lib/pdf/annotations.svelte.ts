@@ -16,6 +16,7 @@ import {
 	type Annotation,
 	type AnnotationFields
 } from './annotation.js';
+import type { Placement } from './migrate.js';
 
 /**
  * The annotation notes of one PDF: found through the index by the PDF's id wherever they sit,
@@ -46,8 +47,8 @@ export default class PdfAnnotations {
 		const gen = ++this.loadGen;
 		const pdf = this.pdf();
 		const [rows, meta] = await Promise.all([
-			select<{ id: string; source_id: string; rel_path: string; title: string }>(
-				`SELECT id, source_id, rel_path, title FROM documents
+			select<NoteRow>(
+				`SELECT id, source_id, rel_path, title, created_at FROM documents
 				 WHERE deleted_at IS NULL AND json_extract(properties, '$.${ANNOTATION_KEY}.pdf') = ?1`,
 				[pdf.id]
 			),
@@ -66,10 +67,7 @@ export default class PdfAnnotations {
 		// The PDF's first metadata write creates its sidecar, which is what keeps its id when it's
 		// renamed or moved. Every note made here points at that id.
 		await pdf.saveMeta({ createdAt: pdf.createdAt });
-		// the bytes are kept before any note points at them
-		const edition = this.edition;
-		if (edition)
-			await preserveEdition({ sourcePath: pdf.source.path, relPath: pdf.relPath }, edition);
+		const edition = await this.preserve();
 		const annotation: AnnotationFields = {
 			pdf: pdf.id,
 			...fields,
@@ -86,7 +84,8 @@ export default class PdfAnnotations {
 			id: doc.id,
 			title: doc.title,
 			relPath: doc.relPath,
-			comment: comment.trim()
+			comment: comment.trim(),
+			created: doc.createdAt.getTime()
 		};
 		this.items = [...this.items, created].sort(byPlace);
 		return created;
@@ -100,11 +99,26 @@ export default class PdfAnnotations {
 		await this.update(id, (a) => ({ ...a, ...fields }));
 	}
 
+	/** Puts an annotation on the edition on screen; its note, comment and title stay as they are. */
+	async place(id: string, placement: Placement): Promise<void> {
+		const edition = await this.preserve();
+		await this.setFields(id, { ...placement, ...(edition ? { edition } : {}) });
+	}
+
 	/** Moves the note to the trash, where the existing restore can bring it back. */
 	async remove(id: string): Promise<void> {
 		const doc = await MarkdownHandle.fromID(id);
 		await doc.delete();
 		this.items = this.items.filter((a) => a.id !== id);
+	}
+
+	/** Keeps the bytes on screen before any note points at them, and says which edition they are. */
+	private async preserve(): Promise<string | null> {
+		const pdf = this.pdf();
+		const edition = this.edition;
+		if (edition)
+			await preserveEdition({ sourcePath: pdf.source.path, relPath: pdf.relPath }, edition);
+		return edition;
 	}
 
 	private async update(id: string, change: (a: Annotation) => Annotation): Promise<void> {
@@ -113,7 +127,14 @@ export default class PdfAnnotations {
 		const next = change(current);
 		this.items = this.items.map((a) => (a.id === id ? next : a));
 		// fields still carries any keys this version doesn't know, read from the note at load
-		const { id: _id, title: _title, relPath: _relPath, comment, ...fields } = next;
+		const {
+			id: _id,
+			title: _title,
+			relPath: _relPath,
+			comment,
+			created: _created,
+			...fields
+		} = next;
 		const doc = await MarkdownHandle.fromID(id);
 		await doc.saveContent(annotationBody(fields.quote, comment), {
 			properties: { [ANNOTATION_KEY]: storedFields(fields) }
@@ -123,12 +144,15 @@ export default class PdfAnnotations {
 
 // ── Internal ────────────────────────────────────────────────────────────────
 
-async function readNote(row: {
+interface NoteRow {
 	id: string;
 	source_id: string;
 	rel_path: string;
 	title: string;
-}): Promise<Annotation | null> {
+	created_at: number;
+}
+
+async function readNote(row: NoteRow): Promise<Annotation | null> {
 	const raw = await invoke<string>('read_document', {
 		sourceId: row.source_id,
 		relPath: row.rel_path
@@ -141,7 +165,8 @@ async function readNote(row: {
 		id: row.id,
 		title: row.title,
 		relPath: row.rel_path,
-		comment: annotationComment(body)
+		comment: annotationComment(body),
+		created: row.created_at
 	};
 }
 

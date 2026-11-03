@@ -40,6 +40,20 @@ export function textTarget(range: Range, page: HTMLElement): TextTarget | null {
 	};
 }
 
+/**
+ * The range a reader would select from character `from.offset` of one text layer up to
+ * `to.offset` of the same or a later one, counting each layer's text as `textTarget` reads it.
+ */
+export function textRange(
+	from: { layer: Element; offset: number },
+	to: { layer: Element; offset: number }
+): Range {
+	const range = document.createRange();
+	range.setStart(...textPlace(from.layer, from.offset, false));
+	range.setEnd(...textPlace(to.layer, to.offset, true));
+	return range;
+}
+
 /** A box dragged between two client points, as a fraction rect of `page`. */
 export function boxTarget(
 	from: { x: number; y: number },
@@ -128,6 +142,21 @@ function layerText(layer: Element, range: Range): { text: string; start: number;
 		}
 	}
 	return { text, start: Math.max(0, start), end: end < 0 ? text.length : end };
+}
+
+/** The text node and offset in it of a place in the layer's text; an end sits after a character. */
+function textPlace(layer: Element, offset: number, end: boolean): [Node, number] {
+	const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+	let at = 0;
+	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+		if (node instanceof Text) {
+			if (end ? offset <= at + node.length : offset < at + node.length) return [node, offset - at];
+			at += node.length;
+		} else if ((node as Element).tagName === 'BR') {
+			at += 1;
+		}
+	}
+	return [layer, layer.childNodes.length];
 }
 
 function boundaryNode(container: Node, offset: number): Node | null {
