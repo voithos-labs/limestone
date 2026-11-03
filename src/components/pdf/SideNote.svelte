@@ -42,17 +42,23 @@
 	let draft = $state('');
 	let field: HTMLTextAreaElement | undefined = $state();
 
-	// Only starting to edit begins a draft; a reload while typing mustn't reset it.
+	// Only starting to edit begins a draft; a reload while typing mustn't reset it. Whatever ends
+	// the edit (Escape, a click away, the viewer picking something else) keeps what was typed.
 	$effect(() => {
 		if (!editing) return;
 		draft = untrack(() => a.comment);
 		void tick().then(() => field?.focus());
+		return () => {
+			if (draft.trim() !== untrack(() => a.comment))
+				actions.onSave(
+					untrack(() => a),
+					draft
+				);
+		};
 	});
 
 	function commit() {
-		if (!editing) return;
-		actions.onEdit(null);
-		if (draft.trim() !== a.comment) actions.onSave(a, draft);
+		if (editing) actions.onEdit(null);
 	}
 
 	// Escape leaves the note like a click away does, keeping what was typed.
