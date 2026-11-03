@@ -15,7 +15,6 @@
 		pageWidth,
 		pane,
 		dark = false,
-		keys = true,
 		onClose,
 		...actions
 	}: NoteActions & {
@@ -33,8 +32,6 @@
 		pane: { left: number; right: number };
 		/** Whether pages are shown with dark colors. */
 		dark?: boolean;
-		/** Whether this pane takes keys, so Escape closes its card. */
-		keys?: boolean;
 		onClose: () => void;
 	} = $props();
 
@@ -67,13 +64,7 @@
 			Math.min(pageWidth + SURFACE_GAP, pane.right - PANE_EDGE - surfaceWidth)
 		)
 	);
-
-	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Escape' && open && keys && !e.defaultPrevented) onClose();
-	}
 </script>
-
-<svelte:window onkeydown={onKey} />
 
 <div class="margin-markers" class:dark>
 	{#each tops as [a, top], i (a.id)}

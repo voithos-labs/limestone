@@ -986,6 +986,8 @@
 			if (a) void removeAnnotation(a);
 			return;
 		}
+		// a narrow pane's floating card closes, as a click away closes it; a menu's Escape is its own
+		if (e.key === 'Escape' && !railFits && !e.defaultPrevented) activeId = editingId = null;
 		if (!docked) return;
 		const picked = toolForKey(e.key);
 		if (e.key === 'Escape') tool = 'select';
@@ -1190,7 +1192,6 @@
 							pageWidth={width}
 							pane={{ left: (columnWidth - paneW) / 2, right: (columnWidth + paneW) / 2 }}
 							{dark}
-							keys={paneActive}
 							onClose={() => (activeId = editingId = null)}
 						/>
 					{/if}
