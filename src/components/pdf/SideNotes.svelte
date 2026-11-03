@@ -38,7 +38,7 @@
 
 <div class="side-notes">
 	{#each notes as a (a.id)}
-		<div class="slot" style:top="{tops.get(a.id) ?? 0}px" bind:offsetHeight={heights[a.id]}>
+		<div class="slot" style:top="{tops.get(a) ?? 0}px" bind:offsetHeight={heights[a.id]}>
 			<SideNote
 				annotation={a}
 				active={a.id === activeId}

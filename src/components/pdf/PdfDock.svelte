@@ -29,7 +29,6 @@
 		disabled = false,
 		dark = false,
 		sidenotes = true,
-		sidenotesFit = true,
 		onZoomReset,
 		onToggleDark,
 		onToggleSidenotes,
@@ -45,10 +44,8 @@
 		disabled?: boolean;
 		/** Whether pages are shown with dark colors. */
 		dark?: boolean;
-		/** Whether comments show in the margin beside the pages. */
+		/** Whether comments show beside the pages, in the margin or as markers. */
 		sidenotes?: boolean;
-		/** Whether the pane is wide enough for the margin at all. */
-		sidenotesFit?: boolean;
 		onZoomReset: () => void;
 		onToggleDark: () => void;
 		onToggleSidenotes: () => void;
@@ -91,14 +88,9 @@
 		<span class="sep"></span>
 		<button
 			class="tool"
-			class:on={sidenotes && sidenotesFit}
+			class:on={sidenotes}
 			type="button"
-			title={!sidenotesFit
-				? 'The pane is too narrow for sidenotes'
-				: sidenotes
-					? 'Hide sidenotes'
-					: 'Show sidenotes'}
-			disabled={!sidenotesFit}
+			title={sidenotes ? 'Hide sidenotes' : 'Show sidenotes'}
 			onclick={onToggleSidenotes}
 		>
 			<MessageSquare size={14} strokeWidth={1.75} />

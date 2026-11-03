@@ -61,6 +61,7 @@
 	import PageMarks from '../pdf/PageMarks.svelte';
 	import SideNotes from '../pdf/SideNotes.svelte';
 	import type { NoteActions } from '../pdf/SideNote.svelte';
+	import MarginMarkers from '../pdf/MarginMarkers.svelte';
 	import SelectionMenu from '../pdf/SelectionMenu.svelte';
 	import PdfDock, { toolForKey, type PdfTool } from '../pdf/PdfDock.svelte';
 	import InkTray, { modeForKey, type InkMode } from '../pdf/InkTray.svelte';
@@ -1070,7 +1071,7 @@
 		onwheel={onWheel}
 		onpointerdown={(e) => {
 			const el = e.target as Element;
-			if (!el.closest('.pages, .rail, .ink-menu')) activeId = null;
+			if (!el.closest('.pages, .rail, .margin-markers, .ink-menu')) activeId = null;
 		}}
 	>
 		<div class="column" style:width="{columnWidth}px">
@@ -1178,6 +1179,20 @@
 						<div class="rail" style:left="{width + RAIL_GAP}px">
 							<SideNotes {notes} {anchorY} {activeId} {editingId} {citedBy} {...noteActions} />
 						</div>
+					{:else if !railFits}
+						<MarginMarkers
+							{notes}
+							{anchorY}
+							{activeId}
+							{editingId}
+							{citedBy}
+							{...noteActions}
+							pageWidth={width}
+							pane={{ left: (columnWidth - paneW) / 2, right: (columnWidth + paneW) / 2 }}
+							{dark}
+							keys={paneActive}
+							onClose={() => (activeId = editingId = null)}
+						/>
 					{/if}
 				</div>
 			{/if}
@@ -1216,7 +1231,6 @@
 			onZoomReset={() => setZoom(1)}
 			{dark}
 			sidenotes={sidenotesOn}
-			sidenotesFit={railFits}
 			onToggleSidenotes={toggleSidenotes}
 			onToggleDark={() => {
 				darkChoice = !dark;
