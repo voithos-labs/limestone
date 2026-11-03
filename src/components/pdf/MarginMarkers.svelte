@@ -9,6 +9,7 @@
 	let {
 		notes,
 		anchorY,
+		belowY,
 		activeId = null,
 		editingId = null,
 		citedBy = new Map(),
@@ -22,6 +23,8 @@
 		notes: Annotation[];
 		/** The top of an annotation's passage in the pages column. */
 		anchorY: (a: Annotation) => number;
+		/** The bottom of an annotation's passage on its own page. */
+		belowY: (a: Annotation) => number;
 		activeId?: string | null;
 		editingId?: string | null;
 		/** The notes citing each annotation, by annotation id. */
@@ -57,13 +60,17 @@
 	);
 	const open = $derived(notes.find((a) => a.id === (editingId ?? activeId)) ?? null);
 	const surfaceWidth = $derived(Math.min(SURFACE_WIDTH, pane.right - pane.left - PANE_EDGE * 2));
-	// beside the page when there's room, slid back inside the pane when there isn't
+	const beside = $derived(pageWidth + SURFACE_GAP + surfaceWidth <= pane.right - PANE_EDGE);
+	// beside the page when there's room, else under the passage and clear of the markers, so the
+	// card covers neither the words it's about nor the marker that closes it
+	const markerLeft = $derived(pageWidth - MARKER_INSET - MARKER);
 	const surfaceLeft = $derived(
-		Math.max(
-			pane.left + PANE_EDGE,
-			Math.min(pageWidth + SURFACE_GAP, pane.right - PANE_EDGE - surfaceWidth)
-		)
+		beside
+			? pageWidth + SURFACE_GAP
+			: Math.max(pane.left + PANE_EDGE, markerLeft - MARKER_GAP * 2 - surfaceWidth)
 	);
+	const surfaceTop = (a: Annotation) =>
+		beside ? anchorY(a) - TEXT_INSET - SURFACE_INSET : belowY(a) + MARKER_GAP * 2;
 </script>
 
 <div class="margin-markers" class:dark>
@@ -72,7 +79,7 @@
 			class="marker"
 			class:on={a.id === open?.id}
 			type="button"
-			style:left="{pageWidth - MARKER_INSET - MARKER}px"
+			style:left="{markerLeft}px"
 			style:top="{top}px"
 			onclick={() => (a.id === open?.id ? onClose() : actions.onActivate(a))}>{i + 1}</button
 		>
@@ -82,7 +89,7 @@
 		<div
 			class="surface"
 			style:left="{surfaceLeft}px"
-			style:top="{anchorY(a) - TEXT_INSET - SURFACE_INSET}px"
+			style:top="{surfaceTop(a)}px"
 			style:width="{surfaceWidth}px"
 		>
 			<SideNote

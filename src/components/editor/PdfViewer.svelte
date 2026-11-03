@@ -724,6 +724,13 @@
 		return (layout.tops[i] ?? 0) + (a.rects[0]?.[1] ?? 0) * (layout.heights[i] ?? 0);
 	}
 
+	/** The bottom of an annotation's passage on its own page. */
+	function belowY(a: Annotation): number {
+		const i = a.page - 1;
+		const bottom = Math.max(0, ...rectsOn(a, a.page).map((r) => r[1] + r[3]));
+		return (layout.tops[i] ?? 0) + bottom * (layout.heights[i] ?? 0);
+	}
+
 	const noteActions: NoteActions = {
 		onOpenNote: openNote,
 		onActivate: (a) => (activeId = a.id),
@@ -1185,6 +1192,7 @@
 						<MarginMarkers
 							{notes}
 							{anchorY}
+							{belowY}
 							{activeId}
 							{editingId}
 							{citedBy}
