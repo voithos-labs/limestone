@@ -25,6 +25,8 @@ export default class PdfAnnotations {
 	items: Annotation[] = $state([]);
 	/** Whether this PDF's folder stores metadata, which annotations need. */
 	writable = $state(true);
+	/** Whether the list has been read at least once, so an empty one means there are none. */
+	loaded = $state(false);
 	/** The edition on screen, which new annotations are made on and preserve. */
 	edition: string | null = null;
 
@@ -55,6 +57,7 @@ export default class PdfAnnotations {
 		if (gen !== this.loadGen) return;
 		this.writable = meta.writes;
 		this.items = read.filter((a): a is Annotation => a !== null).sort(byPlace);
+		this.loaded = true;
 	}
 
 	/** Writes a new annotation note beside the PDF and returns it. */

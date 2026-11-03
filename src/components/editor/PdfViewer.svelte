@@ -515,16 +515,18 @@
 
 	// ── Pages and digest ────────────────────────────────────────────────────
 
-	let chosenMode: 'pages' | 'digest' = $state(
+	let mode: 'pages' | 'digest' = $state(
 		untrack(() => tab.state.pdf_mode) === 'digest' ? 'digest' : 'pages'
 	);
-	// a digest of nothing has nothing to show, so an unmarked PDF reads as pages
-	const mode = $derived(here.length ? chosenMode : 'pages');
+	// a digest of nothing has nothing to show, and its switch hides, so the PDF goes back to pages
+	$effect(() => {
+		if (annotations.loaded && !here.length && untrack(() => mode) === 'digest') setMode('pages');
+	});
 	// the digest's passages read in the editor's own face, as a note's text does
 	const editorFont = $derived(editor?.session?.settings.get<string>('editor.font') ?? 'sans-serif');
 
 	function setMode(next: 'pages' | 'digest') {
-		chosenMode = next;
+		mode = next;
 		tab.state.pdf_mode = next;
 		menu = null;
 	}
