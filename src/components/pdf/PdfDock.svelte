@@ -90,7 +90,7 @@
 		</button>
 		<span class="sep"></span>
 		<button
-			class="sidenotes"
+			class="tool"
 			class:on={sidenotes && sidenotesFit}
 			type="button"
 			title={!sidenotesFit
@@ -101,7 +101,7 @@
 			disabled={!sidenotesFit}
 			onclick={onToggleSidenotes}
 		>
-			<MessageSquare size={13} strokeWidth={1.75} />Sidenotes
+			<MessageSquare size={14} strokeWidth={1.75} />
 		</button>
 	</div>
 </div>
@@ -194,32 +194,5 @@
 
 	.zoom:hover {
 		color: var(--color-text-secondary);
-	}
-
-	.sidenotes {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		height: 26px;
-		padding: 0 8px;
-		border: 0;
-		border-radius: 5px;
-		background: transparent;
-		color: inherit;
-		font: inherit;
-		cursor: pointer;
-	}
-
-	.sidenotes:hover:not(:disabled, .on) {
-		color: var(--color-text-secondary);
-	}
-
-	.sidenotes.on {
-		color: var(--color-text-primary);
-	}
-
-	.sidenotes:disabled {
-		opacity: 0.4;
-		cursor: default;
 	}
 </style>

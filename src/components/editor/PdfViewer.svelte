@@ -515,15 +515,16 @@
 
 	// ── Pages and digest ────────────────────────────────────────────────────
 
-	let mode: 'pages' | 'digest' = $state(
+	let chosenMode: 'pages' | 'digest' = $state(
 		untrack(() => tab.state.pdf_mode) === 'digest' ? 'digest' : 'pages'
 	);
-	const markedPages = $derived(new Set(here.map((a) => a.page)).size);
+	// a digest of nothing has nothing to show, so an unmarked PDF reads as pages
+	const mode = $derived(here.length ? chosenMode : 'pages');
 	// the digest's passages read in the editor's own face, as a note's text does
 	const editorFont = $derived(editor?.session?.settings.get<string>('editor.font') ?? 'sans-serif');
 
 	function setMode(next: 'pages' | 'digest') {
-		mode = next;
+		chosenMode = next;
 		tab.state.pdf_mode = next;
 		menu = null;
 	}
@@ -537,6 +538,7 @@
 		$state(null);
 	let moreFor: Annotation | null = $state(null);
 	let moreAnchor: HTMLElement | null = $state(null);
+	let moreOpen = $state(false);
 
 	// ── Ink ─────────────────────────────────────────────────────────────────
 
@@ -916,16 +918,7 @@
 {/snippet}
 
 {#snippet heroExtra()}
-	{@const count = here.length}
-	{#if count}
-		<span class="meta-sep"></span>
-		<span class="ann-count">
-			{#if mode === 'pages'}<MessageSquare size={12} strokeWidth={1.75} />{/if}
-			{count}
-			{count === 1 ? 'annotation' : 'annotations'}
-			{#if mode === 'digest'}· {markedPages} {markedPages === 1 ? 'page' : 'pages'}{/if}
-		</span>
-	{/if}
+	{#if viewing || elsewhere.length}<span class="meta-sep"></span>{/if}
 	{#if viewing}
 		<button class="edition-chip" type="button" onclick={() => openEdition(null)}>
 			<History size={12} strokeWidth={1.75} />Earlier edition · back to the current file
@@ -942,22 +935,24 @@
 		</button>
 	{/if}
 	<span class="meta-fill"></span>
-	<span class="modes" role="tablist">
-		<button
-			class:on={mode === 'pages'}
-			type="button"
-			role="tab"
-			aria-selected={mode === 'pages'}
-			onclick={() => setMode('pages')}>Pages</button
-		>
-		<button
-			class:on={mode === 'digest'}
-			type="button"
-			role="tab"
-			aria-selected={mode === 'digest'}
-			onclick={() => setMode('digest')}>Digest</button
-		>
-	</span>
+	{#if here.length}
+		<span class="modes" role="tablist">
+			<button
+				class:on={mode === 'pages'}
+				type="button"
+				role="tab"
+				aria-selected={mode === 'pages'}
+				onclick={() => setMode('pages')}>Pages</button
+			>
+			<button
+				class:on={mode === 'digest'}
+				type="button"
+				role="tab"
+				aria-selected={mode === 'digest'}
+				onclick={() => setMode('digest')}>Digest</button
+			>
+		</span>
+	{/if}
 {/snippet}
 
 <div
@@ -1097,6 +1092,7 @@
 								onMore={(a, anchor) => {
 									moreFor = a;
 									moreAnchor = anchor;
+									moreOpen = true;
 								}}
 							/>
 						</div>
@@ -1153,7 +1149,7 @@
 </div>
 
 <Menu
-	open={!!moreFor}
+	bind:open={moreOpen}
 	anchor={moreAnchor}
 	items={moreItems}
 	onSelect={onMoreSelect}
@@ -1186,19 +1182,29 @@
 	}
 
 	/* The header shares the pages' column, the way a note's shares its text's. */
+	/* The column's top padding keeps the hero's back card in place until the reader scrolls past
+	   it, as a note's does; the hero gives the same room back. */
 	.column {
 		max-width: 100%;
 		margin: 0 auto;
-		padding: 0 0 96px;
+		padding: 16px 0 96px;
 	}
 
 	.column :global(.hero-inner) {
 		max-width: none;
-		padding-right: 0;
-		padding-left: 0;
+		padding: 18px 0 32px;
+	}
+
+	.column :global(.back-slot) {
+		left: 0;
+		right: 0;
 	}
 
 	/* In flow the host spaces entries itself, as it does for a note's hero. */
+	.flow .column {
+		padding-top: 0;
+	}
+
 	.flow .column :global(.hero-inner) {
 		margin-top: -6px;
 		padding-top: 0;
@@ -1265,14 +1271,6 @@
 
 	.digest {
 		padding-top: 10px;
-	}
-
-	.ann-count {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		height: 24px;
-		padding: 0 6px;
 	}
 
 	/* The viewer holds the reader's place itself as page sizes change; the browser's anchoring

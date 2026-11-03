@@ -289,7 +289,6 @@
 		background: transparent;
 		color: var(--color-text-primary);
 		font: inherit;
-		caret-color: var(--color-accent);
 	}
 
 	textarea::placeholder {
