@@ -48,7 +48,7 @@ export default class PdfAnnotations {
 		const pdf = this.pdf();
 		const [rows, meta] = await Promise.all([
 			select<NoteRow>(
-				`SELECT id, source_id, rel_path, title, created_at FROM documents
+				`SELECT id, source_id, rel_path, title FROM documents
 				 WHERE deleted_at IS NULL AND json_extract(properties, '$.${ANNOTATION_KEY}.pdf') = ?1`,
 				[pdf.id]
 			),
@@ -84,8 +84,7 @@ export default class PdfAnnotations {
 			id: doc.id,
 			title: doc.title,
 			relPath: doc.relPath,
-			comment: comment.trim(),
-			created: doc.createdAt.getTime()
+			comment: comment.trim()
 		};
 		this.items = [...this.items, created].sort(byPlace);
 		return created;
@@ -127,14 +126,7 @@ export default class PdfAnnotations {
 		const next = change(current);
 		this.items = this.items.map((a) => (a.id === id ? next : a));
 		// fields still carries any keys this version doesn't know, read from the note at load
-		const {
-			id: _id,
-			title: _title,
-			relPath: _relPath,
-			comment,
-			created: _created,
-			...fields
-		} = next;
+		const { id: _id, title: _title, relPath: _relPath, comment, ...fields } = next;
 		const doc = await MarkdownHandle.fromID(id);
 		await doc.saveContent(annotationBody(fields.quote, comment), {
 			properties: { [ANNOTATION_KEY]: storedFields(fields) }
@@ -149,7 +141,6 @@ interface NoteRow {
 	source_id: string;
 	rel_path: string;
 	title: string;
-	created_at: number;
 }
 
 async function readNote(row: NoteRow): Promise<Annotation | null> {
@@ -165,8 +156,7 @@ async function readNote(row: NoteRow): Promise<Annotation | null> {
 		id: row.id,
 		title: row.title,
 		relPath: row.rel_path,
-		comment: annotationComment(body),
-		created: row.created_at
+		comment: annotationComment(body)
 	};
 }
 

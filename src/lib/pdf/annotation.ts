@@ -42,8 +42,6 @@ export interface Annotation extends AnnotationFields {
 	title: string;
 	relPath: string;
 	comment: string;
-	/** When the note was made, in milliseconds. */
-	created: number;
 }
 
 export const ANNOTATION_COLORS = ['amber', 'sage', 'sky', 'rose', 'violet'] as const;

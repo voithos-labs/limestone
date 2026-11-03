@@ -1179,6 +1179,7 @@
 		</button>
 	{:else if elsewhere.length}
 		<NotPlaced
+			sourceId={handle?.source.id ?? ''}
 			annotations={elsewhere}
 			reasons={unplaced}
 			{carrying}

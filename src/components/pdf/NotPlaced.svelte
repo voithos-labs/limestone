@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { ANNOTATION_RGB, annotationRgb } from './colors.js';
 	import type { Annotation, AnnotationKind } from '#lib/pdf/annotation.js';
+	import { editionDate } from '#lib/pdf/edition.js';
 	import type { Unplaced } from '#lib/pdf/migrate.js';
 
 	/** The header chip counting annotations not placed on the edition on screen, and their list. */
 	let {
+		sourceId,
 		annotations,
 		reasons,
 		carrying = false,
@@ -12,6 +14,8 @@
 		onPlace,
 		onOpenEdition
 	}: {
+		/** The PDF's source, which keeps its editions. */
+		sourceId: string;
 		/** Made on other editions. */
 		annotations: Annotation[];
 		/** Why each one tried in this opening stayed unplaced. */
@@ -41,10 +45,6 @@
 	// a quote starting in lowercase begins mid-sentence
 	function quoted(quote: string): string {
 		return `“${/^\p{Ll}/u.test(quote) ? '…' : ''}${quote}”`;
-	}
-
-	function day(ms: number): string {
-		return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 	}
 
 	function act(run: () => void) {
@@ -104,7 +104,9 @@
 						{#if a.edition && reason !== 'unpreserved'}
 							{@const edition = a.edition}
 							<button class="open" type="button" onclick={() => act(() => onOpenEdition(edition))}>
-								Open {day(a.created)} edition
+								{#await editionDate(sourceId, edition) then day}
+									Open {day ?? 'earlier'} edition
+								{/await}
 							</button>
 						{/if}
 					</div>
