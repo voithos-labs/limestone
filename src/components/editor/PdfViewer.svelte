@@ -23,6 +23,7 @@
 		rectsOn,
 		type Annotation,
 		type AnnotationColor,
+		type AnnotationFields,
 		type InkColor,
 		type InkWidth,
 		type PageRect
@@ -575,6 +576,67 @@
 	let moreAnchor: HTMLElement | null = $state(null);
 	let moreOpen = $state(false);
 
+	// ── History ─────────────────────────────────────────────────────────────
+
+	// what's been drawn, made and deleted on this PDF while it's open, for undo and redo
+	const history = new StepHistory();
+
+	/** Records a change; undoing or redoing it first brings its place into view. */
+	function record(step: Step, page: number, rect: PageRect | undefined) {
+		// the newest change is what Ctrl+Z takes back, not an older delete's undo hint
+		undoHint.dismiss();
+		const shown = (apply: () => unknown) => () => {
+			reveal(page, rect);
+			return apply();
+		};
+		history.record({ undo: shown(step.undo), redo: shown(step.redo) });
+	}
+
+	/** Scrolls a box on a page into view, unless it's in view already. */
+	function reveal(page: number, rect: PageRect | undefined) {
+		const v = view();
+		if (!v) return;
+		const height = layout.heights[page - 1] ?? 0;
+		const top = (layout.tops[page - 1] ?? 0) + (rect?.[1] ?? 0) * height;
+		const bottom = top + (rect?.[3] ?? 1) * height;
+		if (top < v.top || bottom > v.top + v.height) scrollBy(v, top - v.height / 3 - v.top);
+	}
+
+	/** Makes an annotation note, as undoable as anything drawn. */
+	async function annotate(fields: Omit<AnnotationFields, 'pdf'>, comment = '') {
+		const a = await annotations.create(fields, comment);
+		record(madeStep(a.id), a.page, a.rects[0]);
+		return a;
+	}
+
+	/** Deletes an annotation note, which undo brings back from the trash. */
+	async function removeAnnotation(a: Annotation) {
+		try {
+			await drop(a.id);
+			record({ undo: () => annotations.restore(a), redo: () => drop(a.id) }, a.page, a.rects[0]);
+		} catch (e) {
+			reportError(e, "The annotation couldn't be deleted.");
+		}
+	}
+
+	/** Undo trashes the note, keeping it as it then is; redo brings that back. */
+	function madeStep(id: string): Step {
+		let kept: Annotation | undefined;
+		return {
+			undo: () => {
+				kept = annotations.items.find((a) => a.id === id);
+				return drop(id);
+			},
+			redo: () => kept && annotations.restore(kept)
+		};
+	}
+
+	async function drop(id: string) {
+		if (activeId === id) activeId = null;
+		if (editingId === id) editingId = null;
+		await annotations.remove(id);
+	}
+
 	// ── Ink ─────────────────────────────────────────────────────────────────
 
 	let inkColor: InkColor = $state('graphite');
@@ -586,14 +648,12 @@
 	const ERASER_RADIUS = 0.012;
 
 	const looseInk = new LooseInk(() => handle as PdfHandle);
-	// undo and redo for the ink drawn while this PDF is open
-	const inkHistory = new StepHistory();
 	$effect(() => {
 		if (!handle) return;
 		looseInk.load().catch((e) => console.error('ink load failed', e));
 		return () => {
 			void looseInk.flush();
-			inkHistory.clear();
+			history.clear();
 		};
 	});
 
@@ -635,14 +695,14 @@
 		const g = gesture;
 		gesture = null;
 		const rubbed = erased.splice(0);
-		if (rubbed.length) recordInk(looseStep([], rubbed));
+		if (rubbed.length) record(looseStep([], rubbed), rubbed[0].page, strokesBox(rubbed));
 		if (!g || inkMode === 'eraser') return;
 		if (inkMode === 'pen') {
 			if (g.points.length >= 2) {
 				const points = simplify(g.points, aspectOf(g.page));
 				const stroke = { page: g.page, color: inkColor, width: inkWidth, points };
 				looseInk.add(stroke);
-				recordInk(looseStep([stroke], []));
+				record(looseStep([stroke], []), stroke.page, strokesBox([stroke]));
 			}
 			return;
 		}
@@ -651,30 +711,27 @@
 		try {
 			const a = await groupInk(taken);
 			activeId = editingId = a.id;
-			recordInk(groupStep(taken, a.id));
+			record(groupStep(taken, a.id), a.page, a.rects[0]);
 		} catch (e) {
 			reportError(e, "The ink couldn't be grouped.");
 		}
 	}
 
 	/** Makes loose strokes from one page into an ink annotation, putting them back if it can't. */
-	async function groupInk(taken: LooseStroke[], comment = ''): Promise<Annotation> {
+	async function groupInk(taken: LooseStroke[]): Promise<Annotation> {
 		const strokes = taken.map(({ page: _page, ...stroke }) => stroke);
 		try {
-			return await annotations.create(
-				{ page: taken[0].page, kind: 'ink', color: 'amber', rects: [strokesBox(strokes)], strokes },
-				comment
-			);
+			return await annotations.create({
+				page: taken[0].page,
+				kind: 'ink',
+				color: 'amber',
+				rects: [strokesBox(strokes)],
+				strokes
+			});
 		} catch (e) {
 			looseInk.add(...taken);
 			throw e;
 		}
-	}
-
-	function recordInk(step: Step) {
-		// the newest change is what Ctrl+Z takes back, not an older delete's undo hint
-		undoHint.dismiss();
-		inkHistory.record(step);
 	}
 
 	/** Undo takes the `added` strokes away and puts the `removed` ones back; redo the reverse. */
@@ -686,22 +743,17 @@
 		return { undo: () => swap(added, removed), redo: () => swap(removed, added) };
 	}
 
-	/** Undo trashes the group's note and loosens its strokes; redo groups them in a new note. */
+	/** A lasso's group, which undo loosens back into its strokes and redo regroups. */
 	function groupStep(taken: LooseStroke[], id: string): Step {
-		let comment = '';
+		const made = madeStep(id);
 		return {
 			undo: async () => {
-				// the note may be gone already, deleted from its menu
-				const note = annotations.items.find((a) => a.id === id);
-				if (note) await annotations.remove(id);
-				comment = note?.comment ?? '';
-				if (activeId === id) activeId = null;
-				if (editingId === id) editingId = null;
+				await made.undo();
 				looseInk.add(...taken);
 			},
 			redo: async () => {
 				looseInk.take((s) => taken.includes(s));
-				id = (await groupInk(taken, comment)).id;
+				await made.redo();
 			}
 		};
 	}
@@ -709,10 +761,18 @@
 	async function recolorInk(a: Annotation) {
 		const next =
 			INK_COLORS[(INK_COLORS.indexOf(a.strokes?.[0]?.color ?? 'graphite') + 1) % INK_COLORS.length];
+		const before = a.strokes ?? [];
+		const after = before.map((s) => ({ ...s, color: next }));
 		try {
-			await annotations.setFields(a.id, {
-				strokes: (a.strokes ?? []).map((s) => ({ ...s, color: next }))
-			});
+			await annotations.setFields(a.id, { strokes: after });
+			record(
+				{
+					undo: () => annotations.setFields(a.id, { strokes: before }),
+					redo: () => annotations.setFields(a.id, { strokes: after })
+				},
+				a.page,
+				a.rects[0]
+			);
 		} catch (e) {
 			reportError(e, "The ink's color couldn't be changed.");
 		}
@@ -777,7 +837,7 @@
 
 	async function addHighlight(page: number, target: TextTarget, comment = '') {
 		try {
-			return await annotations.create(
+			return await annotate(
 				{
 					page,
 					kind: 'highlight',
@@ -832,7 +892,7 @@
 			if (!rect) return;
 			if (placing) return void place(placing, { page, rects: [rect] });
 			try {
-				const a = await annotations.create({ page, kind: 'region', color: 'sky', rects: [rect] });
+				const a = await annotate({ page, kind: 'region', color: 'sky', rects: [rect] });
 				activeId = editingId = a.id;
 			} catch (err) {
 				reportError(err, "The region couldn't be saved.");
@@ -908,15 +968,6 @@
 			await copyLink(a.title);
 		} catch (e) {
 			reportError(e, "The link couldn't be copied.");
-		}
-	}
-
-	async function removeAnnotation(a: Annotation) {
-		if (activeId === a.id) activeId = null;
-		try {
-			await annotations.remove(a.id);
-		} catch (e) {
-			reportError(e, "The annotation couldn't be deleted.");
 		}
 	}
 
@@ -1124,7 +1175,7 @@
 			return;
 		}
 		if (e.ctrlKey || e.metaKey) {
-			if (docked && tool === 'ink') inkHistoryKey(e);
+			if (docked) historyKey(e);
 			if (!flow) zoomKey(e);
 			return;
 		}
@@ -1144,14 +1195,15 @@
 		} else if (tool === 'ink') inkMode = modeForKey(inkMode, e.key) ?? inkMode;
 	}
 
-	/** Ctrl or Cmd with Z undoes the ink; with Y, or Shift+Z, redoes it. */
-	function inkHistoryKey(e: KeyboardEvent) {
+	/** Ctrl or Cmd with Z undoes, and with Y or Shift+Z redoes, whatever tool is in hand. */
+	function historyKey(e: KeyboardEvent) {
 		const key = e.key.toLowerCase();
 		if (e.altKey || (key !== 'z' && key !== 'y')) return;
-		e.preventDefault();
 		const redo = key === 'y' || e.shiftKey;
-		(redo ? inkHistory.redo() : inkHistory.undo()).catch((err) =>
-			reportError(err, `The ink couldn't be ${redo ? 'redone' : 'undone'}.`)
+		if (redo ? history.atPresent : history.index === 0) return;
+		e.preventDefault();
+		(redo ? history.redo() : history.undo()).catch((err) =>
+			reportError(err, `That couldn't be ${redo ? 'redone' : 'undone'}.`)
 		);
 	}
 

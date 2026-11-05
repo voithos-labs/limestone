@@ -104,11 +104,20 @@ export default class PdfAnnotations {
 		await this.setFields(id, { ...placement, ...(edition ? { edition } : {}) });
 	}
 
-	/** Moves the note to the trash, where the existing restore can bring it back. */
+	/** Moves the note to the trash, where `restore` can bring it back. */
 	async remove(id: string): Promise<void> {
+		if (!this.items.some((a) => a.id === id)) return;
 		const doc = await MarkdownHandle.fromID(id);
 		await doc.delete();
 		this.items = this.items.filter((a) => a.id !== id);
+	}
+
+	/** Brings a removed annotation's note back from the trash as it was, under the same id. */
+	async restore(a: Annotation): Promise<void> {
+		if (this.items.some((x) => x.id === a.id)) return;
+		const doc = await MarkdownHandle.fromID(a.id);
+		await doc.restore(annotationBody(a.comment), false);
+		await this.load();
 	}
 
 	/** Keeps the bytes on screen before any note points at them, and says which edition they are. */
