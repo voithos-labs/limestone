@@ -78,10 +78,38 @@ export function pagePoint(
 	return [round((e.clientX - box.left) / box.width), round((e.clientY - box.top) / box.height)];
 }
 
+/**
+ * The text a box on `page` covers, or else the line just under it (a figure's caption) or over
+ * it, in reading order: what a region or ink is named by. Empty when no text is near.
+ */
+export function textNear(page: HTMLElement, rect: PageRect): string {
+	const box = page.getBoundingClientRect();
+	const [x, y, w, h] = rect;
+	const runs = [...page.querySelectorAll('.textLayer span')]
+		.filter((span) => !span.querySelector('span'))
+		.map((span) => ({
+			text: span.textContent ?? '',
+			r: toFraction(span.getBoundingClientRect(), box)
+		}))
+		.filter(({ text, r }) => text.trim() && r[0] < x + w && r[0] + r[2] > x);
+	const middle = ({ r }: { r: PageRect }) => r[1] + r[3] / 2;
+	const covered = runs.filter((run) => middle(run) > y && middle(run) < y + h);
+	if (covered.length) return collapse(covered.map((run) => run.text).join(' '));
+	const gap = (run: { r: PageRect }) =>
+		middle(run) >= y + h ? middle(run) - (y + h) : (y - middle(run)) * 2;
+	const nearest = runs.filter((run) => gap(run) < NEAR_LINE).sort((a, b) => gap(a) - gap(b))[0];
+	if (!nearest) return '';
+	const line = runs.filter((run) => Math.abs(middle(run) - middle(nearest)) < nearest.r[3] / 2);
+	return collapse(line.map((run) => run.text).join(' '));
+}
+
 // ── Internal ────────────────────────────────────────────────────────────────
 
 const CONTEXT = 48;
 const MIN_BOX_PX = 6;
+// how far from a box, as a fraction of the page's height, a line can still name it; a line over
+// the box counts as twice as far as one under it, since captions sit under figures
+const NEAR_LINE = 0.06;
 
 /** The part of a selection on one page, its rects as fractions of that page. */
 function pageTarget(range: Range, page: HTMLElement): TextTarget | null {

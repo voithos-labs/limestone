@@ -9,6 +9,7 @@
 	import {
 		ANNOTATION_KEY,
 		annotationComment,
+		parseAnnotationTitle,
 		readAnnotation,
 		type AnnotationFields
 	} from '#lib/pdf/annotation.js';
@@ -18,11 +19,7 @@
 	import Comment from '../pdf/Comment.svelte';
 	import { IN_CARD_PLUGINS } from './editor-plugins';
 	import PdfIcon from '../ui/PdfIcon.svelte';
-	import {
-		OPEN_ANNOTATION_EVENT,
-		parseAnnotationTitle,
-		type OpenAnnotationDetail
-	} from './annotation-embeds';
+	import { OPEN_ANNOTATION_EVENT, type OpenAnnotationDetail } from './annotation-embeds';
 
 	/** A citation of a PDF annotation, drawn as its quote or region with the shared comment. */
 	let { source, isActivationClick, getPresentationMode }: InlineWidgetComponentProps = $props();

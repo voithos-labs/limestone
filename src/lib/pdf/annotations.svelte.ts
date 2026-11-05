@@ -11,6 +11,7 @@ import {
 	annotationComment,
 	annotationLabel,
 	annotationTitle,
+	parseAnnotationTitle,
 	readAnnotation,
 	storedFields,
 	type Annotation,
@@ -62,7 +63,12 @@ export default class PdfAnnotations {
 	}
 
 	/** Writes a new annotation note beside the PDF and returns it. */
-	async create(fields: Omit<AnnotationFields, 'pdf'>, comment = ''): Promise<Annotation> {
+	/** `namedBy` is the text its note's title opens with: the quote, or what a box covers. */
+	async create(
+		fields: Omit<AnnotationFields, 'pdf'>,
+		comment = '',
+		namedBy = fields.quote
+	): Promise<Annotation> {
 		const pdf = this.pdf();
 		// The PDF's first metadata write creates its sidecar, which is what keeps its id when it's
 		// renamed or moved. Every note made here points at that id.
@@ -74,7 +80,7 @@ export default class PdfAnnotations {
 			...(edition ? { edition } : {})
 		};
 		const doc = await MarkdownHandle.createFromTitle(pdf.source, {
-			title: annotationTitle(pdf.title, fields.page, annotationLabel(fields.kind, fields.quote)),
+			title: annotationTitle(pdf.title, fields.page, annotationLabel(fields.kind, namedBy)),
 			dir: siblingDir(pdf.relPath, pdf.title),
 			properties: { [ANNOTATION_KEY]: storedFields(annotation) },
 			body: annotationBody(comment)
@@ -98,10 +104,12 @@ export default class PdfAnnotations {
 		await this.update(id, (a) => ({ ...a, ...fields }));
 	}
 
-	/** Puts an annotation on the edition on screen; its note, comment and title stay as they are. */
+	/** Puts an annotation on the edition on screen, its note renamed if its page changed. */
 	async place(id: string, placement: Placement): Promise<void> {
 		const edition = await this.preserve();
+		const before = this.items.find((a) => a.id === id);
 		await this.setFields(id, { ...placement, ...(edition ? { edition } : {}) });
+		if (before && before.page !== placement.page) await this.retitle(before, placement.page);
 	}
 
 	/** Moves the note to the trash, where `restore` can bring it back. */
@@ -118,6 +126,26 @@ export default class PdfAnnotations {
 		const doc = await MarkdownHandle.fromID(a.id);
 		await doc.restore(annotationBody(a.comment), false);
 		await this.load();
+	}
+
+	/**
+	 * Renames an annotation's note to name `page`, when its title still names the old one; a note
+	 * renamed by hand keeps its name. The rename rewrites every link to the note.
+	 */
+	private async retitle(a: Annotation, page: number): Promise<void> {
+		const named = parseAnnotationTitle(a.title);
+		if (named?.page !== a.page) return;
+		const doc = await MarkdownHandle.fromID(a.id);
+		try {
+			await doc.rename(annotationTitle(named.pdfTitle, page, named.label));
+		} catch (e) {
+			// a note already holding the new name keeps the old one; the placement still stands
+			console.error('annotation rename failed', e);
+			return;
+		}
+		this.items = this.items.map((x) =>
+			x.id === a.id ? { ...x, title: doc.title, relPath: doc.relPath } : x
+		);
 	}
 
 	/** Keeps the bytes on screen before any note points at them, and says which edition they are. */

@@ -123,10 +123,26 @@ export function annotationTitle(pdfTitle: string, page: number, label: string): 
 	return linkSafe(`${pdfTitle}, p${page} - ${label}`);
 }
 
-/** The words an annotation is named by: a highlight's opening words, or its kind. */
-export function annotationLabel(kind: AnnotationKind, quote?: string): string {
-	if (kind !== 'highlight' || !quote) return kind;
-	const words = quote.split(/\s+/).filter(Boolean);
+/**
+ * The PDF, page and label an annotation note's title names, or null when it isn't shaped as
+ * `annotationTitle` makes them. A title is link-safe, so a `#` means a heading link elsewhere.
+ */
+export function parseAnnotationTitle(
+	title: string
+): { pdfTitle: string; page: number; label: string } | null {
+	if (title.includes('#')) return null;
+	const m = TITLE_SHAPE.exec(title);
+	const page = Number(m?.[2]);
+	return m && page >= 1 ? { pdfTitle: m[1], page, label: m[3] } : null;
+}
+
+/**
+ * The words an annotation is named by: the opening words of its quote, or of the text a box
+ * covers, or else its kind.
+ */
+export function annotationLabel(kind: AnnotationKind, text?: string): string {
+	const words = (text ?? '').split(/\s+/).filter(Boolean);
+	if (words.length === 0) return kind;
 	const label = words.slice(0, LABEL_WORDS).join(' ');
 	return words.length > LABEL_WORDS ? label : label.replace(/[.,;:]+$/, '');
 }
@@ -163,11 +179,13 @@ export function annotationComment(body: string): string {
 
 const LABEL_WORDS = 6;
 
-// a wikilink target can't hold these, and the title doubles as one
-const UNLINKABLE_CHARS = /[[\]|#^]/g;
+// greedy, so a PDF title holding its own ", p2 - " still splits at the last one
+const TITLE_SHAPE = /^(.+), p(\d+) - (.+)$/;
 
+// the title doubles as a file name and a link target; a character neither can hold goes, rather
+// than turning into a hyphen mid-sentence
 function linkSafe(name: string): string {
-	return sanitizeSegment(name.replace(UNLINKABLE_CHARS, ' ').replace(/\s+/g, ' '));
+	return sanitizeSegment(name, ' ').replace(/\s+/g, ' ');
 }
 
 function isKind(v: unknown): v is AnnotationKind {

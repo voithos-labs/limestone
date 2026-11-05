@@ -11,6 +11,7 @@ import { svelteView } from '@voithos-labs/aragonite/svelte';
 import AnnotationCard from './AnnotationCard.svelte';
 import { isImageTarget, OPEN } from './image-embeds';
 import { recognizeWikiLink } from './wikilinks';
+import { parseAnnotationTitle } from '#lib/pdf/annotation.js';
 
 /**
  * A citation, `![[Hale & Ortiz 2023, p3 - The rate tracked…]]`, drawn as a card holding the
@@ -81,20 +82,4 @@ export function recognizeAnnotationEmbed(
 	return { start: pos, end: link.end, target, ...title };
 }
 
-/**
- * The PDF and page an annotation note's title names (`annotationTitle`'s
- * `<pdf>, p<page> - <label>`), or null when it isn't shaped like one. A title is link-safe, so a
- * `#` means a heading link to some other note.
- */
-export function parseAnnotationTitle(title: string): { pdfTitle: string; page: number } | null {
-	if (title.includes('#')) return null;
-	const m = TITLE_SHAPE.exec(title);
-	if (!m) return null;
-	const page = Number(m[2]);
-	return page >= 1 ? { pdfTitle: m[1], page } : null;
-}
-
 // ── Internal ────────────────────────────────────────────────────────────────
-
-// greedy, so a PDF title holding its own ", p2 - " still splits at the last one
-const TITLE_SHAPE = /^(.+), p(\d+) - (.+)$/;

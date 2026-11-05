@@ -39,7 +39,14 @@
 	import LooseInk from '#lib/pdf/looseInk.svelte.js';
 	import { openPdf, pdfLib, type PdfLib } from '#lib/pdf/open.js';
 	import PdfAnnotations from '#lib/pdf/annotations.svelte.js';
-	import { boxTarget, pagePoint, textRange, textTarget, type TextTarget } from '#lib/pdf/anchor.js';
+	import {
+		boxTarget,
+		pagePoint,
+		textNear,
+		textRange,
+		textTarget,
+		type TextTarget
+	} from '#lib/pdf/anchor.js';
 	import { carryOver, type Placement, type TextPoint, type Unplaced } from '#lib/pdf/migrate.js';
 	import { loadPdf } from '#lib/pdf/crop.js';
 	import {
@@ -637,8 +644,8 @@
 	}
 
 	/** Makes an annotation note, as undoable as anything drawn. */
-	async function annotate(fields: Omit<AnnotationFields, 'pdf'>, comment = '') {
-		const a = await annotations.create(fields, comment);
+	async function annotate(fields: Omit<AnnotationFields, 'pdf'>, comment = '', namedBy?: string) {
+		const a = await annotations.create(fields, comment, namedBy);
 		record(madeStep(a.id), a.page, a.rects[0]);
 		return a;
 	}
@@ -707,6 +714,12 @@
 		return pagesEl?.querySelector<HTMLElement>(`.page[data-page="${page}"]`) ?? null;
 	}
 
+	/** The text a region or ink names itself by, read off the page it was drawn on. */
+	function coveredText(page: number, box: PageRect): string {
+		const el = pageEl(page);
+		return el ? textNear(el, box) : '';
+	}
+
 	function inkAt(e: PointerEvent) {
 		const g = gesture;
 		const page = g && pageEl(g.page);
@@ -754,14 +767,17 @@
 	/** Makes loose strokes from one page into an ink annotation, putting them back if it can't. */
 	async function groupInk(taken: LooseStroke[]): Promise<Annotation> {
 		const strokes = taken.map(({ page: _page, ...stroke }) => stroke);
+		const page = taken[0].page;
+		const box = strokesBox(strokes);
 		try {
-			return await annotations.create({
-				page: taken[0].page,
+			const ink: Omit<AnnotationFields, 'pdf'> = {
+				page,
 				kind: 'ink',
 				color: 'amber',
-				rects: [strokesBox(strokes)],
+				rects: [box],
 				strokes
-			});
+			};
+			return await annotations.create(ink, '', coveredText(page, box));
 		} catch (e) {
 			looseInk.add(...taken);
 			throw e;
@@ -928,7 +944,13 @@
 			if (!rect) return pickAt(e);
 			if (placing) return void place(placing, { page, rects: [rect] });
 			try {
-				const a = await annotate({ page, kind: 'region', color: 'sky', rects: [rect] });
+				const region: Omit<AnnotationFields, 'pdf'> = {
+					page,
+					kind: 'region',
+					color: 'sky',
+					rects: [rect]
+				};
+				const a = await annotate(region, '', coveredText(page, rect));
 				activeId = editingId = a.id;
 			} catch (err) {
 				reportError(err, "The region couldn't be saved.");
