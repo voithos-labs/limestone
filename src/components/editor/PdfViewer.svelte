@@ -58,8 +58,12 @@
 		citedIn,
 		copyCitation,
 		copyLink,
+		openAtAnnotation,
 		type Citing
 	} from '#lib/pdf/citation.js';
+	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
+	import { OPEN_ANNOTATION_EVENT, type OpenAnnotationDetail } from './annotation-embeds';
+	import { followTag, followWikiLink } from './follow-link';
 	import { linkIndex } from '#lib/services/links.svelte.js';
 	import { appEditorShortcut } from '#lib/shortcuts.js';
 	import { currentThemeType } from '#lib/services/theme.svelte.js';
@@ -456,6 +460,36 @@
 	$effect(() => {
 		if (!handle) return;
 		return annotations.watch();
+	});
+
+	// a link or citation followed in a comment opens from this PDF, as it would from a note
+	$effect(() => {
+		const el = rootEl;
+		if (!el) return;
+		const onActivate = (e: Event) => {
+			const h = handle;
+			if (!h || !editor) return;
+			const { kind, target, fragment, side, newTab } = (e as CustomEvent<ActivateDetail>).detail;
+			const from = { editor, tab, id: h.id, title: h.title, source: h.source };
+			if (kind !== 'tag' && !target) return;
+			const opening =
+				kind === 'tag'
+					? followTag(from, target, { side, newTab })
+					: followWikiLink(from, target, { heading: fragment, side, newTab });
+			opening.catch((err) => reportError(err, "The link couldn't be followed."));
+		};
+		const onOpenAnnotation = (e: Event) => {
+			if (!editor) return;
+			openAtAnnotation(editor, (e as CustomEvent<OpenAnnotationDetail>).detail).catch((err) =>
+				reportError(err, "The PDF couldn't be opened.")
+			);
+		};
+		el.addEventListener(ACTIVATE_EVENT, onActivate);
+		el.addEventListener(OPEN_ANNOTATION_EVENT, onOpenAnnotation);
+		return () => {
+			el.removeEventListener(ACTIVATE_EVENT, onActivate);
+			el.removeEventListener(OPEN_ANNOTATION_EVENT, onOpenAnnotation);
+		};
 	});
 
 	// ── Editions ────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@
 	import { leadIn, runOn, type Annotation } from '#lib/pdf/annotation.js';
 	import type { Citing } from '#lib/pdf/citation.js';
 	import AnnotationCrop from './AnnotationCrop.svelte';
+	import Comment from './Comment.svelte';
 	import { annotationRgb } from './colors.js';
 
 	/** A PDF's annotations read down as one list by page, each showing the notes that cite it. */
@@ -111,7 +112,7 @@
 				{#if a.comment}
 					<div class="comment">
 						<MessageSquare size={13} strokeWidth={1.75} />
-						<span>{a.comment}</span>
+						<Comment text={a.comment} />
 					</div>
 				{/if}
 				<div class="actions" data-actions={a.id}>
@@ -244,15 +245,14 @@
 		color: var(--color-text-secondary);
 	}
 
-	.comment :global(svg) {
+	.comment > :global(svg) {
 		flex-shrink: 0;
 		margin-top: 3px;
 		color: var(--color-ui-muted);
 	}
 
-	.comment span {
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
+	.comment > :global(:last-child) {
+		flex: 1;
 	}
 
 	.actions {

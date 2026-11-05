@@ -17,9 +17,10 @@
 	--syntax-task-checked-tick: var(--color-accent-contrast);
 }
 
-/* The same page width every other page uses, and the same side padding as DocumentHero, so
-   the document title and the first block line up on the left. */
-.editor > .block-list {
+/* A note's page: the same width every other page uses, and the same side padding as
+   DocumentHero, so the document title and the first block line up on the left. An editor set in
+   something smaller, as a comment's is, keeps aragonite's own flush layout. */
+.doc-editor .editor > .block-list {
 	max-width: var(--page-max-width, 1200px);
 	margin: 0 auto;
 	width: 100%;
@@ -28,7 +29,7 @@
 
 /* The invisible row under the last block (click it to add a line) is the list's sibling, not its
    child, so it's sized to the text column here too: its click area and focus ring match the text. */
-.editor > .editor-tail {
+.doc-editor .editor > .editor-tail {
 	max-width: calc(var(--page-max-width, 1200px) - 48px);
 	margin-left: auto;
 	margin-right: auto;

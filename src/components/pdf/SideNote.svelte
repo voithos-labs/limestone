@@ -17,10 +17,11 @@
 </script>
 
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
+	import { untrack } from 'svelte';
 	import { ArrowUpRight, Ellipsis, GripVertical, Link, Pencil, Quote } from '@lucide/svelte';
 	import { citationEmbed, type Citing } from '#lib/pdf/citation.js';
 	import { annotationRgb } from './colors.js';
+	import Comment from './Comment.svelte';
 
 	let {
 		annotation: a,
@@ -40,14 +41,14 @@
 	} = $props();
 
 	let draft = $state('');
-	let field: HTMLTextAreaElement | undefined = $state();
+	// where a double-click started the edit, so the caret lands where the reader pointed
+	let startAt: { x: number; y: number } | null = $state(null);
 
-	// Only starting to edit begins a draft; a reload while typing mustn't reset it. Whatever ends
-	// the edit (Escape, a click away, the viewer picking something else) keeps what was typed.
+	// Whatever ends the edit (Escape, a click away, the viewer picking something else) keeps what
+	// was typed.
 	$effect(() => {
 		if (!editing) return;
 		draft = untrack(() => a.comment);
-		void tick().then(() => field?.focus());
 		return () => {
 			if (draft.trim() !== untrack(() => a.comment))
 				actions.onSave(
@@ -57,28 +58,10 @@
 		};
 	});
 
-	function commit() {
-		if (editing) actions.onEdit(null);
-	}
-
-	// Escape leaves the note like a click away does, keeping what was typed.
-	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
-			e.preventDefault();
-			e.stopPropagation();
-			commit();
-			onDone?.();
-		}
-	}
-
-	function grow(node: HTMLTextAreaElement) {
-		const fit = () => {
-			node.style.height = 'auto';
-			node.style.height = `${node.scrollHeight}px`;
-		};
-		fit();
-		node.addEventListener('input', fit);
-		return { destroy: () => node.removeEventListener('input', fit) };
+	function finish() {
+		if (!editing) return;
+		actions.onEdit(null);
+		onDone?.();
 	}
 </script>
 
@@ -97,7 +80,10 @@
 		role="button"
 		tabindex="0"
 		onclick={() => (editing ? null : actions.onActivate(a))}
-		ondblclick={() => actions.onEdit(a)}
+		ondblclick={(e) => {
+			startAt = { x: e.clientX, y: e.clientY };
+			actions.onEdit(a);
+		}}
 		onkeydown={(e) => {
 			if (e.target === e.currentTarget && e.key === 'Enter') actions.onEdit(a);
 		}}
@@ -109,19 +95,16 @@
 					><Pencil size={11} strokeWidth={2} />Ink{editing && !a.comment ? ' · new' : ''}</span
 				>
 			{/if}
-			{#if editing}
-				<textarea
-					rows="1"
-					placeholder="Add a comment…"
-					bind:value={draft}
-					bind:this={field}
-					use:grow
-					onblur={commit}
-					onkeydown={onKey}></textarea>
-			{:else if a.comment}
-				<span class="comment">{a.comment}</span>
+			{#if editing || a.comment}
+				<Comment
+					text={a.comment}
+					{editing}
+					at={startAt}
+					onInput={(text) => (draft = text)}
+					onDone={finish}
+				/>
 			{:else}
-				<span class="comment empty">Add a comment…</span>
+				<span class="empty">Add a comment…</span>
 			{/if}
 			{#if cites.length}
 				<div class="cites">
@@ -206,12 +189,7 @@
 		color: var(--color-text-primary);
 	}
 
-	.comment {
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
-	}
-
-	.comment.empty {
+	.empty {
 		color: var(--color-ui-dulled);
 	}
 
@@ -252,22 +230,6 @@
 	.cite:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
-	}
-
-	textarea {
-		width: 100%;
-		padding: 0;
-		border: none;
-		outline: none;
-		resize: none;
-		overflow: hidden;
-		background: transparent;
-		color: var(--color-text-primary);
-		font: inherit;
-	}
-
-	textarea::placeholder {
-		color: var(--color-ui-dulled);
 	}
 
 	.grip {
