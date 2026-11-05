@@ -30,7 +30,6 @@
 	import { registerFlush } from '#lib/services/platform.js';
 	import { onDocChanged, onSourceReconciled, sourceName } from '#lib/models/Source.js';
 	import MarkdownHandle, { readErrorKind, type ReadErrorKind } from '#lib/models/MarkdownHandle.js';
-	import Doc, { type AnyDoc } from '#lib/models/Doc.js';
 	import { lastHistoryText } from '#lib/services/history.js';
 	import GonePage from '../pages/GonePage.svelte';
 	import AnnotationSource from '../pdf/AnnotationSource.svelte';
@@ -38,11 +37,9 @@
 	import { readAnnotation } from '#lib/pdf/annotation.js';
 	import GoneActions, { type GoneAction } from '../pages/GoneActions.svelte';
 	import DocHistory, { type HistoryVersion } from '#lib/models/DocHistory.svelte.js';
-	import View from '#lib/models/View.svelte.js';
-	import { tagId } from '#lib/models/Tag.js';
-	import { resolveWikiLink, touchLinkIndex } from '#lib/services/links.svelte.js';
-	import { joinRel, targetStem } from '#lib/services/links.svelte.js';
+	import { joinRel } from '#lib/services/links.svelte.js';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
+	import { followTag, followWikiLink, OPEN_AT_HEADING } from './follow-link';
 	import { OPEN_ANNOTATION_EVENT, type OpenAnnotationDetail } from './annotation-embeds';
 	import { openAtAnnotation } from '#lib/pdf/citation.js';
 	import { historyDecorations } from './history-decorations';
@@ -813,7 +810,6 @@
 	}
 
 	// The tab key a heading link leaves for the note it opens, read once when that note mounts
-	const OPEN_AT_HEADING = 'open_at_heading';
 
 	const DOCUMENT_START: EditorSelection = {
 		anchor: { path: [0], offset: 0 },
@@ -944,37 +940,16 @@
 		side = false,
 		newTab = false
 	): Promise<void> {
-		const h = handle;
-		if (!h || !editor) return;
-		const hit = await resolveWikiLink(h.source.id, target);
+		if (!handle || !editor) return;
+		const from = { editor, tab, id: handle.id, title: handle.title, source: handle.source };
+		const where = await followWikiLink(from, target, { heading, side, newTab });
 		// this note is already open here and won't reopen, so its heading is jumped to in place
-		if (hit?.id === h.id && !side) {
-			if (heading) void jumpToHeading(heading);
-			return;
-		}
-		let doc: AnyDoc;
-		if (hit) {
-			doc = await Doc.load(hit.id);
-		} else {
-			const slash = target.lastIndexOf('/');
-			doc = await MarkdownHandle.createFromTitle(h.source, {
-				title: targetStem(target),
-				...(slash > 0 ? { dir: target.slice(0, slash) } : {})
-			});
-			touchLinkIndex();
-		}
-		const state = heading ? { [OPEN_AT_HEADING]: heading } : {};
-		if (side) editor.beside().openDetail(TabState.docContent(doc), h.title);
-		else if (newTab) editor.openDoc(doc, state);
-		else editor.showDocInTab(tab, doc, state);
+		if (where === 'here' && heading) void jumpToHeading(heading);
 	}
 
 	async function openTagView(slug: string, side = false, newTab = false): Promise<void> {
 		if (!editor) return;
-		const view = await View.forUnit(tagId(slug), slug);
-		if (side) editor.beside().openDetail({ type: 'view', view }, handle?.title ?? slug);
-		else if (newTab) editor.openView(view);
-		else editor.showViewInTab(tab, view);
+		await followTag({ editor, tab, title: handle?.title ?? slug }, slug, { side, newTab });
 	}
 
 	// Puts the caret on the heading the link names; false if the note has no such heading
