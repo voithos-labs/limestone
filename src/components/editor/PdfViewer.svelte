@@ -925,7 +925,7 @@
 		if (draft) {
 			const { page, rect } = draft;
 			draft = null;
-			if (!rect) return;
+			if (!rect) return pickAt(e);
 			if (placing) return void place(placing, { page, rects: [rect] });
 			try {
 				const a = await annotate({ page, kind: 'region', color: 'sky', rects: [rect] });
@@ -935,7 +935,9 @@
 			}
 			return;
 		}
-		if (e.button !== 0 || !(acting === 'select' || acting === 'highlight')) return;
+		if (e.button !== 0) return;
+		// a click that draws nothing picks what's under it, whatever the tool
+		if (acting !== 'select' && acting !== 'highlight') return pickAt(e);
 		const selection = window.getSelection();
 		if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
 			pickAt(e);
@@ -964,7 +966,8 @@
 
 	/** A click on a mark picks its annotation; a click anywhere else lets go of it. */
 	function pickAt(e: PointerEvent) {
-		const page = pageAt(e.target);
+		// while a drawing tool holds the pointer, the event's target is the pages, not the page
+		const page = pageAt(e.target) ?? pageAt(document.elementFromPoint(e.clientX, e.clientY));
 		const [x, y] = page ? pagePoint(e, page) : [0, 0];
 		const n = page ? pageNumber(page) : 0;
 		const hit = (byPage.get(n) ?? []).find((a) =>

@@ -120,7 +120,7 @@
 								actions.onOpenNote(c.id);
 							}}
 						>
-							<ArrowUpRight size={10} strokeWidth={2} />{c.title}
+							<ArrowUpRight size={10} strokeWidth={2} /><span class="cite-title">{c.title}</span>
 						</button>
 					{/each}
 				</div>
@@ -214,6 +214,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
+		min-width: 0;
 		max-width: 100%;
 		height: 20px;
 		padding: 0 7px;
@@ -223,10 +224,19 @@
 		color: var(--color-text-secondary);
 		font: inherit;
 		font-size: 11px;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
 		cursor: pointer;
+	}
+
+	.cite :global(svg) {
+		flex-shrink: 0;
+	}
+
+	/* a long note title ends in an ellipsis inside the chip rather than running off it */
+	.cite-title {
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 	}
 
 	.cite:hover {
