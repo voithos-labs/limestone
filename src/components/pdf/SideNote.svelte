@@ -55,6 +55,8 @@
 					untrack(() => a),
 					draft
 				);
+			// an edit started from the menu or the keyboard puts the caret at the end
+			startAt = null;
 		};
 	});
 
@@ -260,7 +262,9 @@
 	}
 
 	.note:hover .grip,
-	.note:hover .tools {
+	.note:hover .tools,
+	.note.active .grip,
+	.note.active .tools {
 		opacity: 1;
 		pointer-events: auto;
 	}

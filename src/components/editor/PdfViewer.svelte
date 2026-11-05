@@ -85,7 +85,7 @@
 	import NotPlaced from '../pdf/NotPlaced.svelte';
 	import PlaceHint from '../pdf/PlaceHint.svelte';
 	import { INK_RGB } from '../pdf/colors.js';
-	import { MessageSquare, Pin, Quote, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
+	import { MessageSquare, Pencil, Pin, Quote, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
 	import { editionDate, editionOf, editionPath, isPreserved } from '#lib/pdf/edition.js';
 	import type PdfHandle from '#lib/models/PdfHandle.js';
 
@@ -854,6 +854,8 @@
 		onCite: cite,
 		onLink: link,
 		onMore: (a, anchor) => {
+			// the comment stays picked while its menu is open, so the menu reads as its own
+			activeId = a.id;
 			moreFor = a;
 			moreAnchor = anchor;
 			moreOpen = true;
@@ -1005,11 +1007,12 @@
 		}
 	}
 
-	const moreItems: MenuEntry[] = [
+	const moreItems = $derived.by((): MenuEntry[] => [
+		{ value: 'edit', label: moreFor?.comment ? 'Edit comment' : 'Add comment', icon: Pencil },
 		{ value: 'open', label: 'Open as note', icon: SquareArrowOutUpRight },
 		{ kind: 'divider' },
 		{ value: 'delete', label: 'Delete', icon: Trash2, danger: true }
-	];
+	]);
 
 	function onMoreSelect(value: string) {
 		const a = moreFor;
@@ -1017,6 +1020,7 @@
 		if (!a) return;
 		if (value === 'delete') void removeAnnotation(a);
 		else if (value === 'open') openNote(a.id);
+		else if (value === 'edit') activeId = editingId = a.id;
 	}
 
 	// ── Carrying over ───────────────────────────────────────────────────────
