@@ -131,18 +131,10 @@ export function annotationLabel(kind: AnnotationKind, quote?: string): string {
 	return words.length > LABEL_WORDS ? label : label.replace(/[.,;:]+$/, '');
 }
 
-/**
- * The note body: the quote as a blockquote, so the note reads on its own outside Limestone, then
- * the comment.
- */
-export function annotationBody(quote: string | undefined, comment: string): string {
+/** The note body, which is the comment alone: the quote lives only in the frontmatter. */
+export function annotationBody(comment: string): string {
 	const text = comment.trim();
-	if (!quote) return text ? `${text}\n` : '';
-	const block = quote
-		.split('\n')
-		.map((line) => `> ${line}`)
-		.join('\n');
-	return text ? `${block}\n\n${text}\n` : `${block}\n`;
+	return text ? `${text}\n` : '';
 }
 
 /**
@@ -162,12 +154,9 @@ export function runOn(suffix: string): string {
 	return `${lead}${suffix}${tail}`;
 }
 
-/** The comment in a note body: everything after a leading blockquote, or the whole body. */
+/** The comment a note body holds. */
 export function annotationComment(body: string): string {
-	const lines = body.replace(/^\s*\n/, '').split('\n');
-	let i = 0;
-	while (i < lines.length && /^\s*>/.test(lines[i])) i++;
-	return lines.slice(i).join('\n').trim();
+	return body.trim();
 }
 
 // ── Internal ────────────────────────────────────────────────────────────────

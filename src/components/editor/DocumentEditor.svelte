@@ -34,6 +34,8 @@
 	import { lastHistoryText } from '#lib/services/history.js';
 	import GonePage from '../pages/GonePage.svelte';
 	import AnnotationSource from '../pdf/AnnotationSource.svelte';
+	import AnnotationPassage from '../pdf/AnnotationPassage.svelte';
+	import { readAnnotation } from '#lib/pdf/annotation.js';
 	import GoneActions, { type GoneAction } from '../pages/GoneActions.svelte';
 	import DocHistory, { type HistoryVersion } from '#lib/models/DocHistory.svelte.js';
 	import View from '#lib/models/View.svelte.js';
@@ -1113,6 +1115,14 @@
 	{#if handle}<AnnotationSource noteId={handle.id} properties={handle.properties} {editor} />{/if}
 {/snippet}
 
+<!-- An annotation note's body is its comment alone, so the passage it marks shows above it. -->
+{#snippet annotationPassage()}
+	{@const annotation = handle && readAnnotation(handle.properties)}
+	{#if annotation}
+		<div class="annotation-passage"><div class="card"><AnnotationPassage {annotation} /></div></div>
+	{/if}
+{/snippet}
+
 {#snippet documentHeader()}
 	{#if handle}
 		<DocumentHero
@@ -1137,6 +1147,7 @@
 			extra={annotationSource}
 		/>
 		{@render docNotices()}
+		{@render annotationPassage()}
 	{/if}
 {/snippet}
 
@@ -1199,6 +1210,7 @@
 			extra={annotationSource}
 		/>
 		{@render docNotices()}
+		{@render annotationPassage()}
 	{/if}
 	{#if unavailable && unavailable.held === null}
 		<div class="unavailable" class:flow>
@@ -1241,6 +1253,21 @@
 </div>
 
 <style>
+	/* in the note's column, drawn as a citation card of it is */
+	.annotation-passage {
+		max-width: var(--page-max-width, 1200px);
+		box-sizing: border-box;
+		margin: -16px auto 8px;
+		padding: 0 24px;
+		font-size: var(--editor-font-size);
+	}
+
+	.annotation-passage .card {
+		padding: 12px 14px;
+		border-radius: 8px;
+		background: var(--chip-bg);
+	}
+
 	.unavailable {
 		display: flex;
 		flex: 1;

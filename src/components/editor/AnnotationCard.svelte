@@ -10,12 +10,11 @@
 		ANNOTATION_KEY,
 		annotationComment,
 		readAnnotation,
-		runOn,
 		type AnnotationFields
 	} from '#lib/pdf/annotation.js';
 	import { editionDate } from '#lib/pdf/edition.js';
 	import { annotationRgb } from '../pdf/colors';
-	import AnnotationCrop from '../pdf/AnnotationCrop.svelte';
+	import AnnotationPassage from '../pdf/AnnotationPassage.svelte';
 	import PdfIcon from '../ui/PdfIcon.svelte';
 	import {
 		OPEN_ANNOTATION_EVENT,
@@ -36,8 +35,6 @@
 		editionDay: string | null;
 	}
 
-	const CROP_MAX_HEIGHT = 320;
-
 	// Read once: the widget remounts on any source change.
 	// svelte-ignore state_referenced_locally
 	const target = source.slice(3, -2).split('|')[0].trim();
@@ -51,7 +48,6 @@
 	const fields = $derived(found?.fields);
 	const pdfTitle = $derived(found?.pdfTitle ?? named?.pdfTitle ?? target);
 	const page = $derived(fields?.page ?? named?.page);
-	const suffix = $derived(fields?.suffix ? runOn(fields.suffix) : '');
 	const reading = $derived(getPresentationMode() === 'reading');
 
 	$effect(() => {
@@ -176,11 +172,7 @@
 				</span>
 			{/if}
 		</span>
-		{#if fields?.kind === 'highlight' && fields.quote}
-			<span class="quote"><span class="mark">{fields.quote}</span>{suffix}</span>
-		{:else if fields && fields.kind !== 'highlight'}
-			<AnnotationCrop annotation={fields} maxHeight={CROP_MAX_HEIGHT} />
-		{/if}
+		{#if fields}<AnnotationPassage annotation={fields} />{/if}
 		{#if found?.comment}
 			<span class="rule"></span>
 			<span class="comment">{found.comment}</span>
@@ -241,23 +233,6 @@
 		background: var(--chip-bg);
 		font-family: var(--font-mono);
 		font-size: 0.875em;
-	}
-
-	.quote {
-		display: block;
-		font-family: var(--font-editor);
-		font-size: 0.9375em;
-		line-height: 1.55;
-		color: var(--color-text-primary);
-		text-wrap: pretty;
-	}
-
-	.mark {
-		padding: 1px 0;
-		border-radius: 2px;
-		background: rgb(var(--ann) / 0.28);
-		box-decoration-break: clone;
-		-webkit-box-decoration-break: clone;
 	}
 
 	.rule {

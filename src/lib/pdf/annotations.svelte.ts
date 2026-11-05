@@ -77,7 +77,7 @@ export default class PdfAnnotations {
 			title: annotationTitle(pdf.title, fields.page, annotationLabel(fields.kind, fields.quote)),
 			dir: siblingDir(pdf.relPath, pdf.title),
 			properties: { [ANNOTATION_KEY]: storedFields(annotation) },
-			body: annotationBody(fields.quote, comment)
+			body: annotationBody(comment)
 		});
 		const created: Annotation = {
 			...annotation,
@@ -128,7 +128,7 @@ export default class PdfAnnotations {
 		// fields still carries any keys this version doesn't know, read from the note at load
 		const { id: _id, title: _title, relPath: _relPath, comment, ...fields } = next;
 		const doc = await MarkdownHandle.fromID(id);
-		await doc.saveContent(annotationBody(fields.quote, comment), {
+		await doc.saveContent(annotationBody(comment), {
 			properties: { [ANNOTATION_KEY]: storedFields(fields) }
 		});
 	}
