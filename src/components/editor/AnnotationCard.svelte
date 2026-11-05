@@ -15,6 +15,8 @@
 	import { editionDate } from '#lib/pdf/edition.js';
 	import { annotationRgb } from '../pdf/colors';
 	import AnnotationPassage from '../pdf/AnnotationPassage.svelte';
+	import Comment from '../pdf/Comment.svelte';
+	import { IN_CARD_PLUGINS } from './editor-plugins';
 	import PdfIcon from '../ui/PdfIcon.svelte';
 	import {
 		OPEN_ANNOTATION_EVENT,
@@ -175,7 +177,8 @@
 		{#if fields}<AnnotationPassage annotation={fields} />{/if}
 		{#if found?.comment}
 			<span class="rule"></span>
-			<span class="comment">{found.comment}</span>
+			<!-- read only: the whole card is one link to the passage -->
+			<span class="comment"><Comment text={found.comment} plugins={IN_CARD_PLUGINS} /></span>
 		{/if}
 	</span>
 {/if}
@@ -246,8 +249,8 @@
 		font-size: 0.84375em;
 		line-height: 1.5;
 		color: var(--color-text-secondary);
-		white-space: pre-wrap;
 		text-wrap: pretty;
+		pointer-events: none;
 	}
 
 	.unresolved {

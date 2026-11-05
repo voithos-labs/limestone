@@ -1380,7 +1380,7 @@
 		position: fixed;
 	}
 
-	.doc-editor.history-open :global(.editor > .block-list) {
+	.doc-editor.history-open > :global(.editor > .block-list) {
 		padding-bottom: 160px;
 	}
 

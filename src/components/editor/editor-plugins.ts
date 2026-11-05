@@ -18,6 +18,8 @@ import type { EditorPluginEntry } from '@voithos-labs/aragonite';
  * warns in dev if a remount hands it a new object under a name it already has. Importing the two
  * renderer paths is what pulls in katex and mermaid; the plugins ship neither.
  */
+const annotationEmbeds = annotationEmbedsPlugin();
+
 export const EDITOR_PLUGINS: readonly EditorPluginEntry[] = [
 	admonitionsPlugin(),
 	detailsPlugin(),
@@ -28,6 +30,12 @@ export const EDITOR_PLUGINS: readonly EditorPluginEntry[] = [
 	slashCommandsPlugin(),
 	tocPlugin(),
 	wikiImageEmbedsPlugin(),
-	annotationEmbedsPlugin(),
+	annotationEmbeds,
 	wikiLinksPlugin()
 ];
+
+/**
+ * For text shown inside a citation card: every plugin but citation cards, so a comment citing its
+ * own annotation can't nest cards without end. An editor runs only the plugins it lists.
+ */
+export const IN_CARD_PLUGINS = EDITOR_PLUGINS.filter((p) => p !== annotationEmbeds);

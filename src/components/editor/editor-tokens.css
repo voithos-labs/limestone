@@ -18,9 +18,9 @@
 }
 
 /* A note's page: the same width every other page uses, and the same side padding as
-   DocumentHero, so the document title and the first block line up on the left. An editor set in
-   something smaller, as a comment's is, keeps aragonite's own flush layout. */
-.doc-editor .editor > .block-list {
+   DocumentHero, so the document title and the first block line up on the left. Only the note's
+   own editor: one set in something smaller, as a comment's is, keeps aragonite's flush layout. */
+.doc-editor > .editor > .block-list {
 	max-width: var(--page-max-width, 1200px);
 	margin: 0 auto;
 	width: 100%;
@@ -29,7 +29,7 @@
 
 /* The invisible row under the last block (click it to add a line) is the list's sibling, not its
    child, so it's sized to the text column here too: its click area and focus ring match the text. */
-.doc-editor .editor > .editor-tail {
+.doc-editor > .editor > .editor-tail {
 	max-width: calc(var(--page-max-width, 1200px) - 48px);
 	margin-left: auto;
 	margin-right: auto;
@@ -39,10 +39,10 @@
 /* The page scrolls the entry in flow mode, so the room above and below is the editor's to give.
    The side padding stays here: a click in that strip has to reach the line beside it. The room
    below goes under the insert row, so that row follows the last block directly. */
-.doc-editor.flow .editor > .block-list {
+.doc-editor.flow > .editor > .block-list {
 	padding-top: 4px;
 }
 
-.doc-editor.flow .editor > .editor-tail {
+.doc-editor.flow > .editor > .editor-tail {
 	margin-bottom: 48px;
 }

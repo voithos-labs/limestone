@@ -6,6 +6,7 @@
 	import { currentThemeType } from '#lib/services/theme.svelte.js';
 	import { registerDocumentEditor } from '#lib/shortcuts.js';
 	import { scrollParent } from '#lib/util/dom.js';
+	import type { EditorPluginEntry } from '@voithos-labs/aragonite';
 	import { EDITOR_PLUGINS } from '../editor/editor-plugins';
 
 	/**
@@ -18,6 +19,7 @@
 		editing = false,
 		at = null,
 		placeholder = 'Add a comment…',
+		plugins = EDITOR_PLUGINS,
 		onInput,
 		onDone
 	}: {
@@ -26,6 +28,7 @@
 		/** Where the reader double-clicked to start editing, so the caret lands there. */
 		at?: { x: number; y: number } | null;
 		placeholder?: string;
+		plugins?: readonly EditorPluginEntry[];
 		/** Each change while editing, as the comment's whole text. */
 		onInput?: (text: string) => void;
 		/** Escape, Ctrl+Enter or a click outside the comment ends the edit. */
@@ -100,7 +103,7 @@
 			blockDragHandles={false}
 			selectionToolbar={false}
 			placeholder={editing ? placeholder : undefined}
-			plugins={EDITOR_PLUGINS}
+			{plugins}
 		/>
 	{:else}
 		<span class="plain">{text}</span>
@@ -114,6 +117,9 @@
 		--editor-font-size: 1em;
 		--color-text-primary: currentColor;
 		min-width: 0;
+		/* a note's text runs pre-wrap, which inside a citation card would turn the editor's
+		   markup whitespace into blank lines */
+		white-space: normal;
 		overflow-wrap: anywhere;
 	}
 
