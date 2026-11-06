@@ -512,8 +512,8 @@ pub async fn move_folder(
         return Err(FolderOpError::new("not_found"));
     }
     let old_prefix = format!("{old_rel_dir}/");
-    let under: Vec<String> = sqlx::query_scalar(
-        "SELECT rel_path FROM documents
+    let under: Vec<(String, String)> = sqlx::query_as(
+        "SELECT id, rel_path FROM documents
          WHERE source_id = ?1 AND deleted_at IS NULL AND substr(rel_path, 1, length(?2)) = ?2",
     )
     .bind(&source_id)
@@ -522,11 +522,20 @@ pub async fn move_folder(
     .await
     .unwrap_or_default();
     std::fs::rename(&old_full, &new_full).map_err(|e| FolderOpError::io(&e))?;
-    for rel in &under {
-        let new_rel = format!("{new_rel_dir}/{}", &rel[old_prefix.len()..]);
-        if let Err(e) = move_path_history(&root, rel, &root, &new_rel) {
+    let moved: Vec<(String, String, String)> = under
+        .into_iter()
+        .map(|(id, rel)| {
+            let new_rel = format!("{new_rel_dir}/{}", &rel[old_prefix.len()..]);
+            (id, rel, new_rel)
+        })
+        .collect();
+    for (_, rel, new_rel) in &moved {
+        if let Err(e) = move_path_history(&root, rel, &root, new_rel) {
             eprintln!("history move failed: {e}");
         }
+    }
+    if let Err(e) = repath_rows(&app_data.db, &source_id, &moved).await {
+        eprintln!("folder move repath failed: {e}");
     }
 
     let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
@@ -541,6 +550,23 @@ pub async fn move_folder(
     )
     .await;
     Ok(())
+}
+
+async fn repath_rows(
+    db: &sqlx::SqlitePool,
+    source_id: &str,
+    moved: &[(String, String, String)],
+) -> sqlx::Result<()> {
+    let mut tx = db.begin().await?;
+    for (id, _, new_rel) in moved {
+        sqlx::query("UPDATE documents SET rel_path = ?1 WHERE id = ?2")
+            .bind(new_rel)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        services::sync_folders(&mut tx, source_id, id, new_rel).await?;
+    }
+    tx.commit().await
 }
 
 #[tauri::command]
