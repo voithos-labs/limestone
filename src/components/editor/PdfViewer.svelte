@@ -148,14 +148,17 @@
 	const savedZoom = untrack(() => tab.state.pdf_zoom);
 	let zoom = $state(typeof savedZoom === 'number' ? savedZoom : 1);
 	const column = $derived(Math.min(columnMax, paneW - SIDE_PAD * 2));
-	// The margin fits once a page beside it still reads comfortably. The page keeps the size it has
-	// beside the margin whether or not the margin shows, so showing it only moves the page.
-	const railFits = $derived(column >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_WIDTH);
+	// The column has room for the margin once a page beside it still reads comfortably. The page
+	// keeps the size it has beside the margin whether or not the margin shows, so showing it only
+	// moves the page.
+	const marginRoom = $derived(column >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_WIDTH);
 	const fitWidth = $derived(
-		Math.max(0, Math.min(MAX_PAGE_WIDTH, column - (railFits ? RAIL_GAP + RAIL_WIDTH : 0)))
+		Math.max(0, Math.min(MAX_PAGE_WIDTH, column - (marginRoom ? RAIL_GAP + RAIL_WIDTH : 0)))
 	);
 	// a zoomed page never runs wider than the pane, which the column would squeeze it to anyway
 	const width = $derived(Math.round(Math.min(fitWidth * zoom, paneW)));
+	// a page zoomed past that room would push the margin out of the pane, so the markers stand in
+	const railFits = $derived(marginRoom && width + RAIL_GAP + RAIL_WIDTH <= paneW - SIDE_PAD * 2);
 	let rootEl: HTMLDivElement | undefined = $state();
 	let scrollEl: HTMLDivElement | undefined = $state();
 	// in flow the page scrolls, not the viewer
@@ -916,7 +919,7 @@
 	const rail = $derived(railFits && (sidenotesOn ? here.length > 0 : editingId !== null));
 	// the digest reads at the full column whatever the sidenotes show, since it has no margin
 	const columnWidth = $derived(
-		width + ((mode === 'digest' ? railFits : rail) ? RAIL_GAP + RAIL_WIDTH : 0)
+		width + ((mode === 'digest' ? marginRoom : rail) ? RAIL_GAP + RAIL_WIDTH : 0)
 	);
 
 	function toggleSidenotes() {
