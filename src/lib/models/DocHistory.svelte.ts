@@ -25,10 +25,6 @@ export default class DocHistory {
 		this.doc = doc;
 	}
 
-	get available(): boolean {
-		return this.doc.idOnDisk;
-	}
-
 	get count(): number {
 		return this.checkpoints.length;
 	}

@@ -268,6 +268,7 @@ pub fn run() {
             commands::source_commands::set_folder_frontmatter,
             commands::source_commands::rekey_folder_frontmatter,
             commands::source_commands::contains_git_repo,
+            commands::source_commands::is_empty_dir,
             commands::source_commands::get_source_by_id,
             commands::source_commands::update_source,
             commands::source_commands::create_source,

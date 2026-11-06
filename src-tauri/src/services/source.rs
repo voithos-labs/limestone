@@ -535,7 +535,7 @@ pub fn extract_frontmatter(
 }
 
 // escalate the read window until the closing fence fits (or the whole file is in)
-fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<serde_json::Value> {
+pub(crate) fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<serde_json::Value> {
     let mut limit = buffer_size.max(64) as u64;
     loop {
         let mut buf = Vec::new();
@@ -577,6 +577,7 @@ pub fn resolve_plan(
     db_docs: &HashMap<String, (String, i64)>,
     deleted_ids: &HashSet<String>,
     foreign_ids: &HashSet<String>,
+    locked_dirs: &HashSet<String>,
 ) -> ReconcilePlan {
     let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
         .iter()
@@ -640,6 +641,8 @@ pub fn resolve_plan(
                 moved: holder.is_some_and(|q| q != *path),
                 rewrite_id: false,
             });
+        } else if locked_dirs.contains(dir_of(path)) {
+            claimless.push((path, *mtime));
         } else {
             docs.push(ResolvedDoc {
                 id: Uuid::new_v4().to_string(),
@@ -690,6 +693,10 @@ pub fn resolve_plan(
         .collect();
 
     ReconcilePlan { docs, delete_ids }
+}
+
+fn dir_of(path: &str) -> &str {
+    path.rsplit_once('/').map_or("", |(dir, _)| dir)
 }
 
 /// Read the file's creation time, fall back to mtime if the
@@ -1240,7 +1247,25 @@ pub async fn reconcile_source(
             .into_iter()
             .collect();
 
-    let plan = resolve_plan(&diff, &frontmatter, &db_docs, &deleted_ids, &foreign_ids);
+    let folder_prefix = folder_id(source_id, "");
+    let locked_dirs: HashSet<String> = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM folders WHERE source_id = ?1 AND writes_meta = 0",
+    )
+    .bind(source_id)
+    .fetch_all(db)
+    .await?
+    .into_iter()
+    .filter_map(|id| id.strip_prefix(&folder_prefix).map(str::to_string))
+    .collect();
+
+    let plan = resolve_plan(
+        &diff,
+        &frontmatter,
+        &db_docs,
+        &deleted_ids,
+        &foreign_ids,
+        &locked_dirs,
+    );
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
@@ -1298,7 +1323,14 @@ mod tests {
             .map(|(id, p)| (id.to_string(), (p.to_string(), 0)))
             .collect();
         let foreign_ids: HashSet<String> = foreign.iter().map(|s| s.to_string()).collect();
-        resolve_plan(&diff, &frontmatter, &db_docs, &HashSet::new(), &foreign_ids)
+        resolve_plan(
+            &diff,
+            &frontmatter,
+            &db_docs,
+            &HashSet::new(),
+            &foreign_ids,
+            &HashSet::new(),
+        )
     }
 
     #[test]
@@ -1313,7 +1345,14 @@ mod tests {
         let db_docs: HashMap<String, (String, i64)> =
             [("id-a".to_string(), ("a.md".to_string(), 0))].into();
         let deleted: HashSet<String> = ["id-a".to_string()].into();
-        let p = resolve_plan(&diff, &frontmatter, &db_docs, &deleted, &HashSet::new());
+        let p = resolve_plan(
+            &diff,
+            &frontmatter,
+            &db_docs,
+            &deleted,
+            &HashSet::new(),
+            &HashSet::new(),
+        );
         let d = doc(&p, "back/a.md");
         assert_eq!(d.id, "id-a");
         assert!(d.existing && d.moved && !d.rewrite_id);
@@ -1325,12 +1364,64 @@ mod tests {
             new_paths: vec![],
             missing: vec![],
         };
-        let p = resolve_plan(&empty, &[], &db_docs, &deleted, &HashSet::new());
+        let p = resolve_plan(
+            &empty,
+            &[],
+            &db_docs,
+            &deleted,
+            &HashSet::new(),
+            &HashSet::new(),
+        );
         assert!(p.docs.is_empty() && p.delete_ids.is_empty());
     }
 
     fn doc<'a>(p: &'a ReconcilePlan, path: &str) -> &'a ResolvedDoc {
         p.docs.iter().find(|d| d.rel_path == path).unwrap()
+    }
+
+    #[test]
+    fn denied_claim_in_locked_dir_keeps_its_path_row_and_file() {
+        let locked: HashSet<String> = ["".to_string()].into();
+        let frontmatter = vec![("a copy.md".to_string(), fm("id-a"))];
+        let first = ReconciliationDiff {
+            unchanged: vec!["a.md".to_string()],
+            modified: vec![],
+            new_paths: vec![("a copy.md".to_string(), 1)],
+            missing: vec![],
+        };
+        let mut db_docs: HashMap<String, (String, i64)> =
+            [("id-a".to_string(), ("a.md".to_string(), 0))].into();
+        let p = resolve_plan(
+            &first,
+            &frontmatter,
+            &db_docs,
+            &HashSet::new(),
+            &HashSet::new(),
+            &locked,
+        );
+        let d = doc(&p, "a copy.md");
+        assert!(d.id != "id-a" && !d.existing && !d.rewrite_id);
+        assert!(p.delete_ids.is_empty());
+
+        db_docs.insert(d.id.clone(), ("a copy.md".to_string(), 1));
+        let second = ReconciliationDiff {
+            unchanged: vec!["a.md".to_string()],
+            modified: vec![("a copy.md".to_string(), 2)],
+            new_paths: vec![],
+            missing: vec![],
+        };
+        let p = resolve_plan(
+            &second,
+            &frontmatter,
+            &db_docs,
+            &HashSet::new(),
+            &HashSet::new(),
+            &locked,
+        );
+        let again = doc(&p, "a copy.md");
+        assert_eq!(again.id, d.id);
+        assert!(again.existing && !again.rewrite_id);
+        assert!(p.delete_ids.is_empty());
     }
 
     #[test]

@@ -20,6 +20,7 @@ interface DocHistoryShape {
 export interface DocRef {
 	id: string;
 	source: { id: string };
+	relPath?: string;
 }
 
 type Doc = Automerge.Doc<DocHistoryShape>;
@@ -61,8 +62,12 @@ function genesis(docId: string): Uint8Array {
 	return Automerge.getLastLocalChange(doc)!;
 }
 
-function loadChunks(sourceId: string, docId: string): Promise<string[]> {
-	return invoke<string[]>('history_load', { sourceId, docId });
+function loadChunks(ref: DocRef): Promise<string[]> {
+	return invoke<string[]>('history_load', {
+		sourceId: ref.source.id,
+		docId: ref.id,
+		relPath: ref.relPath ?? null
+	});
 }
 
 function buildDoc(actor: string, docId: string, chunks: string[]): Doc {
@@ -75,7 +80,7 @@ function buildDoc(actor: string, docId: string, chunks: string[]): Doc {
 async function openHistory(ref: DocRef): Promise<HistoryEntry> {
 	const docId = ref.id;
 	const sourceId = ref.source.id;
-	const [actor, chunks] = await Promise.all([ensureReady(), loadChunks(sourceId, docId)]);
+	const [actor, chunks] = await Promise.all([ensureReady(), loadChunks(ref)]);
 	return { sourceId, doc: buildDoc(actor, docId, chunks), chain: Promise.resolve() };
 }
 
@@ -104,7 +109,13 @@ async function changeHistory(ref: DocRef, fn: Automerge.ChangeFn<DocHistoryShape
 		if (heads.join() === before) return;
 		const [hash] = heads;
 		const data = toBase64(Automerge.getLastLocalChange(next)!);
-		await invoke('history_append', { sourceId: entry.sourceId, docId: ref.id, hash, data });
+		await invoke('history_append', {
+			sourceId: entry.sourceId,
+			docId: ref.id,
+			relPath: ref.relPath ?? null,
+			hash,
+			data
+		});
 		entry.doc = next;
 	});
 	entry.chain = run.catch(() => {});
@@ -128,7 +139,11 @@ export async function removeHistory(ref: DocRef): Promise<void> {
 	const entry = entries.get(ref.id);
 	entries.delete(ref.id);
 	if (entry) await settled(entry);
-	await invoke('history_remove', { sourceId: ref.source.id, docId: ref.id });
+	await invoke('history_remove', {
+		sourceId: ref.source.id,
+		docId: ref.id,
+		relPath: ref.relPath ?? null
+	});
 }
 
 interface HistoryOrphan {
@@ -143,8 +158,8 @@ async function adoptHistory({ doc_id, source_id, holder_source_id }: HistoryOrph
 	if (entry) await settled(entry);
 	const [actor, foreign, own] = await Promise.all([
 		ensureReady(),
-		loadChunks(source_id, doc_id),
-		loadChunks(holder_source_id, doc_id)
+		loadChunks({ id: doc_id, source: { id: source_id } }),
+		loadChunks({ id: doc_id, source: { id: holder_source_id } })
 	]);
 	if (foreign.length === 0) return;
 	let change: { hash: string; data: string } | null = null;
@@ -217,15 +232,13 @@ export async function lastHistoryText(ref: DocRef): Promise<string | null> {
 	}
 }
 
-export async function moveHistory(
-	docId: string,
-	sourceId: string,
-	newSourceId: string
-): Promise<void> {
+export async function settleHistory(docId: string): Promise<void> {
 	const entry = entries.get(docId);
 	if (entry) await settled(entry);
-	await invoke('history_move', { sourceId, newSourceId, docId });
-	const loaded = await entry?.catch(() => null);
+}
+
+export async function retargetHistory(docId: string, newSourceId: string): Promise<void> {
+	const loaded = await entries.get(docId)?.catch(() => null);
 	if (loaded) loaded.sourceId = newSourceId;
 }
 

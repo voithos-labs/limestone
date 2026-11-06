@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
+use crate::commands::history_commands::move_path_history;
 use crate::services::fs::{clean_location, resolve_in_source};
 use crate::services::{self, dot_get, JsonSettingsStore, Source, SourceRecord, Sources};
 use crate::AppData;
@@ -250,6 +251,14 @@ pub fn check_sources(app: AppHandle) -> Vec<(String, bool)> {
         .into_iter()
         .map(|s| (s.id.to_string(), s.path.is_dir()))
         .collect()
+}
+
+#[tauri::command]
+pub fn is_empty_dir(path: String) -> bool {
+    match std::fs::read_dir(&path) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    }
 }
 
 #[tauri::command]
@@ -502,7 +511,23 @@ pub async fn move_folder(
     if !new_full.parent().is_some_and(|p| p.is_dir()) {
         return Err(FolderOpError::new("not_found"));
     }
+    let old_prefix = format!("{old_rel_dir}/");
+    let under: Vec<String> = sqlx::query_scalar(
+        "SELECT rel_path FROM documents
+         WHERE source_id = ?1 AND deleted_at IS NULL AND substr(rel_path, 1, length(?2)) = ?2",
+    )
+    .bind(&source_id)
+    .bind(&old_prefix)
+    .fetch_all(&app_data.db)
+    .await
+    .unwrap_or_default();
     std::fs::rename(&old_full, &new_full).map_err(|e| FolderOpError::io(&e))?;
+    for rel in &under {
+        let new_rel = format!("{new_rel_dir}/{}", &rel[old_prefix.len()..]);
+        if let Err(e) = move_path_history(&root, rel, &root, &new_rel) {
+            eprintln!("history move failed: {e}");
+        }
+    }
 
     let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
     rekey_frontmatter_dirs(&app, uuid, &old_rel_dir, &new_rel_dir);

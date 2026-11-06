@@ -50,6 +50,20 @@ pub fn history_dir(source_path: &Path, doc_id: &str) -> PathBuf {
     history_root(source_path).join(doc_id)
 }
 
+pub const HISTORY_BY_PATH: &str = "by-path";
+
+const PATH_KEY_NAMESPACE: uuid::Uuid = uuid::Uuid::from_u128(0x6c696d6573746f6e652d686973746f72);
+
+pub fn history_path_key(rel_path: &str) -> String {
+    uuid::Uuid::new_v5(&PATH_KEY_NAMESPACE, rel_path.to_lowercase().as_bytes()).to_string()
+}
+
+pub fn history_path_dir(source_path: &Path, rel_path: &str) -> PathBuf {
+    history_root(source_path)
+        .join(HISTORY_BY_PATH)
+        .join(history_path_key(rel_path))
+}
+
 pub fn mtime_ms(path: &Path) -> Option<i64> {
     let modified = fs::metadata(path).ok()?.modified().ok()?;
     let since = modified.duration_since(std::time::UNIX_EPOCH).ok()?;

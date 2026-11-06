@@ -89,6 +89,10 @@ export async function containsGitRepo(path: string): Promise<boolean> {
 	return await invoke<boolean>('contains_git_repo', { path });
 }
 
+export async function isEmptyDir(path: string): Promise<boolean> {
+	return await invoke<boolean>('is_empty_dir', { path });
+}
+
 export async function listDirs(path: string): Promise<string[]> {
 	return await invoke<string[]>('list_dirs', { path });
 }

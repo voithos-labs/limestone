@@ -4,6 +4,7 @@
 		containsGitRepo,
 		createSource,
 		GIT_FRONTMATTER_OFF,
+		isEmptyDir,
 		listDirs,
 		listSources,
 		makeDir,
@@ -58,7 +59,7 @@
 				folderPath = '';
 				noteLocation = '';
 				assetLocation = 'assets';
-				useFrontmatter = true;
+				useFrontmatter = false;
 				setAsDefault = false;
 				hasRepo = false;
 				getSetting<boolean>(GIT_FRONTMATTER_OFF)
@@ -82,6 +83,11 @@
 			containsGitRepo(sel)
 				.then((found) => {
 					if (folderPath === sel) hasRepo = found;
+				})
+				.catch(() => {});
+			isEmptyDir(sel)
+				.then((empty) => {
+					if (folderPath === sel) useFrontmatter = empty;
 				})
 				.catch(() => {});
 		}
@@ -276,7 +282,7 @@
 							<span class="oc-desc">
 								{useFrontmatter
 									? "Tags and properties live in each note's file."
-									: 'No properties, stable ids or edit history.'}
+									: 'Files stay as they are. Text #tags work, properties need it on.'}
 							</span>
 						</div>
 						<Toggle bind:checked={useFrontmatter} />

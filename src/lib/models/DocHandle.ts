@@ -30,7 +30,12 @@ import * as yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '#lib/services/db.js';
-import { addChangeHistory, moveHistory, removeHistory } from '#lib/services/history.js';
+import {
+	addChangeHistory,
+	removeHistory,
+	retargetHistory,
+	settleHistory
+} from '#lib/services/history.js';
 import { LinkRewriteFailure, rewriteLinksForMove } from '#lib/services/links.svelte.js';
 import { isRetryable, toasts, mark } from '#lib/overlays.svelte.js';
 import { sanitizeSegment } from '#lib/util/paths.js';
@@ -160,7 +165,6 @@ class DocHandle {
 	frontmatterError: string | null = null;
 	writesMeta = true;
 	inRepo = false;
-	idOnDisk = false;
 	private fence = '';
 
 	private constructor(row: DocumentRow, source: Source) {
@@ -410,7 +414,6 @@ class DocHandle {
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 		this.fence = raw.slice(0, raw.length - body.length);
-		this.idOnDisk = frontmatter?.id === this.id;
 
 		if (frontmatter) {
 			const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
@@ -435,7 +438,6 @@ class DocHandle {
 	}
 
 	private recordHistory(body: string): void {
-		if (!this.idOnDisk) return;
 		addChangeHistory(this, body).catch((e) => console.error('history record failed', e));
 	}
 
@@ -458,7 +460,6 @@ class DocHandle {
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 		this.fence = raw.slice(0, raw.length - body.length);
-		this.idOnDisk = frontmatter?.id === this.id;
 		if (!frontmatter) return;
 		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
 		this.properties = remaining;
@@ -479,7 +480,6 @@ class DocHandle {
 		});
 		noteSelfWrite(this.source.id, this._relPath, mtime);
 		this.hasFile = true;
-		this.idOnDisk = DocHandle.deserialize(contents).frontmatter?.id === this.id;
 		this.recordHistory(body);
 	}
 
@@ -506,10 +506,8 @@ class DocHandle {
 			? await DocHandle.uniqueRelPath(this.source, dirOf(wanted), base)
 			: wanted;
 		this.place(relPath, relPath.split('/').pop()!.replace(/\.md$/i, ''));
-		await this.refreshMeta();
 		this.updatedAt = new Date();
-		const fm = yaml.dump(this.toFrontmatter(), { lineWidth: -1, sortKeys: false });
-		const contents = `---\n${fm}---\n${body}`;
+		const contents = await this.serialize(body, true);
 		await invoke('restore_document', {
 			sourceId: this.source.id,
 			id: this.id,
@@ -519,7 +517,6 @@ class DocHandle {
 		});
 		this.deletedAt = undefined;
 		this.hasFile = true;
-		this.idOnDisk = true;
 		this.recordHistory(body);
 	}
 
@@ -605,6 +602,7 @@ class DocHandle {
 
 	async moveToPath(newRelPath: string): Promise<void> {
 		await this.ensureFile();
+		await settleHistory(this.id);
 		const oldRelPath = this._relPath;
 		await invoke('move_document', {
 			sourceId: this.source.id,
@@ -649,6 +647,7 @@ class DocHandle {
 	 */
 	async moveToSource(newSource: Source, newRelPath: string): Promise<void> {
 		await this.ensureFile();
+		await settleHistory(this.id);
 		const oldSourceId = this.source.id;
 		await invoke('move_document', {
 			sourceId: oldSourceId,
@@ -657,9 +656,7 @@ class DocHandle {
 			newSourceId: newSource.id
 		});
 		(this as { source: Source }).source = newSource;
-		moveHistory(this.id, oldSourceId, newSource.id).catch((e) =>
-			console.error('history move failed', e)
-		);
+		await retargetHistory(this.id, newSource.id);
 		const oldRelPath = this._relPath;
 		this.place(newRelPath, stemOf(newRelPath));
 		await this.refreshMeta();
@@ -690,6 +687,7 @@ class DocHandle {
 	 */
 	async rename(title: string): Promise<void> {
 		await this.ensureFile();
+		await settleHistory(this.id);
 		const oldRelPath = this._relPath;
 		const ext = oldRelPath.match(/\.[^./]+$/)?.[0] ?? '.md';
 		const newRel: string = await invoke('rename_document', {
