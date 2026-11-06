@@ -18,7 +18,7 @@
 
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { ArrowUpRight, Ellipsis, GripVertical, Link, Pencil, Quote } from '@lucide/svelte';
+	import { ArrowUpRight, Ellipsis, Link, Pencil, Quote } from '@lucide/svelte';
 	import { citationEmbed, type Citing } from '#lib/pdf/citation.js';
 	import { annotationRgb } from './colors.js';
 	import Comment from './Comment.svelte';
@@ -68,19 +68,13 @@
 </script>
 
 <div class="note" class:active={active || editing} style:--ann={annotationRgb(a)}>
-	<span
-		class="grip"
-		title="Drag into a note"
-		draggable="true"
-		role="presentation"
-		ondragstart={(e) => e.dataTransfer?.setData('text/plain', citationEmbed(a.title))}
-	>
-		<GripVertical size={14} />
-	</span>
+	<!-- dropped into a note, the card is its citation; while editing, a drag selects text -->
 	<div
 		class="card"
 		role="button"
 		tabindex="0"
+		draggable={!editing}
+		ondragstart={(e) => e.dataTransfer?.setData('text/plain', citationEmbed(a.title))}
 		onclick={() => (editing ? null : actions.onActivate(a))}
 		ondblclick={(e) => {
 			startAt = { x: e.clientX, y: e.clientY };
@@ -129,7 +123,11 @@
 	</div>
 	{#if !editing}
 		<div class="tools">
-			<button type="button" title="Copy citation" onclick={() => actions.onCite(a)}>
+			<button
+				type="button"
+				title="Copy citation, or drag the card into a note"
+				onclick={() => actions.onCite(a)}
+			>
 				<Quote size={13} strokeWidth={1.75} />
 			</button>
 			<button type="button" title="Copy link" onclick={() => actions.onLink(a)}>
@@ -244,17 +242,6 @@
 		color: var(--color-text-primary);
 	}
 
-	.grip {
-		position: absolute;
-		top: 10px;
-		left: -18px;
-		display: flex;
-		width: 16px;
-		color: var(--color-ui-muted);
-		cursor: grab;
-		opacity: 0;
-	}
-
 	.tools {
 		position: absolute;
 		top: -14px;
@@ -271,9 +258,7 @@
 		pointer-events: none;
 	}
 
-	.note:hover .grip,
 	.note:hover .tools,
-	.note.active .grip,
 	.note.active .tools {
 		opacity: 1;
 		pointer-events: auto;
