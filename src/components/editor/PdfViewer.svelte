@@ -17,6 +17,7 @@
 	import { sourceName } from '#lib/models/Source.js';
 	import StepHistory from '#lib/models/StepHistory.svelte.js';
 	import { applyChange, changeStep, type MarkChange, type Marks } from '#lib/pdf/changes.js';
+	import { erasedAny, erasure, nothingErased, touch, type Erasing } from '#lib/pdf/eraser.js';
 	import { mark, reportError, toasts, undoHint, type MenuEntry } from '#lib/overlays.svelte.js';
 	import {
 		INK_COLORS,
@@ -29,14 +30,7 @@
 		type InkWidth,
 		type PageRect
 	} from '#lib/pdf/annotation.js';
-	import {
-		inLasso,
-		moveStrokes,
-		nearStroke,
-		simplify,
-		strokesBox,
-		type LooseStroke
-	} from '#lib/pdf/ink.js';
+	import { inLasso, moveStrokes, simplify, strokesBox, type LooseStroke } from '#lib/pdf/ink.js';
 	import LooseInk from '#lib/pdf/looseInk.svelte.js';
 	import { openPdf, pdfLib, type PdfLib } from '#lib/pdf/open.js';
 	import PdfAnnotations from '#lib/pdf/annotations.svelte.js';
@@ -653,7 +647,29 @@
 			return apply();
 		};
 		history.record({ undo: shown(step.undo), redo: shown(step.redo) });
+		const deleted = change.notes?.filter((n) => n.before && !n.after).length ?? 0;
+		if (deleted) offerUndo(deleted === 1 ? 'Annotation deleted' : `${deleted} annotations deleted`);
 	}
+
+	/** Takes the newest change back, or makes the next one again. */
+	function walk(redo: boolean) {
+		return (redo ? history.redo() : history.undo()).catch((err) =>
+			reportError(err, `That couldn't be ${redo ? 'redone' : 'undone'}.`)
+		);
+	}
+
+	// the undo hint this pane offered last, which goes once the pane isn't the one worked in
+	let offered: (() => unknown) | null = null;
+	function offerUndo(label: string) {
+		offered = () => walk(false);
+		undoHint.show(label, offered);
+	}
+	$effect(() => {
+		if (!paneActive) return;
+		return () => {
+			if (offered && undoHint.current?.run === offered) undoHint.dismiss();
+		};
+	});
 
 	/** Makes a change, then records it. */
 	async function commit(change: MarkChange, page: number, rect: PageRect | undefined) {
@@ -699,8 +715,8 @@
 	let inkWidth: InkWidth = $state('fine');
 	let inkMode: InkMode = $state('pen');
 	let gesture: { page: number; points: number[] } | null = $state(null);
-	// what the eraser takes during a gesture, kept out of `gesture` so the strokes stay raw
-	const erased: LooseStroke[] = [];
+	// what an eraser drag has touched, dimmed until the drag ends and its erasure is made
+	let erasing: Erasing | null = $state.raw(null);
 	const ERASER_RADIUS = 0.012;
 
 	$effect(() => {
@@ -765,14 +781,9 @@
 		if (!g || !page) return;
 		const [x, y] = pagePoint(e, page);
 		if (inkMode === 'eraser') {
-			erased.push(
-				...looseInk.take(
-					(s) =>
-						s.page === g.page &&
-						onEdition(s) &&
-						nearStroke(s, x, y, ERASER_RADIUS, aspectOf(g.page))
-				)
-			);
+			const at = { page: g.page, x, y, radius: ERASER_RADIUS, aspect: aspectOf(g.page) };
+			const on = { loose: looseByPage.get(g.page) ?? [], annotations: byPage.get(g.page) ?? [] };
+			erasing = touch(erasing ?? nothingErased(), at, on);
 			return;
 		}
 		const n = g.points.length;
@@ -783,9 +794,8 @@
 	async function endInk() {
 		const g = gesture;
 		gesture = null;
-		const rubbed = erased.splice(0);
-		if (rubbed.length) record({ removed: rubbed }, rubbed[0].page, strokesBox(rubbed));
-		if (!g || inkMode === 'eraser') return;
+		if (!g) return;
+		if (inkMode === 'eraser') return erase(g.page);
 		if (inkMode === 'pen') {
 			if (g.points.length >= 2) {
 				const points = simplify(g.points, aspectOf(g.page));
@@ -803,6 +813,21 @@
 			record({ removed: taken, notes: [{ id: a.id, before: null, after: a }] }, a.page, a.rects[0]);
 		} catch (e) {
 			reportError(e, "The ink couldn't be grouped.");
+		}
+	}
+
+	/** Deletes what the eraser drag touched, as one change. */
+	async function erase(page: number) {
+		const e = erasing;
+		if (!e || !erasedAny(e)) return void (erasing = null);
+		const hit = annotations.items.find((a) => e.notes.has(a.id));
+		const where = e.loose.length ? strokesBox(e.loose) : hit && rectsOn(hit, page)[0];
+		try {
+			await commit(erasure(e, annotations.items), page, where);
+		} catch (err) {
+			reportError(err, "That couldn't be erased.");
+		} finally {
+			erasing = null;
 		}
 	}
 
@@ -928,6 +953,8 @@
 			void place(placing, { page: pageNumber(page), rects: [strokesBox(strokes)], strokes });
 			return;
 		}
+		// a drag waits for the last erasure to be made, which its marks stay dimmed for
+		if (erasing) return;
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 		if (acting === 'ink') {
 			gesture = { page: pageNumber(page), points: [] };
@@ -1294,6 +1321,11 @@
 
 	function onWindowKey(e: KeyboardEvent) {
 		if (!paneActive || !rootEl?.isConnected || typingIn(e.target)) return;
+		// a drag let go of with Escape changes nothing
+		if (e.key === 'Escape' && gesture) {
+			gesture = erasing = null;
+			return;
+		}
 		if (e.key === 'Escape' && placing) {
 			placing = null;
 			return;
@@ -1326,9 +1358,7 @@
 		const redo = key === 'y' || e.shiftKey;
 		if (redo ? history.atPresent : history.index === 0) return;
 		e.preventDefault();
-		(redo ? history.redo() : history.undo()).catch((err) =>
-			reportError(err, `That couldn't be ${redo ? 'redone' : 'undone'}.`)
-		);
+		walk(redo);
 	}
 
 	function typingIn(target: EventTarget | null): boolean {
@@ -1465,6 +1495,7 @@
 									marks={byPage.get(n) ?? []}
 									aspect={aspectOf(n)}
 									{activeId}
+									{erasing}
 									draft={draft?.page === n ? draft.rect : null}
 									loose={looseByPage.get(n)}
 									drawing={gesture?.page === n && inkMode === 'pen'

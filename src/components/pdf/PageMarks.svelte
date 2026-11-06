@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { rectsOn, type Annotation, type InkStroke, type PageRect } from '#lib/pdf/annotation.js';
-	import { strokePath } from '#lib/pdf/ink.js';
+	import type { Erasing } from '#lib/pdf/eraser.js';
+	import { strokePath, type LooseStroke } from '#lib/pdf/ink.js';
 	import { ANNOTATION_RGB, INK_RGB, INK_STROKE } from './colors.js';
 
 	let {
@@ -8,6 +9,7 @@
 		marks,
 		aspect,
 		activeId = null,
+		erasing = null,
 		draft = null,
 		loose = [],
 		drawing = null,
@@ -19,10 +21,12 @@
 		/** The page's height over its width, the ink's viewBox height. */
 		aspect: number;
 		activeId?: string | null;
+		/** What an eraser drag has touched so far, shown dimmed. */
+		erasing?: Erasing | null;
 		/** A region being dragged out, not yet saved. */
 		draft?: PageRect | null;
 		/** Ink on this page that no annotation holds yet. */
-		loose?: InkStroke[];
+		loose?: LooseStroke[];
 		/** The stroke being drawn. */
 		drawing?: InkStroke | null;
 		/** The lasso being drawn, as a flat point list. */
@@ -34,8 +38,9 @@
 	const activeInk = $derived(inked.find((a) => a.id === activeId));
 </script>
 
-{#snippet stroke(s: InkStroke)}
+{#snippet stroke(s: InkStroke, erased = false)}
 	<path
+		class:erased
 		d={strokePath(s.points, aspect)}
 		stroke="rgb({INK_RGB[s.color]})"
 		stroke-width={INK_STROKE[s.width]}
@@ -49,6 +54,7 @@
 			<span
 				class={a.kind === 'region' ? 'region' : 'highlight'}
 				class:active={a.id === activeId}
+				class:erased={erasing?.notes.has(a.id)}
 				style:--ann={ANNOTATION_RGB[a.color]}
 				style:left="{r[0] * 100}%"
 				style:top="{r[1] * 100}%"
@@ -80,9 +86,12 @@
 	{#if loose.length || inked.length || drawing || lasso}
 		<svg class="ink" viewBox="0 0 1 {aspect}" preserveAspectRatio="none">
 			{#each inked as a (a.id)}
-				{#each a.strokes ?? [] as s, i (i)}{@render stroke(s)}{/each}
+				{#each a.strokes ?? [] as s, i (i)}{@render stroke(
+						s,
+						erasing?.notes.get(a.id)?.includes(i)
+					)}{/each}
 			{/each}
-			{#each loose as s, i (i)}{@render stroke(s)}{/each}
+			{#each loose as s, i (i)}{@render stroke(s, erasing?.loose.includes(s))}{/each}
 			{#if drawing}{@render stroke(drawing)}{/if}
 			{#if lasso && lasso.length >= 4}
 				<path
@@ -150,5 +159,9 @@
 	.lasso {
 		stroke: var(--color-accent);
 		fill: var(--accent-a9);
+	}
+
+	.erased {
+		opacity: 0.25;
 	}
 </style>
