@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ArrowUpRight, Link, MessageSquare, TextAlignStart } from '@lucide/svelte';
+	import { ArrowUpRight, Link, TextAlignStart } from '@lucide/svelte';
 	import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import { leadIn, runOn, type Annotation } from '#lib/pdf/annotation.js';
 	import type { Citing } from '#lib/pdf/citation.js';
@@ -110,10 +110,8 @@
 					</div>
 				{/if}
 				{#if a.comment}
-					<div class="comment">
-						<MessageSquare size={13} strokeWidth={1.75} />
-						<Comment text={a.comment} />
-					</div>
+					<span class="rule"></span>
+					<div class="comment"><Comment text={a.comment} /></div>
 				{/if}
 				<div class="actions" data-actions={a.id}>
 					<button type="button" class="action" onclick={() => goTo(a)}>
@@ -169,7 +167,7 @@
 	.digest {
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 8px;
 		max-width: 760px;
 		margin: 0 auto;
 		padding: 22px 12px 40px;
@@ -194,13 +192,15 @@
 		background: var(--color-border);
 	}
 
+	/* shaped like the annotation's citation card, so an annotation reads the same in both places */
 	.row {
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		padding: 10px 12px 12px;
+		gap: 10px;
+		padding: 12px 14px;
 		border-radius: 8px;
+		background: var(--chip-bg);
 		outline: none;
 		cursor: pointer;
 	}
@@ -208,7 +208,7 @@
 	.row:hover,
 	.row.open,
 	.row:focus-visible {
-		background: var(--chip-bg);
+		background: var(--chip-bg-hover);
 	}
 
 	.passage {
@@ -233,23 +233,15 @@
 		--crop-radius: 4px;
 	}
 
+	.rule {
+		height: 1px;
+		background: var(--color-border);
+	}
+
 	.comment {
-		display: flex;
-		gap: 8px;
-		padding-left: 18px;
 		font-size: 13.5px;
 		line-height: 1.5;
 		color: var(--color-text-secondary);
-	}
-
-	.comment > :global(svg) {
-		flex-shrink: 0;
-		margin-top: 3px;
-		color: var(--color-ui-muted);
-	}
-
-	.comment > :global(:last-child) {
-		flex: 1;
 	}
 
 	/* a hovered row's actions sit on its top edge, so its text keeps the full width */
