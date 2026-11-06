@@ -8,6 +8,8 @@ import type { LooseStroke } from './ink.js';
 export default class LooseInk {
 	// raw, so `take` hands back the very strokes `add` stored and a history step can find them again
 	strokes: LooseStroke[] = $state.raw([]);
+	/** Whether the strokes have been read at least once, so none means there are none. */
+	loaded = $state(false);
 
 	private saveTimer: ReturnType<typeof setTimeout> | undefined;
 	private pending = false;
@@ -20,6 +22,7 @@ export default class LooseInk {
 		this.strokes = raw.filter(
 			(s): s is LooseStroke => isStroke(s) && Number.isInteger((s as LooseStroke).page)
 		);
+		this.loaded = true;
 	}
 
 	add(...strokes: LooseStroke[]): void {

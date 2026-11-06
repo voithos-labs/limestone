@@ -1146,13 +1146,16 @@
 
 	let asking: number | null = null;
 	$effect(() => {
-		const n = elsewhere.length;
-		if (asking !== null || viewing || !annotations.loaded || (!n && !inkElsewhere.length)) return;
-		const made = `${n} of its annotations ${n === 1 ? 'was' : 'were'} made`;
-		asking = toasts.push(`This PDF has changed since ${n ? made : 'its ink was drawn'}`, {
-			variant: 'info',
-			action: { label: 'Carry them over', run: () => void carry() }
-		});
+		// counted as the list of what isn't placed counts: each annotation, and each page of ink
+		const n = elsewhere.length + inkLeft.length;
+		if (asking !== null || viewing || !annotations.loaded || !looseInk.loaded || !n) return;
+		asking = toasts.push(
+			`This PDF has changed since ${n} of its marks ${n === 1 ? 'was' : 'were'} made`,
+			{
+				variant: 'info',
+				action: { label: 'Carry them over', run: () => void carry() }
+			}
+		);
 	});
 	$effect(() => () => {
 		if (asking !== null) toasts.dismiss(asking);
@@ -1182,7 +1185,7 @@
 			const edition = annotations.edition ?? undefined;
 			looseInk.take((s) => inked.moved.some((m) => m.stroke === s));
 			looseInk.add(...inked.moved.map(({ stroke, page }) => ({ ...stroke, page, edition })));
-			toasts.push(carriedMessage(carried.placed.length, left.length, inked.left.length), {
+			toasts.push(carriedMessage(carried.placed.length, left.length, inkLeft.length), {
 				variant: 'info'
 			});
 			void offerDiscard([...todo, ...ink].map((mark) => mark.edition));
@@ -1193,13 +1196,14 @@
 		}
 	}
 
-	function carriedMessage(placed: number, left: number, inkLeft: number): string {
+	/** What a carry-over did, its ink left counted by page as the list of what isn't placed is. */
+	function carriedMessage(placed: number, left: number, inkPages: number): string {
 		const moved = placed
 			? `Carried over ${placed} annotation${placed === 1 ? '' : 's'}`
 			: 'No annotations carried over';
 		const byHand = left ? `; ${left} need${left === 1 ? 's' : ''} placing by hand` : '';
-		const ink = inkLeft
-			? `; ${inkLeft} ink stroke${inkLeft === 1 ? ' stays' : 's stay'} on the earlier edition`
+		const ink = inkPages
+			? `; ink on ${inkPages} page${inkPages === 1 ? '' : 's'} stays on the earlier edition`
 			: '';
 		return `${moved}${byHand}${ink}.`;
 	}
