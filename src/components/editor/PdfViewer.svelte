@@ -15,7 +15,8 @@
 	import { readErrorKind, type ReadErrorKind } from '#lib/models/MarkdownHandle.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 	import { sourceName } from '#lib/models/Source.js';
-	import StepHistory, { type Step } from '#lib/models/StepHistory.svelte.js';
+	import StepHistory from '#lib/models/StepHistory.svelte.js';
+	import { applyChange, changeStep, type MarkChange, type Marks } from '#lib/pdf/changes.js';
 	import { mark, reportError, toasts, undoHint, type MenuEntry } from '#lib/overlays.svelte.js';
 	import {
 		INK_COLORS,
@@ -473,6 +474,7 @@
 	// ── Annotations ─────────────────────────────────────────────────────────
 
 	const annotations = new PdfAnnotations(() => handle as PdfHandle);
+	const looseInk = new LooseInk(() => handle as PdfHandle);
 	$effect(() => {
 		if (!handle) return;
 		return annotations.watch();
@@ -631,16 +633,32 @@
 
 	// what's been drawn, made and deleted on this PDF while it's open, for undo and redo
 	const history = new StepHistory();
+	// undo deletes through `drop`, so a note it takes back is let go of as one deleted by hand is
+	const marks: Marks = {
+		looseInk,
+		annotations: {
+			remove: drop,
+			restore: (id) => annotations.restore(id),
+			setFields: (id, fields) => annotations.setFields(id, fields)
+		}
+	};
 
-	/** Records a change; undoing or redoing it first brings its place into view. */
-	function record(step: Step, page: number, rect: PageRect | undefined) {
+	/** Records a change already made; undoing or redoing it first brings its place into view. */
+	function record(change: MarkChange, page: number, rect: PageRect | undefined) {
 		// the newest change is what Ctrl+Z takes back, not an older delete's undo hint
 		undoHint.dismiss();
+		const step = changeStep(change, marks);
 		const shown = (apply: () => unknown) => () => {
 			reveal(page, rect);
 			return apply();
 		};
 		history.record({ undo: shown(step.undo), redo: shown(step.redo) });
+	}
+
+	/** Makes a change, then records it. */
+	async function commit(change: MarkChange, page: number, rect: PageRect | undefined) {
+		await applyChange(change, marks, true);
+		record(change, page, rect);
 	}
 
 	/** Scrolls a box on a page into view, unless it's in view already. */
@@ -656,23 +674,17 @@
 	/** Makes an annotation note, as undoable as anything drawn. */
 	async function annotate(fields: Omit<AnnotationFields, 'pdf'>, comment = '', namedBy?: string) {
 		const a = await annotations.create(fields, comment, namedBy);
-		record(madeStep(a.id), a.page, a.rects[0]);
+		record({ notes: [{ id: a.id, before: null, after: a }] }, a.page, a.rects[0]);
 		return a;
 	}
 
-	/** Deletes an annotation note, which undo brings back from the trash. */
+	/** Deletes an annotation note, which undo brings back. */
 	async function removeAnnotation(a: Annotation) {
 		try {
-			await drop(a.id);
-			record({ undo: () => annotations.restore(a.id), redo: () => drop(a.id) }, a.page, a.rects[0]);
+			await commit({ notes: [{ id: a.id, before: a, after: null }] }, a.page, a.rects[0]);
 		} catch (e) {
 			reportError(e, "The annotation couldn't be deleted.");
 		}
-	}
-
-	/** Undo deletes the note as it then is; redo brings that back. */
-	function madeStep(id: string): Step {
-		return { undo: () => drop(id), redo: () => annotations.restore(id) };
 	}
 
 	async function drop(id: string) {
@@ -691,7 +703,6 @@
 	const erased: LooseStroke[] = [];
 	const ERASER_RADIUS = 0.012;
 
-	const looseInk = new LooseInk(() => handle as PdfHandle);
 	$effect(() => {
 		if (!handle) return;
 		looseInk.load().catch((e) => console.error('ink load failed', e));
@@ -718,11 +729,10 @@
 	let inkTried = $state(false);
 
 	/** Moves ink left on an earlier edition, as it is, onto its page of the edition on screen. */
-	function bringInk({ edition, page }: InkLeft) {
-		const old = looseInk.take((s) => s.edition === edition && s.page === page);
+	async function bringInk({ edition, page }: InkLeft) {
+		const old = looseInk.strokes.filter((s) => s.edition === edition && s.page === page);
 		const moved = old.map((s) => ({ ...s, edition: annotations.edition ?? undefined }));
-		looseInk.add(...moved);
-		record(looseStep(moved, old), page, strokesBox(moved));
+		await commit({ removed: old, added: moved }, page, strokesBox(moved));
 		void offerDiscard([edition]);
 	}
 
@@ -774,15 +784,14 @@
 		const g = gesture;
 		gesture = null;
 		const rubbed = erased.splice(0);
-		if (rubbed.length) record(looseStep([], rubbed), rubbed[0].page, strokesBox(rubbed));
+		if (rubbed.length) record({ removed: rubbed }, rubbed[0].page, strokesBox(rubbed));
 		if (!g || inkMode === 'eraser') return;
 		if (inkMode === 'pen') {
 			if (g.points.length >= 2) {
 				const points = simplify(g.points, aspectOf(g.page));
 				const edition = annotations.edition ?? undefined;
 				const stroke = { page: g.page, color: inkColor, width: inkWidth, points, edition };
-				looseInk.add(stroke);
-				record(looseStep([stroke], []), stroke.page, strokesBox([stroke]));
+				await commit({ added: [stroke] }, stroke.page, strokesBox([stroke]));
 			}
 			return;
 		}
@@ -791,7 +800,7 @@
 		try {
 			const a = await groupInk(taken);
 			activeId = editingId = a.id;
-			record(groupStep(taken, a.id), a.page, a.rects[0]);
+			record({ removed: taken, notes: [{ id: a.id, before: null, after: a }] }, a.page, a.rects[0]);
 		} catch (e) {
 			reportError(e, "The ink couldn't be grouped.");
 		}
@@ -817,45 +826,14 @@
 		}
 	}
 
-	/** Undo takes the `added` strokes away and puts the `removed` ones back; redo the reverse. */
-	function looseStep(added: LooseStroke[], removed: LooseStroke[]): Step {
-		const swap = (out: LooseStroke[], back: LooseStroke[]) => {
-			looseInk.take((s) => out.includes(s));
-			looseInk.add(...back);
-		};
-		return { undo: () => swap(added, removed), redo: () => swap(removed, added) };
-	}
-
-	/** A lasso's group, which undo loosens back into its strokes and redo regroups. */
-	function groupStep(taken: LooseStroke[], id: string): Step {
-		const made = madeStep(id);
-		return {
-			undo: async () => {
-				await made.undo();
-				looseInk.add(...taken);
-			},
-			redo: async () => {
-				looseInk.take((s) => taken.includes(s));
-				await made.redo();
-			}
-		};
-	}
-
 	async function recolorInk(a: Annotation) {
 		const next =
 			INK_COLORS[(INK_COLORS.indexOf(a.strokes?.[0]?.color ?? 'graphite') + 1) % INK_COLORS.length];
 		const before = a.strokes ?? [];
 		const after = before.map((s) => ({ ...s, color: next }));
 		try {
-			await annotations.setFields(a.id, { strokes: after });
-			record(
-				{
-					undo: () => annotations.setFields(a.id, { strokes: before }),
-					redo: () => annotations.setFields(a.id, { strokes: after })
-				},
-				a.page,
-				a.rects[0]
-			);
+			const change = { id: a.id, before: { strokes: before }, after: { strokes: after } };
+			await commit({ notes: [change] }, a.page, a.rects[0]);
 		} catch (e) {
 			reportError(e, "The ink's color couldn't be changed.");
 		}
