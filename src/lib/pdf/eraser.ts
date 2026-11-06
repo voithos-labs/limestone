@@ -4,8 +4,8 @@ import { nearStroke, strokesBox, type LooseStroke } from './ink.js';
 
 /**
  * The eraser takes whatever mark it touches: ink stroke by stroke, whether loose or held by an
- * ink annotation, and highlights and regions whole. A drag gathers what it touches, then
- * `erasure` says what deleting it all changes.
+ * ink annotation, within its reach; highlights and regions whole, once it passes over them. A drag
+ * gathers what it touches, then `erasure` says what deleting it all changes.
  */
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ export function touch(
 		if (a.kind === 'ink') {
 			const more = (a.strokes ?? []).flatMap((s, i) => (had?.includes(i) || !near(s) ? [] : [i]));
 			if (more.length) notes.set(a.id, [...(had ?? []), ...more]);
-		} else if (rectsOn(a, at.page).some((r) => nearRect(r, at))) {
+		} else if (rectsOn(a, at.page).some((r) => over(r, at))) {
 			notes.set(a.id, null);
 		}
 	}
@@ -83,7 +83,7 @@ export function erasedAny(e: Erasing): boolean {
 
 // ── Internal ────────────────────────────────────────────────────────────────
 
-function nearRect([x, y, w, h]: PageRect, at: EraserAt): boolean {
-	const ry = at.radius / at.aspect;
-	return at.x >= x - at.radius && at.x <= x + w + at.radius && at.y >= y - ry && at.y <= y + h + ry;
+// a box is already a target, and the eraser's reach would take the lines either side of a highlight
+function over([x, y, w, h]: PageRect, at: EraserAt): boolean {
+	return at.x >= x && at.x <= x + w && at.y >= y && at.y <= y + h;
 }
