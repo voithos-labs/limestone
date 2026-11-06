@@ -29,7 +29,9 @@ export interface AnnotationFields {
 	color: AnnotationColor;
 	rects: PageRect[];
 	quote?: string;
+	/** The page's text just before the quote, ending with the space between them if there is one. */
 	prefix?: string;
+	/** The page's text just after the quote, starting with the space between them if there is one. */
 	suffix?: string;
 	strokes?: InkStroke[];
 	edition?: string;
@@ -158,16 +160,12 @@ export function annotationBody(comment: string): string {
  * mid-sentence, which is the only sign of it the stored fields keep.
  */
 export function leadIn(prefix: string): string {
-	const lead = /^\p{Ll}/u.test(prefix) ? '…' : '';
-	const gap = /[([{"'“‘]$/.test(prefix) ? '' : ' ';
-	return `${lead}${prefix}${gap}`;
+	return /^\p{Ll}/u.test(prefix) ? `…${prefix}` : prefix;
 }
 
 /** The words after a quote, cut at a word, so they read on from the highlight. */
 export function runOn(suffix: string): string {
-	const lead = /^[,.;:!?)\]]/.test(suffix) ? '' : ' ';
-	const tail = /[.!?]["')\]]?$/.test(suffix) ? '' : '…';
-	return `${lead}${suffix}${tail}`;
+	return /[.!?]["')\]]?$/.test(suffix) ? suffix : `${suffix}…`;
 }
 
 /** The comment a note body holds. */

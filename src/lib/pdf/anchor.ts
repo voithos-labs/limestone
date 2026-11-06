@@ -118,20 +118,34 @@ function pageTarget(range: Range, page: HTMLElement): TextTarget | null {
 	if (!layer || !clipped) return null;
 
 	const { text, start, end } = layerText(layer, clipped);
-	const quote = collapse(text.slice(start, end));
-	if (!quote) return null;
+	const quoted = quoteIn(text, start, end);
+	if (!quoted.quote) return null;
 	const box = page.getBoundingClientRect();
 	const rects = mergeLines([...clipped.getClientRects()].filter((r) => r.width > 0.5))
 		.map((r) => toFraction(r, box))
 		.filter((r) => r[2] > 0 && r[3] > 0);
 	if (rects.length === 0) return null;
-	const from = Math.max(0, start - CONTEXT);
-	const to = Math.min(text.length, end + CONTEXT);
-	// whole words at the far ends, which the digest shows as context; the edges by the quote stay
-	// exact because that's what finds the quote again
-	const prefix = text.slice(from, start).replace(from > 0 ? /^\S*\s/ : /^/, '');
-	const suffix = text.slice(end, to).replace(to < text.length ? /\s\S*$/ : /$/, '');
-	return { rects, quote, prefix: collapse(prefix), suffix: collapse(suffix) };
+	return { rects, ...quoted };
+}
+
+/**
+ * The quote selected from `start` to `end` of a page's text, and the text either side of it.
+ * Space at the selection's edges goes to the text beside it, so a quote cut mid-word has none.
+ */
+function quoteIn(text: string, start: number, end: number): Omit<TextTarget, 'rects'> {
+	const picked = text.slice(start, end);
+	const from = start + picked.length - picked.trimStart().length;
+	const to = Math.max(from, end - picked.length + picked.trimEnd().length);
+	const near = Math.max(0, from - CONTEXT);
+	const far = Math.min(text.length, to + CONTEXT);
+	// whole words at the far ends, which the digest shows as context
+	const prefix = text.slice(near, from).replace(near > 0 ? /^\S*\s/ : /^/, '');
+	const suffix = text.slice(to, far).replace(far < text.length ? /\s\S*$/ : /$/, '');
+	return {
+		quote: collapse(text.slice(from, to)),
+		prefix: spaced(prefix).trimStart(),
+		suffix: spaced(suffix).trimEnd()
+	};
 }
 
 /** The part of `range` inside `node`, or null when they don't meet. */
@@ -192,7 +206,12 @@ function boundaryNode(container: Node, offset: number): Node | null {
 }
 
 function collapse(text: string): string {
-	return text.replace(/\s+/g, ' ').trim();
+	return spaced(text).trim();
+}
+
+/** Each run of whitespace as one space. */
+function spaced(text: string): string {
+	return text.replace(/\s+/g, ' ');
 }
 
 /** The text layer draws a box per run of glyphs; one per line reads as one highlight. */

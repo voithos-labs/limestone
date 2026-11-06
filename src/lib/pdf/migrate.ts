@@ -205,8 +205,9 @@ async function findQuote(
 ): Promise<Placement | null> {
 	const quote = (a.quote ?? '').replace(/\s+/g, ' ').trim();
 	if (!quote) return null;
-	const prefix = a.prefix ?? '';
-	const suffix = a.suffix ?? '';
+	// compared without the space beside the quote, as the page's text is below
+	const prefix = (a.prefix ?? '').trimEnd();
+	const suffix = (a.suffix ?? '').trimStart();
 	let best: { from: TextPoint; to: TextPoint; agree: number } | null = null;
 	search: for (const n of outward(a.page, next.count)) {
 		const run = await textRun(next, n, quote.length + suffix.length + 1);
