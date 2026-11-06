@@ -27,6 +27,7 @@
 		type AnnotationColor,
 		type AnnotationFields,
 		type InkColor,
+		type InkStroke,
 		type InkWidth,
 		type PageRect
 	} from '#lib/pdf/annotation.js';
@@ -805,15 +806,8 @@
 			}
 			return;
 		}
-		const taken = looseInk.take((s) => s.page === g.page && onEdition(s) && inLasso(s, g.points));
-		if (taken.length === 0) return;
-		try {
-			const a = await groupInk(taken);
-			activeId = editingId = a.id;
-			record({ removed: taken, notes: [{ id: a.id, before: null, after: a }] }, a.page, a.rects[0]);
-		} catch (e) {
-			reportError(e, "The ink couldn't be grouped.");
-		}
+		activeId = null;
+		selection = (looseByPage.get(g.page) ?? []).filter((s) => inLasso(s, g.points));
 	}
 
 	/** Deletes what the eraser drag touched, as one change. */
@@ -852,10 +846,8 @@
 	}
 
 	async function recolorInk(a: Annotation) {
-		const next =
-			INK_COLORS[(INK_COLORS.indexOf(a.strokes?.[0]?.color ?? 'graphite') + 1) % INK_COLORS.length];
 		const before = a.strokes ?? [];
-		const after = before.map((s) => ({ ...s, color: next }));
+		const after = recolored(before);
 		try {
 			const change = { id: a.id, before: { strokes: before }, after: { strokes: after } };
 			await commit({ notes: [change] }, a.page, a.rects[0]);
@@ -863,6 +855,56 @@
 			reportError(e, "The ink's color couldn't be changed.");
 		}
 	}
+
+	/** Strokes in the ink color after their first one's. */
+	function recolored<S extends InkStroke>(strokes: S[]): S[] {
+		const i = INK_COLORS.indexOf(strokes[0]?.color ?? 'graphite');
+		const color = INK_COLORS[(i + 1) % INK_COLORS.length];
+		return strokes.map((s) => ({ ...s, color }));
+	}
+
+	// ── Lasso ───────────────────────────────────────────────────────────────
+
+	// Loose strokes a lasso holds, waiting for what's done with them; letting go changes nothing.
+	let selection: LooseStroke[] = $state.raw([]);
+	// strokes taken away meanwhile, by undo or the eraser, drop out of it
+	const selected = $derived(selection.filter((s) => looseInk.strokes.includes(s)));
+	const selectedBox = $derived(selected.length ? strokesBox(selected) : null);
+	// a selection belongs to the lasso, so picking up another tool lets it go
+	$effect(() => {
+		if (tool !== 'ink' || inkMode !== 'lasso') selection = [];
+	});
+
+	/** Makes the selected strokes one ink annotation, which a comment or a citation needs. */
+	async function groupSelection(): Promise<Annotation | null> {
+		const taken = looseInk.take((s) => selected.includes(s));
+		selection = [];
+		if (taken.length === 0) return null;
+		try {
+			const a = await groupInk(taken);
+			record({ removed: taken, notes: [{ id: a.id, before: null, after: a }] }, a.page, a.rects[0]);
+			activeId = a.id;
+			return a;
+		} catch (e) {
+			reportError(e, "The ink couldn't be grouped.");
+			return null;
+		}
+	}
+
+	const selectionActions = {
+		comment: () => groupSelection().then((a) => a && (editingId = a.id)),
+		cite: () => groupSelection().then((a) => a && cite(a)),
+		recolor: async () => {
+			const after = recolored(selected);
+			await commit({ removed: selected, added: after }, after[0].page, strokesBox(after));
+			selection = after;
+		},
+		remove: async () => {
+			const taken = selected;
+			selection = [];
+			await commit({ removed: taken }, taken[0].page, strokesBox(taken));
+		}
+	};
 
 	let sidenotesOn = $state(untrack(() => tab.state.pdf_sidenotes) !== false);
 	// A bare highlight stays out of the margin until it's picked or given a comment. While
@@ -1035,6 +1077,7 @@
 		);
 		activeId = hit?.id ?? null;
 		if (editingId && editingId !== activeId) editingId = null;
+		selection = [];
 	}
 
 	async function fromMenu(run: (a: Annotation) => unknown) {
@@ -1341,6 +1384,14 @@
 			if (a) void removeAnnotation(a);
 			return;
 		}
+		if ((e.key === 'Delete' || e.key === 'Backspace') && selected.length) {
+			void selectionActions.remove();
+			return;
+		}
+		if (e.key === 'Escape' && selected.length) {
+			selection = [];
+			return;
+		}
 		// a narrow pane's floating card closes, as a click away closes it; a menu's Escape is its own
 		if (e.key === 'Escape' && !railFits && !e.defaultPrevented) activeId = editingId = null;
 		if (!docked) return;
@@ -1371,6 +1422,36 @@
 
 {#snippet inkTray()}
 	<InkTray bind:color={inkColor} bind:width={inkWidth} bind:mode={inkMode} />
+{/snippet}
+
+<!-- what can be done with picked ink: a group's or a lasso's -->
+{#snippet inkMenu(
+	page: number,
+	r: PageRect,
+	pen: InkColor | undefined,
+	act: { comment(): unknown; cite(): unknown; recolor(): unknown; remove(): unknown }
+)}
+	<div
+		class="ink-menu"
+		style:left="{Math.max(0, r[0] * width - 22)}px"
+		style:top="{(layout.tops[page - 1] ?? 0) +
+			(r[1] + r[3]) * (layout.heights[page - 1] ?? 0) +
+			14}px"
+	>
+		<button class="on" type="button" onclick={act.comment}>
+			<MessageSquare size={12} strokeWidth={1.75} />Comment
+		</button>
+		<button type="button" onclick={act.cite}>
+			<Quote size={12} strokeWidth={1.75} />Copy citation
+		</button>
+		<span class="sep"></span>
+		<button class="square" type="button" title="Change the ink's color" onclick={act.recolor}>
+			<span class="dot" style:--ink={INK_RGB[pen ?? 'graphite']}></span>
+		</button>
+		<button class="square muted" type="button" title="Delete" onclick={act.remove}>
+			<Trash2 size={13} strokeWidth={1.75} />
+		</button>
+	</div>
 {/snippet}
 
 {#snippet placeHint()}
@@ -1496,6 +1577,11 @@
 									aspect={aspectOf(n)}
 									{activeId}
 									{erasing}
+									outline={activeInk?.page === n
+										? activeInk.rects[0]
+										: selected[0]?.page === n
+											? selectedBox
+											: null}
 									draft={draft?.page === n ? draft.rect : null}
 									loose={looseByPage.get(n)}
 									drawing={gesture?.page === n && inkMode === 'pen'
@@ -1508,39 +1594,14 @@
 						{/each}
 					</div>
 					{#if activeInk?.rects[0]}
-						{@const r = activeInk.rects[0]}
-						{@const pen = activeInk.strokes?.[0]?.color ?? 'graphite'}
-						<div
-							class="ink-menu"
-							style:left="{Math.max(0, r[0] * width - 22)}px"
-							style:top="{(layout.tops[activeInk.page - 1] ?? 0) +
-								(r[1] + r[3]) * (layout.heights[activeInk.page - 1] ?? 0) +
-								14}px"
-						>
-							<button class="on" type="button" onclick={() => (editingId = activeInk.id)}>
-								<MessageSquare size={12} strokeWidth={1.75} />Comment
-							</button>
-							<button type="button" onclick={() => cite(activeInk)}>
-								<Quote size={12} strokeWidth={1.75} />Copy citation
-							</button>
-							<span class="sep"></span>
-							<button
-								class="square"
-								type="button"
-								title="Change the ink's color"
-								onclick={() => recolorInk(activeInk)}
-							>
-								<span class="dot" style:--ink={INK_RGB[pen]}></span>
-							</button>
-							<button
-								class="square muted"
-								type="button"
-								title="Delete"
-								onclick={() => removeAnnotation(activeInk)}
-							>
-								<Trash2 size={13} strokeWidth={1.75} />
-							</button>
-						</div>
+						{@render inkMenu(activeInk.page, activeInk.rects[0], activeInk.strokes?.[0]?.color, {
+							comment: () => (editingId = activeInk.id),
+							cite: () => cite(activeInk),
+							recolor: () => recolorInk(activeInk),
+							remove: () => removeAnnotation(activeInk)
+						})}
+					{:else if selectedBox}
+						{@render inkMenu(selected[0].page, selectedBox, selected[0].color, selectionActions)}
 					{/if}
 					{#if rail}
 						<div class="rail" style:left="{width + RAIL_GAP}px">

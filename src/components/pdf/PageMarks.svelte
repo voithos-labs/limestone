@@ -10,6 +10,7 @@
 		aspect,
 		activeId = null,
 		erasing = null,
+		outline = null,
 		draft = null,
 		loose = [],
 		drawing = null,
@@ -23,6 +24,8 @@
 		activeId?: string | null;
 		/** What an eraser drag has touched so far, shown dimmed. */
 		erasing?: Erasing | null;
+		/** The box around picked ink: an ink annotation's, or what a lasso holds. */
+		outline?: PageRect | null;
 		/** A region being dragged out, not yet saved. */
 		draft?: PageRect | null;
 		/** Ink on this page that no annotation holds yet. */
@@ -35,7 +38,6 @@
 
 	const boxes = $derived(marks.filter((a) => a.kind !== 'ink'));
 	const inked = $derived(marks.filter((a) => a.kind === 'ink'));
-	const activeInk = $derived(inked.find((a) => a.id === activeId));
 </script>
 
 {#snippet stroke(s: InkStroke, erased = false)}
@@ -73,8 +75,8 @@
 			style:height="{draft[3] * 100}%"
 		></span>
 	{/if}
-	{#if activeInk?.rects[0]}
-		{@const r = activeInk.rects[0]}
+	{#if outline}
+		{@const r = outline}
 		<span
 			class="ink-group"
 			style:left="calc({r[0] * 100}% - 6px)"
