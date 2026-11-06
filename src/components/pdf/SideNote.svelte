@@ -19,7 +19,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { ArrowUpRight, Ellipsis, Link, Pencil, Quote } from '@lucide/svelte';
-	import { citationEmbed, type Citing } from '#lib/pdf/citation.js';
+	import { dragCitation, type Citing } from '#lib/pdf/citation.js';
 	import { annotationRgb } from './colors.js';
 	import Comment from './Comment.svelte';
 
@@ -74,7 +74,7 @@
 		role="button"
 		tabindex="0"
 		draggable={!editing}
-		ondragstart={(e) => e.dataTransfer?.setData('text/plain', citationEmbed(a.title))}
+		ondragstart={(e) => dragCitation(e, a.title)}
 		onclick={() => (editing ? null : actions.onActivate(a))}
 		ondblclick={(e) => {
 			startAt = { x: e.clientX, y: e.clientY };

@@ -2,7 +2,7 @@
 	import { ArrowUpRight, Link, TextAlignStart } from '@lucide/svelte';
 	import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import { leadIn, runOn, type Annotation } from '#lib/pdf/annotation.js';
-	import type { Citing } from '#lib/pdf/citation.js';
+	import { dragCitation, type Citing } from '#lib/pdf/citation.js';
 	import AnnotationCrop from './AnnotationCrop.svelte';
 	import Comment from './Comment.svelte';
 	import { annotationRgb } from './colors.js';
@@ -60,6 +60,12 @@
 		onGoTo(a);
 	}
 
+	// a row dropped into a note is its citation, as a sidenote is; its actions are buttons, not handles
+	function onRowDrag(e: DragEvent, a: Annotation) {
+		if ((e.target as Element).closest('[data-actions]')) return e.preventDefault();
+		dragCitation(e, a.title);
+	}
+
 	function onRowKey(e: KeyboardEvent, a: Annotation) {
 		if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
 		e.preventDefault();
@@ -95,8 +101,10 @@
 				class:open={openId === a.id}
 				role="button"
 				tabindex="0"
-				title="Open page {a.page}"
+				title="Open page {a.page}, or drag into a note to cite"
+				draggable="true"
 				style:--ann={annotationRgb(a)}
+				ondragstart={(e) => onRowDrag(e, a)}
 				onclick={(e) => onRowClick(e, a)}
 				onkeydown={(e) => onRowKey(e, a)}
 			>

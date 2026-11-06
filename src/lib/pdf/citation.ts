@@ -25,6 +25,13 @@ export function citationEmbed(title: string): string {
 	return `![[${title}]]`;
 }
 
+/** Lets a drag carry an annotation's citation, which a note it's dropped into takes as text. */
+export function dragCitation(e: DragEvent, title: string): void {
+	if (!e.dataTransfer) return;
+	e.dataTransfer.setData('text/plain', citationEmbed(title));
+	e.dataTransfer.effectAllowed = 'copy';
+}
+
 export function citationLink(title: string): string {
 	return `[[${title}]]`;
 }
