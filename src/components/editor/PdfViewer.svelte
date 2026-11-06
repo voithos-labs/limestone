@@ -47,7 +47,13 @@
 		textTarget,
 		type TextTarget
 	} from '#lib/pdf/anchor.js';
-	import { carryOver, type Placement, type TextPoint, type Unplaced } from '#lib/pdf/migrate.js';
+	import {
+		carryInk,
+		carryOver,
+		type Placement,
+		type TextPoint,
+		type Unplaced
+	} from '#lib/pdf/migrate.js';
 	import { loadPdf } from '#lib/pdf/crop.js';
 	import {
 		canvasScale,
@@ -89,11 +95,18 @@
 	import InkTray, { modeForKey, type InkMode } from '../pdf/InkTray.svelte';
 	import PdfDigest from '../pdf/PdfDigest.svelte';
 	import AnnotationTicks from '../pdf/AnnotationTicks.svelte';
-	import NotPlaced from '../pdf/NotPlaced.svelte';
+	import NotPlaced, { type InkLeft } from '../pdf/NotPlaced.svelte';
 	import PlaceHint from '../pdf/PlaceHint.svelte';
 	import { INK_RGB } from '../pdf/colors.js';
 	import { MessageSquare, Pencil, Pin, Quote, SquareArrowOutUpRight, Trash2 } from '@lucide/svelte';
-	import { editionDate, editionOf, editionPath, isPreserved } from '#lib/pdf/edition.js';
+	import {
+		discardEdition,
+		editionDate,
+		editionOf,
+		editionPath,
+		editionSize,
+		isPreserved
+	} from '#lib/pdf/edition.js';
 	import type PdfHandle from '#lib/models/PdfHandle.js';
 
 	let {
@@ -191,15 +204,12 @@
 		failure = null;
 		void (async () => {
 			try {
-				const [mod, opening] = await Promise.all([
+				// the file's edition is hashed while pdf.js opens it, so neither waits on the other
+				const file = { sourceId: h.source.id, sourcePath: h.source.path, relPath: h.relPath };
+				const [mod, opening, edition] = await Promise.all([
 					pdfLib(),
-					old
-						? openPdf({
-								sourceId: h.source.id,
-								sourcePath: h.source.path,
-								relPath: editionPath(old)
-							})
-						: h.open()
+					old ? openPdf({ ...file, relPath: editionPath(old) }) : h.open(),
+					old ?? editionOf(file)
 				]);
 				// closed while opening: the cleanup ran before there was a task to stop
 				if (cancelled) return void opening.destroy();
@@ -208,7 +218,6 @@
 				const doc = await task.promise;
 				if (cancelled) return;
 				const first = (await doc.getPage(1)).getViewport({ scale: 1 });
-				const edition = old ?? (await editionOf(doc));
 				if (cancelled) return;
 				if (!old) annotations.edition = edition;
 				shownEdition = edition;
@@ -508,7 +517,8 @@
 
 	// Marks made on other bytes aren't painted on these; one made before editions were recorded
 	// has no edition and shows everywhere.
-	const onEdition = (a: Annotation) => !a.edition || !shownEdition || a.edition === shownEdition;
+	const onEdition = (mark: { edition?: string }) =>
+		!mark.edition || !shownEdition || mark.edition === shownEdition;
 	const here = $derived(annotations.items.filter(onEdition));
 	const elsewhere = $derived(annotations.items.filter((a) => !onEdition(a)));
 	const canAnnotate = $derived(annotations.writable && !viewing);
@@ -698,9 +708,35 @@
 		};
 	});
 
+	// loose ink keeps to its edition, as annotations do
+	const inkElsewhere = $derived(looseInk.strokes.filter((s) => !onEdition(s)));
+	// that ink by edition and page, as the list of what isn't placed shows it
+	const inkLeft = $derived.by((): InkLeft[] => {
+		const groups = new Map<string, InkLeft>();
+		for (const { edition = '', page } of inkElsewhere) {
+			const key = `${edition}:${page}`;
+			const group = groups.get(key) ?? { edition, page, strokes: 0 };
+			group.strokes++;
+			groups.set(key, group);
+		}
+		return [...groups.values()];
+	});
+	// a try at carrying ink over gives the same answer until the PDF changes again
+	let inkTried = $state(false);
+
+	/** Moves ink left on an earlier edition, as it is, onto its page of the edition on screen. */
+	function bringInk({ edition, page }: InkLeft) {
+		const old = looseInk.take((s) => s.edition === edition && s.page === page);
+		const moved = old.map((s) => ({ ...s, edition: annotations.edition ?? undefined }));
+		looseInk.add(...moved);
+		record(looseStep(moved, old), page, strokesBox(moved));
+		void offerDiscard([edition]);
+	}
+
 	const looseByPage = $derived.by(() => {
 		const map = new Map<number, LooseStroke[]>();
-		for (const s of looseInk.strokes) map.set(s.page, [...(map.get(s.page) ?? []), s]);
+		for (const s of looseInk.strokes)
+			if (onEdition(s)) map.set(s.page, [...(map.get(s.page) ?? []), s]);
 		return map;
 	});
 
@@ -728,7 +764,10 @@
 		if (inkMode === 'eraser') {
 			erased.push(
 				...looseInk.take(
-					(s) => s.page === g.page && nearStroke(s, x, y, ERASER_RADIUS, aspectOf(g.page))
+					(s) =>
+						s.page === g.page &&
+						onEdition(s) &&
+						nearStroke(s, x, y, ERASER_RADIUS, aspectOf(g.page))
 				)
 			);
 			return;
@@ -747,13 +786,14 @@
 		if (inkMode === 'pen') {
 			if (g.points.length >= 2) {
 				const points = simplify(g.points, aspectOf(g.page));
-				const stroke = { page: g.page, color: inkColor, width: inkWidth, points };
+				const edition = annotations.edition ?? undefined;
+				const stroke = { page: g.page, color: inkColor, width: inkWidth, points, edition };
 				looseInk.add(stroke);
 				record(looseStep([stroke], []), stroke.page, strokesBox([stroke]));
 			}
 			return;
 		}
-		const taken = looseInk.take((s) => s.page === g.page && inLasso(s, g.points));
+		const taken = looseInk.take((s) => s.page === g.page && onEdition(s) && inLasso(s, g.points));
 		if (taken.length === 0) return;
 		try {
 			const a = await groupInk(taken);
@@ -766,7 +806,7 @@
 
 	/** Makes loose strokes from one page into an ink annotation, putting them back if it can't. */
 	async function groupInk(taken: LooseStroke[]): Promise<Annotation> {
-		const strokes = taken.map(({ page: _page, ...stroke }) => stroke);
+		const strokes = taken.map(({ page: _page, edition: _edition, ...stroke }) => stroke);
 		const page = taken[0].page;
 		const box = strokesBox(strokes);
 		try {
@@ -1062,12 +1102,13 @@
 
 	let asking: number | null = null;
 	$effect(() => {
-		if (asking !== null || viewing || !annotations.loaded || !elsewhere.length) return;
 		const n = elsewhere.length;
-		asking = toasts.push(
-			`This PDF has changed since ${n} of its annotations ${n === 1 ? 'was' : 'were'} made`,
-			{ variant: 'info', action: { label: 'Carry them over', run: () => void carry() } }
-		);
+		if (asking !== null || viewing || !annotations.loaded || (!n && !inkElsewhere.length)) return;
+		const made = `${n} of its annotations ${n === 1 ? 'was' : 'were'} made`;
+		asking = toasts.push(`This PDF has changed since ${n ? made : 'its ink was drawn'}`, {
+			variant: 'info',
+			action: { label: 'Carry them over', run: () => void carry() }
+		});
 	});
 	$effect(() => () => {
 		if (asking !== null) toasts.dismiss(asking);
@@ -1077,20 +1118,30 @@
 		const doc = pdf;
 		const h = handle;
 		const todo = elsewhere.filter((a) => !unplaced.has(a.id));
-		if (!doc || !h || viewing || carrying || !todo.length) return;
+		const ink = inkElsewhere;
+		if (!doc || !h || viewing || carrying || (!todo.length && !ink.length)) return;
 		carrying = true;
 		if (asking !== null) toasts.dismiss(asking);
 		try {
-			const carried = await carryOver(todo, {
+			const editions = {
 				doc,
-				earlier: async (edition) =>
+				earlier: async (edition: string) =>
 					(await isPreserved(h.source.path, edition)) ? loadPdf(h.id, edition) : null,
-				select: (from, to) => selectOffscreen(doc, from, to)
-			});
+				select: (from: TextPoint, to: TextPoint) => selectOffscreen(doc, from, to)
+			};
+			const carried = await carryOver(todo, editions);
 			for (const { id, placement } of carried.placed) await annotations.place(id, placement);
 			const left = carried.unplaced.map(({ id, reason }): [string, Unplaced] => [id, reason]);
 			unplaced = new Map([...unplaced, ...left]);
-			toasts.push(carriedMessage(carried.placed.length, left.length), { variant: 'info' });
+			const inked = await carryInk(ink, editions);
+			inkTried = true;
+			const edition = annotations.edition ?? undefined;
+			looseInk.take((s) => inked.moved.some((m) => m.stroke === s));
+			looseInk.add(...inked.moved.map(({ stroke, page }) => ({ ...stroke, page, edition })));
+			toasts.push(carriedMessage(carried.placed.length, left.length, inked.left.length), {
+				variant: 'info'
+			});
+			void offerDiscard([...todo, ...ink].map((mark) => mark.edition));
 		} catch (e) {
 			reportError(e, "The annotations couldn't be carried over.");
 		} finally {
@@ -1098,11 +1149,50 @@
 		}
 	}
 
-	function carriedMessage(placed: number, left: number): string {
+	function carriedMessage(placed: number, left: number, inkLeft: number): string {
 		const moved = placed
 			? `Carried over ${placed} annotation${placed === 1 ? '' : 's'}`
-			: 'None could be carried over';
-		return left ? `${moved}; ${left} need${left === 1 ? 's' : ''} placing by hand.` : `${moved}.`;
+			: 'No annotations carried over';
+		const byHand = left ? `; ${left} need${left === 1 ? 's' : ''} placing by hand` : '';
+		const ink = inkLeft
+			? `; ${inkLeft} ink stroke${inkLeft === 1 ? ' stays' : 's stay'} on the earlier edition`
+			: '';
+		return `${moved}${byHand}${ink}.`;
+	}
+
+	/**
+	 * Offers to delete the preserved copies of earlier editions nothing is marked on any more:
+	 * no annotation note, trashed ones included since they can come back, and no loose ink.
+	 */
+	async function offerDiscard(candidates: (string | undefined)[]) {
+		const h = handle;
+		if (!h) return;
+		for (const edition of new Set(candidates)) {
+			if (!edition || edition === annotations.edition) continue;
+			if (looseInk.strokes.some((s) => s.edition === edition)) continue;
+			if (await annotations.marksEdition(edition)) continue;
+			const size = await editionSize(h.source.path, edition);
+			if (size === null) continue;
+			const day = await editionDate(h.source.id, edition);
+			toasts.push(
+				`The copy of the ${day ? `${day} ` : 'earlier '}edition (${fileSize(size)}) is no longer needed`,
+				{
+					variant: 'info',
+					action: {
+						label: 'Delete it',
+						run: () =>
+							discardEdition(h.source.path, edition).catch((e) =>
+								reportError(e, "The earlier edition's copy couldn't be deleted.")
+							)
+					}
+				}
+			);
+		}
+	}
+
+	function fileSize(bytes: number): string {
+		if (bytes < 1e6) return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+		return `${(bytes / 1e6).toFixed(bytes < 1e7 ? 1 : 0)} MB`;
 	}
 
 	/** What a reader selecting `doc`'s text from `from` to `to` would make, laid out unseen. */
@@ -1294,14 +1384,17 @@
 			{#if viewingDay}<span class="day">{viewingDay} edition</span>{:else}Earlier edition{/if}
 			· back to the current file
 		</button>
-	{:else if elsewhere.length}
+	{:else if elsewhere.length || inkLeft.length}
 		<NotPlaced
 			sourceId={handle?.source.id ?? ''}
 			annotations={elsewhere}
+			ink={inkLeft}
 			reasons={unplaced}
+			canCarry={elsewhere.some((a) => !unplaced.has(a.id)) || (!inkTried && !!inkLeft.length)}
 			{carrying}
 			onCarry={carry}
 			onPlace={flow ? undefined : placeAgain}
+			onBringInk={bringInk}
 			onOpenEdition={openEdition}
 		/>
 	{/if}

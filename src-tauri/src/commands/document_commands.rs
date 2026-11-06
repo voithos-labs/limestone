@@ -384,6 +384,20 @@ pub fn read_document_tags(
     })
 }
 
+/// a file's blake3 digest, streamed so a large pdf is never held whole; it names an edition exactly
+#[tauri::command]
+pub async fn file_digest(
+    app: AppHandle,
+    source_id: String,
+    rel_path: String,
+) -> Result<String, ReadError> {
+    read_in_source(&app, &source_id, &rel_path, |p| {
+        let mut hasher = blake3::Hasher::new();
+        std::io::copy(&mut std::fs::File::open(p)?, &mut hasher)?;
+        Ok(hasher.finalize().to_hex().to_string())
+    })
+}
+
 /// a pdf's loose ink strokes, kept in its sidecar until a lasso groups them into an annotation
 #[tauri::command]
 pub fn read_pdf_ink(app: AppHandle, source_id: String, id: String) -> Result<Value, OpError> {

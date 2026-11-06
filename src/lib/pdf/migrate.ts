@@ -1,6 +1,7 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { pagesOf, type Annotation, type AnnotationFields, type PageRect } from './annotation.js';
 import type { TextTarget } from './anchor.js';
+import type { LooseStroke } from './ink.js';
 
 /**
  * Carrying annotations made on an earlier edition of a PDF over to the edition on screen. Marks on
@@ -40,16 +41,10 @@ export interface Carried {
 /** Works out where each annotation goes on `editions.doc`; writes nothing. */
 export async function carryOver(annotations: Annotation[], editions: Editions): Promise<Carried> {
 	const next = pageReader(editions.doc);
-	const earlier = new Map<string, Promise<PageReader | null>>();
+	const earlier = earlierReaders(editions);
 	const carried: Carried = { placed: [], unplaced: [] };
 	for (const a of annotations) {
-		const edition = a.edition ?? '';
-		if (!earlier.has(edition))
-			earlier.set(
-				edition,
-				edition ? editions.earlier(edition).then(readerOf) : Promise.resolve(null)
-			);
-		const old = await earlier.get(edition)!;
+		const old = await earlier(a.edition);
 		const placement =
 			(old && (await samePages(a, old, next))) ??
 			(a.kind === 'highlight' ? await findQuote(a, next, editions.select) : null);
@@ -61,6 +56,30 @@ export async function carryOver(annotations: Annotation[], editions: Editions): 
 			});
 	}
 	return carried;
+}
+
+/**
+ * Where loose ink drawn on earlier editions goes on `editions.doc`: to the page its own page
+ * became, when that page is unchanged; a stroke on a changed page stays on its edition.
+ */
+export async function carryInk(
+	strokes: LooseStroke[],
+	editions: Pick<Editions, 'doc' | 'earlier'>
+): Promise<{ moved: { stroke: LooseStroke; page: number }[]; left: LooseStroke[] }> {
+	const next = pageReader(editions.doc);
+	const earlier = earlierReaders(editions);
+	const moved: { stroke: LooseStroke; page: number }[] = [];
+	const left: LooseStroke[] = [];
+	for (const stroke of strokes) {
+		const old = await earlier(stroke.edition);
+		const page =
+			old && stroke.page <= old.count
+				? await samePage(await old.face(stroke.page), stroke.page, old.count, next)
+				: null;
+		if (page === null) left.push(stroke);
+		else moved.push({ stroke, page });
+	}
+	return { moved, left };
 }
 
 // ── Internal ────────────────────────────────────────────────────────────────
@@ -78,6 +97,19 @@ interface PageFace {
 interface PageReader {
 	count: number;
 	face(n: number): Promise<PageFace>;
+}
+
+/** Each earlier edition's page reader, opened once however many marks were made on it. */
+function earlierReaders(
+	editions: Pick<Editions, 'earlier'>
+): (edition: string | undefined) => Promise<PageReader | null> {
+	const readers = new Map<string, Promise<PageReader | null>>();
+	return (edition) => {
+		if (!edition) return Promise.resolve(null);
+		let reader = readers.get(edition);
+		if (!reader) readers.set(edition, (reader = editions.earlier(edition).then(readerOf)));
+		return reader;
+	};
 }
 
 function readerOf(doc: PDFDocumentProxy | null): PageReader | null {

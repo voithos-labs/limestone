@@ -10,6 +10,8 @@ import type { InkStroke, PageRect } from './annotation.js';
 /** A stroke that isn't part of an annotation yet, and the page it's on. */
 export interface LooseStroke extends InkStroke {
 	page: number;
+	/** The edition it was drawn on; a stroke without one predates editions and shows on all. */
+	edition?: string;
 }
 
 /** Drops the points a stroke doesn't need (Douglas–Peucker), rounded for storage. */

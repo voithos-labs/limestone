@@ -1,29 +1,46 @@
+<script lang="ts" module>
+	/** Loose ink on one page of an earlier edition, left there because the page changed. */
+	export interface InkLeft {
+		edition: string;
+		page: number;
+		strokes: number;
+	}
+</script>
+
 <script lang="ts">
 	import { ANNOTATION_RGB, annotationRgb } from './colors.js';
 	import type { Annotation, AnnotationKind } from '#lib/pdf/annotation.js';
 	import { editionDate } from '#lib/pdf/edition.js';
 	import type { Unplaced } from '#lib/pdf/migrate.js';
 
-	/** The header chip counting annotations not placed on the edition on screen, and their list. */
+	/** The header chip counting marks not placed on the edition on screen, and their list. */
 	let {
 		sourceId,
 		annotations,
+		ink = [],
 		reasons,
+		canCarry,
 		carrying = false,
 		onCarry,
 		onPlace,
+		onBringInk,
 		onOpenEdition
 	}: {
 		/** The PDF's source, which keeps its editions. */
 		sourceId: string;
 		/** Made on other editions. */
 		annotations: Annotation[];
+		ink?: InkLeft[];
 		/** Why each one tried in this opening stayed unplaced. */
 		reasons: Map<string, Unplaced>;
+		/** Whether anything listed hasn't been tried yet; a failed try fails again. */
+		canCarry: boolean;
 		carrying?: boolean;
 		onCarry: () => void;
 		/** Waits for a new spot on the pages; left out where there are no pages to place on. */
 		onPlace?: (a: Annotation) => void;
+		/** Moves ink as it is onto its page of the edition on screen. */
+		onBringInk: (left: InkLeft) => void;
 		onOpenEdition: (edition: string) => void;
 	} = $props();
 
@@ -39,8 +56,7 @@
 
 	let open = $state(false);
 	let root: HTMLElement | undefined = $state();
-	// a failed try fails again, so only what hasn't been tried is offered
-	const untried = $derived(annotations.some((a) => !reasons.has(a.id)));
+	const count = $derived(annotations.length + ink.length);
 
 	// a quote starting in lowercase begins mid-sentence
 	function quoted(quote: string): string {
@@ -66,6 +82,14 @@
 
 <svelte:window onpointerdown={onWindowPointer} onkeydown={onWindowKey} />
 
+{#snippet openEdition(edition: string)}
+	<button class="open" type="button" onclick={() => act(() => onOpenEdition(edition))}>
+		{#await editionDate(sourceId, edition) then day}
+			Open {day ?? 'earlier'} edition
+		{/await}
+	</button>
+{/snippet}
+
 <span class="not-placed" bind:this={root}>
 	<button
 		class="chip"
@@ -74,13 +98,13 @@
 		style:--amber={ANNOTATION_RGB.amber}
 		onclick={() => (open = !open)}
 	>
-		<span class="ring"></span>{annotations.length} not placed in this edition
+		<span class="ring"></span>{count} not placed in this edition
 	</button>
 	{#if open}
 		<div class="popover">
 			<div class="head">
-				Not placed in this edition<span class="count">{annotations.length}</span>
-				{#if untried}
+				Not placed in this edition<span class="count">{count}</span>
+				{#if canCarry}
 					<button class="carry" type="button" disabled={carrying} onclick={onCarry}>
 						{carrying ? 'Carrying over…' : 'Carry over'}
 					</button>
@@ -102,13 +126,23 @@
 							</button>
 						{/if}
 						{#if a.edition && reason !== 'unpreserved'}
-							{@const edition = a.edition}
-							<button class="open" type="button" onclick={() => act(() => onOpenEdition(edition))}>
-								{#await editionDate(sourceId, edition) then day}
-									Open {day ?? 'earlier'} edition
-								{/await}
-							</button>
+							{@render openEdition(a.edition)}
 						{/if}
+					</div>
+				</div>
+			{/each}
+			{#each ink as left (`${left.edition}:${left.page}`)}
+				<div class="card" style:--ann={ANNOTATION_RGB.amber}>
+					<div class="was"><span class="dot"></span>was p. {left.page} · page changed</div>
+					<div class="what">
+						Loose ink · {left.strokes}
+						{left.strokes === 1 ? 'stroke' : 'strokes'}
+					</div>
+					<div class="actions">
+						<button class="place" type="button" onclick={() => act(() => onBringInk(left))}>
+							Bring over
+						</button>
+						{@render openEdition(left.edition)}
 					</div>
 				</div>
 			{/each}

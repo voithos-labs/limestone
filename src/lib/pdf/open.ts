@@ -1,5 +1,5 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import type { PDFDocumentLoadingTask } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 /**
@@ -59,16 +59,7 @@ export async function openPdf(file: PdfFile): Promise<PDFDocumentLoadingTask> {
 		disableAutoFetch: true,
 		disableStream: true
 	});
-	lengths.set(task, length);
 	return task;
-}
-
-/**
- * The byte length of a PDF opened here. pdf.js's own `getDownloadInfo` only answers once every
- * byte has been read, which range loading never does for most files.
- */
-export function fileLength(doc: PDFDocumentProxy): number | undefined {
-	return lengths.get(doc.loadingTask);
 }
 
 // ── Internal ────────────────────────────────────────────────────────────────
@@ -78,8 +69,6 @@ export function fileLength(doc: PDFDocumentProxy): number | undefined {
 // clustered); it only trades bytes for requests on a file whose page dictionaries are scattered.
 const FIRST_CHUNK = 1 << 20;
 const CHUNK = 1 << 18;
-
-const lengths = new WeakMap<PDFDocumentLoadingTask, number>();
 
 async function fetchRange(
 	url: string,

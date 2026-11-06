@@ -304,6 +304,7 @@ pub fn run() {
             commands::document_commands::set_document_tags,
             commands::document_commands::strip_body_tag,
             commands::document_commands::read_document_tags,
+            commands::document_commands::file_digest,
             commands::document_commands::read_pdf_ink,
             commands::document_commands::save_pdf_ink,
             commands::document_commands::strip_document_tag,

@@ -1,7 +1,6 @@
-import { copyFile, exists, mkdir, rename, stat } from '@tauri-apps/plugin-fs';
-import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { invoke } from '@tauri-apps/api/core';
+import { copyFile, exists, mkdir, remove, rename, stat } from '@tauri-apps/plugin-fs';
 import { getSource } from '#lib/models/Source.js';
-import { fileLength } from './open.js';
 
 /**
  * Editions: which bytes an annotation was made on, and a preserved copy of them, so replacing a
@@ -23,18 +22,24 @@ export function isPreserved(sourcePath: string, edition: string): Promise<boolea
 }
 
 /**
- * A short id for the loaded file: the PDF's own identifiers plus its length. Hashing the bytes
- * would mean reading them all, which range loading avoids. A tool that rewrites a file but keeps
- * both identifiers and its exact length would go unnoticed.
+ * The edition a PDF file is: a short digest of its bytes, so any change to them is a new
+ * edition. Hashed in the backend, which streams the file, and asked again only once the file's
+ * size or modified time changes.
  */
-export async function editionOf(doc: PDFDocumentProxy): Promise<string> {
-	const length = fileLength(doc) ?? (await doc.getDownloadInfo()).length;
-	const text = `${doc.fingerprints.join('|')}|${length}`;
-	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-	return [...new Uint8Array(digest)]
-		.slice(0, 8)
-		.map((b) => b.toString(16).padStart(2, '0'))
-		.join('');
+export async function editionOf(pdf: {
+	sourceId: string;
+	sourcePath: string;
+	relPath: string;
+}): Promise<string> {
+	const { size, mtime } = await stat(`${pdf.sourcePath}/${pdf.relPath}`);
+	const key = `${pdf.sourceId}/${pdf.relPath}:${size}:${mtime?.getTime()}`;
+	let digest = digests.get(key);
+	if (!digest) {
+		digest = invoke<string>('file_digest', { sourceId: pdf.sourceId, relPath: pdf.relPath });
+		digests.set(key, digest);
+		digest.catch(() => digests.delete(key));
+	}
+	return (await digest).slice(0, EDITION_ID_LENGTH);
 }
 
 /**
@@ -52,6 +57,20 @@ export async function preserveEdition(
 	const partial = `${target}.partial`;
 	await copyFile(`${pdf.sourcePath}/${pdf.relPath}`, partial);
 	await rename(partial, target);
+}
+
+/** The size of an edition's preserved copy in bytes, or null when there's none. */
+export async function editionSize(sourcePath: string, edition: string): Promise<number | null> {
+	try {
+		return (await stat(`${sourcePath}/${editionPath(edition)}`)).size;
+	} catch {
+		return null;
+	}
+}
+
+/** Deletes an edition's preserved copy; its marks can no longer be shown on the old pages. */
+export function discardEdition(sourcePath: string, edition: string): Promise<void> {
+	return remove(`${sourcePath}/${editionPath(edition)}`);
 }
 
 /**
@@ -80,3 +99,7 @@ export async function editionDate(sourceId: string, edition: string): Promise<st
 
 // an edition's bytes never change, so neither does its date; a failed read is asked again
 const dates = new Map<string, string>();
+
+// 64 bits of the digest: enough that two editions of one PDF never share an id
+const EDITION_ID_LENGTH = 16;
+const digests = new Map<string, Promise<string>>();

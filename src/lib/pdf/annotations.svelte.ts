@@ -112,6 +112,17 @@ export default class PdfAnnotations {
 		if (before && before.page !== placement.page) await this.retitle(before, placement.page);
 	}
 
+	/** Whether any of the PDF's annotation notes, trashed ones included, was made on `edition`. */
+	async marksEdition(edition: string): Promise<boolean> {
+		const rows = await select<{ id: string }>(
+			`SELECT id FROM documents
+			 WHERE json_extract(properties, '$.${ANNOTATION_KEY}.pdf') = ?1
+			   AND json_extract(properties, '$.${ANNOTATION_KEY}.edition') = ?2 LIMIT 1`,
+			[this.pdf().id, edition]
+		);
+		return rows.length > 0;
+	}
+
 	/** Moves the note to the trash, where `restore` can bring it back. */
 	async remove(id: string): Promise<void> {
 		if (!this.items.some((a) => a.id === id)) return;
