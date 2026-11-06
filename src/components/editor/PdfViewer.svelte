@@ -664,22 +664,15 @@
 	async function removeAnnotation(a: Annotation) {
 		try {
 			await drop(a.id);
-			record({ undo: () => annotations.restore(a), redo: () => drop(a.id) }, a.page, a.rects[0]);
+			record({ undo: () => annotations.restore(a.id), redo: () => drop(a.id) }, a.page, a.rects[0]);
 		} catch (e) {
 			reportError(e, "The annotation couldn't be deleted.");
 		}
 	}
 
-	/** Undo trashes the note, keeping it as it then is; redo brings that back. */
+	/** Undo deletes the note as it then is; redo brings that back. */
 	function madeStep(id: string): Step {
-		let kept: Annotation | undefined;
-		return {
-			undo: () => {
-				kept = annotations.items.find((a) => a.id === id);
-				return drop(id);
-			},
-			redo: () => kept && annotations.restore(kept)
-		};
+		return { undo: () => drop(id), redo: () => annotations.restore(id) };
 	}
 
 	async function drop(id: string) {
