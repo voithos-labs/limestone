@@ -213,7 +213,6 @@
 
 	.passage {
 		margin: 0;
-		padding-right: 150px;
 		font-family: var(--font-editor, serif);
 		font-size: 16px;
 		line-height: 1.65;
@@ -230,7 +229,6 @@
 	}
 
 	.shot {
-		margin-right: 150px;
 		--crop-ring: 1.5px;
 		--crop-radius: 4px;
 	}
@@ -239,7 +237,6 @@
 		display: flex;
 		gap: 8px;
 		padding-left: 18px;
-		padding-right: 150px;
 		font-size: 13.5px;
 		line-height: 1.5;
 		color: var(--color-text-secondary);
@@ -255,29 +252,37 @@
 		flex: 1;
 	}
 
+	/* a hovered row's actions sit on its top edge, so its text keeps the full width */
 	.actions {
 		position: absolute;
-		top: 10px;
+		top: -13px;
 		right: 10px;
 		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		gap: 4px;
+		gap: 2px;
+		padding: 1px;
+		border: 1px solid var(--color-border);
+		border-radius: 7px;
+		background: var(--color-bg);
+		box-shadow: var(--menu-shadow);
 		opacity: 0;
-		transition: opacity 120ms;
+		visibility: hidden;
+		transition:
+			opacity 120ms,
+			visibility 120ms;
 	}
 
 	.row:hover .actions,
 	.row.open .actions,
 	.row:focus-within .actions {
 		opacity: 1;
+		visibility: visible;
 	}
 
 	.action {
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		height: 24px;
+		height: 22px;
 		padding: 0 8px;
 		border: 0;
 		border-radius: 5px;
