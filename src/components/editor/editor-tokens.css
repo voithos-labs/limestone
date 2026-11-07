@@ -1,10 +1,16 @@
-/**
- * Points the editor variables aragonite still defaults on `.editor` at limestone's theme. Its
- * host-contract names are absent on purpose: those default behind an opt-in class the app never
- * sets, so limestone's own `:root` reaches the editor unbridged. No ancestor may carry
- * `.aragonite-editor-theme`, or the inherited lines pick up aragonite's colors instead. Load
- * after `aragonite/styles/editor-theme.css`.
+/*
+ * how aragonite's editor looks in limestone: its colors, and a note's page width.
+ *
+ * Aragonite only defaults its host-chrome tokens (the colors a host app's theme can supply) under
+ * an opt-in `.aragonite-editor-theme` class, so limestone's own `:root` reaches the editor as it
+ * is, and those tokens are left out here on purpose. No ancestor of the editor may carry that
+ * class, or it inherits aragonite's colors instead. The few tokens aragonite defaults on `.editor`
+ * itself are pointed at limestone's theme below, so the note editor loads this after
+ * `aragonite/styles/editor-theme.css`.
  */
+
+/* --------------------------------- Colors --------------------------------- */
+
 .editor {
 	/* Limestone floats its menus on --color-bg, so the editor's popovers (find bar, link card,
 	   language chip) take the same surface. Aragonite defaults this on .editor itself, which is
@@ -17,9 +23,11 @@
 	--syntax-task-checked-tick: var(--color-accent-contrast);
 }
 
-/* A note's page: the same width every other page uses, and the same side padding as
-   DocumentHero, so the document title and the first block line up on the left. Only the note's
-   own editor: one set in something smaller, as a comment's is, keeps aragonite's flush layout. */
+/* ----------------------------- A note's page ------------------------------ */
+
+/* The same page width every other page uses, and the same side padding as DocumentHero, so
+   the document title and the first block line up on the left. Only for a note's own editor,
+   not the small ones elsewhere (like a pdf comment's). */
 .doc-editor > .editor > .block-list {
 	max-width: var(--page-max-width, 1200px);
 	margin: 0 auto;
