@@ -10,12 +10,14 @@ export interface Source {
 	accessed_at: string;
 	note_location: string;
 	asset_location: string;
+	strong_meta: boolean;
 	ignore: string[];
 }
 
 export interface SourceConfig {
 	note_location: string;
 	asset_location: string;
+	strong_meta?: boolean;
 }
 
 /** A source's display name is just its folder (the basename of its path). */
@@ -77,7 +79,8 @@ export async function createSource(
 		title,
 		noteLocation: config.note_location,
 		assetLocation: config.asset_location,
-		useFrontmatter
+		useFrontmatter,
+		strongMeta: config.strong_meta ?? false
 	});
 	await syncWatchers();
 	return source;
@@ -105,7 +108,8 @@ export async function updateSource(id: string, config: SourceConfig): Promise<vo
 	await invoke('update_source', {
 		id,
 		noteLocation: config.note_location,
-		assetLocation: config.asset_location
+		assetLocation: config.asset_location,
+		strongMeta: config.strong_meta ?? null
 	});
 }
 

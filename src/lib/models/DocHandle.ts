@@ -165,7 +165,6 @@ class DocHandle {
 	frontmatterError: string | null = null;
 	writesMeta = true;
 	inRepo = false;
-	private fence = '';
 
 	private constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;
@@ -328,31 +327,19 @@ class DocHandle {
 
 	// ── Serialization ────────────────────────────────────────────────────────────────
 
-	/**
-	 * Build the frontmatter from doc state. Properties are stored nested
-	 * (e.g. views.<slug>.<field>) as a YAML object.
-	 */
-	toFrontmatter(): DocumentFrontmatter {
-		return {
-			id: this.id,
-			tags: this.tags.map((t) => t.slug),
-			created_at: this.createdAt,
-			updated_at: this.updatedAt,
-			...this.properties
-		};
+	private ownedKeys(): Record<string, unknown> {
+		const tags = this.tags.map((t) => t.slug);
+		return { ...(tags.length ? { tags } : {}), ...this.properties };
 	}
 
-	/**
-	 * Serialize frontmatter + body into a full file string.
-	 */
-	async serialize(body: string, rebuildFrontmatter = false): Promise<string> {
+	private async patchFor(rebuild: boolean): Promise<Record<string, unknown> | null> {
 		await this.refreshMeta();
-		if (!this.writesMeta) return this.fence + body;
-		if (this.frontmatterError && !rebuildFrontmatter) return body;
-
-		const fm = this.toFrontmatter();
-		const fmStr = yaml.dump(fm, { lineWidth: -1, sortKeys: false });
-		return `---\n${fmStr}---\n${body}`;
+		if (!this.writesMeta || (this.frontmatterError && !rebuild)) return null;
+		const patch = rebuild || !this.hasFile ? this.ownedKeys() : {};
+		if (this.source.strong_meta) {
+			Object.assign(patch, { id: this.id, created_at: this.createdAt, updated_at: this.updatedAt });
+		}
+		return Object.keys(patch).length ? patch : null;
 	}
 
 	/**
@@ -413,7 +400,6 @@ class DocHandle {
 		this.hasFile = true;
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
-		this.fence = raw.slice(0, raw.length - body.length);
 
 		if (frontmatter) {
 			const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
@@ -459,7 +445,6 @@ class DocHandle {
 		}
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
-		this.fence = raw.slice(0, raw.length - body.length);
 		if (!frontmatter) return;
 		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
 		this.properties = remaining;
@@ -470,11 +455,13 @@ class DocHandle {
 	async saveContent(body: string, opts: { rebuildFrontmatter?: boolean } = {}): Promise<void> {
 		await this.refreshMetaFromDisk(); // this is hmm possibly not needed
 		this.updatedAt = new Date();
-		const contents = await this.serialize(body, opts.rebuildFrontmatter);
+		const rebuild = !!opts.rebuildFrontmatter;
 		const mtime = await invoke<number>('write_document', {
 			sourceId: this.source.id,
 			relPath: this._relPath,
-			contents,
+			body,
+			patch: await this.patchFor(rebuild),
+			rebuild,
 			updatedAt: this.updatedAt.getTime(),
 			create: !this.hasFile
 		});
@@ -507,12 +494,12 @@ class DocHandle {
 			: wanted;
 		this.place(relPath, relPath.split('/').pop()!.replace(/\.md$/i, ''));
 		this.updatedAt = new Date();
-		const contents = await this.serialize(body, true);
 		await invoke('restore_document', {
 			sourceId: this.source.id,
 			id: this.id,
 			relPath,
-			contents,
+			body,
+			patch: await this.patchFor(true),
 			updatedAt: this.updatedAt.getTime()
 		});
 		this.deletedAt = undefined;

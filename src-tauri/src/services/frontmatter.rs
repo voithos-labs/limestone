@@ -21,21 +21,7 @@ pub fn date_ms(s: &str) -> Option<i64> {
 
 /// It's in the name, rewrite frontmatter, preserve contents
 pub fn rewrite_frontmatter(path: &Path, mutate: impl Fn(&mut Value)) -> io::Result<()> {
-    let content = fs::read_to_string(path)?;
-    let (existing, body) = split_content(&content);
-    if existing.is_none() && has_unparsed_fence(&content) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "existing frontmatter could not be parsed",
-        ));
-    }
-    let mut fm = existing.unwrap_or_else(|| Value::Object(Map::new()));
-    mutate(&mut fm);
-    let next = format_content(&fm, body)?;
-    if next == content {
-        return Ok(());
-    }
-    fast_write(path, next.as_bytes())
+    rewrite_document(path, Some(&mutate), &|_| None)
 }
 
 pub fn rewrite_document(
@@ -44,26 +30,173 @@ pub fn rewrite_document(
     mutate_body: &dyn Fn(&str) -> Option<String>,
 ) -> io::Result<()> {
     let content = fs::read_to_string(path)?;
-    let (existing, body) = split_content(&content);
-    if existing.is_none() && has_unparsed_fence(&content) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "existing frontmatter could not be parsed",
-        ));
-    }
-    let fence = &content[..content.len() - body.len()];
+    let (head, body) = split_raw(&content);
     let body = mutate_body(body).unwrap_or_else(|| body.to_string());
-    let next = match (existing, mutate_fm) {
-        (Some(mut fm), Some(mutate)) => {
-            mutate(&mut fm);
-            format_content(&fm, &body)?
+    let next = match mutate_fm {
+        None => compose(Some(&content), &body, None, &[], false)?,
+        Some(mutate) => {
+            let before = head.map(|(_, block)| parse_block(block)).transpose()?.unwrap_or_default();
+            let mut after = Value::Object(before.clone());
+            mutate(&mut after);
+            let after = after.as_object().cloned().unwrap_or_default();
+            let (set, remove) = diff_keys(&before, &after);
+            compose(Some(&content), &body, Some(&set), &remove, false)?
         }
-        _ => format!("{fence}{body}"),
     };
     if next == content {
         return Ok(());
     }
     fast_write(path, next.as_bytes())
+}
+
+pub fn compose(
+    existing: Option<&str>,
+    body: &str,
+    patch: Option<&Map<String, Value>>,
+    remove: &[String],
+    rebuild: bool,
+) -> io::Result<String> {
+    let head = existing.filter(|_| !rebuild).and_then(|c| split_raw(c).0);
+    let Some(patch) = patch else {
+        return Ok(format!("{}{body}", head.map_or("", |(prefix, _)| prefix)));
+    };
+    let nl = head.map_or_else(|| newline_of(body), |(_, block)| newline_of(block));
+    let block = match head {
+        Some((_, block)) => {
+            parse_block(block)?;
+            splice_block(block, patch, remove)
+        }
+        None => emit_block(patch, nl),
+    };
+    Ok(with_block(&block, nl, body))
+}
+
+fn split_raw(content: &str) -> (Option<(&str, &str)>, &str) {
+    let trimmed = content.trim_start();
+    if let Some(after_open) = trimmed.strip_prefix("---") {
+        if let Some(close) = find_closing_fence(after_open) {
+            let block = strip_newline(&after_open[..close]);
+            let body = strip_newline(&after_open[close + 3..]);
+            let prefix = &content[..content.len() - body.len()];
+            return (Some((prefix, block)), body);
+        }
+    }
+    (None, content)
+}
+
+fn strip_newline(s: &str) -> &str {
+    s.strip_prefix("\r\n")
+        .or_else(|| s.strip_prefix('\n'))
+        .unwrap_or(s)
+}
+
+fn newline_of(s: &str) -> &'static str {
+    if s.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
+fn parse_block(block: &str) -> io::Result<Map<String, Value>> {
+    match serde_yml::from_str::<Value>(block) {
+        Ok(Value::Object(m)) => Ok(m),
+        Ok(_) => Ok(Map::new()),
+        Err(_) => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "existing frontmatter could not be parsed",
+        )),
+    }
+}
+
+fn diff_keys(
+    before: &Map<String, Value>,
+    after: &Map<String, Value>,
+) -> (Map<String, Value>, Vec<String>) {
+    let mut set = Map::new();
+    for (k, v) in after {
+        if before.get(k) != Some(v) {
+            set.insert(k.clone(), v.clone());
+        }
+    }
+    let remove = before
+        .keys()
+        .filter(|k| !after.contains_key(*k))
+        .cloned()
+        .collect();
+    (set, remove)
+}
+
+fn with_block(block: &str, nl: &str, body: &str) -> String {
+    if block.trim().is_empty() {
+        body.to_string()
+    } else {
+        format!("---{nl}{block}---{nl}{body}")
+    }
+}
+
+fn emit_block(map: &Map<String, Value>, nl: &str) -> String {
+    let mut out = String::new();
+    emit_map(&mut out, map, 0, false);
+    if nl == "\r\n" {
+        out = out.replace('\n', "\r\n");
+    }
+    out
+}
+
+fn key_of(line: &str) -> Option<&str> {
+    let first = line.chars().next()?;
+    if first.is_whitespace() || first == '#' || first == '-' {
+        return None;
+    }
+    let key = line.split_once(':').map_or(line, |(k, _)| k);
+    Some(key.trim_end().trim_matches(['"', '\'']))
+}
+
+fn is_filler(line: &str) -> bool {
+    let t = line.trim();
+    t.is_empty() || t.starts_with('#')
+}
+
+pub fn splice_block(block: &str, set: &Map<String, Value>, remove: &[String]) -> String {
+    let nl = newline_of(block);
+    let lines: Vec<&str> = block.split_inclusive('\n').collect();
+    let keys: Vec<(&str, usize)> = lines
+        .iter()
+        .enumerate()
+        .filter_map(|(i, l)| key_of(l).map(|k| (k, i)))
+        .collect();
+    let mut out = String::with_capacity(block.len() + 128);
+    let mut cursor = 0;
+    for (n, (key, start)) in keys.iter().enumerate() {
+        let mut end = keys.get(n + 1).map_or(lines.len(), |(_, s)| *s);
+        while end > start + 1 && is_filler(lines[end - 1]) {
+            end -= 1;
+        }
+        out.extend(lines[cursor..*start].iter().copied());
+        match set.get(*key) {
+            Some(value) => emit_entry(&mut out, key, value, nl),
+            None if remove.iter().any(|r| r == key) => {}
+            None => out.extend(lines[*start..end].iter().copied()),
+        }
+        cursor = end;
+    }
+    out.extend(lines[cursor..].iter().copied());
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push_str(nl);
+    }
+    for (key, value) in set {
+        if !keys.iter().any(|(k, _)| k == key) {
+            emit_entry(&mut out, key, value, nl);
+        }
+    }
+    out
+}
+
+fn emit_entry(out: &mut String, key: &str, value: &Value, nl: &str) {
+    let mut one = Map::new();
+    one.insert(key.to_string(), value.clone());
+    out.push_str(&emit_block(&one, nl));
 }
 
 /// The file without its frontmatter
@@ -144,6 +277,7 @@ pub(crate) fn find_closing_fence(after_open: &str) -> Option<usize> {
     }
 }
 
+#[cfg(test)]
 pub fn format_content(fm: &Value, body: &str) -> io::Result<String> {
     let mut out = String::with_capacity(body.len() + 256);
     out.push_str("---\n");
@@ -446,6 +580,89 @@ pub fn remove_tag(fm: &mut Value, slug: &str) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn splice_replaces_in_place_appends_new_keys_and_keeps_the_rest() {
+        let block = "# top\nid: old\ntags:\n  - a\n# about custom\ncustom: value   # trailing\n\nz: 1\n";
+        let mut set = Map::new();
+        set.insert("tags".into(), json!(["a", "b"]));
+        set.insert("views".into(), json!({ "todo": { "due": "2026-01-01" } }));
+        let out = splice_block(block, &set, &["id".to_string()]);
+        assert_eq!(
+            out,
+            "# top\ntags:\n  - a\n  - b\n# about custom\ncustom: value   # trailing\n\nz: 1\nviews:\n  todo:\n    due: 2026-01-01\n"
+        );
+    }
+
+    #[test]
+    fn compose_without_a_patch_keeps_any_block_byte_for_byte() {
+        let raw = "---\r\nbad: [unclosed\r\n---\r\nold\r\n";
+        assert_eq!(
+            compose(Some(raw), "new", None, &[], false).unwrap(),
+            "---\r\nbad: [unclosed\r\n---\r\nnew"
+        );
+        assert_eq!(compose(Some("plain"), "new", None, &[], false).unwrap(), "new");
+        assert_eq!(compose(None, "new", None, &[], false).unwrap(), "new");
+    }
+
+    #[test]
+    fn compose_adds_a_block_only_for_a_nonempty_patch() {
+        let mut p = Map::new();
+        assert_eq!(compose(None, "body\n", Some(&p), &[], false).unwrap(), "body\n");
+        p.insert("tags".into(), json!(["todo"]));
+        assert_eq!(
+            compose(None, "body\n", Some(&p), &[], false).unwrap(),
+            "---\ntags:\n  - todo\n---\nbody\n"
+        );
+        assert_eq!(
+            compose(Some("old\n"), "body\n", Some(&p), &[], false).unwrap(),
+            "---\ntags:\n  - todo\n---\nbody\n"
+        );
+    }
+
+    #[test]
+    fn compose_patches_in_place_and_keeps_crlf() {
+        let raw = "---\r\n# mine\r\ntitle: x\r\ntags:\r\n  - a\r\n---\r\nbody\r\n";
+        let mut p = Map::new();
+        p.insert("tags".into(), json!(["b"]));
+        assert_eq!(
+            compose(Some(raw), "body\r\n", Some(&p), &[], false).unwrap(),
+            "---\r\n# mine\r\ntitle: x\r\ntags:\r\n  - b\r\n---\r\nbody\r\n"
+        );
+    }
+
+    #[test]
+    fn compose_refuses_to_patch_an_unparsable_block_unless_rebuilding() {
+        let raw = "---\nbad: [unclosed\n---\nbody\n";
+        let mut p = Map::new();
+        p.insert("tags".into(), json!(["a"]));
+        assert!(compose(Some(raw), "body\n", Some(&p), &[], false).is_err());
+        assert_eq!(
+            compose(Some(raw), "body\n", Some(&p), &[], true).unwrap(),
+            "---\ntags:\n  - a\n---\nbody\n"
+        );
+        assert_eq!(compose(Some(raw), "body\n", None, &[], true).unwrap(), "body\n");
+    }
+
+    #[test]
+    fn rewrite_touches_only_the_keys_a_mutation_changed() {
+        let dir = std::env::temp_dir().join(format!("ls-splice-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("n.md");
+        fs::write(&path, "---\n# keep me\ncustom: 'quoted'\ntags:\n  - a\n---\nhello\n").unwrap();
+        rewrite_frontmatter(&path, |fm| set_view_field(fm, "todo", "due", json!("2026-01-01")))
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "---\n# keep me\ncustom: 'quoted'\ntags:\n  - a\nviews:\n  todo:\n    due: 2026-01-01\n---\nhello\n"
+        );
+        fs::write(&path, "hello\n").unwrap();
+        rewrite_frontmatter(&path, |_| {}).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "hello\n");
+        fs::write(&path, "---\nbad: [unclosed\n---\nhello\n").unwrap();
+        assert!(rewrite_frontmatter(&path, |_| {}).is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn strip_takes_the_block_and_keeps_the_body() {

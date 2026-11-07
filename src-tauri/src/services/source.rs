@@ -54,6 +54,8 @@ use uuid::Uuid;
 pub struct SourceConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub use_frontmatter: Option<bool>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strong_meta: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub frontmatter_dirs: BTreeMap<String, bool>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -71,6 +73,7 @@ impl Default for SourceConfig {
     fn default() -> Self {
         Self {
             use_frontmatter: None,
+            strong_meta: false,
             frontmatter_dirs: BTreeMap::new(),
             note_location: String::new(),
             asset_location: default_asset_location(),
@@ -103,6 +106,7 @@ pub struct Source {
     pub accessed_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_frontmatter: Option<bool>,
+    pub strong_meta: bool,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub frontmatter_dirs: BTreeMap<String, bool>,
     pub note_location: String,
@@ -131,6 +135,7 @@ impl Source {
             created_at: record.created_at,
             accessed_at: record.accessed_at,
             use_frontmatter: config.use_frontmatter,
+            strong_meta: config.strong_meta,
             frontmatter_dirs: config.frontmatter_dirs,
             note_location: config.note_location,
             asset_location: config.asset_location,
@@ -151,6 +156,7 @@ impl Source {
     pub fn config(&self) -> SourceConfig {
         SourceConfig {
             use_frontmatter: self.use_frontmatter,
+            strong_meta: self.strong_meta,
             frontmatter_dirs: self.frontmatter_dirs.clone(),
             note_location: self.note_location.clone(),
             asset_location: self.asset_location.clone(),
@@ -229,6 +235,7 @@ pub fn create_source(
     note_location: Option<String>,
     asset_location: Option<String>,
     use_frontmatter: Option<bool>,
+    strong_meta: bool,
 ) -> Result<Source, std::io::Error> {
     fs::create_dir_all(&path)?;
     let title = title.unwrap_or_else(|| {
@@ -240,6 +247,7 @@ pub fn create_source(
 
     let mut source = Source::new(title, path);
     source.use_frontmatter = use_frontmatter;
+    source.strong_meta = strong_meta;
     source.note_location = clean_location(&note_location.unwrap_or_default())?;
     source.asset_location = clean_location(&asset_location.unwrap_or_else(default_asset_location))?;
     Ok(source)
@@ -577,7 +585,7 @@ pub fn resolve_plan(
     db_docs: &HashMap<String, (String, i64)>,
     deleted_ids: &HashSet<String>,
     foreign_ids: &HashSet<String>,
-    locked_dirs: &HashSet<String>,
+    rewrite_dirs: &HashSet<String>,
 ) -> ReconcilePlan {
     let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
         .iter()
@@ -641,9 +649,7 @@ pub fn resolve_plan(
                 moved: holder.is_some_and(|q| q != *path),
                 rewrite_id: false,
             });
-        } else if locked_dirs.contains(dir_of(path)) {
-            claimless.push((path, *mtime));
-        } else {
+        } else if rewrite_dirs.contains(dir_of(path)) {
             docs.push(ResolvedDoc {
                 id: Uuid::new_v4().to_string(),
                 rel_path: path.to_string(),
@@ -653,6 +659,8 @@ pub fn resolve_plan(
                 moved: false,
                 rewrite_id: true,
             });
+        } else {
+            claimless.push((path, *mtime));
         }
     }
 
@@ -1248,15 +1256,18 @@ pub async fn reconcile_source(
             .collect();
 
     let folder_prefix = folder_id(source_id, "");
-    let locked_dirs: HashSet<String> = sqlx::query_scalar::<_, String>(
-        "SELECT id FROM folders WHERE source_id = ?1 AND writes_meta = 0",
-    )
-    .bind(source_id)
-    .fetch_all(db)
-    .await?
-    .into_iter()
-    .filter_map(|id| id.strip_prefix(&folder_prefix).map(str::to_string))
-    .collect();
+    let mut rewrite_dirs: HashSet<String> = HashSet::new();
+    if source.strong_meta {
+        rewrite_dirs = sqlx::query_scalar::<_, String>(
+            "SELECT id FROM folders WHERE source_id = ?1 AND writes_meta = 1",
+        )
+        .bind(source_id)
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .filter_map(|id| id.strip_prefix(&folder_prefix).map(str::to_string))
+        .collect();
+    }
 
     let plan = resolve_plan(
         &diff,
@@ -1264,7 +1275,7 @@ pub async fn reconcile_source(
         &db_docs,
         &deleted_ids,
         &foreign_ids,
-        &locked_dirs,
+        &rewrite_dirs,
     );
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
@@ -1323,13 +1334,14 @@ mod tests {
             .map(|(id, p)| (id.to_string(), (p.to_string(), 0)))
             .collect();
         let foreign_ids: HashSet<String> = foreign.iter().map(|s| s.to_string()).collect();
+        let rewrite_dirs: HashSet<String> = ["".to_string()].into();
         resolve_plan(
             &diff,
             &frontmatter,
             &db_docs,
             &HashSet::new(),
             &foreign_ids,
-            &HashSet::new(),
+            &rewrite_dirs,
         )
     }
 
@@ -1380,8 +1392,8 @@ mod tests {
     }
 
     #[test]
-    fn denied_claim_in_locked_dir_keeps_its_path_row_and_file() {
-        let locked: HashSet<String> = ["".to_string()].into();
+    fn denied_claim_without_strong_mode_keeps_its_path_row_and_file() {
+        let locked: HashSet<String> = HashSet::new();
         let frontmatter = vec![("a copy.md".to_string(), fm("id-a"))];
         let first = ReconciliationDiff {
             unchanged: vec!["a.md".to_string()],

@@ -95,16 +95,32 @@ pub async fn write_document(
     app: AppHandle,
     source_id: String,
     rel_path: String,
-    contents: String,
+    body: String,
+    patch: Option<Value>,
+    rebuild: Option<bool>,
     updated_at: i64,
     create: Option<bool>,
 ) -> Result<i64, OpError> {
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
 
-    if create.unwrap_or(false) && full_path.exists() {
+    let create = create.unwrap_or(false);
+    if create && full_path.exists() {
         return Err(OpError::named("already_exists", &rel_path));
     }
+    let existing = if create {
+        None
+    } else {
+        std::fs::read_to_string(&full_path).ok()
+    };
+    let contents = frontmatter::compose(
+        existing.as_deref(),
+        &body,
+        patch.as_ref().and_then(Value::as_object),
+        &[],
+        rebuild.unwrap_or(false),
+    )
+    .map_err(OpError::from)?;
     atomic_write(&full_path, contents.as_bytes()).map_err(OpError::from)?;
 
     let mtime = mtime(&full_path);
@@ -204,7 +220,8 @@ pub async fn restore_document(
     source_id: String,
     id: String,
     rel_path: String,
-    contents: String,
+    body: String,
+    patch: Option<Value>,
     updated_at: i64,
 ) -> Result<(), OpError> {
     let root = root_of(&app, &source_id)?;
@@ -212,6 +229,9 @@ pub async fn restore_document(
     if full_path.exists() {
         return Err(OpError::named("already_exists", &rel_path));
     }
+    let contents =
+        frontmatter::compose(None, &body, patch.as_ref().and_then(Value::as_object), &[], false)
+            .map_err(OpError::from)?;
     atomic_write(&full_path, contents.as_bytes()).map_err(OpError::from)?;
 
     let mtime = mtime(&full_path);

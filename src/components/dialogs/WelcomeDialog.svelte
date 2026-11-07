@@ -33,7 +33,8 @@
 	let folderPath = $state('');
 	let noteLocation = $state('');
 	let assetLocation = $state('assets');
-	let useFrontmatter = $state(false);
+	let useFrontmatter = $state(true);
+	let strongMeta = $state(false);
 	let gitOff = $state(false);
 	let hasRepo = $state(false);
 	let moreOpen = $state(false);
@@ -92,7 +93,7 @@
 		isEmptyDir(path)
 			.then((empty) => {
 				if (folderPath !== path) return;
-				useFrontmatter = empty;
+				strongMeta = empty;
 				sample = empty;
 			})
 			.catch(() => {});
@@ -133,7 +134,11 @@
 			const source = await createSource(
 				folderPath,
 				title,
-				{ note_location: noteLocation.trim(), asset_location: assetLocation.trim() || 'assets' },
+				{
+					note_location: noteLocation.trim(),
+					asset_location: assetLocation.trim() || 'assets',
+					strong_meta: strongMeta
+				},
 				useFrontmatter ? null : false
 			);
 			await setDefaultSource(source.id);
@@ -198,7 +203,7 @@
 					<span class="card-title">Store metadata in YAML frontmatter</span>
 					<span class="card-desc">
 						{useFrontmatter
-							? "Tags and properties live in each note's file."
+							? 'Only what you set is written: tags, fields and dates.'
 							: 'Files stay as they are. Text #tags work, properties need it on.'}
 					</span>
 				</div>

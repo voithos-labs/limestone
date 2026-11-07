@@ -211,6 +211,7 @@ pub fn create_source(
     note_location: Option<String>,
     asset_location: Option<String>,
     use_frontmatter: Option<bool>,
+    strong_meta: Option<bool>,
 ) -> Result<Source, String> {
     let candidate = PathBuf::from(&path);
     let mut data = load_sources_file(&app);
@@ -222,6 +223,7 @@ pub fn create_source(
         note_location,
         asset_location,
         use_frontmatter,
+        strong_meta.unwrap_or(false),
     )
     .map_err(|e| e.to_string())?;
 
@@ -279,6 +281,7 @@ pub fn update_source(
     id: Uuid,
     note_location: String,
     asset_location: String,
+    strong_meta: Option<bool>,
 ) -> Result<(), String> {
     let note_location = clean_location(&note_location).map_err(|e| e.to_string())?;
     let asset_location = clean_location(&asset_location).map_err(|e| e.to_string())?;
@@ -286,6 +289,9 @@ pub fn update_source(
     let mut source = find_source(&app, id)?;
     source.note_location = note_location;
     source.asset_location = asset_location;
+    if let Some(strong) = strong_meta {
+        source.strong_meta = strong;
+    }
     save_source_config(&source)
 }
 

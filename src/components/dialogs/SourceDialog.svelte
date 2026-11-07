@@ -39,6 +39,7 @@
 	let noteLocation = $state('');
 	let assetLocation = $state('assets');
 	let useFrontmatter = $state(true);
+	let strongMeta = $state(false);
 	let setAsDefault = $state(false);
 	let gitOff = $state(false);
 	let hasRepo = $state(false);
@@ -55,11 +56,13 @@
 				folderPath = source.path;
 				noteLocation = source.note_location;
 				assetLocation = source.asset_location;
+				strongMeta = source.strong_meta;
 			} else {
 				folderPath = '';
 				noteLocation = '';
 				assetLocation = 'assets';
-				useFrontmatter = false;
+				useFrontmatter = true;
+				strongMeta = false;
 				setAsDefault = false;
 				hasRepo = false;
 				getSetting<boolean>(GIT_FRONTMATTER_OFF)
@@ -87,7 +90,7 @@
 				.catch(() => {});
 			isEmptyDir(sel)
 				.then((empty) => {
-					if (folderPath === sel) useFrontmatter = empty;
+					if (folderPath === sel) strongMeta = empty;
 				})
 				.catch(() => {});
 		}
@@ -141,7 +144,8 @@
 		error = '';
 		const config = {
 			note_location: noteLocation.trim(),
-			asset_location: assetLocation.trim() || 'assets'
+			asset_location: assetLocation.trim() || 'assets',
+			strong_meta: strongMeta
 		};
 		busy = true;
 		try {
@@ -261,9 +265,9 @@
 				</button>
 			</div>
 
-			{#if mode === 'create' && folderPath}
+			{#if folderPath}
 				<div class="options" transition:slide={{ duration: 160 }}>
-					{#if useFrontmatter && gitOff && hasRepo}
+					{#if mode === 'create' && useFrontmatter && gitOff && hasRepo}
 						<div class="info-card">
 							<GitBranch size={15} strokeWidth={1.75} />
 							<div class="mc-body">
@@ -276,25 +280,42 @@
 						</div>
 					{/if}
 
-					<div class="option-card">
-						<div class="oc-text">
-							<span class="oc-title">Store metadata in YAML frontmatter</span>
-							<span class="oc-desc">
-								{useFrontmatter
-									? "Tags and properties live in each note's file."
-									: 'Files stay as they are. Text #tags work, properties need it on.'}
-							</span>
+					{#if mode === 'create'}
+						<div class="option-card">
+							<div class="oc-text">
+								<span class="oc-title">Store metadata in YAML frontmatter</span>
+								<span class="oc-desc">
+									{useFrontmatter
+										? 'Only what you set is written: tags, fields and dates.'
+										: 'Files stay as they are. Text #tags work, properties need it on.'}
+								</span>
+							</div>
+							<Toggle bind:checked={useFrontmatter} />
 						</div>
-						<Toggle bind:checked={useFrontmatter} />
-					</div>
+					{/if}
 
-					<div class="option-card">
-						<div class="oc-text">
-							<span class="oc-title">Set as default source</span>
-							<span class="oc-desc">New notes are created here by default.</span>
+					{#if mode === 'edit' || useFrontmatter}
+						<div class="option-card">
+							<div class="oc-text">
+								<span class="oc-title">Stamp every note</span>
+								<span class="oc-desc">
+									Writes an id and timestamps into each note on save. For folders only Limestone
+									edits.
+								</span>
+							</div>
+							<Toggle bind:checked={strongMeta} />
 						</div>
-						<Toggle bind:checked={setAsDefault} />
-					</div>
+					{/if}
+
+					{#if mode === 'create'}
+						<div class="option-card">
+							<div class="oc-text">
+								<span class="oc-title">Set as default source</span>
+								<span class="oc-desc">New notes are created here by default.</span>
+							</div>
+							<Toggle bind:checked={setAsDefault} />
+						</div>
+					{/if}
 				</div>
 			{/if}
 
