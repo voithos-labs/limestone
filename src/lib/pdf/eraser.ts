@@ -1,14 +1,16 @@
+/**
+ * the eraser.
+ *
+ * A drag collects every mark it touches (ink stroke by stroke, highlights and regions whole), and
+ * those stay dimmed until the drag ends. Then `erasure` turns the lot into one change, so one undo
+ * brings the whole drag back.
+ */
+
 import { rectsOn, type Annotation, type InkStroke, type PageRect } from './annotation.js';
 import type { MarkChange, NoteChange } from './changes.js';
 import { nearStroke, strokesBox, type LooseStroke } from './ink.js';
 
-/**
- * The eraser takes whatever mark it touches: ink stroke by stroke, whether loose or held by an
- * ink annotation, within its reach; highlights and regions whole, once it passes over them. A drag
- * gathers what it touches, then `erasure` says what deleting it all changes.
- */
-
-// ── Public API ──────────────────────────────────────────────────────────────
+/* -------------------------- What a drag touches --------------------------- */
 
 export interface Erasing {
 	loose: LooseStroke[];
@@ -53,6 +55,18 @@ export function touch(
 	return touched ? { loose: [...e.loose, ...loose], notes } : e;
 }
 
+/** Whether a drag touched anything. */
+export function erasedAny(e: Erasing): boolean {
+	return e.loose.length > 0 || e.notes.size > 0;
+}
+
+// a box is already a target, and the eraser's reach would take the lines either side of a highlight
+function over([x, y, w, h]: PageRect, at: EraserAt): boolean {
+	return at.x >= x && at.x <= x + w && at.y >= y && at.y <= y + h;
+}
+
+/* ------------------------ Deleting what it touched ------------------------ */
+
 /**
  * The change that deletes what a drag touched. An ink annotation keeps its untouched strokes,
  * boxed afresh, and goes only when none are left.
@@ -74,16 +88,4 @@ export function erasure(e: Erasing, annotations: Annotation[]): MarkChange {
 		);
 	}
 	return { removed: e.loose, notes };
-}
-
-/** Whether a drag touched anything. */
-export function erasedAny(e: Erasing): boolean {
-	return e.loose.length > 0 || e.notes.size > 0;
-}
-
-// ── Internal ────────────────────────────────────────────────────────────────
-
-// a box is already a target, and the eraser's reach would take the lines either side of a highlight
-function over([x, y, w, h]: PageRect, at: EraserAt): boolean {
-	return at.x >= x && at.x <= x + w && at.y >= y && at.y <= y + h;
 }

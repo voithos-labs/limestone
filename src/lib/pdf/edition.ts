@@ -1,25 +1,21 @@
+/**
+ * editions: which version of a pdf's file an annotation was made on.
+ *
+ * A pdf can be replaced by a new version of itself (a corrected paper, say), and its old marks
+ * would then land on the wrong text. So each annotation remembers its edition (a hash of the
+ * file's bytes), and the file gets copied into .limestone/editions before the first annotation
+ * on it is saved, so the old pages stay readable. Carrying marks over is migrate.ts's job.
+ */
+
 import { invoke } from '@tauri-apps/api/core';
 import { copyFile, exists, mkdir, remove, rename, stat } from '@tauri-apps/plugin-fs';
 import { getSource } from '#lib/models/Source.js';
 
-/**
- * Editions: which bytes an annotation was made on, and a preserved copy of them, so replacing a
- * PDF never repaints old marks onto new pages and the old pages stay readable.
- */
+/* ------------------------ Which edition a file is ------------------------- */
 
-// ── Public API ──────────────────────────────────────────────────────────────
-
-/** Where a source keeps its preserved editions. The scanner skips dot-folders. */
-export const EDITIONS_DIR = '.limestone/editions';
-
-export function editionPath(edition: string): string {
-	return `${EDITIONS_DIR}/${edition}.pdf`;
-}
-
-/** Whether a source keeps a copy of an edition's bytes. */
-export function isPreserved(sourcePath: string, edition: string): Promise<boolean> {
-	return exists(`${sourcePath}/${editionPath(edition)}`);
-}
+// 64 bits of the digest: enough that two editions of one PDF never share an id
+const EDITION_ID_LENGTH = 16;
+const digests = new Map<string, Promise<string>>();
 
 /**
  * The edition a PDF file is: a short digest of its bytes, so any change to them is a new
@@ -40,6 +36,20 @@ export async function editionOf(pdf: {
 		digest.catch(() => digests.delete(key));
 	}
 	return (await digest).slice(0, EDITION_ID_LENGTH);
+}
+
+/* ---------------------------- Preserved copies ---------------------------- */
+
+/** Where a source keeps its preserved editions. The scanner skips dot-folders. */
+export const EDITIONS_DIR = '.limestone/editions';
+
+export function editionPath(edition: string): string {
+	return `${EDITIONS_DIR}/${edition}.pdf`;
+}
+
+/** Whether a source keeps a copy of an edition's bytes. */
+export function isPreserved(sourcePath: string, edition: string): Promise<boolean> {
+	return exists(`${sourcePath}/${editionPath(edition)}`);
 }
 
 /**
@@ -73,6 +83,11 @@ export function discardEdition(sourcePath: string, edition: string): Promise<voi
 	return remove(`${sourcePath}/${editionPath(edition)}`);
 }
 
+/* --------------------------- An edition's date ---------------------------- */
+
+// an edition's bytes never change, so neither does its date; a failed read is asked again
+const dates = new Map<string, string>();
+
 /**
  * The day an edition dates from, as "Oct 2" (with the year when it isn't this one), taken from
  * its preserved copy's modified time. Null when that can't be read.
@@ -94,12 +109,3 @@ export async function editionDate(sourceId: string, edition: string): Promise<st
 		return null;
 	}
 }
-
-// ── Internal ────────────────────────────────────────────────────────────────
-
-// an edition's bytes never change, so neither does its date; a failed read is asked again
-const dates = new Map<string, string>();
-
-// 64 bits of the digest: enough that two editions of one PDF never share an id
-const EDITION_ID_LENGTH = 16;
-const digests = new Map<string, Promise<string>>();

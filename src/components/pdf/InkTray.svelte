@@ -1,4 +1,11 @@
 <script lang="ts" module>
+	/**
+	 * the ink options above the dock: color, width, the eraser and the lasso.
+	 *
+	 * E and L switch to the eraser or the lasso. Pressing the same key again, or picking a color,
+	 * goes back to the pen.
+	 */
+
 	export type InkMode = 'pen' | 'eraser' | 'lasso';
 
 	const MODE_KEYS: Record<string, InkMode | undefined> = { E: 'eraser', L: 'lasso' };
@@ -87,6 +94,8 @@
 </div>
 
 <style>
+	/* ------------------------ The tray and its buttons ------------------------ */
+
 	.tray {
 		display: flex;
 		align-items: center;
@@ -125,6 +134,8 @@
 		background: var(--chip-bg-hover);
 	}
 
+	/* ------------------------------- Color dots ------------------------------- */
+
 	.dot {
 		width: 12px;
 		height: 12px;
@@ -137,6 +148,8 @@
 			0 0 0 2px var(--color-bg),
 			0 0 0 3.5px var(--color-ui-muted);
 	}
+
+	/* ----------------------- Width lines and separators ----------------------- */
 
 	.line {
 		width: 16px;

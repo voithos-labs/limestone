@@ -1,3 +1,12 @@
+/**
+ * what happens when you click a link, tag or citation in a document.
+ *
+ * A wikilink opens its note (making it if nothing has that name), a tag opens its view, and a
+ * citation opens its pdf at the annotation, in the same tab, a new one, or the pane beside. Notes
+ * and pdf comments both use it.
+ */
+
+import type { Attachment } from 'svelte/attachments';
 import Doc, { type AnyDoc } from '#lib/models/Doc.js';
 import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import View from '#lib/models/View.svelte.js';
@@ -6,13 +15,41 @@ import type EditorState from '#lib/models/EditorState.svelte.js';
 import { TabState } from '#lib/models/EditorState.svelte.js';
 import { resolveWikiLink, targetStem, touchLinkIndex } from '#lib/services/links.svelte.js';
 import type { Source } from '#lib/models/Source.js';
+import { reportError } from '#lib/overlays.svelte.js';
+import { openAtAnnotation } from '#lib/pdf/citation.js';
+import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
+import { OPEN_ANNOTATION_EVENT, type OpenAnnotationDetail } from './citation-embeds';
 
-/** Following a wikilink or tag from a document: into its tab, a new tab, or the pane beside. */
+/* --------------------- Following clicks in a document --------------------- */
 
-// ── Public API ──────────────────────────────────────────────────────────────
+/**
+ * Follows what's clicked inside the element it's attached to: a link or tag through `onActivate`,
+ * which each kind of document handles its own way, and a citation by opening its PDF at the
+ * annotation. The editor is read when a click comes, so a changed one doesn't re-attach.
+ */
+export function followLinks(
+	editor: () => EditorState | undefined,
+	onActivate: (detail: ActivateDetail) => void
+): Attachment<HTMLElement> {
+	return (el) => {
+		const activate = (e: Event) => onActivate((e as CustomEvent<ActivateDetail>).detail);
+		const openAnnotation = (e: Event) => {
+			const ed = editor();
+			if (!ed) return;
+			openAtAnnotation(ed, (e as CustomEvent<OpenAnnotationDetail>).detail).catch((err) =>
+				reportError(err, "The PDF couldn't be opened.")
+			);
+		};
+		el.addEventListener(ACTIVATE_EVENT, activate);
+		el.addEventListener(OPEN_ANNOTATION_EVENT, openAnnotation);
+		return () => {
+			el.removeEventListener(ACTIVATE_EVENT, activate);
+			el.removeEventListener(OPEN_ANNOTATION_EVENT, openAnnotation);
+		};
+	};
+}
 
-/** A tab-state key: the heading a note opened from a link scrolls to. */
-export const OPEN_AT_HEADING = 'open_at_heading';
+/* --------------------------- Wikilinks and tags --------------------------- */
 
 /** The document a link was followed from, and where it's shown. */
 export interface LinkOrigin {
@@ -28,6 +65,9 @@ export interface FollowOptions {
 	side?: boolean;
 	newTab?: boolean;
 }
+
+/** A tab-state key: the heading a note opened from a link scrolls to. */
+export const OPEN_AT_HEADING = 'open_at_heading';
 
 /**
  * Opens the note a wikilink names, making it when nothing has that name. Says `'here'` instead

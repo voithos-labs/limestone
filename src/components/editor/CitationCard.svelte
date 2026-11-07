@@ -1,4 +1,16 @@
 <script lang="ts">
+	/**
+	 * a citation, drawn as a card inside a note.
+	 *
+	 * It finds the annotation note the citation names and shows its passage (a quote or a crop) and
+	 * its comment, kept current as that note changes. Clicking it opens the pdf at the annotation.
+	 * A citation naming no annotation note shows as plain text.
+	 */
+
+	/* -------------------------------------------------------------------------- */
+	/*                                  Imports                                   */
+	/* -------------------------------------------------------------------------- */
+
 	import { invoke } from '@tauri-apps/api/core';
 	import { Pen, Pin, SquareDashed } from '@lucide/svelte';
 	import { imeOwnsKey, type InlineWidgetComponentProps } from '@voithos-labs/aragonite/plugin';
@@ -19,10 +31,18 @@
 	import Comment from '../pdf/Comment.svelte';
 	import { IN_CARD_PLUGINS } from './editor-plugins';
 	import PdfIcon from '../ui/PdfIcon.svelte';
-	import { OPEN_ANNOTATION_EVENT, type OpenAnnotationDetail } from './annotation-embeds';
+	import { OPEN_ANNOTATION_EVENT, type OpenAnnotationDetail } from './citation-embeds';
+
+	/* -------------------------------------------------------------------------- */
+	/*                                   Props                                    */
+	/* -------------------------------------------------------------------------- */
 
 	/** A citation of a PDF annotation, drawn as its quote or region with the shared comment. */
 	let { source, isActivationClick, getPresentationMode }: InlineWidgetComponentProps = $props();
+
+	/* -------------------------------------------------------------------------- */
+	/*                        Finding the annotation note                         */
+	/* -------------------------------------------------------------------------- */
 
 	interface Found {
 		id: string;
@@ -37,17 +57,11 @@
 	// Read once: the widget remounts on any source change.
 	// svelte-ignore state_referenced_locally
 	const target = source.slice(3, -2).split('|')[0].trim();
-	const named = parseAnnotationTitle(target);
 
 	let el: HTMLElement | null = $state(null);
 	let found = $state.raw<Found | null>(null);
 	let missing = $state(false);
 	let reread = $state(0);
-
-	const fields = $derived(found?.fields);
-	const pdfTitle = $derived(found?.pdfTitle ?? named?.pdfTitle ?? target);
-	const page = $derived(fields?.page ?? named?.page);
-	const reading = $derived(getPresentationMode() === 'reading');
 
 	$effect(() => {
 		void linkIndex.version;
@@ -121,6 +135,21 @@
 		return name.toLowerCase() === target.toLowerCase();
 	}
 
+	/* -------------------------------------------------------------------------- */
+	/*                            What the card shows                             */
+	/* -------------------------------------------------------------------------- */
+
+	const named = parseAnnotationTitle(target);
+	const fields = $derived(found?.fields);
+	const pdfTitle = $derived(found?.pdfTitle ?? named?.pdfTitle ?? target);
+	const page = $derived(fields?.page ?? named?.page);
+
+	/* -------------------------------------------------------------------------- */
+	/*                              Opening the PDF                               */
+	/* -------------------------------------------------------------------------- */
+
+	const reading = $derived(getPresentationMode() === 'reading');
+
 	function open(): void {
 		if (!found || !el) return;
 		const detail: OpenAnnotationDetail = { pdf: found.fields.pdf, id: found.id };
@@ -181,6 +210,8 @@
 {/if}
 
 <style>
+	/* -------------------------------- The card -------------------------------- */
+
 	.card {
 		display: inline-flex;
 		flex-direction: column;
@@ -198,6 +229,8 @@
 	.card:hover {
 		background: var(--chip-bg-hover);
 	}
+
+	/* -------------------------------- Its head -------------------------------- */
 
 	.head {
 		display: flex;
@@ -235,6 +268,8 @@
 		font-size: 0.875em;
 	}
 
+	/* ------------------------------ The comment ------------------------------- */
+
 	.rule {
 		display: block;
 		height: 1px;
@@ -249,6 +284,8 @@
 		text-wrap: pretty;
 		pointer-events: none;
 	}
+
+	/* ---------------------- A title naming no annotation ---------------------- */
 
 	.unresolved {
 		color: var(--color-ui-dulled);

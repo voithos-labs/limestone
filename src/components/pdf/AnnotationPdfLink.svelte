@@ -1,4 +1,10 @@
 <script lang="ts">
+	/**
+	 * the "pdf · p. 3" link in an annotation note's header.
+	 *
+	 * It says which pdf and page the note marks, and clicking it opens the pdf at that annotation.
+	 */
+
 	import { ArrowUpRight } from '@lucide/svelte';
 	import { select } from '#lib/services/db.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';

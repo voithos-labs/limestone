@@ -1,11 +1,23 @@
-import { sanitizeSegment } from '#lib/util/paths.js';
-
 /**
- * A PDF annotation as it sits in its note's frontmatter, under the one `annotation` key. Pure:
- * reading, naming and the note body, nothing that touches the disk or the DOM.
+ * what an annotation looks like on disk.
+ *
+ * So, each annotation is its own markdown note, in a folder named after its pdf
+ * and kept beside it (`papers/X.pdf` gets `papers/X/X, p3 - words.md`). The note's body is just
+ * its comment. The annotation itself sits in the note's frontmatter, under one "annotation" key.
+ *
+ * This file describe the frontmatter format, it covers 3 main things:
+ *
+ * 1. what an annotation holds (the pdf's id, its page, its kind (highlight, region or ink), etc.)
+ * 2. reading and writing it
+ * 3. naming the note (i.e. <pdf title>, p<page> - <first words>) (which is also its file name and its
+ * link text)
  */
 
-// ── Public API ──────────────────────────────────────────────────────────────
+import { sanitizeSegment } from '#lib/util/paths.js';
+
+/* -------------------------------------------------------------------------- */
+/*                          What an annotation holds                          */
+/* -------------------------------------------------------------------------- */
 
 export type AnnotationKind = 'highlight' | 'region' | 'ink';
 
@@ -55,8 +67,28 @@ export type InkColor = (typeof INK_COLORS)[number];
 export const INK_WIDTHS = ['fine', 'medium', 'marker'] as const;
 export type InkWidth = (typeof INK_WIDTHS)[number];
 
+/** The pages an annotation marks: its own, then any its highlight runs on to. */
+export function pagesOf(a: Pick<AnnotationFields, 'page' | 'rects'>): number[] {
+	return [...new Set([a.page, ...a.rects.map((r) => rectPage(r, a.page))])];
+}
+
+/** An annotation's rects on `page`, as fractions of that page. */
+export function rectsOn(a: Pick<AnnotationFields, 'page' | 'rects'>, page: number): PageRect[] {
+	return a.rects.filter((r) => rectPage(r, a.page) === page);
+}
+
+function rectPage(r: PageRect, own: number): number {
+	return r[4] ?? own;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                Frontmatter                                 */
+/* -------------------------------------------------------------------------- */
+
 /** The frontmatter key an annotation note's fields live under. */
 export const ANNOTATION_KEY = 'annotation';
+
+/* -------------------------------- Reading --------------------------------- */
 
 /**
  * The fields of an annotation note's frontmatter, or null when the note isn't one. Unknown keys
@@ -79,6 +111,56 @@ export function readAnnotation(properties: Record<string, unknown>): AnnotationF
 		...(Array.isArray(a.strokes) ? { strokes: a.strokes.map(parseStroke).filter(isStroke) } : {})
 	} as AnnotationFields;
 }
+
+export function isStroke(v: unknown): v is InkStroke {
+	if (!v || typeof v !== 'object') return false;
+	const s = v as Record<string, unknown>;
+	return (
+		INK_COLORS.includes(s.color as InkColor) &&
+		INK_WIDTHS.includes(s.width as InkWidth) &&
+		Array.isArray(s.points) &&
+		s.points.length >= 2 &&
+		s.points.every((n) => Number.isFinite(n))
+	);
+}
+
+function isKind(v: unknown): v is AnnotationKind {
+	return v === 'highlight' || v === 'region' || v === 'ink';
+}
+
+function isColor(v: unknown): v is AnnotationColor {
+	return ANNOTATION_COLORS.includes(v as AnnotationColor);
+}
+
+function parseRect(v: unknown): unknown {
+	if (typeof v !== 'string') return v;
+	const [, page, box] = /^\s*(?:p(\d+)\s+)?(.*)$/s.exec(v)!;
+	const rect = box.trim().split(/\s+/).map(Number);
+	if (rect.length !== 4) return null;
+	return page ? [...rect, Number(page)] : rect;
+}
+
+function isRect(v: unknown): v is PageRect {
+	return (
+		Array.isArray(v) &&
+		v.every((n) => Number.isFinite(n)) &&
+		(v.length === 4 || (v.length === 5 && Number.isInteger(v[4]) && v[4] >= 1))
+	);
+}
+
+function parseStroke(v: unknown): unknown {
+	if (!v || typeof v !== 'object' || typeof (v as InkStroke).points !== 'string') return v;
+	const text = (v as { points: string }).points;
+	return {
+		...v,
+		points: text
+			.trim()
+			.split(/[\s,]+/)
+			.map(Number)
+	};
+}
+
+/* -------------------------------- Writing --------------------------------- */
 
 /**
  * The fields as they're written to frontmatter: a rect as `x y w h` (`p4 x y w h` on another
@@ -106,15 +188,20 @@ export function storedFields(fields: AnnotationFields): Record<string, unknown> 
 	};
 }
 
-/** The pages an annotation marks: its own, then any its highlight runs on to. */
-export function pagesOf(a: Pick<AnnotationFields, 'page' | 'rects'>): number[] {
-	return [...new Set([a.page, ...a.rects.map((r) => rectPage(r, a.page))])];
+function pairs(points: number[]): [number, number][] {
+	const out: [number, number][] = [];
+	for (let i = 0; i + 1 < points.length; i += 2) out.push([points[i], points[i + 1]]);
+	return out;
 }
 
-/** An annotation's rects on `page`, as fractions of that page. */
-export function rectsOn(a: Pick<AnnotationFields, 'page' | 'rects'>, page: number): PageRect[] {
-	return a.rects.filter((r) => rectPage(r, a.page) === page);
-}
+/* -------------------------------------------------------------------------- */
+/*                              Naming the note                               */
+/* -------------------------------------------------------------------------- */
+
+const LABEL_WORDS = 6;
+
+// greedy, so a PDF title holding its own ", p2 - " still splits at the last one
+const TITLE_SHAPE = /^(.+), p(\d+) - (.+)$/;
 
 /**
  * The note's title, which is also its file name and its link text:
@@ -149,10 +236,25 @@ export function annotationLabel(kind: AnnotationKind, text?: string): string {
 	return words.length > LABEL_WORDS ? label : label.replace(/[.,;:]+$/, '');
 }
 
+// the title doubles as a file name and a link target; a character neither can hold goes, rather
+// than turning into a hyphen mid-sentence
+function linkSafe(name: string): string {
+	return sanitizeSegment(name, ' ').replace(/\s+/g, ' ');
+}
+
+/* -------------------------------------------------------------------------- */
+/*                               Body and quote                               */
+/* -------------------------------------------------------------------------- */
+
 /** The note body, which is the comment alone: the quote lives only in the frontmatter. */
 export function annotationBody(comment: string): string {
 	const text = comment.trim();
 	return text ? `${text}\n` : '';
+}
+
+/** The comment a note body holds. */
+export function annotationComment(body: string): string {
+	return body.trim();
 }
 
 /**
@@ -166,80 +268,4 @@ export function leadIn(prefix: string): string {
 /** The words after a quote, cut at a word, so they read on from the highlight. */
 export function runOn(suffix: string): string {
 	return /[.!?]["')\]]?$/.test(suffix) ? suffix : `${suffix}…`;
-}
-
-/** The comment a note body holds. */
-export function annotationComment(body: string): string {
-	return body.trim();
-}
-
-// ── Internal ────────────────────────────────────────────────────────────────
-
-const LABEL_WORDS = 6;
-
-// greedy, so a PDF title holding its own ", p2 - " still splits at the last one
-const TITLE_SHAPE = /^(.+), p(\d+) - (.+)$/;
-
-// the title doubles as a file name and a link target; a character neither can hold goes, rather
-// than turning into a hyphen mid-sentence
-function linkSafe(name: string): string {
-	return sanitizeSegment(name, ' ').replace(/\s+/g, ' ');
-}
-
-function isKind(v: unknown): v is AnnotationKind {
-	return v === 'highlight' || v === 'region' || v === 'ink';
-}
-
-function isColor(v: unknown): v is AnnotationColor {
-	return ANNOTATION_COLORS.includes(v as AnnotationColor);
-}
-
-export function isStroke(v: unknown): v is InkStroke {
-	if (!v || typeof v !== 'object') return false;
-	const s = v as Record<string, unknown>;
-	return (
-		INK_COLORS.includes(s.color as InkColor) &&
-		INK_WIDTHS.includes(s.width as InkWidth) &&
-		Array.isArray(s.points) &&
-		s.points.length >= 2 &&
-		s.points.every((n) => Number.isFinite(n))
-	);
-}
-
-function parseRect(v: unknown): unknown {
-	if (typeof v !== 'string') return v;
-	const [, page, box] = /^\s*(?:p(\d+)\s+)?(.*)$/s.exec(v)!;
-	const rect = box.trim().split(/\s+/).map(Number);
-	if (rect.length !== 4) return null;
-	return page ? [...rect, Number(page)] : rect;
-}
-
-function rectPage(r: PageRect, own: number): number {
-	return r[4] ?? own;
-}
-
-function parseStroke(v: unknown): unknown {
-	if (!v || typeof v !== 'object' || typeof (v as InkStroke).points !== 'string') return v;
-	const text = (v as { points: string }).points;
-	return {
-		...v,
-		points: text
-			.trim()
-			.split(/[\s,]+/)
-			.map(Number)
-	};
-}
-
-function pairs(points: number[]): [number, number][] {
-	const out: [number, number][] = [];
-	for (let i = 0; i + 1 < points.length; i += 2) out.push([points[i], points[i + 1]]);
-	return out;
-}
-
-function isRect(v: unknown): v is PageRect {
-	return (
-		Array.isArray(v) &&
-		v.every((n) => Number.isFinite(n)) &&
-		(v.length === 4 || (v.length === 5 && Number.isInteger(v[4]) && v[4] >= 1))
-	);
 }

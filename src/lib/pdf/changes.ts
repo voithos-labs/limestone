@@ -1,14 +1,17 @@
+/**
+ * undo and redo for the marks on a pdf.
+ *
+ * Every gesture (a pen stroke, an erase, a delete, a recolor, etc.) is kept as a plain record of
+ * what it changed: the loose ink strokes it added and removed, and each annotation note's fields
+ * before and after. Basically kept as delta. So you can use `applyChange` to play a record forward
+ * to redo it, or backward to undo it
+ */
+
 import type { Step } from '#lib/models/StepHistory.svelte.js';
 import type { AnnotationFields } from './annotation.js';
 import type { LooseStroke } from './ink.js';
 
-/**
- * What one gesture changed on a PDF's marks, kept as data that undo applies backward and redo
- * forward: the loose strokes it added and removed, and each annotation's fields before and after
- * (null where the annotation didn't exist).
- */
-
-// ── Public API ──────────────────────────────────────────────────────────────
+/* -------------------------- What a change holds --------------------------- */
 
 export interface MarkChange {
 	added?: LooseStroke[];
@@ -23,6 +26,8 @@ export interface NoteChange {
 }
 
 export type NoteFields = Partial<Omit<AnnotationFields, 'pdf'>>;
+
+/* --------------------------- Applying a change ---------------------------- */
 
 /** The stores a change is applied to. */
 export interface Marks {

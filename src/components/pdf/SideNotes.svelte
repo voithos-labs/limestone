@@ -1,4 +1,11 @@
 <script lang="ts">
+	/**
+	 * the margin's column of cards.
+	 *
+	 * Each card sits level with its passage, pushed down when it would overlap the one above
+	 * (that's stackTops, in lib/pdf/margin.ts).
+	 */
+
 	import type { Annotation } from '#lib/pdf/annotation.js';
 	import type { Citing } from '#lib/pdf/citation.js';
 	import { stackTops } from '#lib/pdf/margin.js';

@@ -1,4 +1,10 @@
 <script lang="ts">
+	/**
+	 * a tick on the scroll track for each annotation, at its place in the pdf.
+	 *
+	 * Clicking one goes to that annotation.
+	 */
+
 	import type { Annotation } from '#lib/pdf/annotation.js';
 	import { TRACK_START, trackLength } from '../ui/ScrollThumb.svelte';
 	import { annotationRgb } from './colors.js';

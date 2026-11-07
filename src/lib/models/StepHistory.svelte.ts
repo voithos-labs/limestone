@@ -1,3 +1,10 @@
+/**
+ * a plain undo history: a list of steps, each able to undo and redo itself.
+ *
+ * Recording a new step throws away anything undone before it, the way undo usually works. The pdf
+ * viewer keeps one per open pdf (lib/pdf/changes.ts says what a step holds there).
+ */
+
 /** A change a history can take back and make again; either direction may be async. */
 export interface Step {
 	undo(): unknown;

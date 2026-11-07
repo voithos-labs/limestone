@@ -1,4 +1,9 @@
-/** Placing things beside their passages in a column: each level with its passage, none overlapping. */
+/**
+ * stacking things in the margin beside their passages.
+ *
+ * Each card or marker sits level with its passage, unless that would overlap the one above, in
+ * which case it's pushed down just enough to clear it.
+ */
 
 /** Each item's top, in reading order: at its anchor, pushed down just enough to clear the one above. */
 export function stackTops<T>(

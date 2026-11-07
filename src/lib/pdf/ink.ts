@@ -1,11 +1,17 @@
-import type { InkStroke, PageRect } from './annotation.js';
-
 /**
- * Ink geometry in page fractions. A page is `1` wide and `aspect` (its height over its width)
- * tall, so distances and stroke widths stay uniform although the fractions are not.
+ * the maths of ink strokes.
+ *
+ * A stroke is a list of points in page fractions, so it fits the page at any zoom (a page counts
+ * as 1 wide and its height-over-width tall, which keeps distances the same both ways). The rest is
+ * geometry on those points: thinning a stroke before it's saved, drawing it as a smooth line,
+ * telling what a lasso or the eraser touches, and boxing or moving strokes.
  */
 
-// ── Public API ──────────────────────────────────────────────────────────────
+import type { InkStroke, PageRect } from './annotation.js';
+
+/* -------------------------------------------------------------------------- */
+/*                                  Drawing                                   */
+/* -------------------------------------------------------------------------- */
 
 /** A stroke that isn't part of an annotation yet, and the page it's on. */
 export interface LooseStroke extends InkStroke {
@@ -55,6 +61,22 @@ export function strokePath(points: number[], aspect: number): string {
 	return `${d}L${x(n - 1)} ${y(n - 1)}`;
 }
 
+function segmentDistance(p: number[], i: number, a: number, b: number, aspect: number): number {
+	return distanceToSegment(
+		p[2 * i],
+		p[2 * i + 1],
+		p[2 * a],
+		p[2 * a + 1],
+		p[2 * b],
+		p[2 * b + 1],
+		aspect
+	);
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                  Picking                                   */
+/* -------------------------------------------------------------------------- */
+
 /** Whether most of a stroke's points fall inside a lasso drawn as a flat point list. */
 export function inLasso(stroke: InkStroke, lasso: number[]): boolean {
 	const n = stroke.points.length / 2;
@@ -85,6 +107,19 @@ export function nearStroke(
 	return false;
 }
 
+function pointInPolygon(x: number, y: number, poly: number[]): boolean {
+	let inside = false;
+	for (let i = 0, j = poly.length - 2; i < poly.length; j = i, i += 2) {
+		const [xi, yi, xj, yj] = [poly[i], poly[i + 1], poly[j], poly[j + 1]];
+		if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+	}
+	return inside;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                             Boxing and moving                              */
+/* -------------------------------------------------------------------------- */
+
 /** The box around some strokes, as a page rect. */
 export function strokesBox(strokes: InkStroke[]): PageRect {
 	let x0 = 1,
@@ -113,26 +148,16 @@ export function moveStrokes(strokes: InkStroke[], x: number, y: number): InkStro
 	}));
 }
 
-// ── Internal ────────────────────────────────────────────────────────────────
-
-function round(n: number): number {
-	return Math.round(n * 10000) / 10000;
-}
-
 function clamp(n: number, lo: number, hi: number): number {
 	return Math.min(hi, Math.max(lo, n));
 }
 
-function segmentDistance(p: number[], i: number, a: number, b: number, aspect: number): number {
-	return distanceToSegment(
-		p[2 * i],
-		p[2 * i + 1],
-		p[2 * a],
-		p[2 * a + 1],
-		p[2 * b],
-		p[2 * b + 1],
-		aspect
-	);
+/* -------------------------------------------------------------------------- */
+/*                               Shared helpers                               */
+/* -------------------------------------------------------------------------- */
+
+function round(n: number): number {
+	return Math.round(n * 10000) / 10000;
 }
 
 function distanceToSegment(
@@ -150,13 +175,4 @@ function distanceToSegment(
 	const len = dx * dx + dy * dy;
 	const t = len === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (qy - aay) * dy) / len));
 	return Math.hypot(px - (ax + t * dx), qy - (aay + t * dy));
-}
-
-function pointInPolygon(x: number, y: number, poly: number[]): boolean {
-	let inside = false;
-	for (let i = 0, j = poly.length - 2; i < poly.length; j = i, i += 2) {
-		const [xi, yi, xj, yj] = [poly[i], poly[i + 1], poly[j], poly[j + 1]];
-		if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-	}
-	return inside;
 }

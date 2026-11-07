@@ -1,4 +1,11 @@
 <script lang="ts">
+	/**
+	 * what an annotation marks, shown as a passage.
+	 *
+	 * A highlight shows its quote, reading on into the text after it, and a region or ink shows its
+	 * crop. Citation cards use it, and so does an annotation note, above its comment.
+	 */
+
 	import { runOn, type AnnotationFields } from '#lib/pdf/annotation.js';
 	import { annotationRgb } from './colors.js';
 	import AnnotationCrop from './AnnotationCrop.svelte';

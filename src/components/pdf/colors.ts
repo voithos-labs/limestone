@@ -1,3 +1,9 @@
+/**
+ * the colors annotations and ink are drawn in, as `r g b` values for css.
+ *
+ * Plus how thick each ink width draws, and which color a given annotation wears.
+ */
+
 import type { Annotation, AnnotationColor, InkColor, InkWidth } from '#lib/pdf/annotation.js';
 
 /** Each color as an `r g b` triplet, set as `--ann` so a fill, ring or bar can take its own alpha. */

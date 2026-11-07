@@ -1,7 +1,12 @@
 <script lang="ts">
+	/**
+	 * the hint above the dock while you're placing an annotation again by hand.
+	 *
+	 * It says what the pages are waiting for, and has a button to cancel.
+	 */
+
 	import type { AnnotationKind } from '#lib/pdf/annotation.js';
 
-	/** What the pages wait for while an annotation is placed again, above the dock. */
 	let { kind, onCancel }: { kind: AnnotationKind; onCancel: () => void } = $props();
 
 	const HINTS: Record<AnnotationKind, string> = {

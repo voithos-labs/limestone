@@ -1,4 +1,11 @@
 <script lang="ts" module>
+	/**
+	 * one annotation's card in the margin.
+	 *
+	 * It shows the color, the comment (edited in place) and the notes that cite it, with tools for
+	 * copying a citation or a link. The whole card drags into a note as a citation.
+	 */
+
 	import type { Annotation } from '#lib/pdf/annotation.js';
 
 	/** What a note's card asks of the viewer. */
@@ -145,6 +152,8 @@
 </div>
 
 <style>
+	/* -------------------------------- The card -------------------------------- */
+
 	.note {
 		position: relative;
 		font-family: var(--font-ui);
@@ -201,6 +210,8 @@
 		color: var(--color-ui-muted);
 	}
 
+	/* ---------------------------- The citing notes ---------------------------- */
+
 	.cites {
 		display: flex;
 		flex-wrap: wrap;
@@ -241,6 +252,8 @@
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
+
+	/* -------------------------- Tools over the card --------------------------- */
 
 	.tools {
 		position: absolute;

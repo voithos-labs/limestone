@@ -1,4 +1,15 @@
 <script lang="ts">
+	/**
+	 * the digest: a pdf's annotations as one list, page by page.
+	 *
+	 * Each row is a quote or crop with its comment. Clicking a row goes to its page, dragging it
+	 * into a note cites it, and its "cited in" count opens the notes that already do.
+	 */
+
+	/* -------------------------------------------------------------------------- */
+	/*                                  Imports                                   */
+	/* -------------------------------------------------------------------------- */
+
 	import { ArrowUpRight, Link, TextAlignStart } from '@lucide/svelte';
 	import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import { leadIn, runOn, type Annotation } from '#lib/pdf/annotation.js';
@@ -6,6 +17,10 @@
 	import AnnotationCrop from './AnnotationCrop.svelte';
 	import Comment from './Comment.svelte';
 	import { annotationRgb } from './colors.js';
+
+	/* -------------------------------------------------------------------------- */
+	/*                                   Props                                    */
+	/* -------------------------------------------------------------------------- */
 
 	/** A PDF's annotations read down as one list by page, each showing the notes that cite it. */
 	let {
@@ -25,10 +40,11 @@
 		onOpenNote: (id: string) => void;
 	} = $props();
 
-	const CROP_MAX_HEIGHT = 240;
+	/* -------------------------------------------------------------------------- */
+	/*                                Rows by page                                */
+	/* -------------------------------------------------------------------------- */
 
-	let openId: string | null = $state(null);
-	let dismissed = false;
+	const CROP_MAX_HEIGHT = 240;
 
 	const pages = $derived.by(() => {
 		const out: { page: number; items: Annotation[] }[] = [];
@@ -39,14 +55,6 @@
 		}
 		return out;
 	});
-
-	function folder(relPath: string): string {
-		return relPath.split('/').filter(Boolean).slice(0, -1).join(' / ');
-	}
-
-	function citedLabel(n: number): string {
-		return `Cited in ${n} note${n === 1 ? '' : 's'}`;
-	}
 
 	function onRowClick(e: MouseEvent, a: Annotation) {
 		if ((e.target as Element).closest('[data-actions]')) return;
@@ -70,6 +78,21 @@
 		if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
 		e.preventDefault();
 		goTo(a);
+	}
+
+	/* -------------------------------------------------------------------------- */
+	/*                            The cited-in popover                            */
+	/* -------------------------------------------------------------------------- */
+
+	let openId: string | null = $state(null);
+	let dismissed = false;
+
+	function folder(relPath: string): string {
+		return relPath.split('/').filter(Boolean).slice(0, -1).join(' / ');
+	}
+
+	function citedLabel(n: number): string {
+		return `Cited in ${n} note${n === 1 ? '' : 's'}`;
 	}
 
 	function onWindowPointer(e: PointerEvent) {
@@ -172,6 +195,8 @@
 </div>
 
 <style>
+	/* ---------------------- The list and its page heads ----------------------- */
+
 	.digest {
 		display: flex;
 		flex-direction: column;
@@ -199,6 +224,8 @@
 		height: 1px;
 		background: var(--color-border);
 	}
+
+	/* --------------------------------- A row ---------------------------------- */
 
 	/* shaped like the annotation's citation card, so an annotation reads the same in both places */
 	.row {
@@ -251,6 +278,8 @@
 		line-height: 1.5;
 		color: var(--color-text-secondary);
 	}
+
+	/* ---------------------------- A row's actions ----------------------------- */
 
 	/* a hovered row's actions sit on its top edge, so its text keeps the full width */
 	.actions {
@@ -305,6 +334,8 @@
 		background: var(--chip-seg-active);
 		color: var(--color-text-primary);
 	}
+
+	/* -------------------------- The cited-in popover -------------------------- */
 
 	.popover {
 		position: absolute;
@@ -379,6 +410,8 @@
 		white-space: nowrap;
 		text-overflow: ellipsis;
 	}
+
+	/* --------------------------- Nothing marked yet --------------------------- */
 
 	.empty {
 		margin: 0;

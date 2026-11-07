@@ -1,28 +1,25 @@
+/**
+ * citations: how a note points back at a passage in a pdf.
+ *
+ * A citation is just an ordinary embed of the annotation's note, like `![[X, p3 - words]]`, so
+ * it's plain markdown that still makes sense outside Limestone. This file makes one (copy or
+ * drag), follows one (opens the pdf at that annotation), and finds the notes that cite an
+ * annotation.
+ */
+
 import { toasts } from '#lib/overlays.svelte.js';
 import { select } from '#lib/services/db.js';
 import Doc from '#lib/models/Doc.js';
 import type EditorState from '#lib/models/EditorState.svelte.js';
 
-/**
- * A citation is an ordinary note embed of the annotation note, so it reads as plain text outside
- * Limestone and Obsidian shows the quote and comment by transclusion.
- */
-
-// ── Public API ──────────────────────────────────────────────────────────────
-
-/** Tab state that asks a PDF viewer to land on one annotation once it opens. */
-export const OPEN_AT_ANNOTATION = 'open_at_annotation';
-
-/** A note that cites an annotation, with the line the citation sits in. */
-export interface Citing {
-	id: string;
-	title: string;
-	relPath: string;
-	line: string;
-}
+/* ---------------------------- Embeds and links ---------------------------- */
 
 export function citationEmbed(title: string): string {
 	return `![[${title}]]`;
+}
+
+export function citationLink(title: string): string {
+	return `[[${title}]]`;
 }
 
 /** Lets a drag carry an annotation's citation, which a note it's dropped into takes as text. */
@@ -30,10 +27,6 @@ export function dragCitation(e: DragEvent, title: string): void {
 	if (!e.dataTransfer) return;
 	e.dataTransfer.setData('text/plain', citationEmbed(title));
 	e.dataTransfer.effectAllowed = 'copy';
-}
-
-export function citationLink(title: string): string {
-	return `[[${title}]]`;
 }
 
 /** Copies the embed and says so, offering the plain link instead. */
@@ -52,12 +45,27 @@ export async function copyLink(title: string): Promise<void> {
 	toasts.push('Link copied', { variant: 'info' });
 }
 
+/* ------------------------ Opening at an annotation ------------------------ */
+
+/** Tab state that asks a PDF viewer to land on one annotation once it opens. */
+export const OPEN_AT_ANNOTATION = 'open_at_annotation';
+
 /** Opens the PDF, or its open tab, at one of its annotations. */
 export async function openAtAnnotation(
 	editor: EditorState,
 	annotation: { pdf: string; id: string }
 ): Promise<void> {
 	editor.openDoc(await Doc.load(annotation.pdf), { [OPEN_AT_ANNOTATION]: annotation.id });
+}
+
+/* --------------------- Notes that cite an annotation ---------------------- */
+
+/** A note that cites an annotation, with the line the citation sits in. */
+export interface Citing {
+	id: string;
+	title: string;
+	relPath: string;
+	line: string;
 }
 
 /**
@@ -80,8 +88,6 @@ export async function citedIn(title: string, annotationId: string): Promise<Citi
 	}
 	return out;
 }
-
-// ── Internal ────────────────────────────────────────────────────────────────
 
 /**
  * The text around the first link to `title` in `body`, or null if there is none. A citation on a

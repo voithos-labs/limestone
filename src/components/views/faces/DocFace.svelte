@@ -15,7 +15,7 @@
 	import { searchDocuments } from '#lib/services/search.js';
 	import type { SearchResult } from '#lib/services/search.js';
 	import DocumentEditor from '../../editor/DocumentEditor.svelte';
-	import PdfViewer from '../../editor/PdfViewer.svelte';
+	import PdfViewer from '../../pdf/PdfViewer.svelte';
 	import { untrack } from 'svelte';
 	import { onSourceReconciled } from '#lib/models/Source.js';
 

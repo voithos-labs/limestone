@@ -1,14 +1,14 @@
+/**
+ * crops: one box cut out of a pdf page, drawn into a canvas.
+ *
+ * Whatever shows a region or ink outside the viewer (a citation card, the digest) draws it through
+ * here.
+ */
+
 import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { select } from '#lib/services/db.js';
-import { getSource } from '#lib/models/Source.js';
-import { openPdf } from './open.js';
-import { editionPath, isPreserved } from './edition.js';
 import type { PageRect } from './annotation.js';
 import { canvasScale } from './layout.js';
-
-/** Draws a box of a PDF page into a canvas, for anything that shows a region outside the viewer. */
-
-// ── Public API ──────────────────────────────────────────────────────────────
+import { loadPdf } from './open.js';
 
 export interface Crop {
 	/** The PDF's document id. */
@@ -72,54 +72,4 @@ export function unionRect(rects: PageRect[]): PageRect | null {
 		y1 = Math.max(y1, y + h);
 	}
 	return x1 > x0 && y1 > y0 ? [x0, y0, x1 - x0, y1 - y0] : null;
-}
-
-/**
- * A PDF opened by its document id, from the edition's preserved copy when there is one and its
- * current file otherwise. A few stay open, so callers share them and never destroy one.
- */
-export function loadPdf(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
-	const key = `${pdfId}@${edition ?? ''}`;
-	const hit = loaded.get(key);
-	if (hit) {
-		loaded.delete(key);
-		loaded.set(key, hit);
-		return hit;
-	}
-	const next = openById(pdfId, edition);
-	loaded.set(key, next);
-	next.catch(() => {
-		if (loaded.get(key) === next) loaded.delete(key);
-	});
-	while (loaded.size > CACHE_SIZE) {
-		const [oldest, doc] = loaded.entries().next().value!;
-		loaded.delete(oldest);
-		doc.then((d) => d.loadingTask.destroy()).catch(() => {});
-	}
-	return next;
-}
-
-// ── Internal ────────────────────────────────────────────────────────────────
-
-// several cards for one PDF share its loaded document, and a few PDFs stay open between notes
-const CACHE_SIZE = 4;
-const loaded = new Map<string, Promise<PDFDocumentProxy>>();
-
-// Opens the file itself rather than through PdfHandle.open, which marks the PDF opened:
-// a note showing a crop isn't the reader opening the PDF.
-async function openById(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
-	const [row] = await select<{ source_id: string; rel_path: string }>(
-		`SELECT source_id, rel_path FROM documents WHERE id = ?1 AND document_type = 'pdf'`,
-		[pdfId]
-	);
-	if (!row) throw new Error(`no pdf with id ${pdfId}`);
-	const source = await getSource(row.source_id);
-	// a box marked on bytes since replaced is drawn from those bytes, while they're kept
-	const preserved = edition && (await isPreserved(source.path, edition));
-	const task = await openPdf({
-		sourceId: source.id,
-		sourcePath: source.path,
-		relPath: preserved ? editionPath(edition) : row.rel_path
-	});
-	return task.promise;
 }

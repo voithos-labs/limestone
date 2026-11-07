@@ -1,3 +1,11 @@
+/**
+ * loose ink: strokes drawn on a pdf that aren't part of an annotation yet.
+ *
+ * They aren't notes, so they live in the pdf's sidecar file (`.limestone/sidecars/<id>.json`)
+ * instead. Lassoing some and giving them a comment or a citation makes them an ink annotation. This
+ * class holds them, and writes them back shortly after drawing stops and when the viewer closes.
+ */
+
 import { invoke } from '@tauri-apps/api/core';
 import type PdfHandle from '#lib/models/PdfHandle.js';
 import { reportError } from '#lib/overlays.svelte.js';

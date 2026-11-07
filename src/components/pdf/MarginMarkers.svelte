@@ -1,10 +1,23 @@
-<!-- Sidenotes for a pane too narrow for the margin: a numbered marker beside each passage, and one
-     card floating beside the passage being read or written. -->
 <script lang="ts">
+	/**
+	 * sidenotes for a pane too narrow for the margin.
+	 *
+	 * Each annotation gets a small numbered marker beside its passage instead of a card, and
+	 * clicking one floats its card next to the passage.
+	 */
+
+	/* -------------------------------------------------------------------------- */
+	/*                                  Imports                                   */
+	/* -------------------------------------------------------------------------- */
+
 	import type { Annotation } from '#lib/pdf/annotation.js';
 	import type { Citing } from '#lib/pdf/citation.js';
 	import { stackTops } from '#lib/pdf/margin.js';
 	import SideNote, { TEXT_INSET, type NoteActions } from './SideNote.svelte';
+
+	/* -------------------------------------------------------------------------- */
+	/*                                   Props                                    */
+	/* -------------------------------------------------------------------------- */
 
 	let {
 		notes,
@@ -38,17 +51,16 @@
 		onClose: () => void;
 	} = $props();
 
+	/* -------------------------------------------------------------------------- */
+	/*                                  Markers                                   */
+	/* -------------------------------------------------------------------------- */
+
 	const MARKER = 20;
 	const MARKER_GAP = 4;
 	// from the page's right edge to the marker's, as the design's markers sit
 	const MARKER_INSET = 18;
 	// lifts a marker so it centers on a line of body text
 	const MARKER_RISE = 3;
-	const SURFACE_WIDTH = 312;
-	const SURFACE_GAP = 20;
-	const PANE_EDGE = 12;
-	// the surface's border and padding, above the note's own inset
-	const SURFACE_INSET = 5;
 
 	const tops = $derived(
 		stackTops(
@@ -58,6 +70,17 @@
 			MARKER_GAP
 		)
 	);
+
+	/* -------------------------------------------------------------------------- */
+	/*                               The open card                                */
+	/* -------------------------------------------------------------------------- */
+
+	const SURFACE_WIDTH = 312;
+	const SURFACE_GAP = 20;
+	const PANE_EDGE = 12;
+	// the surface's border and padding, above the note's own inset
+	const SURFACE_INSET = 5;
+
 	const open = $derived(notes.find((a) => a.id === (editingId ?? activeId)) ?? null);
 	const surfaceWidth = $derived(Math.min(SURFACE_WIDTH, pane.right - pane.left - PANE_EDGE * 2));
 	const beside = $derived(pageWidth + SURFACE_GAP + surfaceWidth <= pane.right - PANE_EDGE);

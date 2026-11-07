@@ -1,4 +1,11 @@
 <script lang="ts">
+	/**
+	 * the marks drawn over one page: highlights, regions and ink.
+	 *
+	 * It also draws whatever's being made right now (a region being dragged, a stroke or lasso
+	 * being drawn), outlines picked ink, and dims what the eraser is about to take.
+	 */
+
 	import { rectsOn, type Annotation, type InkStroke, type PageRect } from '#lib/pdf/annotation.js';
 	import type { Erasing } from '#lib/pdf/eraser.js';
 	import { strokePath, type LooseStroke } from '#lib/pdf/ink.js';

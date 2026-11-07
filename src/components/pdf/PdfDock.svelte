@@ -1,4 +1,12 @@
 <script lang="ts" module>
+	/**
+	 * the dock under a pdf: its tools and view controls.
+	 *
+	 * The tools (select, highlight H, region R, ink P) come first, then the page number, zoom, dark
+	 * pages and the sidenotes toggle. The current tool's own options, like the ink tray, stack
+	 * above it.
+	 */
+
 	import type { Component } from 'svelte';
 	import { Highlighter, Pen, SquareDashed, TextCursor } from '@lucide/svelte';
 
@@ -99,6 +107,8 @@
 </div>
 
 <style>
+	/* -------------------------------- The dock -------------------------------- */
+
 	.dock-stack {
 		position: absolute;
 		left: 0;
@@ -130,6 +140,8 @@
 		color: var(--color-ui-muted);
 	}
 
+	/* ------------------------------ Tool buttons ------------------------------ */
+
 	.tool {
 		display: flex;
 		align-items: center;
@@ -157,6 +169,8 @@
 		opacity: 0.4;
 		cursor: default;
 	}
+
+	/* -------------------- Separators, page count and zoom --------------------- */
 
 	.sep {
 		width: 1px;

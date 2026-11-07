@@ -1,13 +1,29 @@
 <script lang="ts">
-	import {
-		describeError,
-		errorKind,
-		isRetryable,
-		reportError,
-		splitMessage,
-		undoHint
-	} from '#lib/overlays.svelte.js';
+	/**
+	 * the note editor, which is what a note tab shows.
+	 *
+	 * It hosts aragonite (the markdown editor, npm `@voithos-labs/aragonite`) and hands it only the
+	 * note's body, since the frontmatter stays with MarkdownHandle. The rest of this file wires the
+	 * editor into Limestone: saving, reloading on outside edits, links, tags, pasted images, the
+	 * history (a version previews in this same editor, read-only), and what a note that can't be
+	 * read shows instead.
+	 *
+	 * In flow (a view page showing the note, like the journal) the page scrolls, not the editor, and
+	 * the header sits above the editor rather than inside it.
+	 *
+	 * (dont reorder the $effect s, you have been warned)
+	 */
+
+	/* -------------------------------------------------------------------------- */
+	/*                                  Imports                                   */
+	/* -------------------------------------------------------------------------- */
+
+	// outside libs
 	import { onDestroy, tick, untrack } from 'svelte';
+	import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+	import { openUrl } from '@tauri-apps/plugin-opener';
+
+	// aragonite, then the tokens and plugins limestone gives it
 	import { Editor } from '@voithos-labs/aragonite/svelte';
 	import type {
 		DecorationSourceHandle,
@@ -20,42 +36,58 @@
 	// yes you must load editor-tokens.css after aragonite's editor-theme.css
 	import './editor-tokens.css';
 	import { EDITOR_PLUGINS } from './editor-plugins';
-	import { isImageTarget } from './image-embeds';
-	import { createPasteImportLedger } from './paste-imports';
-	import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-	import { openUrl } from '@tauri-apps/plugin-opener';
-	import { deleteSourceAsset, importSourceAssetBytes } from '#lib/services/assets.js';
-	import { currentThemeType } from '#lib/services/theme.svelte.js';
-	import type { SettingsState } from '#lib/models/Settings.svelte.js';
-	import { registerFlush } from '#lib/services/platform.js';
-	import { onDocChanged, onSourceReconciled, sourceName } from '#lib/models/Source.js';
-	import MarkdownHandle, { readErrorKind, type ReadErrorKind } from '#lib/models/MarkdownHandle.js';
-	import { lastHistoryText } from '#lib/services/history.js';
-	import GonePage from '../pages/GonePage.svelte';
-	import AnnotationSource from '../pdf/AnnotationSource.svelte';
-	import AnnotationPassage from '../pdf/AnnotationPassage.svelte';
-	import { readAnnotation } from '#lib/pdf/annotation.js';
-	import GoneActions, { type GoneAction } from '../pages/GoneActions.svelte';
-	import DocHistory, { type HistoryVersion } from '#lib/models/DocHistory.svelte.js';
-	import { joinRel } from '#lib/services/links.svelte.js';
-	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
-	import { followTag, followWikiLink, OPEN_AT_HEADING } from './follow-link';
-	import { OPEN_ANNOTATION_EVENT, type OpenAnnotationDetail } from './annotation-embeds';
-	import { openAtAnnotation } from '#lib/pdf/citation.js';
-	import { historyDecorations } from './history-decorations';
-	import { bodyTags, createTagStepper, type BodyTag } from './body-tags';
-	import { findHeading } from './note-links';
-	import { noteLinkMenu } from './note-links';
-	import { tagMenu } from './body-tags';
-	import { appEditorShortcut, registerDocumentEditor } from '#lib/shortcuts.js';
+
+	// app-wide models and services
+	import {
+		describeError,
+		errorKind,
+		isRetryable,
+		reportError,
+		splitMessage,
+		undoHint
+	} from '#lib/overlays.svelte.js';
 	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import type EditorStateModel from '#lib/models/EditorState.svelte.js';
-	import DocumentHero from './DocumentHero.svelte';
-	import { backPlace, forwardPlace, openFolder, openFolderMeta } from './tabPlaces.js';
-	import ScrollThumb from '../ui/ScrollThumb.svelte';
-	import HistoryPanel from './HistoryPanel.svelte';
+	import MarkdownHandle, { readErrorKind, type ReadErrorKind } from '#lib/models/MarkdownHandle.js';
+	import DocHistory, { type HistoryVersion } from '#lib/models/DocHistory.svelte.js';
+	import type { SettingsState } from '#lib/models/Settings.svelte.js';
+	import { onDocChanged, onSourceReconciled, sourceName } from '#lib/models/Source.js';
+	import { deleteSourceAsset, importSourceAssetBytes } from '#lib/services/assets.js';
+	import { lastHistoryText } from '#lib/services/history.js';
+	import { joinRel } from '#lib/services/links.svelte.js';
+	import { registerFlush } from '#lib/services/platform.js';
+	import { currentThemeType } from '#lib/services/theme.svelte.js';
+	import { readAnnotation } from '#lib/pdf/annotation.js';
+	import { appEditorShortcut, registerDocumentEditor } from '#lib/shortcuts.js';
 	import { portal } from '#lib/util/dom.js';
 
+	// this folder's editor wiring (links, tags, images, pastes, history marks, back and forward)
+	import type { ActivateDetail } from './wikilinks';
+	import { followLinks, followTag, followWikiLink, OPEN_AT_HEADING } from './follow-link';
+	import { findHeading } from './note-links';
+	import { noteLinkMenu } from './note-links';
+	import { bodyTags, createTagStepper, type BodyTag } from './body-tags';
+	import { tagMenu } from './body-tags';
+	import { isImageTarget } from './image-embeds';
+	import { createPasteImportLedger } from './paste-imports';
+	import { historyDecorations } from './history-decorations';
+	import { backPlace, forwardPlace, openFolder, openFolderMeta } from './tabPlaces.js';
+
+	// components
+	import GonePage from '../pages/GonePage.svelte';
+	import AnnotationPdfLink from '../pdf/AnnotationPdfLink.svelte';
+	import AnnotationPassage from '../pdf/AnnotationPassage.svelte';
+	import { type GoneAction } from '../pages/GoneActions.svelte';
+	import DocumentHero from './DocumentHero.svelte';
+	import DocNotices from './DocNotices.svelte';
+	import ScrollThumb from '../ui/ScrollThumb.svelte';
+	import HistoryPanel from './HistoryPanel.svelte';
+
+	/* -------------------------------------------------------------------------- */
+	/*                         Props, types and constants                         */
+	/* -------------------------------------------------------------------------- */
+
+	// props
 	let {
 		tab,
 		settings,
@@ -79,36 +111,57 @@
 		showOpenFolder?: boolean;
 	} = $props();
 
-	let handle = $derived(tab.handle);
-	const onOpenFolder = (unitId: string, name: string, newTab = false) =>
-		openFolder(editor, tab, unitId, name, newTab);
-	const onFolderMeta = (unitId: string, name: string) => openFolderMeta(editor, unitId, name);
-	const back = $derived(backPlace(editor, tab));
-	const forward = $derived(forwardPlace(editor, tab));
+	// types
+	type Unavailable = {
+		kind: ReadErrorKind;
+		held: string | null;
+		fromHistory: boolean;
+		settled: boolean;
+	};
+	type Problem = { title: string; detail: string | null; retry: (() => unknown) | null };
+
+	// constants
+	const SAVE_DEBOUNCE_MS = 250;
+	const SAVE_RETRY_MS = 500;
+	const SAVE_RETRIES = 3;
+	// how long typing pauses before the tags are reread, since each read parses the whole note
+	const TAG_READ_DELAY_MS = 300;
+	// the scroll thumb's track starts level with the note's title, not at the scroller's top
+	const THUMB_TOP_PX = 34;
+	const DOCUMENT_START: EditorSelection = {
+		anchor: { path: [0], offset: 0 },
+		focus: { path: [0], offset: 0 }
+	};
+	const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+	const MIME_EXTS: Record<string, string> = {
+		'image/png': 'png',
+		'image/jpeg': 'jpg',
+		'image/gif': 'gif',
+		'image/webp': 'webp',
+		'image/svg+xml': 'svg',
+		'image/bmp': 'bmp',
+		'image/avif': 'avif'
+	};
+
+	// the editor and its elements
 	let instance = $state<EditorInstance>();
 	let wrapperEl = $state<HTMLDivElement | null>(null);
-	// aragonite's own `.editor` element, which is the scroller outside flow mode. Found by query
-	// after mount (there is nothing to bind to), and `$state` so ScrollThumb can take it as a prop.
+	// aragonite's own `.editor` element, which scrolls the note outside flow. there's nothing to
+	// bind it to, so it's found by query once the editor mounts, and it's $state so ScrollThumb can
+	// take it as a prop
 	let scrollEl = $state<HTMLElement | null>(null);
 
-	// The thumb track starts level with the document title rather than at the scroller's top.
-	const THUMB_TOP_PX = 34;
+	/* -------------------------------------------------------------------------- */
+	/*                              Loading the note                              */
+	/* -------------------------------------------------------------------------- */
 
-	// ── Load: the body only; frontmatter stays MarkdownHandle-owned ──────────────────────────
-
-	// The text last handed to the editor, a fresh object per load: the editor rereads `source` only
-	// when it changes, and a new object counts as a change even when the text is the same.
+	let handle = $derived(tab.handle);
+	// the text last handed to the editor, a new object every time: the editor only rereads `source`
+	// when it changes, and a new object counts as a change even when the text is the same
 	let editorText = $state.raw({ text: '' });
 	let loaded = $state(false);
 	/** Why the file's frontmatter failed to parse, which the hero shows beside its two repairs. */
 	let frontmatterError = $state<string | null>(null);
-
-	/** Hands the editor a text; true when it differs from what it shows, so a sourceSwap follows. */
-	function setEditorText(next: string): boolean {
-		const swaps = next !== (instance?.getSource() ?? editorText.text);
-		editorText = { text: next };
-		return swaps;
-	}
 
 	$effect(() => {
 		const h = handle;
@@ -117,6 +170,16 @@
 		problem = null;
 		if (h) void open(h);
 	});
+
+	/**
+	 * hands the editor a text, and says whether it differs from what's shown, in which case a
+	 * sourceSwap follows
+	 */
+	function setEditorText(next: string): boolean {
+		const swaps = next !== (instance?.getSource() ?? editorText.text);
+		editorText = { text: next };
+		return swaps;
+	}
 
 	async function open(h: MarkdownHandle) {
 		let c = '';
@@ -143,27 +206,31 @@
 		frontmatterError = h.frontmatterError;
 	}
 
-	// ── Unavailable: the source or the file can't be read ───────────────────────────────
+	/* -------------------------------------------------------------------------- */
+	/*                        When the note can't be read                         */
+	/* -------------------------------------------------------------------------- */
 
-	type Unavailable = {
-		kind: ReadErrorKind;
-		held: string | null;
-		fromHistory: boolean;
-		settled: boolean;
-	};
 	let unavailable = $state<Unavailable | null>(null);
 	let restoring = $state(false);
 	let restoreFailed = $state(false);
-
-	function canRestoreKind(kind: ReadErrorKind): boolean {
-		return kind === 'not_found' || kind === 'invalid_data';
-	}
 
 	const canRestore = $derived(
 		!!unavailable &&
 			canRestoreKind(unavailable.kind) &&
 			(unavailable.held !== null || unavailable.fromHistory)
 	);
+
+	$effect(() => {
+		const h = handle;
+		if (!h) return;
+		return onSourceReconciled((id) => {
+			if (id === h.source.id && unavailable) void retry(h, true);
+		});
+	});
+
+	function canRestoreKind(kind: ReadErrorKind): boolean {
+		return kind === 'not_found' || kind === 'invalid_data';
+	}
 
 	async function retry(h: MarkdownHandle, settle = false) {
 		if (!unavailable || restoring) return;
@@ -225,6 +292,16 @@
 		}
 	}
 
+	/* ----------------------------- What it shows ------------------------------ */
+
+	const restoreNote = $derived(
+		restoreFailed
+			? "Restore didn't work. Check that the source is connected, then try again."
+			: null
+	);
+
+	const sourceLabel = $derived(handle ? sourceName(handle.source) : '');
+
 	const goneActions = $derived.by(() => {
 		const out: GoneAction[] = [];
 		if (canRestore)
@@ -238,59 +315,6 @@
 			out.push({ label: 'Try again', run: () => handle && retry(handle) });
 		if (editor) out.push({ label: 'Close', run: () => editor.closeTab(tab.id, false) });
 		if (handle?.deletedAt) out.push({ label: 'Delete forever', run: purgeDoc, danger: true });
-		return out;
-	});
-
-	async function purgeDoc() {
-		const h = handle;
-		if (!h) return;
-		try {
-			await h.purge();
-			editor?.closeTab(tab.id, false);
-		} catch (e) {
-			reportProblem(e, "This note couldn't be deleted.", purgeDoc);
-		}
-	}
-
-	const restoreNote = $derived(
-		restoreFailed
-			? "Restore didn't work. Check that the source is connected, then try again."
-			: null
-	);
-
-	const sourceLabel = $derived(handle ? sourceName(handle.source) : '');
-
-	const BANG = '<!>';
-	const CAT_FACE = ' /\\_/\\\n( o.o )';
-
-	type Problem = { title: string; detail: string | null; retry: (() => unknown) | null };
-	let problem = $state.raw<Problem | null>(null);
-	let saveProblem: Problem | null = null;
-
-	function reportProblem(e: unknown, fallback: string, retry?: () => unknown): Problem {
-		console.error(fallback, e);
-		const [title, detail] = splitMessage(fallback);
-		problem = {
-			title: title.replace(/\.$/, ''),
-			detail: [detail, describeError(e, '')].filter(Boolean).join(' ') || null,
-			retry: retry && isRetryable(e) ? retry : null
-		};
-		return problem;
-	}
-
-	const problemActions = $derived.by(() => {
-		const out: GoneAction[] = [];
-		const retry = problem?.retry;
-		if (retry)
-			out.push({
-				label: 'Retry',
-				strong: true,
-				run: () => {
-					problem = null;
-					return retry();
-				}
-			});
-		out.push({ label: 'Dismiss', run: () => (problem = null) });
 		return out;
 	});
 
@@ -351,32 +375,59 @@
 		}
 	});
 
-	$effect(() => {
-		const h = handle;
-		if (!h) return;
-		return onSourceReconciled((id) => {
-			if (id === h.source.id && unavailable) void retry(h, true);
-		});
+	/* -------------------------------------------------------------------------- */
+	/*                                  Problems                                  */
+	/* -------------------------------------------------------------------------- */
+
+	let problem = $state.raw<Problem | null>(null);
+
+	const problemActions = $derived.by(() => {
+		const out: GoneAction[] = [];
+		const retry = problem?.retry;
+		if (retry)
+			out.push({
+				label: 'Retry',
+				strong: true,
+				run: () => {
+					problem = null;
+					return retry();
+				}
+			});
+		out.push({ label: 'Dismiss', run: () => (problem = null) });
+		return out;
 	});
 
-	// ── Save: edit events, debounced, writing back what the editor serialized ───────────
+	function reportProblem(e: unknown, fallback: string, retry?: () => unknown): Problem {
+		console.error(fallback, e);
+		const [title, detail] = splitMessage(fallback);
+		problem = {
+			title: title.replace(/\.$/, ''),
+			detail: [detail, describeError(e, '')].filter(Boolean).join(' ') || null,
+			retry: retry && isRetryable(e) ? retry : null
+		};
+		return problem;
+	}
 
-	const SAVE_DEBOUNCE_MS = 250;
-	const SAVE_RETRY_MS = 500;
-	const SAVE_RETRIES = 3;
+	/* -------------------------------------------------------------------------- */
+	/*                                   Saving                                   */
+	/* -------------------------------------------------------------------------- */
+
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let saveAttempts = 0;
 	// The editor a pending save reads from, so a flush that runs after `instance` is unbound (tab
 	// teardown) still gets the text that was typed.
 	let pendingEditor: EditorInstance | null = null;
-	// What we last wrote, or what the editor started with. Comparing against it keeps an untouched
-	// document unsaved even when the editor's output differs from the file on disk.
+	// what was last written, or what the editor started with. comparing against it means an
+	// untouched note isn't written back just because the editor's output differs from the file
 	let savedBody: string | null = null;
 	// A deleted document must not be resurrected by the flush its own teardown triggers.
 	let deleted = false;
 
 	// The write in flight, so a change to the file on disk is not read back over it.
 	let saving: Promise<void> | null = null;
+	let saveProblem: Problem | null = null;
+
+	const unregisterFlush = registerFlush(() => flushSave());
 
 	function flushSave(opts: { body?: string; rebuildFrontmatter?: boolean } = {}) {
 		if (saveTimer) {
@@ -392,8 +443,8 @@
 		// A frontmatter rebuild writes even an unchanged body: the repair is in the part of the file
 		// the editor never holds.
 		if (!handle || body === null || (body === savedBody && !opts.rebuildFrontmatter)) return;
-		// Moved only once the write lands: setting it earlier would mark a failed save as saved,
-		// and the next attempt would be skipped as a no-op.
+		// savedBody moves only once the write lands: setting it earlier would mark a failed save as
+		// saved, and the next attempt would be skipped as a no-op
 		const write: Promise<void> = handle
 			.saveContent(body, opts)
 			.then(() => {
@@ -419,8 +470,6 @@
 		return write;
 	}
 
-	const unregisterFlush = registerFlush(() => flushSave());
-
 	function scheduleSave() {
 		if (liveBody !== null) return;
 		pendingEditor = instance ?? pendingEditor;
@@ -428,7 +477,18 @@
 		saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
 	}
 
-	// ── Outside edits, and the frontmatter repair ───────────────────────────────────────
+	/* -------------------------------------------------------------------------- */
+	/*                               Outside edits                                */
+	/* -------------------------------------------------------------------------- */
+
+	// reloads the note when its file changes on disk (the watcher reports our own writes too). a
+	// body that differs from the editor's is re-seeded, which loses the caret and undo history, so
+	// an unsaved edit here wins over the file
+	$effect(() => {
+		const h = handle;
+		if (!h) return;
+		return onDocChanged(h, () => void (unavailable ? retry(h) : reloadFromDisk(h)));
+	});
 
 	/** Whether an edit here is still on its way to disk, so nothing from disk may replace it. */
 	function hasUnsavedEdits(): boolean {
@@ -436,15 +496,6 @@
 		const live = liveBody ?? instance?.getSource();
 		return live !== undefined && savedBody !== null && live !== savedBody;
 	}
-
-	// The watcher reports the file changing under the editor, our own writes included. A body that
-	// differs from the editor's is re-seeded, which the caret and undo history do not survive, so an
-	// unsaved edit here wins over the file.
-	$effect(() => {
-		const h = handle;
-		if (!h) return;
-		return onDocChanged(h, () => void (unavailable ? retry(h) : reloadFromDisk(h)));
-	});
 
 	async function reloadFromDisk(h: MarkdownHandle) {
 		if (deleted || liveBody !== null || hasUnsavedEdits()) return;
@@ -465,10 +516,12 @@
 		swapContent(fromDisk, null);
 	}
 
+	/* ----------------------- Repairing the frontmatter ------------------------ */
+
 	/**
-	 * The hero's two answers to frontmatter that would not parse: keep it as the document's first
-	 * lines, or drop it. Either way a fresh frontmatter is written, and the file is read back so the
-	 * warning clears on what is actually on disk.
+	 * the header's two fixes for frontmatter that won't parse: keep it as the note's first lines,
+	 * or drop it. either way a fresh frontmatter is written, then the file is read back so the
+	 * warning clears on what's really on disk
 	 */
 	async function fixFrontmatter(mode: 'keep' | 'rebuild') {
 		const h = handle;
@@ -482,7 +535,15 @@
 		await reloadFromDisk(h);
 	}
 
-	// ── Per-tab state ───────────────────────────────────────────────────────────────────
+	/* -------------------------------------------------------------------------- */
+	/*                                 The header                                 */
+	/* -------------------------------------------------------------------------- */
+
+	const onOpenFolder = (unitId: string, name: string, newTab = false) =>
+		openFolder(editor, tab, unitId, name, newTab);
+	const onFolderMeta = (unitId: string, name: string) => openFolderMeta(editor, unitId, name);
+	const back = $derived(backPlace(editor, tab));
+	const forward = $derived(forwardPlace(editor, tab));
 
 	// Persisted on the tab, so a doc reopens with its properties panel as you left it
 	let propsOpen = $state(untrack(() => tab.state.props_open ?? true));
@@ -490,7 +551,9 @@
 		tab.state.props_open = propsOpen;
 	});
 
-	// ── History: the slider previews a version in the same editor, read-only ────────────
+	/* -------------------------------------------------------------------------- */
+	/*                                  History                                   */
+	/* -------------------------------------------------------------------------- */
 
 	// History is the tab's too: it reopens docked at the version you left it on, until closed.
 	let history = $derived(handle ? new DocHistory(handle) : null);
@@ -507,9 +570,6 @@
 		const cp = h?.selected;
 		tab.state.history_at = h && cp && !h.atPresent ? { heads: [...cp.heads], time: cp.time } : null;
 	});
-	let liveBody: string | null = null;
-	let liveSelection: EditorSelection | null = null;
-	let previewing = $derived(history?.version != null);
 
 	$effect(() => {
 		const h = history;
@@ -526,6 +586,43 @@
 					restoredHistoryAt = true;
 					return h.selectAt(storedHistoryAt.heads, storedHistoryAt.time);
 				});
+		});
+	});
+
+	/* -------------------------- Previewing a version -------------------------- */
+
+	let liveBody: string | null = null;
+	let liveSelection: EditorSelection | null = null;
+	let previewing = $derived(history?.version != null);
+	// The version whose text the editor has actually rendered, so the decoration source never
+	// maps a delta onto the wrong document during the swap.
+	let shownVersion: HistoryVersion | null = null;
+	// the version on its way in, shown once the editor's sourceSwap says its text is in place
+	let swappingTo: HistoryVersion | null = null;
+
+	$effect(() => {
+		const version = history?.version ?? null;
+		const ready = loaded && !!instance;
+		untrack(() => {
+			if (!ready) return;
+			if (version) {
+				if (liveBody === null) {
+					liveBody = instance?.getSource() ?? editorText.text;
+					liveSelection = instance?.getSelection() ?? null;
+				}
+				swapContent(version.text, version);
+				return;
+			}
+			if (liveBody === null) return;
+			swapContent(liveBody, null);
+			liveBody = null;
+			const selection = liveSelection;
+			liveSelection = null;
+			const h = handle;
+			void tick().then(async () => {
+				if (selection) await instance?.setSelection(selection);
+				if (h) await reloadFromDisk(h);
+			});
 		});
 	});
 
@@ -561,37 +658,17 @@
 		});
 	}
 
-	// The version whose text the editor has actually rendered, so the decoration source never
-	// maps a delta onto the wrong document during the swap.
-	let shownVersion: HistoryVersion | null = null;
-	// the version on its way in, shown once the editor's sourceSwap says its text is in place
-	let swappingTo: HistoryVersion | null = null;
+	async function restoreVersion() {
+		const version = history?.version;
+		if (!version || !handle) return;
+		liveBody = null;
+		liveSelection = null;
+		const write = flushSave({ body: version.text });
+		historyOpen = false;
+		await write;
+	}
 
-	$effect(() => {
-		const version = history?.version ?? null;
-		const ready = loaded && !!instance;
-		untrack(() => {
-			if (!ready) return;
-			if (version) {
-				if (liveBody === null) {
-					liveBody = instance?.getSource() ?? editorText.text;
-					liveSelection = instance?.getSelection() ?? null;
-				}
-				swapContent(version.text, version);
-				return;
-			}
-			if (liveBody === null) return;
-			swapContent(liveBody, null);
-			liveBody = null;
-			const selection = liveSelection;
-			liveSelection = null;
-			const h = handle;
-			void tick().then(async () => {
-				if (selection) await instance?.setSelection(selection);
-				if (h) await reloadFromDisk(h);
-			});
-		});
-	});
+	/* --------------------- Marking what a version changed --------------------- */
 
 	let decorations: DecorationSourceHandle | null = null;
 
@@ -620,23 +697,14 @@
 		};
 	});
 
-	async function restoreVersion() {
-		const version = history?.version;
-		if (!version || !handle) return;
-		liveBody = null;
-		liveSelection = null;
-		const write = flushSave({ body: version.text });
-		historyOpen = false;
-		await write;
-	}
+	/* -------------------------------------------------------------------------- */
+	/*                          Tags written in the text                          */
+	/* -------------------------------------------------------------------------- */
 
-	// ── Tags written in the text, shown read-only in the hero's tag row ────────────────
-
+	// shown read-only in the header's tag row
 	let textTags = $state<BodyTag[]>([]);
-
-	// Typing reads the tags once it pauses, since each read parses the whole note. A swap reads
-	// them at once, so a different text never shows the old one's tags.
-	const TAG_READ_DELAY_MS = 300;
+	// clicking the same text tag again goes on to the next place it's written
+	const nextTagPlace = createTagStepper();
 
 	$effect(() => {
 		const inst = instance;
@@ -656,6 +724,7 @@
 			cancel();
 			timer = setTimeout(read, TAG_READ_DELAY_MS);
 		});
+		// a swap rereads them at once, so a different text never shows the old one's tags
 		const offSwap = events.on('sourceSwap', read);
 		return () => {
 			cancel();
@@ -663,9 +732,6 @@
 			offSwap();
 		};
 	});
-
-	// clicking the same text tag again goes on to the next place it's written
-	const nextTagPlace = createTagStepper();
 
 	function findTextTag(slug: string): void {
 		const place = nextTagPlace(textTags, slug);
@@ -683,14 +749,13 @@
 		await flushSave({ body });
 	}
 
+	/* -------------------------------------------------------------------------- */
+	/*                            Zoom, mode and font                             */
+	/* -------------------------------------------------------------------------- */
+
 	let zoom = $state(
 		untrack(() => tab.state.zoom ?? settings.get<number>('editor.font_size') ?? 16)
 	);
-
-	function setZoom(next: number) {
-		zoom = Math.max(10, Math.min(40, next));
-		tab.state.zoom = zoom;
-	}
 
 	// The mode and font are global, not the tab's: every open document follows the setting as it
 	// changes.
@@ -703,15 +768,35 @@
 	);
 	let font = $derived(settings.get<string>('editor.font') ?? 'sans-serif');
 
-	// ── Wire-up: events, scroll tracking, and the restore of where you left off ─────────
+	function setZoom(next: number) {
+		zoom = Math.max(10, Math.min(40, next));
+		tab.state.zoom = zoom;
+	}
 
-	// The app's window handler asks the editor which keys it takes, so it has to be able to reach it.
+	function onKeydown(e: KeyboardEvent) {
+		// The same match the window handler stands down on, so the two cannot disagree.
+		const shortcut = appEditorShortcut(e);
+		if (!shortcut) return;
+		// The hero's title input sits inside the editor's header, so without this, typing a rename
+		// would flip the mode. Blocks are contenteditable, not form fields, so they are unaffected.
+		if ((e.target as HTMLElement | null)?.closest('input, textarea, select')) return;
+		e.preventDefault();
+		setZoom(shortcut === 'zoom-in' ? zoom + 1 : zoom - 1);
+	}
+
+	/* -------------------------------------------------------------------------- */
+	/*                            Wiring up the editor                            */
+	/* -------------------------------------------------------------------------- */
+
+	/* ----------------------------- Keys and menus ----------------------------- */
+
+	// lets the app's window handler ask this editor which keys it takes
 	$effect(() => {
 		if (instance) return registerDocumentEditor(instance);
 	});
 
-	// The menus that open as you type. The vault is read per keystroke, so a tab that swaps its
-	// note keeps the same menus.
+	// the menus that pop up as you type (note links, tags). they read the vault on each keystroke,
+	// so a tab that swaps its note keeps the same menus
 	$effect(() => {
 		const inst = instance;
 		if (!inst) return;
@@ -729,25 +814,15 @@
 		return () => sources.forEach((s) => s.dispose());
 	});
 
+	/* -------------------------- Events and scrolling -------------------------- */
+
 	/**
-	 * Height of the header the editor draws above the blocks. Scroll position is stored relative
-	 * to this, not as a raw `scrollTop`: the header can come back shorter than the reader left it
-	 * (the properties panel loads late) and the editor already corrects for that growth, so a raw
-	 * offset would be corrected twice and land the reader a header too low.
+	 * how tall the header above the blocks is. the scroll position is saved relative to it, not as a
+	 * raw `scrollTop`: the header can come back shorter than the reader left it (the properties panel
+	 * loads late), and the editor already corrects for it growing, so a raw offset would be corrected
+	 * twice and land the reader a header too low
 	 */
 	let blocksTop = 0;
-
-	// Takes the scroller as an argument instead of reading `scrollEl`: the effect below sets that
-	// state and measures in the same pass, and reading it back there would re-run the effect.
-	function measureBlocksTop(scroller: HTMLElement | null): number {
-		// `:scope >` matters: lists and tables have their own inner `.block-list`, and matching one
-		// of those would measure a block instead of the header.
-		const list = scroller?.querySelector(':scope > .block-list');
-		if (!list || !scroller) return 0;
-		return (
-			list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop
-		);
-	}
 
 	let restored = false;
 
@@ -758,9 +833,9 @@
 		// (listeners, restore and all) on every keystroke.
 		savedBody = untrack(() => instance?.getSource() ?? null);
 		const events = instance.getEvents();
-		// Any edit commits the ledger, not just the paste's own. An unrelated edit arriving between
-		// the import and its insertion clears it, which errs toward leaving a stray file behind
-		// rather than deleting one the document still points at.
+		// any edit commits the paste ledger, not just the paste's own. so an unrelated edit landing
+		// between an image's import and its insertion clears it, which errs toward leaving a stray
+		// file behind rather than deleting one the note still points at
 		const offEdit = events.on('edit', () => {
 			pasteImports.commit();
 			scheduleSave();
@@ -800,6 +875,20 @@
 		};
 	});
 
+	// takes the scroller rather than reading `scrollEl`, since the effect above sets that state and
+	// measures in the same pass, and reading it back there would re-run the effect
+	function measureBlocksTop(scroller: HTMLElement | null): number {
+		// `:scope >` matters: lists and tables have their own inner `.block-list`, and matching one
+		// of those would measure a block instead of the header.
+		const list = scroller?.querySelector(':scope > .block-list');
+		if (!list || !scroller) return 0;
+		return (
+			list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop
+		);
+	}
+
+	/* ------------------------ Putting the reader back ------------------------- */
+
 	/** The selection stored on the tab, or null if it has nothing this editor could place. */
 	function rememberedSelection(): EditorSelection | null {
 		const stored = $state.snapshot(tab.state.selection) as Partial<EditorSelection> | undefined;
@@ -808,13 +897,6 @@
 			? (stored as EditorSelection)
 			: null;
 	}
-
-	// The tab key a heading link leaves for the note it opens, read once when that note mounts
-
-	const DOCUMENT_START: EditorSelection = {
-		anchor: { path: [0], offset: 0 },
-		focus: { path: [0], offset: 0 }
-	};
 
 	/** Whether the reader is mid-word in a field that is not a block of this document. */
 	function typingElsewhere(): boolean {
@@ -840,10 +922,11 @@
 	}
 
 	async function restore() {
-		// The old editor's `cursorPos`/`scrollTop` tab keys are ignored: they measure a flat
-		// character offset and a scroller with the header outside it, neither of which exists here.
-		// Placing a caret focuses the document, so a reader typing elsewhere (quick search, a title
-		// field) keeps their field; the remembered caret stays on the tab for the next open.
+		// the old editor's `cursorPos`/`scrollTop` tab keys are ignored: they measure a flat
+		// character offset and a scroller with the header outside it, and neither exists here.
+		// placing a caret focuses the note, so a reader typing elsewhere (quick search, a title
+		// field) keeps their field, and the remembered caret stays on the tab for the next open
+
 		// A fresh note wants its name first: the title takes focus, not the body
 		if (handle?.isNew && !flow) {
 			const title = wrapperEl?.querySelector<HTMLInputElement>('.title-input');
@@ -878,19 +961,20 @@
 	}
 
 	/**
-	 * The editor's caret-from-a-point door, opened up for the page around it: the page answers the
-	 * clicks on blank space the editor never sees, and the editor decides where the caret lands.
+	 * places the caret from a point on screen. DocFace uses it for clicks on blank page space the
+	 * editor never sees, and the editor decides where the caret lands
 	 */
 	export function placeCaretAtPoint(x: number, y: number): boolean {
 		return instance?.placeCaretAtPoint(x, y) ?? false;
 	}
 
-	// ── Services the editor delegates to the app ────────────────────────────────────────
+	/* -------------------------------------------------------------------------- */
+	/*                              Links and images                              */
+	/* -------------------------------------------------------------------------- */
 
-	const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
-
-	// The editor keeps these %XX escapes as written when it rewrites a link (a width drag, say),
-	// so a path limestone wrote still reads back as the same URL.
+	// %XX-escapes what would break a link's destination. the editor keeps these escapes as
+	// written when it rewrites a link (a width drag, say), so a path limestone wrote still reads
+	// back as the same URL
 	function encodeDestination(url: string): string {
 		return url.replace(
 			/[ \t\r\n()"'\\]/g,
@@ -906,19 +990,7 @@
 		}
 	}
 
-	function resolveImageUrl(target: string): string {
-		// Anything that already has a scheme is the editor's to judge; rewriting it would turn a
-		// URL limestone does not own (`appasset:`) into a path.
-		if (!handle || HAS_SCHEME.test(target)) return target;
-		// The destination arrives as written, escapes included; the file system wants the name.
-		const clean = decodeDestination(target)
-			.replace(/\\/g, '/')
-			.replace(/^\.?\//, '');
-		if (!isImageTarget(clean)) return target;
-		const loc = handle.source.asset_location.replace(/^\/+|\/+$/g, '');
-		const rel = clean.includes('/') || !loc ? clean : `${loc}/${clean}`;
-		return convertFileSrc(`${handle.source.path}/${rel}`);
-	}
+	/* ---------------------------- Following links ----------------------------- */
 
 	function onLinkActivate(url: string, event: MouseEvent) {
 		event.preventDefault();
@@ -965,44 +1037,35 @@
 		return mode === 'live' && modified;
 	}
 
-	function onActivate(e: Event): void {
-		const { kind, target, fragment, side, newTab } = (e as CustomEvent<ActivateDetail>).detail;
+	// opens what a link or tag clicked in the note points to (followLinks handles citations)
+	function onActivate({ kind, target, fragment, side, newTab }: ActivateDetail): void {
 		const inNewTab = opensNewTab(!!newTab);
 		if (kind === 'wikilink' && target) void openWikiLink(target, fragment, side, inNewTab);
 		else if (kind === 'wikilink' && fragment) void jumpToHeading(fragment);
 		else if (kind === 'tag') void openTagView(target, side, inNewTab);
 	}
 
-	function onOpenAnnotation(e: Event): void {
-		if (!editor) return;
-		openAtAnnotation(editor, (e as CustomEvent<OpenAnnotationDetail>).detail).catch((err) =>
-			reportError(err, "The PDF couldn't be opened.")
-		);
+	/* ----------------------------- Showing images ----------------------------- */
+
+	function resolveImageUrl(target: string): string {
+		// Anything that already has a scheme is the editor's to judge; rewriting it would turn a
+		// URL limestone does not own (`appasset:`) into a path.
+		if (!handle || HAS_SCHEME.test(target)) return target;
+		// The destination arrives as written, escapes included; the file system wants the name.
+		const clean = decodeDestination(target)
+			.replace(/\\/g, '/')
+			.replace(/^\.?\//, '');
+		if (!isImageTarget(clean)) return target;
+		const loc = handle.source.asset_location.replace(/^\/+|\/+$/g, '');
+		const rel = clean.includes('/') || !loc ? clean : `${loc}/${clean}`;
+		return convertFileSrc(`${handle.source.path}/${rel}`);
 	}
 
-	$effect(() => {
-		const el = wrapperEl;
-		if (!el) return;
-		el.addEventListener(ACTIVATE_EVENT, onActivate);
-		el.addEventListener(OPEN_ANNOTATION_EVENT, onOpenAnnotation);
-		return () => {
-			el.removeEventListener(ACTIVATE_EVENT, onActivate);
-			el.removeEventListener(OPEN_ANNOTATION_EVENT, onOpenAnnotation);
-		};
-	});
+	/* ----------------------------- Pasting images ----------------------------- */
 
-	const MIME_EXTS: Record<string, string> = {
-		'image/png': 'png',
-		'image/jpeg': 'jpg',
-		'image/gif': 'gif',
-		'image/webp': 'webp',
-		'image/svg+xml': 'svg',
-		'image/bmp': 'bmp',
-		'image/avif': 'avif'
-	};
-
-	// Anything still uncommitted at teardown is left on disk on purpose: a tab closing mid-paste
-	// cannot tell an insertion that failed from one whose markdown already landed.
+	// the files a paste imported, until an edit commits them. anything still uncommitted when the tab
+	// closes is left on disk on purpose: a tab closing mid-paste can't tell an insertion that failed
+	// from one whose markdown already landed
 	const pasteImports = createPasteImportLedger({
 		deleteAsset: async (relPath) => {
 			if (handle) await deleteSourceAsset(handle.source.id, relPath);
@@ -1029,18 +1092,9 @@
 		return `![](${encodeDestination(relPath)})`;
 	}
 
-	// ── UI the editor doesn't provide: zoom ─────────────────────────────────────────────
-
-	function onKeydown(e: KeyboardEvent) {
-		// The same match the window handler stands down on, so the two cannot disagree.
-		const shortcut = appEditorShortcut(e);
-		if (!shortcut) return;
-		// The hero's title input sits inside the editor's header, so without this, typing a rename
-		// would flip the mode. Blocks are contenteditable, not form fields, so they are unaffected.
-		if ((e.target as HTMLElement | null)?.closest('input, textarea, select')) return;
-		e.preventDefault();
-		setZoom(shortcut === 'zoom-in' ? zoom + 1 : zoom - 1);
-	}
+	/* -------------------------------------------------------------------------- */
+	/*                             Deleting the note                              */
+	/* -------------------------------------------------------------------------- */
 
 	async function deleteDoc() {
 		if (!handle) return;
@@ -1078,6 +1132,21 @@
 		}
 	}
 
+	async function purgeDoc() {
+		const h = handle;
+		if (!h) return;
+		try {
+			await h.purge();
+			editor?.closeTab(tab.id, false);
+		} catch (e) {
+			reportProblem(e, "This note couldn't be deleted.", purgeDoc);
+		}
+	}
+
+	/* -------------------------------------------------------------------------- */
+	/*                            When the tab closes                             */
+	/* -------------------------------------------------------------------------- */
+
 	onDestroy(() => {
 		unregisterFlush();
 		flushSave();
@@ -1086,11 +1155,13 @@
 	});
 </script>
 
+<!-- ------------------ Snippets that make up the header ------------------- -->
+
 {#snippet annotationSource()}
-	{#if handle}<AnnotationSource noteId={handle.id} properties={handle.properties} {editor} />{/if}
+	{#if handle}<AnnotationPdfLink noteId={handle.id} properties={handle.properties} {editor} />{/if}
 {/snippet}
 
-<!-- An annotation note's body is its comment alone, so the passage it marks shows above it. -->
+<!-- an annotation note's body is just its comment, so the passage it marks shows above it -->
 {#snippet annotationPassage()}
 	{@const annotation = handle && readAnnotation(handle.properties)}
 	{#if annotation}
@@ -1127,27 +1198,10 @@
 {/snippet}
 
 {#snippet docNotices()}
-	{#if notice && unavailable?.held != null && unavailable.settled}
-		<div class="held-notice">
-			<pre class="held-cat" aria-hidden="true">{CAT_FACE}</pre>
-			<div class="held-text">
-				<p class="ua-headline">{notice.headline} {BANG}</p>
-				<p class="ua-detail">{notice.detail}</p>
-			</div>
-			<GoneActions actions={goneActions} note={restoreNote} />
-		</div>
-	{/if}
-	{#if problem}
-		<div class="held-notice">
-			<pre class="held-cat" aria-hidden="true">{CAT_FACE}</pre>
-			<div class="held-text">
-				<p class="ua-headline">{problem.title} {BANG}</p>
-				{#if problem.detail}<p class="ua-detail">{problem.detail}</p>{/if}
-			</div>
-			<GoneActions actions={problemActions} />
-		</div>
-	{/if}
+	<DocNotices {notice} {unavailable} {problem} {goneActions} {restoreNote} {problemActions} />
 {/snippet}
+
+<!-- ----------------------------- The editor ------------------------------ -->
 
 <!-- The zoom and fonts are aragonite's own type-scale root and faces, so they inherit into the
 	 editor from here. Code keeps the app's monospace whatever face the document wears. The px unit
@@ -1158,6 +1212,7 @@
 	class:history-open={historyOpen}
 	data-source-id={handle?.source.id}
 	bind:this={wrapperEl}
+	{@attach followLinks(() => editor, onActivate)}
 	style="--editor-font-size: {zoom}px; --font-editor: {font}; --font-code: var(--font-mono)"
 	onkeydowncapture={onKeydown}
 	role="presentation"
@@ -1228,7 +1283,9 @@
 </div>
 
 <style>
-	/* in the note's column, drawn as a citation card of it is */
+	/* ---------------------- An annotation note's passage ---------------------- */
+
+	/* the passage above an annotation note's comment, styled like a citation card */
 	.annotation-passage {
 		max-width: var(--page-max-width, 1200px);
 		box-sizing: border-box;
@@ -1242,6 +1299,8 @@
 		border-radius: 8px;
 		background: var(--chip-bg);
 	}
+
+	/* ---------------------- When the note can't be read ----------------------- */
 
 	.unavailable {
 		display: flex;
@@ -1259,63 +1318,7 @@
 		padding-top: 1rem;
 	}
 
-	.ua-headline {
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: 12px;
-		color: var(--color-ui-muted);
-	}
-
-	.ua-detail {
-		max-width: 360px;
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: 12px;
-		line-height: 1.45;
-		color: var(--color-ui-dulled);
-	}
-
-	.held-notice {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 10px 16px;
-		max-width: calc(var(--page-max-width, 1200px) - 48px);
-		margin: 0 auto 16px;
-		width: calc(100% - 48px);
-		padding: 12px 14px;
-		border-radius: 8px;
-		background: var(--chip-bg);
-	}
-
-	.held-cat {
-		flex-shrink: 0;
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: 11px;
-		line-height: 1.2;
-		color: var(--color-ui-dulled);
-		user-select: none;
-	}
-
-	.held-notice + .held-notice {
-		margin-top: -8px;
-	}
-
-	.held-text {
-		display: flex;
-		flex: 1 1 240px;
-		flex-direction: column;
-		gap: 3px;
-	}
-
-	.held-notice :global(.gone-actions) {
-		justify-content: flex-start;
-	}
-
-	.held-notice .ua-detail {
-		max-width: none;
-	}
+	/* ------------------ The wrapper, and the header in flow ------------------- */
 
 	.doc-editor {
 		position: relative;
@@ -1343,6 +1346,8 @@
 		padding-top: 34px;
 	}
 
+	/* -------------------------- aragonite's scroller -------------------------- */
+
 	/* The app pane already draws the frame, and the native scrollbar would double up with
 	   ScrollThumb. The padding stays: it is the document's only margin once the page column
 	   stops centring, and it keeps the hero off the top edge. Selected through the wrapper
@@ -1356,6 +1361,8 @@
 	.doc-editor :global(.editor::-webkit-scrollbar) {
 		display: none;
 	}
+
+	/* -------------------- History: the dock and its marks --------------------- */
 
 	/* Docked over the document like the app's menus, so the last lines get room to scroll
 	   clear of it. A flow host hands over a dock target in its own pane; without one the dock

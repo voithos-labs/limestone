@@ -1,4 +1,11 @@
 <script lang="ts">
+	/**
+	 * the menu that pops up when you select text in a pdf.
+	 *
+	 * It turns the selection into a highlight (in a color), a comment or a citation, or just copies
+	 * the text, which is all it offers when annotations can't be saved.
+	 */
+
 	import { Link, MessageSquare, Quote } from '@lucide/svelte';
 	import { ANNOTATION_COLORS, type AnnotationColor } from '#lib/pdf/annotation.js';
 	import { ANNOTATION_RGB } from './colors.js';
@@ -86,6 +93,8 @@
 </div>
 
 <style>
+	/* -------------------------------- The menu -------------------------------- */
+
 	.selection-menu {
 		position: absolute;
 		z-index: 6;
@@ -101,6 +110,8 @@
 		line-height: 1.4;
 		color: var(--color-text-primary);
 	}
+
+	/* ----------------------------- Color swatches ----------------------------- */
 
 	.swatches {
 		display: flex;
@@ -138,6 +149,8 @@
 			0 0 0 2px var(--color-bg),
 			0 0 0 3.5px var(--color-ui-muted);
 	}
+
+	/* ---------------------------------- Rows ---------------------------------- */
 
 	.divider {
 		height: 1px;

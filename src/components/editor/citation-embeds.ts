@@ -1,3 +1,10 @@
+/**
+ * the editor plugin that turns a citation, `![[X, p3 - words]]`, into a card.
+ *
+ * It runs while the markdown is parsed, with no index to ask, so it only claims embeds whose target
+ * is shaped like an annotation note's title. Every other `![[note]]` is left alone.
+ */
+
 import {
 	definePlugin,
 	declarePluginInlineKind,
@@ -8,17 +15,25 @@ import {
 	type InlineNode
 } from '@voithos-labs/aragonite/plugin';
 import { svelteView } from '@voithos-labs/aragonite/svelte';
-import AnnotationCard from './AnnotationCard.svelte';
+import CitationCard from './CitationCard.svelte';
 import { isImageTarget, OPEN } from './image-embeds';
 import { recognizeWikiLink } from './wikilinks';
 import { parseAnnotationTitle } from '#lib/pdf/annotation.js';
 
-/**
- * A citation, `![[Hale & Ortiz 2023, p3 - The rate tracked…]]`, drawn as a card holding the
- * annotation's quote or region and its comment. Recognition runs at parse time with no index to
- * ask, so it claims only targets shaped like an annotation note's title; any other `![[note]]`
- * stays the text it was. A title that turns out to name no annotation draws a quiet placeholder.
- */
+/* ------------------- Recognizing and drawing citations -------------------- */
+
+export interface AnnotationEmbed {
+	start: number;
+	end: number;
+	/** The annotation note's title. */
+	target: string;
+	pdfTitle: string;
+	page: number;
+}
+
+export const ANNOTATION_EMBED_KIND = 'limestone-annotation-embed';
+
+/** The plugin that draws a citation as a card; the header above says which embeds it claims. */
 export function annotationEmbedsPlugin(): EditorPlugin {
 	return definePlugin({
 		name: 'limestone-annotation-embeds',
@@ -35,32 +50,12 @@ export function annotationEmbedsPlugin(): EditorPlugin {
 			);
 			registerInlineWidgetKind(kind, {
 				isWidget: () => true,
-				view: svelteView(AnnotationCard),
+				view: svelteView(CitationCard),
 				frame: true,
 				editing: { revealSource: true, claimsActivationClick: true }
 			});
 		}
 	});
-}
-
-export const ANNOTATION_EMBED_KIND = 'limestone-annotation-embed';
-
-/** Asks the document's editor to open a PDF at one of its annotations. */
-export const OPEN_ANNOTATION_EVENT = 'limestone-open-annotation';
-
-export interface OpenAnnotationDetail {
-	pdf: string;
-	/** The annotation note's document id. */
-	id: string;
-}
-
-export interface AnnotationEmbed {
-	start: number;
-	end: number;
-	/** The annotation note's title. */
-	target: string;
-	pdfTitle: string;
-	page: number;
 }
 
 /**
@@ -82,4 +77,13 @@ export function recognizeAnnotationEmbed(
 	return { start: pos, end: link.end, target, ...title };
 }
 
-// ── Internal ────────────────────────────────────────────────────────────────
+/* ---------------------- Opening the cited annotation ---------------------- */
+
+export interface OpenAnnotationDetail {
+	pdf: string;
+	/** The annotation note's document id. */
+	id: string;
+}
+
+/** Asks the document's editor to open a PDF at one of its annotations. */
+export const OPEN_ANNOTATION_EVENT = 'limestone-open-annotation';

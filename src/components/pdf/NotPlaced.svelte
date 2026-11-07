@@ -1,4 +1,12 @@
 <script lang="ts" module>
+	/**
+	 * the "N not placed in this edition" chip, for marks a replaced pdf left behind.
+	 *
+	 * Its popover lists them (annotations made on an older edition, and ink on pages that changed),
+	 * says why each one couldn't be carried over, and lets you place it by hand, bring it over, or
+	 * open the older edition to look.
+	 */
+
 	/** Loose ink on one page of an earlier edition, left there because the page changed. */
 	export interface InkLeft {
 		edition: string;
@@ -8,10 +16,18 @@
 </script>
 
 <script lang="ts">
+	/* -------------------------------------------------------------------------- */
+	/*                                  Imports                                   */
+	/* -------------------------------------------------------------------------- */
+
 	import { ANNOTATION_RGB, annotationRgb } from './colors.js';
 	import type { Annotation, AnnotationKind } from '#lib/pdf/annotation.js';
 	import { editionDate } from '#lib/pdf/edition.js';
 	import type { Unplaced } from '#lib/pdf/migrate.js';
+
+	/* -------------------------------------------------------------------------- */
+	/*                                   Props                                    */
+	/* -------------------------------------------------------------------------- */
 
 	/** The header chip counting marks not placed on the edition on screen, and their list. */
 	let {
@@ -44,24 +60,13 @@
 		onOpenEdition: (edition: string) => void;
 	} = $props();
 
-	const REASONS: Record<Unplaced, string> = {
-		changed: 'text changed',
-		unpreserved: 'its edition was not kept'
-	};
-	const KINDS: Record<AnnotationKind, string> = {
-		highlight: 'Highlight',
-		region: 'Region',
-		ink: 'Ink'
-	};
+	/* -------------------------------------------------------------------------- */
+	/*                          The chip and its popover                          */
+	/* -------------------------------------------------------------------------- */
 
 	let open = $state(false);
 	let root: HTMLElement | undefined = $state();
 	const count = $derived(annotations.length + ink.length);
-
-	// a quote starting in lowercase begins mid-sentence
-	function quoted(quote: string): string {
-		return `“${/^\p{Ll}/u.test(quote) ? '…' : ''}${quote}”`;
-	}
 
 	function act(run: () => void) {
 		open = false;
@@ -78,9 +83,30 @@
 			open = false;
 		}
 	}
+
+	/* -------------------------------------------------------------------------- */
+	/*                            What each card says                             */
+	/* -------------------------------------------------------------------------- */
+
+	const REASONS: Record<Unplaced, string> = {
+		changed: 'text changed',
+		unpreserved: 'its edition was not kept'
+	};
+	const KINDS: Record<AnnotationKind, string> = {
+		highlight: 'Highlight',
+		region: 'Region',
+		ink: 'Ink'
+	};
+
+	// a quote starting in lowercase begins mid-sentence
+	function quoted(quote: string): string {
+		return `“${/^\p{Ll}/u.test(quote) ? '…' : ''}${quote}”`;
+	}
 </script>
 
 <svelte:window onpointerdown={onWindowPointer} onkeydown={onWindowKey} />
+
+<!-- --------------------- Opening an earlier edition ---------------------- -->
 
 {#snippet openEdition(edition: string)}
 	<button class="open" type="button" onclick={() => act(() => onOpenEdition(edition))}>
@@ -89,6 +115,8 @@
 		{/await}
 	</button>
 {/snippet}
+
+<!-- ---------------------- The chip and its popover ----------------------- -->
 
 <span class="not-placed" bind:this={root}>
 	<button
@@ -151,6 +179,8 @@
 </span>
 
 <style>
+	/* -------------------------------- The chip -------------------------------- */
+
 	.not-placed {
 		position: relative;
 		display: inline-flex;
@@ -187,6 +217,8 @@
 		border-radius: 999px;
 		box-shadow: inset 0 0 0 1.5px currentColor;
 	}
+
+	/* ------------------------ The popover and its head ------------------------ */
 
 	.popover {
 		position: absolute;
@@ -228,6 +260,8 @@
 		color: var(--color-ui-dulled);
 	}
 
+	/* --------------------------------- A card --------------------------------- */
+
 	.card {
 		display: flex;
 		flex-direction: column;
@@ -268,6 +302,8 @@
 		display: flex;
 		gap: 6px;
 	}
+
+	/* -------------------------------- Buttons --------------------------------- */
 
 	.carry,
 	.place,

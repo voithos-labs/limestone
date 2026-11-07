@@ -1,6 +1,12 @@
-/** Page geometry for the PDF viewer: where each page sits, which are near the viewport, and how to keep the reader's place when sizes change. */
+/**
+ * where the viewer's pages sit, without drawing them all.
+ *
+ * Every page's top and height comes from its shape, mounted or not, so the scroll height is right
+ * from the start and only the pages near the view need mounting. When sizes change (a zoom, a
+ * resize, a page learning its real shape), the reader's place is kept by scrolling the difference.
+ */
 
-// ── Public API ──────────────────────────────────────────────────────────────
+/* ---------------------------- Where pages sit ----------------------------- */
 
 export interface PageLayout {
 	/** The width every page is drawn at. */
@@ -10,12 +16,6 @@ export interface PageLayout {
 	heights: number[];
 	/** The column's height, from the first page's top to the last page's bottom. */
 	total: number;
-}
-
-/** A run of pages by index, both ends included; empty when `last < first`. */
-export interface PageRange {
-	first: number;
-	last: number;
 }
 
 /** Heights are whole pixels so page edges stay on pixels, and so the DOM and the math agree exactly. */
@@ -44,6 +44,14 @@ export function pageAt(tops: readonly number[], y: number): number {
 	return lo;
 }
 
+/* --------------------- Which pages are near the view ---------------------- */
+
+/** A run of pages by index, both ends included; empty when `last < first`. */
+export interface PageRange {
+	first: number;
+	last: number;
+}
+
 /** The pages overlapping the band from `from` to `to`. */
 export function pagesBetween(layout: PageLayout, from: number, to: number): PageRange {
 	const { tops, heights } = layout;
@@ -69,6 +77,8 @@ export function holdRange(prev: PageRange, need: PageRange, keep: PageRange): Pa
 	};
 }
 
+/* ----------------------- Keeping the reader's place ----------------------- */
+
 /**
  * Where the viewport's top should be after the layout changes, so what the reader was looking at
  * stays put: the page at the top keeps its place, a page above it growing pushes the view down by
@@ -84,6 +94,12 @@ export function keepPlace(before: PageLayout, after: PageLayout, viewTop: number
 	return after.tops[held] + into * scale;
 }
 
+/* ------------------------------ Canvas size ------------------------------- */
+
+// pdf.js's viewer allows twice this; a few pages stay mounted at once, each canvas 4 bytes a pixel
+const MAX_CANVAS_PIXELS = 2 ** 24;
+const MAX_CANVAS_DIM = 32767;
+
 /**
  * How far a canvas may be scaled past the page's CSS size before it outgrows what a browser will
  * allocate, the way pdf.js's own viewer caps it: the pixel ratio, or less for a page too large.
@@ -97,9 +113,3 @@ export function canvasScale(width: number, height: number, pixelRatio: number): 
 		MAX_CANVAS_DIM / height
 	);
 }
-
-// ── Internal ────────────────────────────────────────────────────────────────
-
-// pdf.js's viewer allows twice this; a few pages stay mounted at once, each canvas 4 bytes a pixel
-const MAX_CANVAS_PIXELS = 2 ** 24;
-const MAX_CANVAS_DIM = 32767;

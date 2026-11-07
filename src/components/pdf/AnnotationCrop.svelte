@@ -1,10 +1,25 @@
 <script lang="ts">
+	/**
+	 * a region or ink annotation, drawn as a crop of its page.
+	 *
+	 * Citation cards and the digest use it to show what a box marks. It waits until it's near the
+	 * view before drawing, since a long digest can hold a lot of these.
+	 */
+
+	/* -------------------------------------------------------------------------- */
+	/*                                  Imports                                   */
+	/* -------------------------------------------------------------------------- */
+
 	import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import { rectsOn, type AnnotationFields, type PageRect } from '#lib/pdf/annotation.js';
 	import { renderCrop, unionRect } from '#lib/pdf/crop.js';
 	import { strokePath } from '#lib/pdf/ink.js';
 	import { scrollParent } from '#lib/util/dom.js';
 	import { INK_RGB } from './colors.js';
+
+	/* -------------------------------------------------------------------------- */
+	/*                                   Props                                    */
+	/* -------------------------------------------------------------------------- */
 
 	/** A region or ink annotation drawn from its page, with the ink laid over the crop. */
 	let {
@@ -18,8 +33,9 @@
 		doc?: PDFDocumentProxy | null;
 	} = $props();
 
-	// how far outside the scroller's view a crop starts drawing, so it's there when it scrolls in
-	const NEAR = '600px 0px';
+	/* -------------------------------------------------------------------------- */
+	/*                               The crop's box                               */
+	/* -------------------------------------------------------------------------- */
 
 	const rect = $derived(padded(unionRect(rectsOn(annotation, annotation.page)), annotation.kind));
 
@@ -31,6 +47,13 @@
 		const y = Math.max(0, rect[1] - m);
 		return [x, y, Math.min(1, rect[0] + rect[2] + m) - x, Math.min(1, rect[1] + rect[3] + m) - y];
 	}
+
+	/* -------------------------------------------------------------------------- */
+	/*                           Drawing near the view                            */
+	/* -------------------------------------------------------------------------- */
+
+	// how far outside the scroller's view a crop starts drawing, so it's there when it scrolls in
+	const NEAR = '600px 0px';
 
 	// The full-width box is what's measured; the canvas inside can come out narrower when
 	// maxHeight bites, and the frame hugging it keeps the ink overlay on the drawing. Nothing is

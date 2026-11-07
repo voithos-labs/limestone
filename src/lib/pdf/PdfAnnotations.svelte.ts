@@ -1,3 +1,11 @@
+/**
+ * the annotation notes of one pdf, as the viewer sees them.
+ *
+ * It finds them through the document index (every note whose frontmatter names this pdf's id) and
+ * reloads whenever the pdf's source folder is rescanned. Making, editing, deleting and undeleting a
+ * note all go through here, and so does copying the pdf's edition before a note points at it.
+ */
+
 import { invoke } from '@tauri-apps/api/core';
 import { select } from '#lib/services/db.js';
 import MarkdownHandle from '#lib/models/MarkdownHandle.js';
@@ -19,6 +27,10 @@ import {
 } from './annotation.js';
 import type { Placement } from './migrate.js';
 
+/* -------------------------------------------------------------------------- */
+/*                            The notes of one PDF                            */
+/* -------------------------------------------------------------------------- */
+
 /**
  * The annotation notes of one PDF: found through the index by the PDF's id wherever they sit,
  * read from their files, and written back as ordinary notes.
@@ -37,6 +49,8 @@ export default class PdfAnnotations {
 	private removed = new Map<string, Removed>();
 
 	constructor(private readonly pdf: () => PdfHandle) {}
+
+	/* -------------------------------- Loading --------------------------------- */
 
 	/** Loads the list, then keeps it current as the PDF's source is reconciled. */
 	watch(): () => void {
@@ -63,6 +77,8 @@ export default class PdfAnnotations {
 		this.items = read.filter((a): a is Annotation => a !== null).sort(byPlace);
 		this.loaded = true;
 	}
+
+	/* -------------------------- Making and changing --------------------------- */
 
 	/** Writes a new annotation note beside the PDF and returns it. */
 	/** `namedBy` is the text its note's title opens with: the quote, or what a box covers. */
@@ -106,47 +122,27 @@ export default class PdfAnnotations {
 		await this.update(id, (a) => ({ ...a, ...fields }));
 	}
 
+	private async update(id: string, change: (a: Annotation) => Annotation): Promise<void> {
+		const current = this.items.find((a) => a.id === id);
+		if (!current) return;
+		const next = change(current);
+		this.items = this.items.map((a) => (a.id === id ? next : a));
+		// fields still carries any keys this version doesn't know, read from the note at load
+		const { id: _id, title: _title, relPath: _relPath, comment, ...fields } = next;
+		const doc = await MarkdownHandle.fromID(id);
+		await doc.saveContent(annotationBody(comment), {
+			properties: { [ANNOTATION_KEY]: storedFields(fields) }
+		});
+	}
+
+	/* -------------------------------- Editions -------------------------------- */
+
 	/** Puts an annotation on the edition on screen, its note renamed if its page changed. */
 	async place(id: string, placement: Placement): Promise<void> {
 		const edition = await this.preserve();
 		const before = this.items.find((a) => a.id === id);
 		await this.setFields(id, { ...placement, ...(edition ? { edition } : {}) });
 		if (before && before.page !== placement.page) await this.retitle(before, placement.page);
-	}
-
-	/** Whether any of the PDF's annotation notes, trashed ones included, was made on `edition`. */
-	async marksEdition(edition: string): Promise<boolean> {
-		const rows = await select<{ id: string }>(
-			`SELECT id FROM documents
-			 WHERE json_extract(properties, '$.${ANNOTATION_KEY}.pdf') = ?1
-			   AND json_extract(properties, '$.${ANNOTATION_KEY}.edition') = ?2 LIMIT 1`,
-			[this.pdf().id, edition]
-		);
-		return rows.length > 0;
-	}
-
-	/** Deletes the note, keeping what `restore` needs to bring it back. */
-	async remove(id: string): Promise<void> {
-		const annotation = this.items.find((a) => a.id === id);
-		if (!annotation) return;
-		const doc = await MarkdownHandle.fromID(id);
-		const trashed = await doc.delete();
-		this.removed.set(id, { doc, annotation, trashed });
-		this.items = this.items.filter((a) => a.id !== id);
-	}
-
-	/**
-	 * Brings back a note `remove` deleted, as it was then and under the same id. The trash keeps
-	 * only notes with a history, so any other is written back and a rescan indexes it by its id.
-	 */
-	async restore(id: string): Promise<void> {
-		const removed = this.removed.get(id);
-		if (!removed) throw new Error(`No deleted annotation ${id} to restore`);
-		const { doc, annotation, trashed } = removed;
-		await doc.restore(annotationBody(annotation.comment), false);
-		if (!trashed) await reindexed(doc);
-		this.removed.delete(id);
-		await this.load();
 	}
 
 	/**
@@ -178,46 +174,47 @@ export default class PdfAnnotations {
 		return edition;
 	}
 
-	private async update(id: string, change: (a: Annotation) => Annotation): Promise<void> {
-		const current = this.items.find((a) => a.id === id);
-		if (!current) return;
-		const next = change(current);
-		this.items = this.items.map((a) => (a.id === id ? next : a));
-		// fields still carries any keys this version doesn't know, read from the note at load
-		const { id: _id, title: _title, relPath: _relPath, comment, ...fields } = next;
-		const doc = await MarkdownHandle.fromID(id);
-		await doc.saveContent(annotationBody(comment), {
-			properties: { [ANNOTATION_KEY]: storedFields(fields) }
-		});
-	}
-}
-
-// ── Internal ────────────────────────────────────────────────────────────────
-
-interface Removed {
-	doc: MarkdownHandle;
-	annotation: Annotation;
-	/** Whether the trash kept the note, which `doc` then revives. */
-	trashed: boolean;
-}
-
-// how long a rescan may take to index a written-back note again
-const REINDEX_POLL_MS = 100;
-const REINDEX_TRIES = 50;
-
-/** Rescans the note's source and waits until its id is in the index again. */
-async function reindexed(doc: MarkdownHandle): Promise<void> {
-	await reconcileSource(doc.source.id);
-	for (let i = 0; i < REINDEX_TRIES; i++) {
+	/** Whether any of the PDF's annotation notes, trashed ones included, was made on `edition`. */
+	async marksEdition(edition: string): Promise<boolean> {
 		const rows = await select<{ id: string }>(
-			'SELECT id FROM documents WHERE id = ?1 AND deleted_at IS NULL',
-			[doc.id]
+			`SELECT id FROM documents
+			 WHERE json_extract(properties, '$.${ANNOTATION_KEY}.pdf') = ?1
+			   AND json_extract(properties, '$.${ANNOTATION_KEY}.edition') = ?2 LIMIT 1`,
+			[this.pdf().id, edition]
 		);
-		if (rows.length) return;
-		await new Promise((resolve) => setTimeout(resolve, REINDEX_POLL_MS));
+		return rows.length > 0;
 	}
-	throw new Error(`The restored note ${doc.relPath} wasn't indexed again`);
+
+	/* ------------------------- Deleting and restoring ------------------------- */
+
+	/** Deletes the note, keeping what `restore` needs to bring it back. */
+	async remove(id: string): Promise<void> {
+		const annotation = this.items.find((a) => a.id === id);
+		if (!annotation) return;
+		const doc = await MarkdownHandle.fromID(id);
+		const trashed = await doc.delete();
+		this.removed.set(id, { doc, annotation, trashed });
+		this.items = this.items.filter((a) => a.id !== id);
+	}
+
+	/**
+	 * Brings back a note `remove` deleted, as it was then and under the same id. The trash keeps
+	 * only notes with a history, so any other is written back and a rescan indexes it by its id.
+	 */
+	async restore(id: string): Promise<void> {
+		const removed = this.removed.get(id);
+		if (!removed) throw new Error(`No deleted annotation ${id} to restore`);
+		const { doc, annotation, trashed } = removed;
+		await doc.restore(annotationBody(annotation.comment), false);
+		if (!trashed) await reindexed(doc);
+		this.removed.delete(id);
+		await this.load();
+	}
 }
+
+/* -------------------------------------------------------------------------- */
+/*                     Reading, sorting and filing notes                      */
+/* -------------------------------------------------------------------------- */
 
 interface NoteRow {
 	id: string;
@@ -255,4 +252,33 @@ function dirOf(relPath: string): string {
 function siblingDir(relPath: string, title: string): string {
 	const dir = dirOf(relPath);
 	return dir ? `${dir}/${title}` : title;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                        Bringing a deleted note back                        */
+/* -------------------------------------------------------------------------- */
+
+interface Removed {
+	doc: MarkdownHandle;
+	annotation: Annotation;
+	/** Whether the trash kept the note, which `doc` then revives. */
+	trashed: boolean;
+}
+
+// how long a rescan may take to index a written-back note again
+const REINDEX_POLL_MS = 100;
+const REINDEX_TRIES = 50;
+
+/** Rescans the note's source and waits until its id is in the index again. */
+async function reindexed(doc: MarkdownHandle): Promise<void> {
+	await reconcileSource(doc.source.id);
+	for (let i = 0; i < REINDEX_TRIES; i++) {
+		const rows = await select<{ id: string }>(
+			'SELECT id FROM documents WHERE id = ?1 AND deleted_at IS NULL',
+			[doc.id]
+		);
+		if (rows.length) return;
+		await new Promise((resolve) => setTimeout(resolve, REINDEX_POLL_MS));
+	}
+	throw new Error(`The restored note ${doc.relPath} wasn't indexed again`);
 }

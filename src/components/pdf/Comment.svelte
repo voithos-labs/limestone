@@ -1,4 +1,16 @@
 <script lang="ts">
+	/**
+	 * an annotation's comment, which is just its note's body.
+	 *
+	 * It's shown and edited with the same markdown editor notes use, so links and formatting work
+	 * the same. Comments far from the view stay plain text, since a pdf can hold hundreds of them
+	 * and each editor costs a little.
+	 */
+
+	/* -------------------------------------------------------------------------- */
+	/*                                  Imports                                   */
+	/* -------------------------------------------------------------------------- */
+
 	import { tick, untrack } from 'svelte';
 	import { Editor } from '@voithos-labs/aragonite/svelte';
 	import type { EditorInstance } from '@voithos-labs/aragonite';
@@ -9,11 +21,10 @@
 	import type { EditorPluginEntry } from '@voithos-labs/aragonite';
 	import { EDITOR_PLUGINS } from '../editor/editor-plugins';
 
-	/**
-	 * An annotation's comment, which is its note's body, in the editor notes use: read as Markdown
-	 * and written in place. Comments far from the view stay plain text, since each editor costs a
-	 * few milliseconds and a PDF can hold hundreds of comments.
-	 */
+	/* -------------------------------------------------------------------------- */
+	/*                                   Props                                    */
+	/* -------------------------------------------------------------------------- */
+
 	let {
 		text,
 		editing = false,
@@ -35,14 +46,17 @@
 		onDone?: () => void;
 	} = $props();
 
+	/* -------------------------------------------------------------------------- */
+	/*                               Near the view                                */
+	/* -------------------------------------------------------------------------- */
+
 	// how far outside the scroller's view a comment is read as Markdown
 	const NEAR = '800px 0px';
 
 	let el: HTMLElement | undefined = $state();
-	let instance: EditorInstance | undefined = $state();
+	// comments far from the view stay plain text, since each editor costs a few milliseconds and a
+	// PDF can hold hundreds of comments
 	let near = $state(false);
-	// a reload while typing mustn't replace what's being typed
-	const source = $derived(editing ? untrack(() => text) : text);
 
 	$effect(() => {
 		const node = el;
@@ -54,6 +68,14 @@
 		io.observe(node);
 		return () => io.disconnect();
 	});
+
+	/* -------------------------------------------------------------------------- */
+	/*                                  Editing                                   */
+	/* -------------------------------------------------------------------------- */
+
+	let instance: EditorInstance | undefined = $state();
+	// a reload while typing mustn't replace what's being typed
+	const source = $derived(editing ? untrack(() => text) : text);
 
 	$effect(() => {
 		const inst = instance;

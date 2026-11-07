@@ -10,7 +10,7 @@
 	import ProjectSetup from '../pages/ProjectSetup.svelte';
 	import LicensesPage from '../pages/LicensesPage.svelte';
 	import DocumentEditor from '../editor/DocumentEditor.svelte';
-	import PdfViewer from '../editor/PdfViewer.svelte';
+	import PdfViewer from '../pdf/PdfViewer.svelte';
 	import UndoHint from '../overlays/UndoHint.svelte';
 
 	let {
