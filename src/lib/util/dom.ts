@@ -65,7 +65,7 @@ export function highlightSnippet(raw: string): string {
 		.replace(/<\/mark>(\s+)<mark>/g, '$1');
 }
 
-/** The nearest ancestor that scrolls vertically, or null when it's the page itself. */
+/** the closest parent that scrolls up and down, or null when that's the page itself */
 export function scrollParent(el: Element): HTMLElement | null {
 	let node = el.parentElement;
 	while (node && node !== document.body && node !== document.documentElement) {

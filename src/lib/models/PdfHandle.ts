@@ -21,7 +21,7 @@ class PdfHandle extends Doc {
 		super(row, source);
 	}
 
-	/** Starts loading the PDF in pdf.js, reading only the parts it asks for. */
+	/** starts opening the pdf in pdf.js, which reads only the parts of the file it needs */
 	async open(): Promise<PDFDocumentLoadingTask> {
 		const task = await openPdf({
 			sourceId: this.source.id,

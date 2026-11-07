@@ -12,7 +12,7 @@ export interface Toast {
 	message: string;
 	action?: ToastAction;
 	variant: ToastVariant;
-	/** Text shown verbatim under the message, such as what was just copied. */
+	/** text shown as-is under the message, like the citation that was just copied */
 	code?: string;
 }
 

@@ -89,7 +89,7 @@
 		onRemoveTextTag?: (slug: string) => Promise<void>;
 		onEnter?: () => void;
 		onError?: ReportError;
-		/** The document type's own items, at the end of the meta row. */
+		/** extra items for the end of the meta row, like a pdf's edition chip */
 		extra?: Snippet;
 	} = $props();
 

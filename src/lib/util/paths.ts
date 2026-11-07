@@ -38,7 +38,7 @@ export function folderNameProblem(name: string, taken: boolean): string | null {
 	return segmentProblem(s) ?? (taken ? 'A folder with this name is already here.' : null);
 }
 
-/** `name` made a valid file name: each character a name can't hold becomes `fill`. */
+/** turns `name` into a valid file name, each character a file name can't have becoming `fill` */
 export function sanitizeSegment(name: string, fill = '-'): string {
 	let s = name.replace(ILLEGAL_CHARS_ALL, fill).trim();
 	const dot = s.indexOf('.');

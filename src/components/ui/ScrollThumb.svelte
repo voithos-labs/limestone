@@ -1,9 +1,10 @@
 <script module lang="ts">
-	/** How far in from the scroller's start the thumb's track begins, unless a caller says. */
+	/** where the thumb's track starts, in px from the scroller's top (a caller can pass its own) */
 	export const TRACK_START = 34;
 	const TRACK_END_INSET = 8;
 
-	/** The length of the track the thumb runs along, or 0 when there's nothing to scroll. */
+	/** how long the thumb's track is, 0 when there's nothing to scroll. the annotation ticks use
+	 * it to line up with the thumb */
 	export function trackLength(view: number, content: number, start = TRACK_START): number {
 		return content > view ? Math.max(0, view - start - TRACK_END_INSET) : 0;
 	}

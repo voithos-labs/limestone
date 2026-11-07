@@ -384,7 +384,8 @@ pub fn read_document_tags(
     })
 }
 
-/// a file's blake3 digest, streamed so a large pdf is never held whole; it names an edition exactly
+/// hashes a file with blake3 and returns the hash as hex.
+/// the pdf viewer uses this to tell a pdf's editions apart
 #[tauri::command]
 pub async fn file_digest(
     app: AppHandle,
@@ -398,7 +399,8 @@ pub async fn file_digest(
     })
 }
 
-/// a pdf's loose ink strokes, kept in its sidecar until a lasso groups them into an annotation
+/// returns a pdf's loose ink: the strokes drawn on it that aren't part of an annotation yet.
+/// kept in the pdf's sidecar file under "ink"
 #[tauri::command]
 pub fn read_pdf_ink(app: AppHandle, source_id: String, id: String) -> Result<Value, OpError> {
     let root = root_of(&app, &source_id)?;
@@ -408,6 +410,7 @@ pub fn read_pdf_ink(app: AppHandle, source_id: String, id: String) -> Result<Val
         .unwrap_or_else(|| Value::Array(Vec::new())))
 }
 
+/// saves a pdf's loose ink into its sidecar file, making the sidecar if the pdf has none yet
 #[tauri::command]
 pub fn save_pdf_ink(
     app: AppHandle,

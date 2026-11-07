@@ -380,7 +380,7 @@ class MarkdownHandle extends Doc {
 		this.tags = await Tag.fromSlugs(tags);
 	}
 
-	/** `properties` replaces those top-level keys, applied over what's on disk. */
+	/** pass `properties` to also update those frontmatter keys (pdf annotations save this way) */
 	async saveContent(
 		body: string,
 		opts: { rebuildFrontmatter?: boolean; properties?: Record<string, unknown> } = {}

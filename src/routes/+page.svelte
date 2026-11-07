@@ -179,7 +179,7 @@
 	const SCROLL_STEP = 48;
 	// `.editor` is aragonite's own class, not a promised API, but it earns its place: focus can
 	// rest on the editor root, which is neither a form field nor contenteditable, and without it
-	// arrow keys would scroll the page while the reader is only moving the caret. `#lib/editor-chords`
+	// arrow keys would scroll the page while the reader is only moving the caret. `#lib/shortcuts`
 	// depends on it too.
 	const EDITABLE =
 		'input, textarea, select, [contenteditable=""], [contenteditable="true"], .editor';

@@ -161,7 +161,8 @@ export function noteSelfWrite(sourceId: string, relPath: string, mtime: number):
 	for (const cb of selfWriteListeners) cb(sourceId, relPath);
 }
 
-/** The app's own writes, which `onFsChanged` and reconciling both leave out. */
+/** calls back when the app itself writes a file, which `onFsChanged` skips. citation cards use
+ * it to reread their annotation note */
 export function onSelfWrite(cb: (sourceId: string, relPath: string) => void): () => void {
 	selfWriteListeners.add(cb);
 	return () => selfWriteListeners.delete(cb);
