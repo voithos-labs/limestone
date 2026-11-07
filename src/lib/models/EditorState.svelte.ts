@@ -417,16 +417,24 @@ class EditorState {
 	// show something in the bookmark's transient surface, replacing whatever was there; if
 	// it's already a real tab, that tab is the place to be
 	showPreview(tab: TabState) {
-		const existing = this.tabs.find((t) => t.id === tab.id);
+		const shown = TabState.idOf(tab.content);
+		const existing = this.tabs.find((t) => TabState.idOf(t.content) === shown);
 		if (existing) return this.focusTab({ kind: 'tab', id: existing.id });
 		this.preview = tab;
 		this.focused = { kind: 'preview' };
 		this.focusOrder = [...this.focusOrder.filter((t) => t.kind !== 'preview'), { kind: 'preview' }];
 	}
 
-	openTab(tab: TabState) {
-		if (this.tabs.some((d) => d.id === tab.id)) return; // dupe
-		this.tabs.push(tab);
+	/**
+	 * A tab keeps its first content's id after it navigates on, so a new tab for that
+	 * content takes a fresh id, rather than being dropped as that tab's duplicate.
+	 */
+	openTab(tab: TabState): TabState {
+		const same = this.tabs.find((t) => t.id === tab.id);
+		if (same && TabState.idOf(same.content) === TabState.idOf(tab.content)) return same;
+		const added = same ? new TabState(tab.content, tab.state, tab.pinned, uuidv4()) : tab;
+		this.tabs.push(added);
+		return added;
 	}
 
 	insertTab(tab: TabState, index = this.tabs.length) {
@@ -441,15 +449,15 @@ class EditorState {
 	// `state` is merged into the tab's own, e.g. a heading for the editor to jump to once it opens
 	openDoc(doc: AnyDoc, state: Record<string, any> = {}) {
 		const existing = this.tabs.find((t) => TabState.idOf(t.content) === doc.id);
-		const tab = existing ?? TabState.forDoc(doc);
+		const tab = existing ?? this.openTab(TabState.forDoc(doc));
 		Object.assign(tab.state, state);
-		if (!existing) this.openTab(tab);
 		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	openView(view: View) {
-		this.openTab(TabState.forView(view));
-		this.focusTab({ kind: 'tab', id: view.id });
+		const existing = this.tabs.find((t) => TabState.idOf(t.content) === view.id);
+		const tab = existing ?? this.openTab(TabState.forView(view));
+		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	// a tab navigates like a browser tab: it keeps its slot and its identity, remembering where it
@@ -521,14 +529,13 @@ class EditorState {
 	// the landing page; one of it, focused if it's already open
 	openHome() {
 		const existing = this.tabs.find((t) => t.content.type === 'home');
-		const tab = existing ?? TabState.forHome();
-		if (!existing) this.openTab(tab);
+		const tab = existing ?? this.openTab(TabState.forHome());
 		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	openLicenses() {
-		this.openTab(TabState.forLicenses());
-		this.focusTab({ kind: 'tab', id: 'licenses' });
+		const tab = this.openTab(TabState.forLicenses());
+		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	focusAdjacentTab(delta: number) {

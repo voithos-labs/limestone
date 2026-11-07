@@ -57,8 +57,7 @@
 		if (tab) {
 			editor.replaceTab(tab.id, next);
 		} else {
-			editor.openTab(next);
-			editor.focusTab({ kind: 'tab', id: next.id });
+			editor.focusTab({ kind: 'tab', id: editor.openTab(next).id });
 		}
 	}
 

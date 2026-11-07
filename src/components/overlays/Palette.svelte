@@ -89,8 +89,7 @@
 			else if (next.content.type === 'view') editor.showViewInTab(tab, next.content.view);
 			return;
 		}
-		editor.openTab(next);
-		editor.focusTab({ kind: 'tab', id: next.id });
+		editor.focusTab({ kind: 'tab', id: editor.openTab(next).id });
 	}
 
 	async function newDoc(newTab: boolean) {
