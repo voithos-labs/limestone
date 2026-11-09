@@ -66,6 +66,20 @@ pub fn write_meta(dir: &Path, meta: &DocMeta) -> io::Result<()> {
     atomic_write(&dir.join(META_FILE), &serde_json::to_vec(meta)?)
 }
 
+pub fn repath_meta(source_path: &Path, doc_id: &str, rel_path: &str) -> io::Result<()> {
+    let dir = doc_dir(source_path, doc_id);
+    match read_meta(&dir) {
+        Some(meta) if meta.rel_path != rel_path => write_meta(
+            &dir,
+            &DocMeta {
+                rel_path: rel_path.to_string(),
+                ..meta
+            },
+        ),
+        _ => Ok(()),
+    }
+}
+
 pub fn move_dir(from: &Path, to: &Path) -> io::Result<()> {
     if let Some(parent) = to.parent() {
         fs::create_dir_all(parent)?;
@@ -172,6 +186,27 @@ mod tests {
         };
         write_meta(&dir, &meta).unwrap();
         assert_eq!(read_meta(&dir), Some(meta));
+
+        let root = dir.join("root");
+        let keyed = doc_dir(&root, "doc-1");
+        repath_meta(&root, "doc-1", "b.md").unwrap();
+        assert_eq!(read_meta(&keyed), None);
+        write_meta(
+            &keyed,
+            &DocMeta {
+                rel_path: "a.md".into(),
+                created_at: 5,
+            },
+        )
+        .unwrap();
+        repath_meta(&root, "doc-1", "b.md").unwrap();
+        assert_eq!(
+            read_meta(&keyed),
+            Some(DocMeta {
+                rel_path: "b.md".into(),
+                created_at: 5,
+            })
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

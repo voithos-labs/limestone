@@ -35,7 +35,7 @@
 
 use crate::services::body::fold_tag;
 use crate::services::frontmatter;
-use crate::services::fs::{atomic_write, clean_location, docs_root, mtime_ms, read_meta};
+use crate::services::fs::{atomic_write, clean_location, docs_root, mtime_ms, read_meta, repath_meta};
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -791,6 +791,9 @@ pub async fn apply_plan(
         if wrote {
             sync_tags(&mut tx, &doc.id, &fm_tags(fm)).await?;
             sync_folders(&mut tx, source_id, &doc.id, &doc.rel_path).await?;
+            if doc.moved {
+                let _ = repath_meta(source_path, &doc.id, &doc.rel_path);
+            }
         }
     }
 

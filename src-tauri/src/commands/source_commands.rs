@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
-use crate::services::fs::{clean_location, resolve_in_source};
+use crate::services::fs::{clean_location, repath_meta, resolve_in_source};
 use crate::services::{self, dot_get, JsonSettingsStore, Source, SourceRecord, Sources};
 use crate::AppData;
 
@@ -530,6 +530,11 @@ pub async fn move_folder(
         .collect();
     if let Err(e) = repath_rows(&app_data.db, &source_id, &moved).await {
         eprintln!("folder move repath failed: {e}");
+    }
+    for (id, _, new_rel) in &moved {
+        if let Err(e) = repath_meta(&root, id, new_rel) {
+            eprintln!("meta repath failed: {e}");
+        }
     }
 
     let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;

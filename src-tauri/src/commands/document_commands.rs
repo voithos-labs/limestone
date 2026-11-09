@@ -3,7 +3,7 @@ use crate::commands::source_commands::{doc_writes_meta, source_root};
 use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
 use crate::services::fs::{
-    atomic_write, doc_dir, is_taken, move_file, mtime_ms, resolve_in_source,
+    atomic_write, doc_dir, is_taken, move_file, mtime_ms, repath_meta, resolve_in_source,
     validate_file_name,
 };
 use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
@@ -268,7 +268,7 @@ pub async fn restore_document(
     }
     index_body(&mut tx, &source_id, &id, &rel_path, fm.as_ref(), body).await?;
     tx.commit().await.map_err(OpError::from)?;
-    Ok(())
+    repath_meta(&root, &id, &rel_path).map_err(OpError::from)
 }
 
 #[tauri::command]
@@ -406,18 +406,22 @@ pub async fn rename_document(
         .and_then(|s| s.to_str())
         .unwrap_or(&new_name);
 
-    sqlx::query(
+    let doc_id: Option<String> = sqlx::query_scalar(
         "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3
-         WHERE source_id = ?4 AND rel_path = ?5 AND deleted_at IS NULL",
+         WHERE source_id = ?4 AND rel_path = ?5 AND deleted_at IS NULL
+         RETURNING id",
     )
     .bind(&new_rel)
     .bind(title)
     .bind(mtime(&new_full))
     .bind(&source_id)
     .bind(&rel_path)
-    .execute(&app_data.db)
+    .fetch_optional(&app_data.db)
     .await
     .map_err(OpError::from)?;
+    if let Some(doc_id) = doc_id {
+        repath_meta(&root, &doc_id, &new_rel).map_err(OpError::from)?;
+    }
 
     Ok(new_rel)
 }
@@ -525,7 +529,9 @@ pub async fn move_document(
         if dest_source_id != source_id {
             let _ = ensure_writable(&dest_source);
         }
-        if let Err(e) = move_doc_dir(&root, &dest_source, &doc_id) {
+        if let Err(e) = move_doc_dir(&root, &dest_source, &doc_id)
+            .and_then(|_| repath_meta(&dest_source, &doc_id, &new_rel_path))
+        {
             eprintln!("history move failed: {e}");
         }
         let mut assets: Vec<(String, bool)> = Vec::new();
