@@ -337,10 +337,16 @@ class DocHandle {
 		};
 	}
 
-	private async patchFor(rebuild: boolean): Promise<Record<string, unknown> | null> {
+	private async patchFor(rebuild: boolean, body: string): Promise<Record<string, unknown> | null> {
 		await this.refreshMeta();
 		if (!this.writesMeta || (this.frontmatterError && !rebuild)) return null;
 		const patch = rebuild || !this.hasFile ? this.ownedKeys() : {};
+		if (rebuild && Array.isArray(patch.tags)) {
+			const inText = new Set((await invoke<string[]>('body_tags', { body })).map(tagSlug));
+			const tags = patch.tags.filter((t: string) => !inText.has(t));
+			if (tags.length) patch.tags = tags;
+			else delete patch.tags;
+		}
 		if (this.fileDates.updated) patch.updated_at = this.updatedAt;
 		return Object.keys(patch).length ? patch : null;
 	}
@@ -417,7 +423,7 @@ class DocHandle {
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 
-		await this.adoptFrontmatter(frontmatter);
+		await this.adoptFrontmatter(frontmatter, !!error);
 
 		// update accessed_at
 		const now = Date.now();
@@ -471,12 +477,16 @@ class DocHandle {
 		}
 		const { frontmatter, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
-		await this.adoptFrontmatter(frontmatter);
+		await this.adoptFrontmatter(frontmatter, !!error);
 	}
 
-	private async adoptFrontmatter(frontmatter: DocumentFrontmatter | null): Promise<void> {
+	private async adoptFrontmatter(
+		frontmatter: DocumentFrontmatter | null,
+		broken: boolean
+	): Promise<void> {
 		if (!frontmatter) {
 			this.fileDates = { created: false, updated: false };
+			if (!broken) this.tags = [];
 			return;
 		}
 		const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
@@ -495,7 +505,7 @@ class DocHandle {
 			sourceId: this.source.id,
 			relPath: this._relPath,
 			body,
-			patch: await this.patchFor(rebuild),
+			patch: await this.patchFor(rebuild, body),
 			rebuild,
 			updatedAt: this.updatedAt.getTime(),
 			create: !this.hasFile
@@ -534,7 +544,7 @@ class DocHandle {
 			id: this.id,
 			relPath,
 			body,
-			patch: await this.patchFor(true),
+			patch: await this.patchFor(true, body),
 			updatedAt: this.updatedAt.getTime()
 		});
 		this.deletedAt = undefined;

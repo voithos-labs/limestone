@@ -36,7 +36,7 @@
 use crate::services::body::fold_tag;
 use crate::services::frontmatter::{self, Head};
 use crate::services::fs::{
-    atomic_write, clean_location, docs_root, mtime_ms, read_meta, repath_meta,
+    atomic_write, clean_location, docs_root, mtime_ms, newest_change_ms, read_meta, repath_meta,
 };
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
@@ -1107,23 +1107,45 @@ async fn seed_from_meta(
         if Uuid::parse_str(&id).is_err() {
             continue;
         }
-        let Some(meta) = read_meta(&entry.path()).filter(|m| present.contains(m.rel_path.as_str()))
-        else {
+        let Some(meta) = read_meta(&entry.path()) else {
             continue;
         };
-        let inserted = sqlx::query(
-            "INSERT OR IGNORE INTO documents (id, source_id, rel_path, title, mtime, created_at)
-             VALUES (?1, ?2, ?3, '', 0, ?4)",
+        let live = present.contains(meta.rel_path.as_str())
+            && sqlx::query(
+                "INSERT OR IGNORE INTO documents (id, source_id, rel_path, title, mtime, created_at)
+                 VALUES (?1, ?2, ?3, '', 0, ?4)",
+            )
+            .bind(&id)
+            .bind(source_id)
+            .bind(&meta.rel_path)
+            .bind(meta.created_at)
+            .execute(db)
+            .await?
+            .rows_affected()
+                > 0;
+        if live {
+            rows.push((id, meta.rel_path, 0, false));
+            continue;
+        }
+        let title = Path::new(&meta.rel_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("oh shit");
+        let gone = sqlx::query(
+            "INSERT OR IGNORE INTO documents (id, source_id, rel_path, title, created_at, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )
         .bind(&id)
         .bind(source_id)
         .bind(&meta.rel_path)
+        .bind(title)
         .bind(meta.created_at)
+        .bind(newest_change_ms(&entry.path()))
         .execute(db)
         .await?
         .rows_affected();
-        if inserted > 0 {
-            rows.push((id, meta.rel_path, 0, false));
+        if gone > 0 {
+            rows.push((id, meta.rel_path, 0, true));
         }
     }
     Ok(rows)

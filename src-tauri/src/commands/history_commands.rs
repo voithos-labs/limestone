@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::commands::source_commands::find_source;
 use crate::services::fs::{
-    atomic_write, doc_dir, docs_root, move_dir, write_meta, DocMeta, META_FILE,
+    atomic_write, doc_dir, docs_root, move_dir, newest_change_ms, write_meta, DocMeta, META_FILE,
 };
 use crate::services::Source;
 use crate::AppData;
@@ -157,18 +157,6 @@ pub(crate) struct HistoryDeleted {
     pub doc_id: String,
     pub source_id: String,
     pub deleted_at: i64,
-}
-
-fn newest_change_ms(dir: &Path) -> i64 {
-    fs::read_dir(dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| e.metadata().ok()?.modified().ok())
-        .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as i64)
-        .max()
-        .unwrap_or(0)
 }
 
 fn retention_days(app: &AppHandle) -> i64 {

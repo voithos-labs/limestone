@@ -117,6 +117,17 @@ pub async fn write_document(
     let (head, body) = frontmatter::head(&contents);
 
     let mut tx = app_data.db.begin().await.map_err(OpError::from)?;
+    sqlx::query(
+        "UPDATE documents SET deleted_at = NULL
+         WHERE deleted_at IS NOT NULL
+           AND id = (SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2
+                     ORDER BY deleted_at IS NULL DESC, deleted_at DESC LIMIT 1)",
+    )
+    .bind(&source_id)
+    .bind(&rel_path)
+    .execute(&mut *tx)
+    .await
+    .map_err(OpError::from)?;
 
     if let Some(fm) = head.value() {
         let properties = fm_properties(fm);
@@ -336,6 +347,11 @@ pub fn read_document_tags(
         frontmatter: frontmatter::tags(fm.as_ref()),
         body: tag_mentions(body),
     })
+}
+
+#[tauri::command]
+pub fn body_tags(body: String) -> Vec<String> {
+    tag_mentions(&body)
 }
 
 #[tauri::command]

@@ -66,6 +66,18 @@ pub fn write_meta(dir: &Path, meta: &DocMeta) -> io::Result<()> {
     atomic_write(&dir.join(META_FILE), &serde_json::to_vec(meta)?)
 }
 
+pub fn newest_change_ms(dir: &Path) -> i64 {
+    fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.metadata().ok()?.modified().ok())
+        .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .max()
+        .unwrap_or(0)
+}
+
 pub fn repath_meta(source_path: &Path, doc_id: &str, rel_path: &str) -> io::Result<()> {
     let dir = doc_dir(source_path, doc_id);
     match read_meta(&dir) {
