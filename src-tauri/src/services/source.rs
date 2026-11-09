@@ -1060,8 +1060,11 @@ pub async fn index_document(
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("Untitled");
-    let properties = (!head.broken())
-        .then(|| head.value().map(fm_properties).unwrap_or_else(|| "{}".to_string()));
+    let properties = (!head.broken()).then(|| {
+        head.value()
+            .map(fm_properties)
+            .unwrap_or_else(|| "{}".to_string())
+    });
     let mtime = fs_mtime_ms(&full);
 
     let mut tx = db.begin().await?;

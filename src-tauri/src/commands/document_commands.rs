@@ -2,11 +2,11 @@ use crate::commands::history_commands::{ensure_writable, move_doc_dir};
 use crate::commands::source_commands::{doc_writes_meta, source_root};
 use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
+use crate::services::frontmatter::Head;
 use crate::services::fs::{
     atomic_write, doc_dir, is_taken, move_file, mtime_ms, repath_meta, resolve_in_source,
     validate_file_name,
 };
-use crate::services::frontmatter::Head;
 use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
 use crate::AppData;
 use serde::Serialize;
@@ -221,9 +221,14 @@ pub async fn restore_document(
     if full_path.exists() {
         return Err(OpError::named("already_exists", &rel_path));
     }
-    let contents =
-        frontmatter::compose(None, &body, patch.as_ref().and_then(Value::as_object), &[], false)
-            .map_err(OpError::from)?;
+    let contents = frontmatter::compose(
+        None,
+        &body,
+        patch.as_ref().and_then(Value::as_object),
+        &[],
+        false,
+    )
+    .map_err(OpError::from)?;
     atomic_write(&full_path, contents.as_bytes()).map_err(OpError::from)?;
 
     let mtime = mtime(&full_path);

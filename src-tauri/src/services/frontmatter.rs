@@ -63,7 +63,10 @@ pub fn rewrite_document(
     let next = match mutate_fm {
         None => compose(Some(&content), &body, None, &[], false)?,
         Some(mutate) => {
-            let before = head.map(|(_, block)| parse_block(block)).transpose()?.unwrap_or_default();
+            let before = head
+                .map(|(_, block)| parse_block(block))
+                .transpose()?
+                .unwrap_or_default();
             let mut after = Value::Object(before.clone());
             mutate(&mut after);
             let after = after.as_object().cloned().unwrap_or_default();
@@ -205,7 +208,9 @@ pub fn splice_block(block: &str, set: &Map<String, Value>, remove: &[String]) ->
         .enumerate()
         .filter_map(|(i, l)| key_of(l).map(|k| (k, i)))
         .collect();
-    let mut fresh = set.iter().filter(|(k, _)| !keys.iter().any(|(bk, _)| bk == k));
+    let mut fresh = set
+        .iter()
+        .filter(|(k, _)| !keys.iter().any(|(bk, _)| bk == k));
     let mut out = String::with_capacity(block.len() + 128);
     let mut cursor = 0;
     for (n, (key, start)) in keys.iter().enumerate() {
@@ -600,7 +605,11 @@ pub fn rename_tag(fm: &mut Value, from: &str, to: &str) {
     let before = tags(Some(fm));
     let mut after: Vec<String> = Vec::with_capacity(before.len());
     for tag in &before {
-        let next = if same_tag(tag, from) { to.to_string() } else { tag.clone() };
+        let next = if same_tag(tag, from) {
+            to.to_string()
+        } else {
+            tag.clone()
+        };
         if !after.iter().any(|t| same_tag(t, &next)) {
             after.push(next);
         }
@@ -612,7 +621,11 @@ pub fn rename_tag(fm: &mut Value, from: &str, to: &str) {
 
 pub fn remove_tag(fm: &mut Value, slug: &str) {
     let before = tags(Some(fm));
-    let after: Vec<String> = before.iter().filter(|t| !same_tag(t, slug)).cloned().collect();
+    let after: Vec<String> = before
+        .iter()
+        .filter(|t| !same_tag(t, slug))
+        .cloned()
+        .collect();
     if after.len() != before.len() {
         set_tags(fm, &after);
     }
@@ -625,7 +638,8 @@ mod tests {
 
     #[test]
     fn splice_replaces_in_place_fills_removed_slots_and_appends_the_rest() {
-        let block = "# top\nid: old\ntags:\n  - a\n# about custom\ncustom: value   # trailing\n\nz: 1\n";
+        let block =
+            "# top\nid: old\ntags:\n  - a\n# about custom\ncustom: value   # trailing\n\nz: 1\n";
         let mut set = Map::new();
         set.insert("tags".into(), json!(["a", "b"]));
         set.insert("views".into(), json!({ "todo": { "due": "2026-01-01" } }));
@@ -648,7 +662,10 @@ mod tests {
     #[test]
     fn a_bom_is_read_through_and_kept_in_front() {
         let raw = "\u{feff}---\ntags: [a]\n---\nbody\n";
-        assert_eq!(split_content(raw), (Some(json!({ "tags": ["a"] })), "body\n"));
+        assert_eq!(
+            split_content(raw),
+            (Some(json!({ "tags": ["a"] })), "body\n")
+        );
         let mut set = Map::new();
         set.insert("tags".into(), json!(["b"]));
         assert_eq!(
@@ -684,14 +701,20 @@ mod tests {
             compose(Some(raw), "new", None, &[], false).unwrap(),
             "---\r\nbad: [unclosed\r\n---\r\nnew"
         );
-        assert_eq!(compose(Some("plain"), "new", None, &[], false).unwrap(), "new");
+        assert_eq!(
+            compose(Some("plain"), "new", None, &[], false).unwrap(),
+            "new"
+        );
         assert_eq!(compose(None, "new", None, &[], false).unwrap(), "new");
     }
 
     #[test]
     fn compose_adds_a_block_only_for_a_nonempty_patch() {
         let mut p = Map::new();
-        assert_eq!(compose(None, "body\n", Some(&p), &[], false).unwrap(), "body\n");
+        assert_eq!(
+            compose(None, "body\n", Some(&p), &[], false).unwrap(),
+            "body\n"
+        );
         p.insert("tags".into(), json!(["todo"]));
         assert_eq!(
             compose(None, "body\n", Some(&p), &[], false).unwrap(),
@@ -724,7 +747,10 @@ mod tests {
             compose(Some(raw), "body\n", Some(&p), &[], true).unwrap(),
             "---\ntags:\n  - a\n---\nbody\n"
         );
-        assert_eq!(compose(Some(raw), "body\n", None, &[], true).unwrap(), "body\n");
+        assert_eq!(
+            compose(Some(raw), "body\n", None, &[], true).unwrap(),
+            "body\n"
+        );
     }
 
     #[test]
@@ -732,9 +758,15 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ls-splice-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("n.md");
-        fs::write(&path, "---\n# keep me\ncustom: 'quoted'\ntags:\n  - a\n---\nhello\n").unwrap();
-        rewrite_frontmatter(&path, |fm| set_view_field(fm, "todo", "due", json!("2026-01-01")))
-            .unwrap();
+        fs::write(
+            &path,
+            "---\n# keep me\ncustom: 'quoted'\ntags:\n  - a\n---\nhello\n",
+        )
+        .unwrap();
+        rewrite_frontmatter(&path, |fm| {
+            set_view_field(fm, "todo", "due", json!("2026-01-01"))
+        })
+        .unwrap();
         assert_eq!(
             fs::read_to_string(&path).unwrap(),
             "---\n# keep me\ncustom: 'quoted'\ntags:\n  - a\nviews:\n  todo:\n    due: 2026-01-01\n---\nhello\n"

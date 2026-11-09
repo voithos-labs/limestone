@@ -63,7 +63,11 @@ pub(crate) fn move_doc_dir(old_root: &Path, new_root: &Path, doc_id: &str) -> st
 }
 
 #[tauri::command]
-pub fn history_load(app: AppHandle, source_id: String, doc_id: String) -> Result<Vec<String>, String> {
+pub fn history_load(
+    app: AppHandle,
+    source_id: String,
+    doc_id: String,
+) -> Result<Vec<String>, String> {
     let dir = dir_of(&source_root(&app, &source_id)?, &doc_id)?;
     let entries = match fs::read_dir(&dir) {
         Ok(entries) => entries,
@@ -231,7 +235,11 @@ pub(crate) async fn purge_row(
 const LEGACY_PATH_KEY_NAMESPACE: Uuid = Uuid::from_u128(0x6c696d6573746f6e652d686973746f72);
 
 fn legacy_path_key(rel_path: &str) -> String {
-    Uuid::new_v5(&LEGACY_PATH_KEY_NAMESPACE, rel_path.to_lowercase().as_bytes()).to_string()
+    Uuid::new_v5(
+        &LEGACY_PATH_KEY_NAMESPACE,
+        rel_path.to_lowercase().as_bytes(),
+    )
+    .to_string()
 }
 
 fn migrate_layout(root: &Path, rows: &[(String, String, i64)]) {
@@ -258,19 +266,18 @@ fn migrate_layout(root: &Path, rows: &[(String, String, i64)]) {
 
 pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, source: &Source) {
     let source_id = source.id.to_string();
-    let rows: Vec<(String, String, i64)> = match sqlx::query_as(
-        "SELECT id, rel_path, created_at FROM documents WHERE source_id = ?1",
-    )
-    .bind(&source_id)
-    .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(e) => {
-            eprintln!("history sweep failed: {e}");
-            return;
-        }
-    };
+    let rows: Vec<(String, String, i64)> =
+        match sqlx::query_as("SELECT id, rel_path, created_at FROM documents WHERE source_id = ?1")
+            .bind(&source_id)
+            .fetch_all(pool)
+            .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                eprintln!("history sweep failed: {e}");
+                return;
+            }
+        };
     migrate_layout(&source.path, &rows);
     let Ok(entries) = fs::read_dir(docs_root(&source.path)) else {
         return;
@@ -361,12 +368,21 @@ mod tests {
         migrate_layout(&root, &rows);
 
         assert!(!legacy.exists());
-        assert_eq!(fs::read(doc_dir(&root, "doc-1").join("h1")).unwrap(), b"one");
-        assert_eq!(fs::read(doc_dir(&root, "doc-2").join("h2")).unwrap(), b"two");
+        assert_eq!(
+            fs::read(doc_dir(&root, "doc-1").join("h1")).unwrap(),
+            b"one"
+        );
+        assert_eq!(
+            fs::read(doc_dir(&root, "doc-2").join("h2")).unwrap(),
+            b"two"
+        );
         assert!(!root.join(".limestone/docs/by-path").exists());
 
         migrate_layout(&root, &rows);
-        assert_eq!(fs::read(doc_dir(&root, "doc-1").join("h1")).unwrap(), b"one");
+        assert_eq!(
+            fs::read(doc_dir(&root, "doc-1").join("h1")).unwrap(),
+            b"one"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 }
