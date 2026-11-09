@@ -19,6 +19,34 @@ pub fn date_ms(s: &str) -> Option<i64> {
     None
 }
 
+pub fn tags(fm: Option<&Value>) -> Vec<String> {
+    let value = fm.and_then(|f| f.get("tags").or_else(|| f.get("tag")));
+    let items: Vec<&str> = match value {
+        Some(Value::Array(items)) => items.iter().filter_map(Value::as_str).collect(),
+        Some(Value::String(s)) => s.split(|c: char| c == ',' || c.is_whitespace()).collect(),
+        _ => Vec::new(),
+    };
+    items
+        .into_iter()
+        .map(|t| t.trim_start_matches('#'))
+        .filter(|t| !t.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+pub fn set_tags(fm: &mut Value, tags: &[String]) {
+    let Some(root) = fm.as_object_mut() else {
+        return;
+    };
+    root.shift_remove("tag");
+    if tags.is_empty() {
+        root.shift_remove("tags");
+    } else {
+        let list = tags.iter().map(|t| Value::String(t.clone())).collect();
+        root.insert("tags".to_string(), Value::Array(list));
+    }
+}
+
 /// It's in the name, rewrite frontmatter, preserve contents
 pub fn rewrite_frontmatter(path: &Path, mutate: impl Fn(&mut Value)) -> io::Result<()> {
     rewrite_document(path, Some(&mutate), &|_| None)
@@ -166,6 +194,7 @@ pub fn splice_block(block: &str, set: &Map<String, Value>, remove: &[String]) ->
         .enumerate()
         .filter_map(|(i, l)| key_of(l).map(|k| (k, i)))
         .collect();
+    let mut fresh = set.iter().filter(|(k, _)| !keys.iter().any(|(bk, _)| bk == k));
     let mut out = String::with_capacity(block.len() + 128);
     let mut cursor = 0;
     for (n, (key, start)) in keys.iter().enumerate() {
@@ -176,7 +205,11 @@ pub fn splice_block(block: &str, set: &Map<String, Value>, remove: &[String]) ->
         out.extend(lines[cursor..*start].iter().copied());
         match set.get(*key) {
             Some(value) => emit_entry(&mut out, key, value, nl),
-            None if remove.iter().any(|r| r == key) => {}
+            None if remove.iter().any(|r| r == key) => {
+                if let Some((k, v)) = fresh.next() {
+                    emit_entry(&mut out, k, v, nl);
+                }
+            }
             None => out.extend(lines[*start..end].iter().copied()),
         }
         cursor = end;
@@ -185,10 +218,8 @@ pub fn splice_block(block: &str, set: &Map<String, Value>, remove: &[String]) ->
     if !out.is_empty() && !out.ends_with('\n') {
         out.push_str(nl);
     }
-    for (key, value) in set {
-        if !keys.iter().any(|(k, _)| k == key) {
-            emit_entry(&mut out, key, value, nl);
-        }
+    for (key, value) in fresh {
+        emit_entry(&mut out, key, value, nl);
     }
     out
 }
@@ -543,36 +574,24 @@ pub fn remove_view_field(fm: &mut Value, slug: &str, field: &str) {
 }
 
 pub fn rename_tag(fm: &mut Value, from: &str, to: &str) {
-    let Some(arr) = fm
-        .as_object_mut()
-        .and_then(|r| r.get_mut("tags"))
-        .and_then(Value::as_array_mut)
-    else {
-        return;
-    };
-    let mut out: Vec<Value> = Vec::with_capacity(arr.len());
-    for item in arr.iter() {
-        let next = match item.as_str() {
-            Some(s) if same_tag(s, from) => Value::String(to.to_string()),
-            _ => item.clone(),
-        };
-        if !out.contains(&next) {
-            out.push(next);
+    let before = tags(Some(fm));
+    let mut after: Vec<String> = Vec::with_capacity(before.len());
+    for tag in &before {
+        let next = if same_tag(tag, from) { to.to_string() } else { tag.clone() };
+        if !after.iter().any(|t| same_tag(t, &next)) {
+            after.push(next);
         }
     }
-    *arr = out;
+    if after != before {
+        set_tags(fm, &after);
+    }
 }
 
 pub fn remove_tag(fm: &mut Value, slug: &str) {
-    let Some(root) = fm.as_object_mut() else {
-        return;
-    };
-    let Some(arr) = root.get_mut("tags").and_then(Value::as_array_mut) else {
-        return;
-    };
-    arr.retain(|v| !v.as_str().is_some_and(|s| same_tag(s, slug)));
-    if arr.is_empty() {
-        root.shift_remove("tags");
+    let before = tags(Some(fm));
+    let after: Vec<String> = before.iter().filter(|t| !same_tag(t, slug)).cloned().collect();
+    if after.len() != before.len() {
+        set_tags(fm, &after);
     }
 }
 
@@ -582,16 +601,26 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn splice_replaces_in_place_appends_new_keys_and_keeps_the_rest() {
+    fn splice_replaces_in_place_fills_removed_slots_and_appends_the_rest() {
         let block = "# top\nid: old\ntags:\n  - a\n# about custom\ncustom: value   # trailing\n\nz: 1\n";
         let mut set = Map::new();
         set.insert("tags".into(), json!(["a", "b"]));
         set.insert("views".into(), json!({ "todo": { "due": "2026-01-01" } }));
+        set.insert("extra".into(), json!(1));
         let out = splice_block(block, &set, &["id".to_string()]);
         assert_eq!(
             out,
-            "# top\ntags:\n  - a\n  - b\n# about custom\ncustom: value   # trailing\n\nz: 1\nviews:\n  todo:\n    due: 2026-01-01\n"
+            "# top\nviews:\n  todo:\n    due: 2026-01-01\ntags:\n  - a\n  - b\n# about custom\ncustom: value   # trailing\n\nz: 1\nextra: 1\n"
         );
+    }
+
+    #[test]
+    fn a_renamed_key_keeps_its_line() {
+        let block = "title: t\ntag: a, b\nz: 1\n";
+        let mut set = Map::new();
+        set.insert("tags".into(), json!(["c", "b"]));
+        let out = splice_block(block, &set, &["tag".to_string()]);
+        assert_eq!(out, "title: t\ntags:\n  - c\n  - b\nz: 1\n");
     }
 
     #[test]
@@ -892,5 +921,27 @@ mod tests {
         assert_eq!(v, json!({ "tags": ["task", "keep"] }));
         remove_tag(&mut v, "TASK");
         assert_eq!(v, json!({ "tags": ["keep"] }));
+    }
+
+    #[test]
+    fn tags_read_every_obsidian_form() {
+        assert_eq!(tags(Some(&json!({ "tags": ["a", "#b", 3] }))), ["a", "b"]);
+        assert_eq!(tags(Some(&json!({ "tags": "a, b  c" }))), ["a", "b", "c"]);
+        assert_eq!(tags(Some(&json!({ "tag": "solo" }))), ["solo"]);
+        assert_eq!(tags(Some(&json!({ "tags": ["x"], "tag": "y" }))), ["x"]);
+        assert!(tags(Some(&json!({ "tags": null }))).is_empty());
+        assert!(tags(None).is_empty());
+    }
+
+    #[test]
+    fn tag_rewrites_normalize_only_when_they_change_something() {
+        let mut v = json!({ "tag": "a, b", "title": "t" });
+        rename_tag(&mut v, "zzz", "q");
+        assert_eq!(v, json!({ "tag": "a, b", "title": "t" }));
+        rename_tag(&mut v, "a", "c");
+        assert_eq!(v, json!({ "title": "t", "tags": ["c", "b"] }));
+        remove_tag(&mut v, "b");
+        remove_tag(&mut v, "c");
+        assert_eq!(v, json!({ "title": "t" }));
     }
 }

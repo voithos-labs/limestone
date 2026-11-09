@@ -18,17 +18,6 @@ fn mtime(path: &Path) -> i64 {
     mtime_ms(path).unwrap_or(0)
 }
 
-fn fm_tags(fm: Option<&Value>) -> Vec<String> {
-    fm.and_then(|fm| fm.get("tags"))
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 async fn sync_file_tags(
     db: &SqlitePool,
     id: &str,
@@ -188,7 +177,7 @@ async fn index_body(
     fm: Option<&Value>,
     body: &str,
 ) -> Result<(), OpError> {
-    let mut tags = fm_tags(fm);
+    let mut tags = frontmatter::tags(fm);
     merge_body_tags(&mut tags, body);
     sync_tags(tx, doc_id, &tags).await.map_err(OpError::from)?;
     sync_folders(tx, source_id, doc_id, rel_path)
@@ -313,25 +302,8 @@ pub async fn set_document_tags(
 
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
-    let fm_tags = tags.clone();
-    frontmatter::rewrite_frontmatter(&full_path, move |fm| {
-        if let Some(obj) = fm.as_object_mut() {
-            if fm_tags.is_empty() {
-                obj.shift_remove("tags");
-            } else {
-                obj.insert(
-                    "tags".to_string(),
-                    serde_json::Value::Array(
-                        fm_tags
-                            .iter()
-                            .map(|t| serde_json::Value::String(t.clone()))
-                            .collect(),
-                    ),
-                );
-            }
-        }
-    })
-    .map_err(OpError::from)?;
+    frontmatter::rewrite_frontmatter(&full_path, |fm| frontmatter::set_tags(fm, &tags))
+        .map_err(OpError::from)?;
 
     sync_file_tags(&app_data.db, &id, &full_path, tags).await
 }
@@ -353,7 +325,7 @@ pub fn read_document_tags(
     let contents = std::fs::read_to_string(&full_path).map_err(OpError::from)?;
     let (fm, body) = frontmatter::split_content(&contents);
     Ok(DocumentTags {
-        frontmatter: fm_tags(fm.as_ref()),
+        frontmatter: frontmatter::tags(fm.as_ref()),
         body: tag_mentions(body),
     })
 }
@@ -372,7 +344,7 @@ pub async fn strip_document_tag(
     frontmatter::rewrite_document(&full_path, None, &|body| rewrite_tags(body, &slug, None))
         .map_err(OpError::from)?;
     let contents = std::fs::read_to_string(&full_path).map_err(OpError::from)?;
-    let tags = fm_tags(frontmatter::split_content(&contents).0.as_ref());
+    let tags = frontmatter::tags(frontmatter::split_content(&contents).0.as_ref());
     sync_file_tags(&app_data.db, &id, &full_path, tags).await
 }
 

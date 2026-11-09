@@ -355,6 +355,18 @@ class DocHandle {
 		return match ? match[2] : raw;
 	}
 
+	private static readTags(value: unknown): string[] {
+		const items = Array.isArray(value)
+			? value
+			: typeof value === 'string'
+				? value.split(/[\s,]+/)
+				: [];
+		return items
+			.filter((t): t is string => typeof t === 'string')
+			.map((t) => t.replace(/^#/, ''))
+			.filter(Boolean);
+	}
+
 	static deserialize(raw: string): {
 		frontmatter: DocumentFrontmatter | null;
 		body: string;
@@ -370,10 +382,11 @@ class DocHandle {
 		} catch (e) {
 			return { frontmatter: null, body: raw, error: yamlErrorText(e) };
 		}
+		const { tag, tags, ...rest } = parsed;
 		const frontmatter: DocumentFrontmatter = {
-			...parsed,
+			...rest,
 			id: parsed.id ?? '',
-			tags: Array.isArray(parsed.tags) ? parsed.tags.filter((t) => typeof t === 'string') : [],
+			tags: DocHandle.readTags(tags ?? tag),
 			created_at: validDate(parsed.created_at),
 			updated_at: validDate(parsed.updated_at)
 		};

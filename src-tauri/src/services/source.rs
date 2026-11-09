@@ -35,7 +35,9 @@
 
 use crate::services::body::fold_tag;
 use crate::services::frontmatter;
-use crate::services::fs::{atomic_write, clean_location, docs_root, mtime_ms, read_meta, repath_meta};
+use crate::services::fs::{
+    atomic_write, clean_location, docs_root, mtime_ms, read_meta, repath_meta,
+};
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -247,7 +249,15 @@ pub fn create_source(
 
 // ── The Big Scan ─────────────────────────────────────────────────────────────────────
 
-const KNOWN_FM_KEYS: &[&str] = &["id", "tags", "created_at", "updated_at", "accessed_at"];
+const KNOWN_FM_KEYS: &[&str] = &[
+    "id",
+    "tags",
+    "tag",
+    "created_at",
+    "updated_at",
+    "accessed_at",
+];
+// "tag" is for obsid compat
 
 /// extract everything outside known keys as a json string
 pub fn fm_properties(fm: &serde_json::Value) -> String {
@@ -666,17 +676,6 @@ fn fs_mtime_ms(path: &Path) -> i64 {
     mtime_ms(path).unwrap_or(0)
 }
 
-fn fm_tags(fm: Option<&serde_json::Value>) -> Vec<String> {
-    fm.and_then(|f| f.get("tags"))
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 fn fm_date(fm: Option<&serde_json::Value>, key: &str) -> Option<i64> {
     fm.and_then(|f| f.get(key))
         .and_then(|v| v.as_str())
@@ -789,7 +788,7 @@ pub async fn apply_plan(
 
         // a lost write means a race edit is faster
         if wrote {
-            sync_tags(&mut tx, &doc.id, &fm_tags(fm)).await?;
+            sync_tags(&mut tx, &doc.id, &frontmatter::tags(fm)).await?;
             sync_folders(&mut tx, source_id, &doc.id, &doc.rel_path).await?;
             if doc.moved {
                 let _ = repath_meta(source_path, &doc.id, &doc.rel_path);
@@ -1077,17 +1076,8 @@ pub async fn index_document(
     .await?;
 
     sync_folders(&mut tx, source_id, doc_id, rel_path).await?;
-    if let Some(fm) = fm.as_ref() {
-        let tags: Vec<String> = fm
-            .get("tags")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
-        sync_tags(&mut tx, doc_id, &tags).await?;
+    if fm.is_some() {
+        sync_tags(&mut tx, doc_id, &frontmatter::tags(fm.as_ref())).await?;
     }
 
     tx.commit().await?;
