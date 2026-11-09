@@ -123,6 +123,15 @@ pub(crate) async fn run_reconcile(
     git_off: bool,
 ) {
     let source_id = source.id.to_string();
+    let scan = app_handle
+        .state::<AppData>()
+        .scans
+        .lock()
+        .unwrap()
+        .entry(source_id.clone())
+        .or_default()
+        .clone();
+    let _running = scan.lock().await;
     let (changed, skipped) =
         services::reconcile_source(&source, &pool, &["md"], fm_buf_size, git_off)
             .await

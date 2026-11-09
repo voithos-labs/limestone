@@ -1,7 +1,8 @@
 use serde::Serialize;
 use serde_json::Value;
 use sqlx::{AssertSqlSafe, SqlitePool};
-use std::sync::RwLock;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, RwLock};
 use tauri::Manager;
 use tauri_plugin_fs::FsExt;
 
@@ -51,6 +52,8 @@ pub struct AppData {
     pub settings: RwLock<Value>,
     pub db: SqlitePool,
     pub bulk: services::BulkRunner,
+    // only one scan at a time per soruce
+    pub scans: Mutex<HashMap<String, Arc<tauri::async_runtime::Mutex<()>>>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -196,6 +199,7 @@ pub fn run() {
                 settings: RwLock::new(initial_settings),
                 db: pool.clone(),
                 bulk: bulk.clone(),
+                scans: Mutex::default(),
             });
             app.manage(commands::watch_commands::Watchers::default());
 
