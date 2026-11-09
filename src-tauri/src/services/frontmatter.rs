@@ -96,11 +96,19 @@ pub fn compose(
         }
         None => emit_block(patch, nl),
     };
-    Ok(with_block(&block, nl, body))
+    let bom = match existing {
+        Some(c) if c.starts_with('\u{feff}') => "\u{feff}",
+        _ => "",
+    };
+    Ok(format!("{bom}{}", with_block(&block, nl, body)))
+}
+
+fn strip_bom(s: &str) -> &str {
+    s.strip_prefix('\u{feff}').unwrap_or(s)
 }
 
 fn split_raw(content: &str) -> (Option<(&str, &str)>, &str) {
-    let trimmed = content.trim_start();
+    let trimmed = strip_bom(content).trim_start();
     if let Some(after_open) = trimmed.strip_prefix("---") {
         if let Some(close) = find_closing_fence(after_open) {
             let block = strip_newline(&after_open[..close]);
@@ -177,7 +185,10 @@ fn key_of(line: &str) -> Option<&str> {
     if first.is_whitespace() || first == '#' || first == '-' {
         return None;
     }
-    let key = line.split_once(':').map_or(line, |(k, _)| k);
+    let (key, rest) = line.split_once(':')?;
+    if !rest.is_empty() && !rest.starts_with(|c: char| c.is_whitespace()) {
+        return None;
+    }
     Some(key.trim_end().trim_matches(['"', '\'']))
 }
 
@@ -232,13 +243,13 @@ fn emit_entry(out: &mut String, key: &str, value: &Value, nl: &str) {
 
 /// The file without its frontmatter
 pub fn strip_content(content: &str) -> io::Result<Option<&str>> {
-    match split_content(content) {
-        (Some(_), body) => Ok(Some(body)),
-        (None, _) if has_unparsed_fence(content) => Err(io::Error::new(
+    match head(content) {
+        (Head::Block(_), body) => Ok(Some(body)),
+        (Head::Broken, _) => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "existing frontmatter could not be parsed",
         )),
-        (None, _) => Ok(None),
+        (Head::Absent, _) => Ok(None),
     }
 }
 
@@ -265,34 +276,46 @@ pub fn has_frontmatter(path: &Path) -> bool {
     matches!(split_content(&text), (Some(_), _))
 }
 
-fn has_unparsed_fence(content: &str) -> bool {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return false;
+pub enum Head {
+    Absent,
+    Broken,
+    Block(Value),
+}
+
+impl Head {
+    pub fn value(&self) -> Option<&Value> {
+        match self {
+            Head::Block(v) => Some(v),
+            _ => None,
+        }
     }
-    let after_open = &trimmed[3..];
-    let Some(close) = find_closing_fence(after_open) else {
-        return false;
+
+    pub fn broken(&self) -> bool {
+        matches!(self, Head::Broken)
+    }
+}
+
+pub fn head(content: &str) -> (Head, &str) {
+    let trimmed = strip_bom(content).trim_start();
+    let Some(after_open) = trimmed.strip_prefix("---") else {
+        return (Head::Absent, content);
     };
-    serde_yml::from_str::<Value>(&after_open[..close]).is_err()
+    let Some(close) = find_closing_fence(after_open) else {
+        return (Head::Absent, content);
+    };
+    let body = &after_open[close + 3..];
+    let body = body.strip_prefix('\n').unwrap_or(body);
+    match serde_yml::from_str::<Value>(&after_open[..close]) {
+        Ok(v) if v.is_object() => (Head::Block(v), body),
+        Ok(_) => (Head::Block(Value::Object(Map::new())), body),
+        Err(_) => (Head::Broken, content),
+    }
 }
 
 pub fn split_content(content: &str) -> (Option<Value>, &str) {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return (None, content);
-    }
-    let after_open = &trimmed[3..];
-    let Some(close) = find_closing_fence(after_open) else {
-        return (None, content);
-    };
-    let yaml_str = &after_open[..close];
-    let body = &after_open[close + 3..];
-    let body = body.strip_prefix('\n').unwrap_or(body);
-    match serde_yml::from_str::<Value>(yaml_str) {
-        Ok(v) if v.is_object() => (Some(v), body),
-        Ok(_) => (Some(Value::Object(Map::new())), body),
-        Err(_) => (None, content),
+    match head(content) {
+        (Head::Block(v), body) => (Some(v), body),
+        _ => (None, content),
     }
 }
 
@@ -612,6 +635,37 @@ mod tests {
             out,
             "# top\nviews:\n  todo:\n    due: 2026-01-01\ntags:\n  - a\n  - b\n# about custom\ncustom: value   # trailing\n\nz: 1\nextra: 1\n"
         );
+    }
+
+    #[test]
+    fn a_flow_value_broken_across_lines_is_one_entry() {
+        let block = "tags: [a,\nb]\nz: 1\n";
+        let mut set = Map::new();
+        set.insert("tags".into(), json!(["c"]));
+        assert_eq!(splice_block(block, &set, &[]), "tags:\n  - c\nz: 1\n");
+    }
+
+    #[test]
+    fn a_bom_is_read_through_and_kept_in_front() {
+        let raw = "\u{feff}---\ntags: [a]\n---\nbody\n";
+        assert_eq!(split_content(raw), (Some(json!({ "tags": ["a"] })), "body\n"));
+        let mut set = Map::new();
+        set.insert("tags".into(), json!(["b"]));
+        assert_eq!(
+            compose(Some(raw), "body\n", Some(&set), &[], false).unwrap(),
+            "\u{feff}---\ntags:\n  - b\n---\nbody\n"
+        );
+        assert_eq!(
+            compose(Some(raw), "new\n", None, &[], false).unwrap(),
+            "\u{feff}---\ntags: [a]\n---\nnew\n"
+        );
+    }
+
+    #[test]
+    fn head_tells_a_broken_block_from_none() {
+        assert!(head("---\ntags: [unclosed\n---\nbody").0.broken());
+        assert!(matches!(head("plain\n").0, Head::Absent));
+        assert!(head("---\na: 1\n---\n").0.value().is_some());
     }
 
     #[test]

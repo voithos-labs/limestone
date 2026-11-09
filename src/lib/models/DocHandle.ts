@@ -64,7 +64,7 @@ export interface DocumentRow {
 	properties: string;
 }
 
-const FENCE_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
+const FENCE_RE = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
 
 function yamlErrorText(e: unknown): string {
 	const err = e as { reason?: string; message?: string; mark?: { line?: number } };
@@ -377,7 +377,7 @@ class DocHandle {
 
 		let parsed: Record<string, any>;
 		try {
-			const loaded = yaml.load(match[1]);
+			const loaded = yaml.load(match[1], { schema: yaml.CORE_SCHEMA });
 			parsed = loaded && typeof loaded === 'object' ? (loaded as Record<string, any>) : {};
 		} catch (e) {
 			return { frontmatter: null, body: raw, error: yamlErrorText(e) };
@@ -573,15 +573,12 @@ class DocHandle {
 			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2 AND deleted_at IS NULL`,
 			[source.id, relPath]
 		);
-		const kept = await invoke<boolean>('delete_document', {
-			id: row?.id ?? null,
-			sourceId: source.id,
-			relPath
-		});
-		if (row && !kept) {
-			removeHistory({ id: row.id, source }).catch((e) => console.error('history remove failed', e));
+		if (!row) {
+			await invoke('delete_document', { id: null, sourceId: source.id, relPath });
+			return null;
 		}
-		return row?.id ?? null;
+		await (await DocHandle.fromID(row.id)).delete();
+		return row.id;
 	}
 
 	/**

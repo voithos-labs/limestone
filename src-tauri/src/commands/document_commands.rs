@@ -6,6 +6,7 @@ use crate::services::fs::{
     atomic_write, doc_dir, is_taken, move_file, mtime_ms, repath_meta, resolve_in_source,
     validate_file_name,
 };
+use crate::services::frontmatter::Head;
 use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
 use crate::AppData;
 use serde::Serialize;
@@ -113,11 +114,11 @@ pub async fn write_document(
     atomic_write(&full_path, contents.as_bytes()).map_err(OpError::from)?;
 
     let mtime = mtime(&full_path);
-    let (fm, body) = frontmatter::split_content(&contents);
+    let (head, body) = frontmatter::head(&contents);
 
     let mut tx = app_data.db.begin().await.map_err(OpError::from)?;
 
-    if let Some(fm) = &fm {
+    if let Some(fm) = head.value() {
         let properties = fm_properties(fm);
         let created_ms = fm
             .get("created_at")
@@ -162,7 +163,7 @@ pub async fn write_document(
     .await
     .map_err(OpError::from)?;
     if let Some(doc_id) = doc_id {
-        index_body(&mut tx, &source_id, &doc_id, &rel_path, fm.as_ref(), body).await?;
+        index_body(&mut tx, &source_id, &doc_id, &rel_path, &head, body).await?;
     }
 
     tx.commit().await.map_err(OpError::from)?;
@@ -174,12 +175,14 @@ async fn index_body(
     source_id: &str,
     doc_id: &str,
     rel_path: &str,
-    fm: Option<&Value>,
+    head: &Head,
     body: &str,
 ) -> Result<(), OpError> {
-    let mut tags = frontmatter::tags(fm);
-    merge_body_tags(&mut tags, body);
-    sync_tags(tx, doc_id, &tags).await.map_err(OpError::from)?;
+    if !head.broken() {
+        let mut tags = frontmatter::tags(head.value());
+        merge_body_tags(&mut tags, body);
+        sync_tags(tx, doc_id, &tags).await.map_err(OpError::from)?;
+    }
     sync_folders(tx, source_id, doc_id, rel_path)
         .await
         .map_err(OpError::from)?;
@@ -224,9 +227,9 @@ pub async fn restore_document(
     atomic_write(&full_path, contents.as_bytes()).map_err(OpError::from)?;
 
     let mtime = mtime(&full_path);
-    let (fm, body) = frontmatter::split_content(&contents);
-    let properties = fm
-        .as_ref()
+    let (head, body) = frontmatter::head(&contents);
+    let properties = head
+        .value()
         .map(fm_properties)
         .unwrap_or_else(|| "{}".to_string());
     let title = Path::new(&rel_path)
@@ -255,7 +258,7 @@ pub async fn restore_document(
     if revived == 0 {
         return Err(OpError::new("not_found"));
     }
-    index_body(&mut tx, &source_id, &id, &rel_path, fm.as_ref(), body).await?;
+    index_body(&mut tx, &source_id, &id, &rel_path, &head, body).await?;
     tx.commit().await.map_err(OpError::from)?;
     repath_meta(&root, &id, &rel_path).map_err(OpError::from)
 }

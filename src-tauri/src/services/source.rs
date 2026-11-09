@@ -34,7 +34,7 @@
 //!
 
 use crate::services::body::fold_tag;
-use crate::services::frontmatter;
+use crate::services::frontmatter::{self, Head};
 use crate::services::fs::{
     atomic_write, clean_location, docs_root, mtime_ms, read_meta, repath_meta,
 };
@@ -532,48 +532,46 @@ pub fn extract_frontmatter(
     source_path: &Path,
     paths: &[String],
     buffer_size: usize,
-) -> Vec<(String, Option<serde_json::Value>)> {
+) -> Vec<(String, Head)> {
     paths
         .par_iter()
         .map(|rel_path| {
             let full_path = source_path.join(rel_path);
-            let fm = read_frontmatter(&full_path, buffer_size);
-            (rel_path.clone(), fm)
+            let head = read_frontmatter(&full_path, buffer_size);
+            (rel_path.clone(), head)
         })
         .collect()
 }
 
 // escalate the read window until the closing fence fits (or the whole file is in)
-fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<serde_json::Value> {
+fn read_frontmatter(path: &Path, buffer_size: usize) -> Head {
     let mut limit = buffer_size.max(64) as u64;
     loop {
         let mut buf = Vec::new();
-        fs::File::open(path)
-            .ok()?
-            .take(limit)
-            .read_to_end(&mut buf)
-            .ok()?;
+        let read = fs::File::open(path).and_then(|f| f.take(limit).read_to_end(&mut buf));
+        if read.is_err() {
+            return Head::Absent;
+        }
         let whole_file = (buf.len() as u64) < limit;
 
         // tolerate a multibyte char split at the window edge
         let content = match std::str::from_utf8(&buf) {
             Ok(s) => s,
-            Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).ok()?,
+            Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).unwrap_or(""),
         };
-        let trimmed = content.trim_start();
-        if !trimmed.starts_with("---") {
-            return None;
-        }
-        let after_open = &trimmed[3..];
-        if let Some(close) = frontmatter::find_closing_fence(after_open) {
-            return serde_yml::from_str(&after_open[..close]).ok();
+        let trimmed = content.trim_start_matches('\u{feff}').trim_start();
+        let Some(after_open) = trimmed.strip_prefix("---") else {
+            return Head::Absent;
+        };
+        if frontmatter::find_closing_fence(after_open).is_some() {
+            return frontmatter::head(content).0;
         }
         if whole_file {
-            return None;
+            return Head::Absent;
         }
         let next = limit.saturating_mul(16).min(1 << 22);
         if next == limit {
-            return None;
+            return Head::Absent;
         }
         limit = next;
     }
@@ -684,14 +682,14 @@ fn fm_date(fm: Option<&serde_json::Value>, key: &str) -> Option<i64> {
 
 pub async fn apply_plan(
     plan: &ReconcilePlan,
-    frontmatter: &[(String, Option<serde_json::Value>)],
+    frontmatter: &[(String, Head)],
     source_id: &str,
     source_path: &Path,
     db: &SqlitePool,
 ) -> sqlx::Result<()> {
-    let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
+    let fm_map: HashMap<&str, &Head> = frontmatter
         .iter()
-        .map(|(p, fm)| (p.as_str(), fm.as_ref()))
+        .map(|(path, head)| (path.as_str(), head))
         .collect();
 
     let mut tx = db.begin().await?;
@@ -737,19 +735,22 @@ pub async fn apply_plan(
     }
 
     for doc in &plan.docs {
-        let fm = fm_map.get(doc.rel_path.as_str()).copied().flatten();
+        let head = fm_map.get(doc.rel_path.as_str()).copied();
+        let fm = head.and_then(Head::value);
+        let broken = head.is_some_and(Head::broken);
         let title = Path::new(&doc.rel_path)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled");
-        let properties = fm.map(fm_properties).unwrap_or_else(|| "{}".to_string());
+        let properties =
+            (!broken).then(|| fm.map(fm_properties).unwrap_or_else(|| "{}".to_string()));
         let mtime = doc.mtime;
         let updated_at = fm_date(fm, "updated_at").unwrap_or(mtime);
 
         let wrote = if doc.existing {
             sqlx::query(
-                "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4, updated_at = ?5,
-                     deleted_at = NULL
+                "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = coalesce(?4, properties),
+                     updated_at = ?5, deleted_at = NULL
                  WHERE id = ?6 AND coalesce(mtime, 0) = ?7",
             )
             .bind(&doc.rel_path)
@@ -776,7 +777,7 @@ pub async fn apply_plan(
             .bind(&doc.rel_path)
             .bind(title)
             .bind(mtime)
-            .bind(&properties)
+            .bind(properties.as_deref().unwrap_or("{}"))
             .bind(created_at)
             .bind(updated_at)
             .bind(accessed_at)
@@ -788,7 +789,9 @@ pub async fn apply_plan(
 
         // a lost write means a race edit is faster
         if wrote {
-            sync_tags(&mut tx, &doc.id, &frontmatter::tags(fm)).await?;
+            if !broken {
+                sync_tags(&mut tx, &doc.id, &frontmatter::tags(fm)).await?;
+            }
             sync_folders(&mut tx, source_id, &doc.id, &doc.rel_path).await?;
             if doc.moved {
                 let _ = repath_meta(source_path, &doc.id, &doc.rel_path);
@@ -1052,20 +1055,18 @@ pub async fn index_document(
     fm_buffer_size: usize,
 ) -> sqlx::Result<()> {
     let full = source_path.join(rel_path);
-    let fm = read_frontmatter(&full, fm_buffer_size);
+    let head = read_frontmatter(&full, fm_buffer_size);
     let title = Path::new(rel_path)
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("Untitled");
-    let properties = fm
-        .as_ref()
-        .map(fm_properties)
-        .unwrap_or_else(|| "{}".to_string());
+    let properties = (!head.broken())
+        .then(|| head.value().map(fm_properties).unwrap_or_else(|| "{}".to_string()));
     let mtime = fs_mtime_ms(&full);
 
     let mut tx = db.begin().await?;
     sqlx::query(
-        "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4 WHERE id = ?5",
+        "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = coalesce(?4, properties) WHERE id = ?5",
     )
     .bind(rel_path)
     .bind(title)
@@ -1076,8 +1077,8 @@ pub async fn index_document(
     .await?;
 
     sync_folders(&mut tx, source_id, doc_id, rel_path).await?;
-    if fm.is_some() {
-        sync_tags(&mut tx, doc_id, &frontmatter::tags(fm.as_ref())).await?;
+    if let Some(fm) = head.value() {
+        sync_tags(&mut tx, doc_id, &frontmatter::tags(Some(fm))).await?;
     }
 
     tx.commit().await?;
