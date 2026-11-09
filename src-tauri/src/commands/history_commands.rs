@@ -285,6 +285,7 @@ pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, sour
             continue;
         }
         if let Some((rel_path, created_at)) = own.get(doc_id.as_str()) {
+            // todo: switch to lazy-write (meta.json) for 1.0
             if !entry.path().join(META_FILE).exists() {
                 let meta = DocMeta {
                     rel_path: rel_path.to_string(),

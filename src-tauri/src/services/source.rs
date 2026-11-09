@@ -24,7 +24,7 @@
 //!     - same path AND same mtime => unchanged
 //!     - same path AND NOT same mtime => modified
 //!     - on disk but not found in db (by rel_path) => new_paths
-//!     - in db but not found on disk => missing, delete from cache (TODO: soft-delete, recoverable)
+//!     - in db but not found on disk => missing, delete from cache
 //!       -> later can prompt to restore for autpmerge history in UI, and allows a better missing
 //!       doc page
 //! 4. Extract and parse frontmatter, quickly ideally
@@ -35,7 +35,7 @@
 
 use crate::services::body::fold_tag;
 use crate::services::frontmatter;
-use crate::services::fs::{atomic_write, clean_location, mtime_ms};
+use crate::services::fs::{atomic_write, clean_location, docs_root, mtime_ms, read_meta};
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -54,8 +54,6 @@ use uuid::Uuid;
 pub struct SourceConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub use_frontmatter: Option<bool>,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub strong_meta: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub frontmatter_dirs: BTreeMap<String, bool>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -73,7 +71,6 @@ impl Default for SourceConfig {
     fn default() -> Self {
         Self {
             use_frontmatter: None,
-            strong_meta: false,
             frontmatter_dirs: BTreeMap::new(),
             note_location: String::new(),
             asset_location: default_asset_location(),
@@ -106,7 +103,6 @@ pub struct Source {
     pub accessed_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_frontmatter: Option<bool>,
-    pub strong_meta: bool,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub frontmatter_dirs: BTreeMap<String, bool>,
     pub note_location: String,
@@ -135,7 +131,6 @@ impl Source {
             created_at: record.created_at,
             accessed_at: record.accessed_at,
             use_frontmatter: config.use_frontmatter,
-            strong_meta: config.strong_meta,
             frontmatter_dirs: config.frontmatter_dirs,
             note_location: config.note_location,
             asset_location: config.asset_location,
@@ -156,7 +151,6 @@ impl Source {
     pub fn config(&self) -> SourceConfig {
         SourceConfig {
             use_frontmatter: self.use_frontmatter,
-            strong_meta: self.strong_meta,
             frontmatter_dirs: self.frontmatter_dirs.clone(),
             note_location: self.note_location.clone(),
             asset_location: self.asset_location.clone(),
@@ -235,7 +229,6 @@ pub fn create_source(
     note_location: Option<String>,
     asset_location: Option<String>,
     use_frontmatter: Option<bool>,
-    strong_meta: bool,
 ) -> Result<Source, std::io::Error> {
     fs::create_dir_all(&path)?;
     let title = title.unwrap_or_else(|| {
@@ -247,7 +240,6 @@ pub fn create_source(
 
     let mut source = Source::new(title, path);
     source.use_frontmatter = use_frontmatter;
-    source.strong_meta = strong_meta;
     source.note_location = clean_location(&note_location.unwrap_or_default())?;
     source.asset_location = clean_location(&asset_location.unwrap_or_else(default_asset_location))?;
     Ok(source)
@@ -288,7 +280,6 @@ pub struct ResolvedDoc {
     pub db_mtime: Option<i64>,
     pub existing: bool,
     pub moved: bool,
-    pub rewrite_id: bool,
 }
 
 #[derive(Debug)]
@@ -581,107 +572,64 @@ fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<serde_json::Value
 // Id-first resolution: every read (new/modified) file resolves to exactly one document id
 pub fn resolve_plan(
     diff: &ReconciliationDiff,
-    frontmatter: &[(String, Option<serde_json::Value>)],
     db_docs: &HashMap<String, (String, i64)>,
     deleted_ids: &HashSet<String>,
-    foreign_ids: &HashSet<String>,
-    rewrite_dirs: &HashSet<String>,
 ) -> ReconcilePlan {
-    let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
-        .iter()
-        .map(|(p, fm)| (p.as_str(), fm.as_ref()))
-        .collect();
-    let db_path_to_id: HashMap<&str, &str> = db_docs
-        .iter()
-        .filter(|(id, _)| !deleted_ids.contains(id.as_str()))
-        .map(|(id, (path, _))| (path.as_str(), id.as_str()))
-        .collect();
-    let unchanged: HashSet<&str> = diff.unchanged.iter().map(|p| p.as_str()).collect();
+    let mut by_path: HashMap<&str, &str> = HashMap::new();
+    for live in [false, true] {
+        for (id, (path, _)) in db_docs {
+            if deleted_ids.contains(id) != live {
+                by_path.insert(path.as_str(), id.as_str());
+            }
+        }
+    }
+    let resolved = |id: &str, path: &str, mtime: i64| ResolvedDoc {
+        id: id.to_string(),
+        rel_path: path.to_string(),
+        mtime,
+        db_mtime: db_docs.get(id).map(|(_, m)| *m),
+        existing: true,
+        moved: db_docs.get(id).is_some_and(|(p, _)| p != path),
+    };
 
-    let mut read_paths: Vec<(&str, i64)> = diff
+    let mut docs: Vec<ResolvedDoc> = diff
         .modified
         .iter()
-        .chain(diff.new_paths.iter())
-        .map(|(p, m)| (p.as_str(), *m))
-        .collect();
-    read_paths.sort();
-
-    let claims: HashMap<&str, &str> = read_paths
-        .iter()
-        .filter_map(|(p, _)| {
-            fm_map
-                .get(p)
-                .copied()
-                .flatten()
-                .and_then(|f| f.get("id"))
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(|id| (*p, id))
-        })
+        .filter_map(|(path, mtime)| Some(resolved(by_path.get(path.as_str())?, path, *mtime)))
         .collect();
 
-    let mut assigned: HashSet<&str> = HashSet::new();
-    let mut docs: Vec<ResolvedDoc> = Vec::new();
-    let mut claimless: Vec<(&str, i64)> = Vec::new();
-
-    for (path, mtime) in &read_paths {
-        let Some(&claim) = claims.get(path) else {
-            claimless.push((path, *mtime));
-            continue;
+    let mut vacated: HashMap<i64, Vec<&str>> = HashMap::new();
+    for path in &diff.missing {
+        if let Some(&id) = by_path.get(path.as_str()) {
+            if let Some((_, mtime)) = db_docs.get(id).filter(|(_, m)| *m != 0) {
+                vacated.entry(*mtime).or_default().push(id);
+            }
+        }
+    }
+    let mut arrivals: HashMap<i64, usize> = HashMap::new();
+    for (_, mtime) in &diff.new_paths {
+        *arrivals.entry(*mtime).or_default() += 1;
+    }
+    for (path, mtime) in &diff.new_paths {
+        let renamed = match vacated.get(mtime).map(Vec::as_slice) {
+            Some([id]) if arrivals[mtime] == 1 => Some(*id),
+            _ => None,
         };
-        let holder = db_docs.get(claim).map(|(p, _)| p.as_str());
-        // a claim is granted unless the id's current holder keeps it (duplicate)
-        let granted = !assigned.contains(claim)
-            && !foreign_ids.contains(claim)
-            && match holder {
-                Some(q) if q == *path => true,
-                Some(q) => !unchanged.contains(q) && claims.get(q) != Some(&claim),
-                None => true,
-            };
-        if granted {
-            assigned.insert(claim);
-            docs.push(ResolvedDoc {
-                id: claim.to_string(),
-                rel_path: path.to_string(),
-                mtime: *mtime,
-                db_mtime: db_docs.get(claim).map(|(_, m)| *m),
-                existing: holder.is_some(),
-                moved: holder.is_some_and(|q| q != *path),
-                rewrite_id: false,
-            });
-        } else if rewrite_dirs.contains(dir_of(path)) {
-            docs.push(ResolvedDoc {
+        let id = by_path
+            .get(path.as_str())
+            .copied()
+            .filter(|id| deleted_ids.contains(*id))
+            .or(renamed);
+        docs.push(match id {
+            Some(id) => resolved(id, path, *mtime),
+            None => ResolvedDoc {
                 id: Uuid::new_v4().to_string(),
                 rel_path: path.to_string(),
                 mtime: *mtime,
                 db_mtime: None,
                 existing: false,
                 moved: false,
-                rewrite_id: true,
-            });
-        } else {
-            claimless.push((path, *mtime));
-        }
-    }
-
-    for (path, mtime) in claimless {
-        let existing = db_path_to_id
-            .get(path)
-            .copied()
-            .filter(|id| !assigned.contains(id));
-        if let Some(id) = existing {
-            assigned.insert(id);
-        }
-        docs.push(ResolvedDoc {
-            id: existing
-                .map(str::to_string)
-                .unwrap_or_else(|| Uuid::new_v4().to_string()),
-            rel_path: path.to_string(),
-            mtime,
-            db_mtime: existing.and_then(|id| db_docs.get(id).map(|(_, m)| *m)),
-            existing: existing.is_some(),
-            moved: false,
-            rewrite_id: false,
+            },
         });
     }
 
@@ -689,9 +637,9 @@ pub fn resolve_plan(
         .iter()
         .map(|d| d.id.as_str())
         .chain(
-            unchanged
+            diff.unchanged
                 .iter()
-                .filter_map(|p| db_path_to_id.get(p).copied()),
+                .filter_map(|p| by_path.get(p.as_str()).copied()),
         )
         .collect();
     let delete_ids: Vec<String> = db_docs
@@ -701,10 +649,6 @@ pub fn resolve_plan(
         .collect();
 
     ReconcilePlan { docs, delete_ids }
-}
-
-fn dir_of(path: &str) -> &str {
-    path.rsplit_once('/').map_or("", |(dir, _)| dir)
 }
 
 /// Read the file's creation time, fall back to mtime if the
@@ -750,16 +694,6 @@ pub async fn apply_plan(
         .iter()
         .map(|(p, fm)| (p.as_str(), fm.as_ref()))
         .collect();
-
-    // duplicates get a fresh id written back so they stay stable across runs
-    for doc in plan.docs.iter().filter(|d| d.rewrite_id) {
-        let id = doc.id.clone();
-        let _ = frontmatter::rewrite_frontmatter(&source_path.join(&doc.rel_path), move |fm| {
-            if let Some(obj) = fm.as_object_mut() {
-                obj.insert("id".into(), serde_json::Value::String(id.clone()));
-            }
-        });
-    }
 
     let mut tx = db.begin().await?;
 
@@ -810,12 +744,7 @@ pub async fn apply_plan(
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled");
         let properties = fm.map(fm_properties).unwrap_or_else(|| "{}".to_string());
-        let full_path = source_path.join(&doc.rel_path);
-        let mtime = if doc.rewrite_id {
-            fs_mtime_ms(&full_path)
-        } else {
-            doc.mtime
-        };
+        let mtime = doc.mtime;
         let updated_at = fm_date(fm, "updated_at").unwrap_or(mtime);
 
         let wrote = if doc.existing {
@@ -836,17 +765,12 @@ pub async fn apply_plan(
             .rows_affected()
                 > 0
         } else {
-            let created_at =
-                fm_date(fm, "created_at").unwrap_or_else(|| fs_birth_ms(&full_path, mtime));
+            let created_at = fm_date(fm, "created_at")
+                .unwrap_or_else(|| fs_birth_ms(&source_path.join(&doc.rel_path), mtime));
             let accessed_at = fm_date(fm, "accessed_at").unwrap_or(mtime);
             sqlx::query(
                 "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-                 ON CONFLICT(id) DO UPDATE SET source_id = excluded.source_id, rel_path = excluded.rel_path,
-                     title = excluded.title, mtime = excluded.mtime, properties = excluded.properties,
-                     updated_at = excluded.updated_at, folder_id = NULL, deleted_at = NULL
-                     WHERE documents.deleted_at IS NOT NULL
-                 ON CONFLICT DO NOTHING",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             )
             .bind(&doc.id)
             .bind(source_id)
@@ -1169,6 +1093,45 @@ pub async fn index_document(
 
 // ENTRY POINT
 
+async fn seed_from_meta(
+    db: &SqlitePool,
+    source_id: &str,
+    source_path: &Path,
+    fs_entries: &[(String, i64)],
+) -> sqlx::Result<Vec<(String, String, i64, bool)>> {
+    let present: HashSet<&str> = fs_entries.iter().map(|(p, _)| p.as_str()).collect();
+    let mut rows = Vec::new();
+    for entry in fs::read_dir(docs_root(source_path))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let id = entry.file_name().to_string_lossy().into_owned();
+        if Uuid::parse_str(&id).is_err() {
+            continue;
+        }
+        let Some(meta) = read_meta(&entry.path()).filter(|m| present.contains(m.rel_path.as_str()))
+        else {
+            continue;
+        };
+        let inserted = sqlx::query(
+            "INSERT OR IGNORE INTO documents (id, source_id, rel_path, title, mtime, created_at)
+             VALUES (?1, ?2, ?3, '', 0, ?4)",
+        )
+        .bind(&id)
+        .bind(source_id)
+        .bind(&meta.rel_path)
+        .bind(meta.created_at)
+        .execute(db)
+        .await?
+        .rows_affected();
+        if inserted > 0 {
+            rows.push((id, meta.rel_path, 0, false));
+        }
+    }
+    Ok(rows)
+}
+
 pub async fn reconcile_source(
     source: &Source,
     db: &SqlitePool,
@@ -1215,12 +1178,15 @@ pub async fn reconcile_source(
     tx.commit().await?;
     sync_folder_meta(db, source, git_off).await?;
 
-    let db_rows: Vec<(String, String, i64, bool)> = sqlx::query_as(
+    let mut db_rows: Vec<(String, String, i64, bool)> = sqlx::query_as(
         "SELECT id, rel_path, coalesce(mtime, 0), deleted_at IS NOT NULL FROM documents WHERE source_id = ?1",
     )
     .bind(source_id)
     .fetch_all(db)
     .await?;
+    if db_rows.is_empty() {
+        db_rows = seed_from_meta(db, source_id, source_path, &fs_entries).await?;
+    }
 
     let db_entries: Vec<(String, i64)> = db_rows
         .iter()
@@ -1247,36 +1213,7 @@ pub async fn reconcile_source(
         .collect();
     let frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
 
-    let foreign_ids: HashSet<String> =
-        sqlx::query_scalar("SELECT id FROM documents WHERE source_id != ?1 AND deleted_at IS NULL")
-            .bind(source_id)
-            .fetch_all(db)
-            .await?
-            .into_iter()
-            .collect();
-
-    let folder_prefix = folder_id(source_id, "");
-    let mut rewrite_dirs: HashSet<String> = HashSet::new();
-    if source.strong_meta {
-        rewrite_dirs = sqlx::query_scalar::<_, String>(
-            "SELECT id FROM folders WHERE source_id = ?1 AND writes_meta = 1",
-        )
-        .bind(source_id)
-        .fetch_all(db)
-        .await?
-        .into_iter()
-        .filter_map(|id| id.strip_prefix(&folder_prefix).map(str::to_string))
-        .collect();
-    }
-
-    let plan = resolve_plan(
-        &diff,
-        &frontmatter,
-        &db_docs,
-        &deleted_ids,
-        &foreign_ids,
-        &rewrite_dirs,
-    );
+    let plan = resolve_plan(&diff, &db_docs, &deleted_ids);
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
@@ -1304,87 +1241,27 @@ pub async fn reconcile_source(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    fn fm(id: &str) -> Option<serde_json::Value> {
-        Some(json!({ "id": id }))
-    }
 
     fn plan(
         unchanged: &[&str],
-        modified: &[&str],
-        new_paths: &[&str],
+        modified: &[(&str, i64)],
+        new_paths: &[(&str, i64)],
         missing: &[&str],
-        frontmatter: &[(&str, Option<serde_json::Value>)],
-        db: &[(&str, &str)],
-        foreign: &[&str],
+        db: &[(&str, &str, i64)],
+        deleted: &[&str],
     ) -> ReconcilePlan {
         let diff = ReconciliationDiff {
             unchanged: unchanged.iter().map(|s| s.to_string()).collect(),
-            modified: modified.iter().map(|s| (s.to_string(), 1)).collect(),
-            new_paths: new_paths.iter().map(|s| (s.to_string(), 1)).collect(),
+            modified: modified.iter().map(|(s, m)| (s.to_string(), *m)).collect(),
+            new_paths: new_paths.iter().map(|(s, m)| (s.to_string(), *m)).collect(),
             missing: missing.iter().map(|s| s.to_string()).collect(),
         };
-        let frontmatter: Vec<(String, Option<serde_json::Value>)> = frontmatter
-            .iter()
-            .map(|(p, f)| (p.to_string(), f.clone()))
-            .collect();
         let db_docs: HashMap<String, (String, i64)> = db
             .iter()
-            .map(|(id, p)| (id.to_string(), (p.to_string(), 0)))
+            .map(|(id, p, m)| (id.to_string(), (p.to_string(), *m)))
             .collect();
-        let foreign_ids: HashSet<String> = foreign.iter().map(|s| s.to_string()).collect();
-        let rewrite_dirs: HashSet<String> = ["".to_string()].into();
-        resolve_plan(
-            &diff,
-            &frontmatter,
-            &db_docs,
-            &HashSet::new(),
-            &foreign_ids,
-            &rewrite_dirs,
-        )
-    }
-
-    #[test]
-    fn deleted_row_is_revived_by_its_id_and_never_counted_missing() {
-        let diff = ReconciliationDiff {
-            unchanged: vec![],
-            modified: vec![],
-            new_paths: vec![("back/a.md".to_string(), 1)],
-            missing: vec![],
-        };
-        let frontmatter = vec![("back/a.md".to_string(), fm("id-a"))];
-        let db_docs: HashMap<String, (String, i64)> =
-            [("id-a".to_string(), ("a.md".to_string(), 0))].into();
-        let deleted: HashSet<String> = ["id-a".to_string()].into();
-        let p = resolve_plan(
-            &diff,
-            &frontmatter,
-            &db_docs,
-            &deleted,
-            &HashSet::new(),
-            &HashSet::new(),
-        );
-        let d = doc(&p, "back/a.md");
-        assert_eq!(d.id, "id-a");
-        assert!(d.existing && d.moved && !d.rewrite_id);
-        assert!(p.delete_ids.is_empty());
-
-        let empty = ReconciliationDiff {
-            unchanged: vec![],
-            modified: vec![],
-            new_paths: vec![],
-            missing: vec![],
-        };
-        let p = resolve_plan(
-            &empty,
-            &[],
-            &db_docs,
-            &deleted,
-            &HashSet::new(),
-            &HashSet::new(),
-        );
-        assert!(p.docs.is_empty() && p.delete_ids.is_empty());
+        let deleted_ids: HashSet<String> = deleted.iter().map(|s| s.to_string()).collect();
+        resolve_plan(&diff, &db_docs, &deleted_ids)
     }
 
     fn doc<'a>(p: &'a ReconcilePlan, path: &str) -> &'a ResolvedDoc {
@@ -1392,187 +1269,122 @@ mod tests {
     }
 
     #[test]
-    fn denied_claim_without_strong_mode_keeps_its_path_row_and_file() {
-        let locked: HashSet<String> = HashSet::new();
-        let frontmatter = vec![("a copy.md".to_string(), fm("id-a"))];
-        let first = ReconciliationDiff {
-            unchanged: vec!["a.md".to_string()],
-            modified: vec![],
-            new_paths: vec![("a copy.md".to_string(), 1)],
-            missing: vec![],
-        };
-        let mut db_docs: HashMap<String, (String, i64)> =
-            [("id-a".to_string(), ("a.md".to_string(), 0))].into();
-        let p = resolve_plan(
-            &first,
-            &frontmatter,
-            &db_docs,
-            &HashSet::new(),
-            &HashSet::new(),
-            &locked,
-        );
-        let d = doc(&p, "a copy.md");
-        assert!(d.id != "id-a" && !d.existing && !d.rewrite_id);
-        assert!(p.delete_ids.is_empty());
-
-        db_docs.insert(d.id.clone(), ("a copy.md".to_string(), 1));
-        let second = ReconciliationDiff {
-            unchanged: vec!["a.md".to_string()],
-            modified: vec![("a copy.md".to_string(), 2)],
-            new_paths: vec![],
-            missing: vec![],
-        };
-        let p = resolve_plan(
-            &second,
-            &frontmatter,
-            &db_docs,
-            &HashSet::new(),
-            &HashSet::new(),
-            &locked,
-        );
-        let again = doc(&p, "a copy.md");
-        assert_eq!(again.id, d.id);
-        assert!(again.existing && !again.rewrite_id);
-        assert!(p.delete_ids.is_empty());
-    }
-
-    #[test]
-    fn duplicate_of_unchanged_file_gets_fresh_id() {
-        let p = plan(
-            &["a.md"],
-            &[],
-            &["a copy.md"],
-            &[],
-            &[("a copy.md", fm("id-a"))],
-            &[("id-a", "a.md")],
-            &[],
-        );
-        let d = doc(&p, "a copy.md");
-        assert_ne!(d.id, "id-a");
-        assert!(d.rewrite_id);
-        assert!(!d.existing);
-        assert!(p.delete_ids.is_empty());
-    }
-
-    #[test]
-    fn duplicate_of_modified_holder_loses_to_holder() {
+    fn modified_keeps_its_row_and_missing_deletes() {
         let p = plan(
             &[],
-            &["a.md"],
-            &["a copy.md"],
+            &[("a.md", 2)],
             &[],
-            &[("a.md", fm("id-a")), ("a copy.md", fm("id-a"))],
-            &[("id-a", "a.md")],
-            &[],
-        );
-        assert_eq!(doc(&p, "a.md").id, "id-a");
-        assert!(doc(&p, "a copy.md").rewrite_id);
-    }
-
-    #[test]
-    fn pure_swap_moves_both_rows() {
-        let p = plan(
-            &[],
-            &["a.md", "b.md"],
-            &[],
-            &[],
-            &[("a.md", fm("id-b")), ("b.md", fm("id-a"))],
-            &[("id-a", "a.md"), ("id-b", "b.md")],
-            &[],
-        );
-        let a = doc(&p, "a.md");
-        let b = doc(&p, "b.md");
-        assert_eq!(a.id, "id-b");
-        assert_eq!(b.id, "id-a");
-        assert!(a.moved && b.moved);
-        assert!(a.existing && b.existing);
-        assert!(p.delete_ids.is_empty());
-    }
-
-    #[test]
-    fn replaced_content_inserts_new_id_and_deletes_old() {
-        let p = plan(
-            &[],
-            &["a.md"],
-            &[],
-            &[],
-            &[("a.md", fm("id-new"))],
-            &[("id-old", "a.md")],
+            &["gone.md"],
+            &[("id-a", "a.md", 1), ("id-gone", "gone.md", 1)],
             &[],
         );
         let d = doc(&p, "a.md");
-        assert_eq!(d.id, "id-new");
-        assert!(!d.existing);
-        assert_eq!(p.delete_ids, vec!["id-old".to_string()]);
+        assert_eq!(d.id, "id-a");
+        assert!(d.existing && !d.moved);
+        assert_eq!(p.delete_ids, vec!["id-gone".to_string()]);
     }
 
     #[test]
-    fn rename_is_a_move_not_delete_insert() {
+    fn rename_pairs_a_vacated_row_with_the_arrival_sharing_its_mtime() {
         let p = plan(
-            &[],
-            &[],
             &["b.md"],
+            &[],
+            &[("sub/renamed.md", 7)],
             &["a.md"],
-            &[("b.md", fm("id-a"))],
-            &[("id-a", "a.md")],
+            &[("id-a", "a.md", 7), ("id-b", "b.md", 7)],
             &[],
         );
-        let d = doc(&p, "b.md");
+        let d = doc(&p, "sub/renamed.md");
         assert_eq!(d.id, "id-a");
         assert!(d.existing && d.moved);
         assert!(p.delete_ids.is_empty());
     }
 
     #[test]
-    fn vacated_path_gets_indexed_same_pass() {
+    fn ambiguous_mtimes_never_pair() {
         let p = plan(
             &[],
-            &["a.md"],
-            &["c.md"],
             &[],
-            &[("a.md", fm("id-2")), ("c.md", fm("id-1"))],
-            &[("id-1", "a.md")],
+            &[("x.md", 7)],
+            &["a.md", "c.md"],
+            &[("id-a", "a.md", 7), ("id-c", "c.md", 7)],
             &[],
         );
-        assert_eq!(doc(&p, "c.md").id, "id-1");
-        assert!(doc(&p, "c.md").moved);
-        let a = doc(&p, "a.md");
-        assert_eq!(a.id, "id-2");
-        assert!(!a.existing);
+        let d = doc(&p, "x.md");
+        assert!(!d.existing);
+        let mut deleted = p.delete_ids.clone();
+        deleted.sort();
+        assert_eq!(deleted, vec!["id-a".to_string(), "id-c".to_string()]);
+
+        let p = plan(
+            &[],
+            &[],
+            &[("x.md", 7), ("y.md", 7)],
+            &["a.md"],
+            &[("id-a", "a.md", 7)],
+            &[],
+        );
+        assert!(!doc(&p, "x.md").existing && !doc(&p, "y.md").existing);
+        assert_eq!(p.delete_ids, vec!["id-a".to_string()]);
+    }
+
+    #[test]
+    fn unknown_mtime_never_pairs() {
+        let p = plan(
+            &[],
+            &[],
+            &[("x.md", 0)],
+            &["a.md"],
+            &[("id-a", "a.md", 0)],
+            &[],
+        );
+        assert!(!doc(&p, "x.md").existing);
+    }
+
+    #[test]
+    fn a_file_back_at_a_deleted_rows_path_revives_it() {
+        let p = plan(
+            &[],
+            &[],
+            &[("a.md", 3)],
+            &[],
+            &[("id-a", "a.md", 1)],
+            &["id-a"],
+        );
+        let d = doc(&p, "a.md");
+        assert_eq!(d.id, "id-a");
+        assert!(d.existing && !d.moved);
         assert!(p.delete_ids.is_empty());
     }
 
     #[test]
-    fn cross_source_copy_gets_fresh_id() {
+    fn a_live_row_shadows_a_deleted_one_at_the_same_path() {
         let p = plan(
             &[],
+            &[("a.md", 3)],
             &[],
-            &["a.md"],
             &[],
-            &[("a.md", fm("id-elsewhere"))],
-            &[],
-            &["id-elsewhere"],
+            &[("id-old", "a.md", 1), ("id-new", "a.md", 2)],
+            &["id-old"],
         );
-        let d = doc(&p, "a.md");
-        assert_ne!(d.id, "id-elsewhere");
-        assert!(d.rewrite_id);
+        assert_eq!(doc(&p, "a.md").id, "id-new");
+        assert!(p.delete_ids.is_empty());
     }
 
     #[test]
-    fn claimless_modified_keeps_row_and_missing_deletes() {
+    fn a_copy_is_a_new_doc_and_leaves_the_original_alone() {
         let p = plan(
-            &[],
             &["a.md"],
             &[],
-            &["gone.md"],
-            &[("a.md", None)],
-            &[("id-a", "a.md"), ("id-gone", "gone.md")],
+            &[("a copy.md", 7)],
+            &[],
+            &[("id-a", "a.md", 7)],
             &[],
         );
-        let d = doc(&p, "a.md");
-        assert_eq!(d.id, "id-a");
-        assert!(d.existing && !d.moved && !d.rewrite_id);
-        assert_eq!(p.delete_ids, vec!["id-gone".to_string()]);
+        let d = doc(&p, "a copy.md");
+        assert_ne!(d.id, "id-a");
+        assert!(!d.existing);
+        assert!(p.delete_ids.is_empty());
     }
 
     #[test]
