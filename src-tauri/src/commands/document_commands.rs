@@ -1,9 +1,9 @@
-use crate::commands::history_commands::{ensure_writable, move_id_history, move_path_history};
+use crate::commands::history_commands::{ensure_writable, move_doc_dir};
 use crate::commands::source_commands::{doc_writes_meta, source_root};
 use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
 use crate::services::fs::{
-    atomic_write, history_dir, history_path_dir, is_taken, move_file, mtime_ms, resolve_in_source,
+    atomic_write, doc_dir, is_taken, move_file, mtime_ms, resolve_in_source,
     validate_file_name,
 };
 use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
@@ -400,9 +400,6 @@ pub async fn rename_document(
         return Err(OpError::named("already_exists", &new_name));
     }
     std::fs::rename(&old_full, &new_full).map_err(OpError::from)?;
-    if let Err(e) = move_path_history(&root, &rel_path, &root, &new_rel) {
-        eprintln!("history rename failed: {e}");
-    }
 
     let title = std::path::Path::new(&new_name)
         .file_stem()
@@ -528,9 +525,7 @@ pub async fn move_document(
         if dest_source_id != source_id {
             let _ = ensure_writable(&dest_source);
         }
-        let moved = move_id_history(&root, &dest_source, &doc_id)
-            .and_then(|_| move_path_history(&root, &rel_path, &dest_source, &new_rel_path));
-        if let Err(e) = moved {
+        if let Err(e) = move_doc_dir(&root, &dest_source, &doc_id) {
             eprintln!("history move failed: {e}");
         }
         let mut assets: Vec<(String, bool)> = Vec::new();
@@ -607,12 +602,11 @@ pub async fn delete_document(
     if full_path.exists() {
         super::to_trash(&full_path)?;
     }
-    let _ = std::fs::remove_dir_all(history_path_dir(&root, &rel_path));
     let Some(id) = id else {
         return Ok(false);
     };
 
-    if history_dir(&root, &id).is_dir() {
+    if doc_dir(&root, &id).is_dir() {
         sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2 AND source_id = ?3")
             .bind(chrono::Utc::now().timestamp_millis())
             .bind(&id)

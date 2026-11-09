@@ -16,6 +16,6 @@ pub use source::{
     VIEW_FILE,
 };
 pub(crate) use source::{
-    folder_id, read_frontmatter, sync_folder_meta, sync_folders, sync_tags, upsert_folder,
+    folder_id, sync_folder_meta, sync_folders, sync_tags, upsert_folder,
 };
 pub use user::User;

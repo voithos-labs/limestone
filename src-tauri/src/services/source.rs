@@ -543,7 +543,7 @@ pub fn extract_frontmatter(
 }
 
 // escalate the read window until the closing fence fits (or the whole file is in)
-pub(crate) fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<serde_json::Value> {
+fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<serde_json::Value> {
     let mut limit = buffer_size.max(64) as u64;
     loop {
         let mut buf = Vec::new();
@@ -766,7 +766,7 @@ pub async fn apply_plan(
     let now = Utc::now().timestamp_millis();
     let mut unlinked_tags: Vec<String> = Vec::new();
     for id in &plan.delete_ids {
-        if crate::services::fs::history_dir(source_path, id).is_dir() {
+        if crate::services::fs::doc_dir(source_path, id).is_dir() {
             sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2")
                 .bind(now)
                 .bind(id)

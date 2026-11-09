@@ -4,7 +4,6 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
-use crate::commands::history_commands::move_path_history;
 use crate::services::fs::{clean_location, resolve_in_source};
 use crate::services::{self, dot_get, JsonSettingsStore, Source, SourceRecord, Sources};
 use crate::AppData;
@@ -535,11 +534,6 @@ pub async fn move_folder(
             (id, rel, new_rel)
         })
         .collect();
-    for (_, rel, new_rel) in &moved {
-        if let Err(e) = move_path_history(&root, rel, &root, new_rel) {
-            eprintln!("history move failed: {e}");
-        }
-    }
     if let Err(e) = repath_rows(&app_data.db, &source_id, &moved).await {
         eprintln!("folder move repath failed: {e}");
     }

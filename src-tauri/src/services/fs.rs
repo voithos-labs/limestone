@@ -1,4 +1,5 @@
 use atomicwrites::{AtomicFile, OverwriteBehavior::AllowOverwrite};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
@@ -41,27 +42,45 @@ pub fn clean_location(raw: &str) -> io::Result<String> {
     Ok(cleaned)
 }
 
-/// .tmp atomic write, big safe
-pub fn history_root(source_path: &Path) -> PathBuf {
-    source_path.join(".limestone").join("history")
+pub const META_FILE: &str = "meta.json";
+
+pub fn docs_root(source_path: &Path) -> PathBuf {
+    source_path.join(".limestone").join("docs")
 }
 
-pub fn history_dir(source_path: &Path, doc_id: &str) -> PathBuf {
-    history_root(source_path).join(doc_id)
+pub fn doc_dir(source_path: &Path, doc_id: &str) -> PathBuf {
+    docs_root(source_path).join(doc_id)
 }
 
-pub const HISTORY_BY_PATH: &str = "by-path";
-
-const PATH_KEY_NAMESPACE: uuid::Uuid = uuid::Uuid::from_u128(0x6c696d6573746f6e652d686973746f72);
-
-pub fn history_path_key(rel_path: &str) -> String {
-    uuid::Uuid::new_v5(&PATH_KEY_NAMESPACE, rel_path.to_lowercase().as_bytes()).to_string()
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct DocMeta {
+    pub rel_path: String,
+    pub created_at: i64,
 }
 
-pub fn history_path_dir(source_path: &Path, rel_path: &str) -> PathBuf {
-    history_root(source_path)
-        .join(HISTORY_BY_PATH)
-        .join(history_path_key(rel_path))
+pub fn read_meta(dir: &Path) -> Option<DocMeta> {
+    serde_json::from_slice(&fs::read(dir.join(META_FILE)).ok()?).ok()
+}
+
+pub fn write_meta(dir: &Path, meta: &DocMeta) -> io::Result<()> {
+    atomic_write(&dir.join(META_FILE), &serde_json::to_vec(meta)?)
+}
+
+pub fn move_dir(from: &Path, to: &Path) -> io::Result<()> {
+    if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    if fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        if entry.file_type()?.is_file() {
+            fs::copy(entry.path(), to.join(entry.file_name()))?;
+        }
+    }
+    fs::remove_dir_all(from)
 }
 
 pub fn mtime_ms(path: &Path) -> Option<i64> {
@@ -140,6 +159,38 @@ mod tests {
         assert_eq!(fs::read_to_string(&free).unwrap(), "moving");
         assert_eq!(fs::read_to_string(&resident).unwrap(), "resident");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn meta_round_trips_and_is_absent_until_written() {
+        let dir = std::env::temp_dir().join(format!("ls-meta-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(read_meta(&dir), None);
+        let meta = DocMeta {
+            rel_path: "notes/a.md".into(),
+            created_at: 1700000000000,
+        };
+        write_meta(&dir, &meta).unwrap();
+        assert_eq!(read_meta(&dir), Some(meta));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_dir_carries_every_file_and_removes_the_old_dir() {
+        let tmp = std::env::temp_dir().join(format!("ls-movedir-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let from = tmp.join("a/.limestone/docs/doc");
+        let to = tmp.join("b/.limestone/docs/doc");
+        fs::create_dir_all(&from).unwrap();
+        fs::write(from.join("h1"), b"one").unwrap();
+        fs::write(from.join("h2"), b"two").unwrap();
+
+        move_dir(&from, &to).unwrap();
+
+        assert!(!from.exists());
+        assert_eq!(fs::read(to.join("h1")).unwrap(), b"one");
+        assert_eq!(fs::read(to.join("h2")).unwrap(), b"two");
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
