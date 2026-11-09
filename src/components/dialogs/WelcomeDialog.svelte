@@ -34,7 +34,6 @@
 	let noteLocation = $state('');
 	let assetLocation = $state('assets');
 	let useFrontmatter = $state(true);
-	let strongMeta = $state(false);
 	let gitOff = $state(false);
 	let hasRepo = $state(false);
 	let moreOpen = $state(false);
@@ -92,9 +91,7 @@
 			.catch(() => {});
 		isEmptyDir(path)
 			.then((empty) => {
-				if (folderPath !== path) return;
-				strongMeta = empty;
-				sample = empty;
+				if (folderPath === path) sample = empty;
 			})
 			.catch(() => {});
 	}
@@ -136,8 +133,7 @@
 				title,
 				{
 					note_location: noteLocation.trim(),
-					asset_location: assetLocation.trim() || 'assets',
-					strong_meta: strongMeta
+					asset_location: assetLocation.trim() || 'assets'
 				},
 				useFrontmatter ? null : false
 			);

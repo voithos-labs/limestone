@@ -90,8 +90,8 @@ function validDate(v: unknown): Date | undefined {
 export interface DocumentFrontmatter {
 	id: string;
 	tags: string[];
-	updated_at: Date;
-	created_at: Date;
+	updated_at?: Date;
+	created_at?: Date;
 
 	[key: string]: any; // flattened .properties
 }
@@ -165,6 +165,7 @@ class DocHandle {
 	frontmatterError: string | null = null;
 	writesMeta = true;
 	inRepo = false;
+	private fileDates = { created: false, updated: false };
 
 	private constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;
@@ -329,16 +330,18 @@ class DocHandle {
 
 	private ownedKeys(): Record<string, unknown> {
 		const tags = this.tags.map((t) => t.slug);
-		return { ...(tags.length ? { tags } : {}), ...this.properties };
+		return {
+			...(tags.length ? { tags } : {}),
+			...(this.fileDates.created ? { created_at: this.createdAt } : {}),
+			...this.properties
+		};
 	}
 
 	private async patchFor(rebuild: boolean): Promise<Record<string, unknown> | null> {
 		await this.refreshMeta();
 		if (!this.writesMeta || (this.frontmatterError && !rebuild)) return null;
 		const patch = rebuild || !this.hasFile ? this.ownedKeys() : {};
-		if (this.source.strong_meta) {
-			Object.assign(patch, { id: this.id, created_at: this.createdAt, updated_at: this.updatedAt });
-		}
+		if (this.fileDates.updated) patch.updated_at = this.updatedAt;
 		return Object.keys(patch).length ? patch : null;
 	}
 
@@ -371,8 +374,8 @@ class DocHandle {
 			...parsed,
 			id: parsed.id ?? '',
 			tags: Array.isArray(parsed.tags) ? parsed.tags.filter((t) => typeof t === 'string') : [],
-			created_at: validDate(parsed.created_at) ?? new Date(),
-			updated_at: validDate(parsed.updated_at) ?? new Date()
+			created_at: validDate(parsed.created_at),
+			updated_at: validDate(parsed.updated_at)
 		};
 
 		return { frontmatter, body: match[2], error: null };
@@ -401,13 +404,7 @@ class DocHandle {
 		const { frontmatter, body, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
 
-		if (frontmatter) {
-			const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
-			if (created_at) this.createdAt = new Date(created_at);
-			if (updated_at) this.updatedAt = new Date(updated_at);
-			this.properties = remaining;
-			this.tags = await Tag.fromSlugs(tags);
-		}
+		await this.adoptFrontmatter(frontmatter);
 
 		// update accessed_at
 		const now = Date.now();
@@ -427,6 +424,22 @@ class DocHandle {
 		addChangeHistory(this, body).catch((e) => console.error('history record failed', e));
 	}
 
+	private async snapshot(body?: string): Promise<void> {
+		if (!this.hasFile) return;
+		try {
+			if (body === undefined) {
+				const raw = await invoke<string>('read_document', {
+					sourceId: this.source.id,
+					relPath: this._relPath
+				});
+				body = DocHandle.stripFence(raw);
+			}
+			await addChangeHistory(this, body);
+		} catch (e) {
+			console.error('history snapshot failed', e);
+		}
+	}
+
 	/**
 	 * Save document content to disk,,, and some more.
 	 * todo
@@ -443,12 +456,21 @@ class DocHandle {
 		} catch {
 			return;
 		}
-		const { frontmatter, body, error } = DocHandle.deserialize(raw);
+		const { frontmatter, error } = DocHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
-		if (!frontmatter) return;
-		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
+		await this.adoptFrontmatter(frontmatter);
+	}
+
+	private async adoptFrontmatter(frontmatter: DocumentFrontmatter | null): Promise<void> {
+		if (!frontmatter) {
+			this.fileDates = { created: false, updated: false };
+			return;
+		}
+		const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
+		this.fileDates = { created: created_at !== undefined, updated: updated_at !== undefined };
+		if (created_at) this.createdAt = created_at;
+		if (updated_at) this.updatedAt = updated_at;
 		this.properties = remaining;
-		if (created_at) this.createdAt = new Date(created_at);
 		this.tags = await Tag.fromSlugs(tags);
 	}
 
@@ -521,7 +543,8 @@ class DocHandle {
 	}
 
 	/** Delete the document from disk and the index. */
-	async delete(): Promise<boolean> {
+	async delete(body?: string): Promise<boolean> {
+		await this.snapshot(body);
 		const kept = await invoke<boolean>('delete_document', {
 			id: this.id,
 			sourceId: this.source.id,
@@ -589,7 +612,6 @@ class DocHandle {
 
 	async moveToPath(newRelPath: string): Promise<void> {
 		await this.ensureFile();
-		await settleHistory(this.id);
 		const oldRelPath = this._relPath;
 		await invoke('move_document', {
 			sourceId: this.source.id,
@@ -674,7 +696,6 @@ class DocHandle {
 	 */
 	async rename(title: string): Promise<void> {
 		await this.ensureFile();
-		await settleHistory(this.id);
 		const oldRelPath = this._relPath;
 		const ext = oldRelPath.match(/\.[^./]+$/)?.[0] ?? '.md';
 		const newRel: string = await invoke('rename_document', {

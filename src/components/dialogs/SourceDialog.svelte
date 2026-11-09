@@ -4,7 +4,6 @@
 		containsGitRepo,
 		createSource,
 		GIT_FRONTMATTER_OFF,
-		isEmptyDir,
 		listDirs,
 		listSources,
 		makeDir,
@@ -39,7 +38,6 @@
 	let noteLocation = $state('');
 	let assetLocation = $state('assets');
 	let useFrontmatter = $state(true);
-	let strongMeta = $state(false);
 	let setAsDefault = $state(false);
 	let gitOff = $state(false);
 	let hasRepo = $state(false);
@@ -56,13 +54,11 @@
 				folderPath = source.path;
 				noteLocation = source.note_location;
 				assetLocation = source.asset_location;
-				strongMeta = source.strong_meta;
 			} else {
 				folderPath = '';
 				noteLocation = '';
 				assetLocation = 'assets';
 				useFrontmatter = true;
-				strongMeta = false;
 				setAsDefault = false;
 				hasRepo = false;
 				getSetting<boolean>(GIT_FRONTMATTER_OFF)
@@ -86,11 +82,6 @@
 			containsGitRepo(sel)
 				.then((found) => {
 					if (folderPath === sel) hasRepo = found;
-				})
-				.catch(() => {});
-			isEmptyDir(sel)
-				.then((empty) => {
-					if (folderPath === sel) strongMeta = empty;
 				})
 				.catch(() => {});
 		}
@@ -144,8 +135,7 @@
 		error = '';
 		const config = {
 			note_location: noteLocation.trim(),
-			asset_location: assetLocation.trim() || 'assets',
-			strong_meta: strongMeta
+			asset_location: assetLocation.trim() || 'assets'
 		};
 		busy = true;
 		try {
@@ -291,19 +281,6 @@
 								</span>
 							</div>
 							<Toggle bind:checked={useFrontmatter} />
-						</div>
-					{/if}
-
-					{#if mode === 'edit' || useFrontmatter}
-						<div class="option-card">
-							<div class="oc-text">
-								<span class="oc-title">Stamp every note</span>
-								<span class="oc-desc">
-									Writes an id and timestamps into each note on save. For folders only Limestone
-									edits.
-								</span>
-							</div>
-							<Toggle bind:checked={strongMeta} />
 						</div>
 					{/if}
 

@@ -20,7 +20,6 @@ interface DocHistoryShape {
 export interface DocRef {
 	id: string;
 	source: { id: string };
-	relPath?: string;
 }
 
 type Doc = Automerge.Doc<DocHistoryShape>;
@@ -63,11 +62,7 @@ function genesis(docId: string): Uint8Array {
 }
 
 function loadChunks(ref: DocRef): Promise<string[]> {
-	return invoke<string[]>('history_load', {
-		sourceId: ref.source.id,
-		docId: ref.id,
-		relPath: ref.relPath ?? null
-	});
+	return invoke<string[]>('history_load', { sourceId: ref.source.id, docId: ref.id });
 }
 
 function buildDoc(actor: string, docId: string, chunks: string[]): Doc {
@@ -109,13 +104,7 @@ async function changeHistory(ref: DocRef, fn: Automerge.ChangeFn<DocHistoryShape
 		if (heads.join() === before) return;
 		const [hash] = heads;
 		const data = toBase64(Automerge.getLastLocalChange(next)!);
-		await invoke('history_append', {
-			sourceId: entry.sourceId,
-			docId: ref.id,
-			relPath: ref.relPath ?? null,
-			hash,
-			data
-		});
+		await invoke('history_append', { sourceId: entry.sourceId, docId: ref.id, hash, data });
 		entry.doc = next;
 	});
 	entry.chain = run.catch(() => {});
@@ -139,11 +128,7 @@ export async function removeHistory(ref: DocRef): Promise<void> {
 	const entry = entries.get(ref.id);
 	entries.delete(ref.id);
 	if (entry) await settled(entry);
-	await invoke('history_remove', {
-		sourceId: ref.source.id,
-		docId: ref.id,
-		relPath: ref.relPath ?? null
-	});
+	await invoke('history_remove', { sourceId: ref.source.id, docId: ref.id });
 }
 
 interface HistoryOrphan {
