@@ -261,6 +261,15 @@ pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, sour
             }
         };
     migrate_layout(&source.path, &rows);
+    let live_by_path: HashMap<String, String> = sqlx::query_as(
+        "SELECT rel_path, id FROM documents WHERE source_id = ?1 AND deleted_at IS NULL",
+    )
+    .bind(&source_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .collect();
     let Ok(entries) = fs::read_dir(docs_root(&source.path)) else {
         return;
     };
@@ -306,6 +315,14 @@ pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, sour
                 let Some(meta) = read_meta(&entry.path()) else {
                     continue;
                 };
+                let occupant = live_by_path
+                    .get(&meta.rel_path)
+                    .map(|id| doc_dir(&source.path, id))
+                    .filter(|dir| !dir.exists());
+                if let Some(dir) = occupant {
+                    let _ = move_dir(&entry.path(), &dir);
+                    continue;
+                }
                 let title = Path::new(&meta.rel_path)
                     .file_stem()
                     .and_then(|s| s.to_str())

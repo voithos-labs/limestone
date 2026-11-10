@@ -47,14 +47,16 @@ function actorOf(uuid: string): string {
 	return uuid.replace(/-/g, '');
 }
 
-function genesis(docId: string): Uint8Array {
-	const doc = Automerge.change(
-		Automerge.init<DocHistoryShape>({ actor: actorOf(docId) }),
-		{ time: 0 },
-		(d) => {
-			d.text = '';
-		}
-	);
+const GENESIS_ACTOR = '0'.repeat(32);
+
+function legacyGenesisActor(docId: string): string {
+	return actorOf(docId);
+}
+
+function genesis(actor: string): Uint8Array {
+	const doc = Automerge.change(Automerge.init<DocHistoryShape>({ actor }), { time: 0 }, (d) => {
+		d.text = '';
+	});
 	return Automerge.getLastLocalChange(doc)!;
 }
 
@@ -62,11 +64,16 @@ function loadChunks(ref: DocRef): Promise<string[]> {
 	return invoke<string[]>('history_load', { sourceId: ref.source.id, docId: ref.id });
 }
 
-function buildDoc(actor: string, docId: string, chunks: string[]): Doc {
-	let doc = Automerge.init<DocHistoryShape>({ actor });
-	doc = Automerge.loadIncremental(doc, genesis(docId));
+function loadChain(actor: string, root: string, chunks: string[]): [Doc, boolean] {
+	let doc = Automerge.loadIncremental(Automerge.init<DocHistoryShape>({ actor }), genesis(root));
+	const rootHeads = Automerge.getHeads(doc).join();
 	for (const chunk of chunks) doc = Automerge.loadIncremental(doc, fromBase64(chunk));
-	return doc;
+	return [doc, chunks.length === 0 || Automerge.getHeads(doc).join() !== rootHeads];
+}
+
+function buildDoc(actor: string, docId: string, chunks: string[]): Doc {
+	const [doc, attached] = loadChain(actor, GENESIS_ACTOR, chunks);
+	return attached ? doc : loadChain(actor, legacyGenesisActor(docId), chunks)[0];
 }
 
 async function openHistory(ref: DocRef): Promise<HistoryEntry> {
@@ -209,8 +216,8 @@ const CHECKPOINT_GAP_MS = 5_000;
 const CHECKPOINT_MAX_SPAN_MS = 30_000;
 
 function buildCheckpoints(docId: string, doc: Doc): Checkpoint[] {
-	const skip = actorOf(docId);
-	const meta = Automerge.getChangesMetaSince(doc, []).filter((c) => c.actor !== skip);
+	const roots = [GENESIS_ACTOR, legacyGenesisActor(docId)];
+	const meta = Automerge.getChangesMetaSince(doc, []).filter((c) => !roots.includes(c.actor));
 	const checkpoints: Checkpoint[] = [];
 	let last: { hash: string; time: number } | null = null;
 	let bucketStart = 0;
