@@ -9,6 +9,7 @@
 	import {
 		containsGitRepo,
 		createSource,
+		isEmptyDir,
 		GIT_FRONTMATTER_OFF,
 		listDirs,
 		listSources,
@@ -40,7 +41,7 @@
 	let noteMenuAnchor: HTMLElement | null = $state(null);
 	let assetMenuOpen = $state(false);
 	let assetMenuAnchor: HTMLElement | null = $state(null);
-	let sample = $state(true);
+	let sample = $state(false);
 	const FOLDERS_KEY = 'general.folders';
 	const folders = $derived(session.settings.get<string>(FOLDERS_KEY) ?? 'show');
 	let busy = $state(false);
@@ -88,6 +89,11 @@
 				if (folderPath === path) hasRepo = found;
 			})
 			.catch(() => {});
+		isEmptyDir(path)
+			.then((empty) => {
+				if (folderPath === path) sample = empty;
+			})
+			.catch(() => {});
 	}
 
 	async function chooseFolder() {
@@ -125,7 +131,10 @@
 			const source = await createSource(
 				folderPath,
 				title,
-				{ note_location: noteLocation.trim(), asset_location: assetLocation.trim() || 'assets' },
+				{
+					note_location: noteLocation.trim(),
+					asset_location: assetLocation.trim() || 'assets'
+				},
 				useFrontmatter ? null : false
 			);
 			await setDefaultSource(source.id);
@@ -190,8 +199,8 @@
 					<span class="card-title">Store metadata in YAML frontmatter</span>
 					<span class="card-desc">
 						{useFrontmatter
-							? "Tags and properties live in each note's file."
-							: 'No properties, stable ids or edit history.'}
+							? 'Only what you set is written: tags, fields and dates.'
+							: 'Files stay as they are. Text #tags work, properties need it on.'}
 					</span>
 				</div>
 				<Toggle bind:checked={useFrontmatter} />

@@ -1,8 +1,11 @@
+use crate::commands::history_commands::{ensure_writable, move_doc_dir};
 use crate::commands::source_commands::{doc_writes_meta, source_root};
 use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
+use crate::services::frontmatter::Head;
 use crate::services::fs::{
-    atomic_write, history_dir, is_taken, move_file, mtime_ms, resolve_in_source, validate_file_name,
+    atomic_write, doc_dir, is_taken, move_file, mtime_ms, repath_meta, resolve_in_source,
+    validate_file_name,
 };
 use crate::services::{
     document_type, fm_properties, frontmatter, index_document, sidecar, sync_folders, sync_tags,
@@ -16,17 +19,6 @@ use tauri::{AppHandle, State};
 
 fn mtime(path: &Path) -> i64 {
     mtime_ms(path).unwrap_or(0)
-}
-
-fn fm_tags(fm: Option<&Value>) -> Vec<String> {
-    fm.and_then(|fm| fm.get("tags"))
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 async fn sync_file_tags(
@@ -133,24 +125,51 @@ pub async fn write_document(
     app: AppHandle,
     source_id: String,
     rel_path: String,
-    contents: String,
+    body: String,
+    patch: Option<Value>,
+    rebuild: Option<bool>,
     updated_at: i64,
     create: Option<bool>,
 ) -> Result<i64, OpError> {
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
 
-    if create.unwrap_or(false) && full_path.exists() {
+    let create = create.unwrap_or(false);
+    if create && full_path.exists() {
         return Err(OpError::named("already_exists", &rel_path));
     }
+    let existing = if create {
+        None
+    } else {
+        std::fs::read_to_string(&full_path).ok()
+    };
+    let contents = frontmatter::compose(
+        existing.as_deref(),
+        &body,
+        patch.as_ref().and_then(Value::as_object),
+        &[],
+        rebuild.unwrap_or(false),
+    )
+    .map_err(OpError::from)?;
     atomic_write(&full_path, contents.as_bytes()).map_err(OpError::from)?;
 
     let mtime = mtime(&full_path);
-    let (fm, body) = frontmatter::split_content(&contents);
+    let (head, body) = frontmatter::head(&contents);
 
     let mut tx = app_data.db.begin().await.map_err(OpError::from)?;
+    sqlx::query(
+        "UPDATE documents SET deleted_at = NULL
+         WHERE deleted_at IS NOT NULL
+           AND id = (SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2
+                     ORDER BY deleted_at IS NULL DESC, deleted_at DESC LIMIT 1)",
+    )
+    .bind(&source_id)
+    .bind(&rel_path)
+    .execute(&mut *tx)
+    .await
+    .map_err(OpError::from)?;
 
-    if let Some(fm) = &fm {
+    if let Some(fm) = head.value() {
         let properties = fm_properties(fm);
         let created_ms = fm
             .get("created_at")
@@ -195,7 +214,7 @@ pub async fn write_document(
     .await
     .map_err(OpError::from)?;
     if let Some(doc_id) = doc_id {
-        index_body(&mut tx, &source_id, &doc_id, &rel_path, fm.as_ref(), body).await?;
+        index_body(&mut tx, &source_id, &doc_id, &rel_path, &head, body).await?;
     }
 
     tx.commit().await.map_err(OpError::from)?;
@@ -207,12 +226,14 @@ async fn index_body(
     source_id: &str,
     doc_id: &str,
     rel_path: &str,
-    fm: Option<&Value>,
+    head: &Head,
     body: &str,
 ) -> Result<(), OpError> {
-    let mut tags = fm_tags(fm);
-    merge_body_tags(&mut tags, body);
-    sync_tags(tx, doc_id, &tags).await.map_err(OpError::from)?;
+    if !head.broken() {
+        let mut tags = frontmatter::tags(head.value());
+        merge_body_tags(&mut tags, body);
+        sync_tags(tx, doc_id, &tags).await.map_err(OpError::from)?;
+    }
     sync_folders(tx, source_id, doc_id, rel_path)
         .await
         .map_err(OpError::from)?;
@@ -242,7 +263,8 @@ pub async fn restore_document(
     source_id: String,
     id: String,
     rel_path: String,
-    contents: String,
+    body: String,
+    patch: Option<Value>,
     updated_at: i64,
 ) -> Result<(), OpError> {
     let root = root_of(&app, &source_id)?;
@@ -250,12 +272,20 @@ pub async fn restore_document(
     if full_path.exists() {
         return Err(OpError::named("already_exists", &rel_path));
     }
+    let contents = frontmatter::compose(
+        None,
+        &body,
+        patch.as_ref().and_then(Value::as_object),
+        &[],
+        false,
+    )
+    .map_err(OpError::from)?;
     atomic_write(&full_path, contents.as_bytes()).map_err(OpError::from)?;
 
     let mtime = mtime(&full_path);
-    let (fm, body) = frontmatter::split_content(&contents);
-    let properties = fm
-        .as_ref()
+    let (head, body) = frontmatter::head(&contents);
+    let properties = head
+        .value()
         .map(fm_properties)
         .unwrap_or_else(|| "{}".to_string());
     let title = Path::new(&rel_path)
@@ -284,9 +314,9 @@ pub async fn restore_document(
     if revived == 0 {
         return Err(OpError::new("not_found"));
     }
-    index_body(&mut tx, &source_id, &id, &rel_path, fm.as_ref(), body).await?;
+    index_body(&mut tx, &source_id, &id, &rel_path, &head, body).await?;
     tx.commit().await.map_err(OpError::from)?;
-    Ok(())
+    repath_meta(&root, &id, &rel_path).map_err(OpError::from)
 }
 
 #[tauri::command]
@@ -331,23 +361,8 @@ pub async fn set_document_tags(
 
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
-    let fm_tags = tags.clone();
-    rewrite_meta(&root, &id, &rel_path, &full_path, move |fm| {
-        if let Some(obj) = fm.as_object_mut() {
-            if fm_tags.is_empty() {
-                obj.shift_remove("tags");
-            } else {
-                obj.insert(
-                    "tags".to_string(),
-                    serde_json::Value::Array(
-                        fm_tags
-                            .iter()
-                            .map(|t| serde_json::Value::String(t.clone()))
-                            .collect(),
-                    ),
-                );
-            }
-        }
+    rewrite_meta(&root, &id, &rel_path, &full_path, |fm| {
+        frontmatter::set_tags(fm, &tags)
     })
     .map_err(OpError::from)?;
 
@@ -371,7 +386,7 @@ pub fn read_document_tags(
     if is_pdf(&rel_path) {
         let fm = id.and_then(|id| sidecar::read(&root, &id).ok().flatten());
         return Ok(DocumentTags {
-            frontmatter: fm_tags(fm.as_ref()),
+            frontmatter: frontmatter::tags(fm.as_ref()),
             body: Vec::new(),
         });
     }
@@ -379,7 +394,7 @@ pub fn read_document_tags(
     let contents = std::fs::read_to_string(&full_path).map_err(OpError::from)?;
     let (fm, body) = frontmatter::split_content(&contents);
     Ok(DocumentTags {
-        frontmatter: fm_tags(fm.as_ref()),
+        frontmatter: frontmatter::tags(fm.as_ref()),
         body: tag_mentions(body),
     })
 }
@@ -433,6 +448,11 @@ pub fn save_pdf_ink(
 }
 
 #[tauri::command]
+pub fn body_tags(body: String) -> Vec<String> {
+    tag_mentions(&body)
+}
+
+#[tauri::command]
 pub async fn strip_document_tag(
     app_data: State<'_, AppData>,
     app: AppHandle,
@@ -446,7 +466,7 @@ pub async fn strip_document_tag(
     frontmatter::rewrite_document(&full_path, None, &|body| rewrite_tags(body, &slug, None))
         .map_err(OpError::from)?;
     let contents = std::fs::read_to_string(&full_path).map_err(OpError::from)?;
-    let tags = fm_tags(frontmatter::split_content(&contents).0.as_ref());
+    let tags = frontmatter::tags(frontmatter::split_content(&contents).0.as_ref());
     sync_file_tags(&app_data.db, &id, &full_path, tags).await
 }
 
@@ -491,18 +511,22 @@ pub async fn rename_document(
         .and_then(|s| s.to_str())
         .unwrap_or(&new_name);
 
-    sqlx::query(
+    let doc_id: Option<String> = sqlx::query_scalar(
         "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3
-         WHERE source_id = ?4 AND rel_path = ?5 AND deleted_at IS NULL",
+         WHERE source_id = ?4 AND rel_path = ?5 AND deleted_at IS NULL
+         RETURNING id",
     )
     .bind(&new_rel)
     .bind(title)
     .bind(mtime(&new_full))
     .bind(&source_id)
     .bind(&rel_path)
-    .execute(&app_data.db)
+    .fetch_optional(&app_data.db)
     .await
     .map_err(OpError::from)?;
+    if let Some(doc_id) = doc_id {
+        repath_meta(&root, &doc_id, &new_rel).map_err(OpError::from)?;
+    }
 
     Ok(new_rel)
 }
@@ -614,6 +638,15 @@ pub async fn move_document(
                 sidecar::relocate(&root, &doc_id, &new_rel_path)
             }
             .map_err(OpError::from)?;
+        } else {
+            if dest_source_id != source_id {
+                let _ = ensure_writable(&dest_source);
+            }
+            if let Err(e) = move_doc_dir(&root, &dest_source, &doc_id)
+                .and_then(|_| repath_meta(&dest_source, &doc_id, &new_rel_path))
+            {
+                eprintln!("history move failed: {e}");
+            }
         }
         let mut assets: Vec<(String, bool)> = Vec::new();
         if dest_source_id != source_id {
@@ -693,7 +726,7 @@ pub async fn delete_document(
         return Ok(false);
     };
 
-    if history_dir(&root, &id).is_dir() {
+    if doc_dir(&root, &id).is_dir() {
         sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2 AND source_id = ?3")
             .bind(chrono::Utc::now().timestamp_millis())
             .bind(&id)

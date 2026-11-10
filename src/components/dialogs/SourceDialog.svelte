@@ -255,9 +255,9 @@
 				</button>
 			</div>
 
-			{#if mode === 'create' && folderPath}
+			{#if folderPath}
 				<div class="options" transition:slide={{ duration: 160 }}>
-					{#if useFrontmatter && gitOff && hasRepo}
+					{#if mode === 'create' && useFrontmatter && gitOff && hasRepo}
 						<div class="info-card">
 							<GitBranch size={15} strokeWidth={1.75} />
 							<div class="mc-body">
@@ -270,25 +270,29 @@
 						</div>
 					{/if}
 
-					<div class="option-card">
-						<div class="oc-text">
-							<span class="oc-title">Store metadata in YAML frontmatter</span>
-							<span class="oc-desc">
-								{useFrontmatter
-									? "Tags and properties live in each note's file."
-									: 'No properties, stable ids or edit history.'}
-							</span>
+					{#if mode === 'create'}
+						<div class="option-card">
+							<div class="oc-text">
+								<span class="oc-title">Store metadata in YAML frontmatter</span>
+								<span class="oc-desc">
+									{useFrontmatter
+										? 'Only what you set is written: tags, fields and dates.'
+										: 'Files stay as they are. Text #tags work, properties need it on.'}
+								</span>
+							</div>
+							<Toggle bind:checked={useFrontmatter} />
 						</div>
-						<Toggle bind:checked={useFrontmatter} />
-					</div>
+					{/if}
 
-					<div class="option-card">
-						<div class="oc-text">
-							<span class="oc-title">Set as default source</span>
-							<span class="oc-desc">New notes are created here by default.</span>
+					{#if mode === 'create'}
+						<div class="option-card">
+							<div class="oc-text">
+								<span class="oc-title">Set as default source</span>
+								<span class="oc-desc">New notes are created here by default.</span>
+							</div>
+							<Toggle bind:checked={setAsDefault} />
 						</div>
-						<Toggle bind:checked={setAsDefault} />
-					</div>
+					{/if}
 				</div>
 			{/if}
 

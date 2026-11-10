@@ -31,8 +31,12 @@ import * as yaml from 'js-yaml';
 
 // Internal
 import { select, execute } from '#lib/services/db.js';
-import { addChangeHistory, moveHistory, removeHistory } from '#lib/services/history.js';
-import { mark } from '#lib/overlays.svelte.js';
+import {
+	addChangeHistory,
+	removeHistory,
+	retargetHistory,
+	settleHistory
+} from '#lib/services/history.js';
 import { sanitizeSegment } from '#lib/util/paths.js';
 import { creationSource, defaultNoteDir, noteSelfWrite, type Source } from './Source';
 import Tag, { tagSlug } from './Tag';
@@ -41,7 +45,7 @@ import Doc, { type DocumentRow } from './Doc';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
 
-const FENCE_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
+const FENCE_RE = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
 
 function yamlErrorText(e: unknown): string {
 	const err = e as { reason?: string; message?: string; mark?: { line?: number } };
@@ -67,8 +71,8 @@ function validDate(v: unknown): Date | undefined {
 export interface DocumentFrontmatter {
 	id: string;
 	tags: string[];
-	updated_at: Date;
-	created_at: Date;
+	updated_at?: Date;
+	created_at?: Date;
 
 	[key: string]: any; // flattened .properties
 }
@@ -110,8 +114,7 @@ class MarkdownHandle extends Doc {
 	frontmatterError: string | null = null;
 	writesMeta = true;
 	inRepo = false;
-	idOnDisk = false;
-	private fence = '';
+	private fileDates = { created: false, updated: false };
 
 	constructor(row: DocumentRow, source: Source) {
 		if (row.document_type !== 'md') {
@@ -246,31 +249,27 @@ class MarkdownHandle extends Doc {
 
 	// ── Serialization ────────────────────────────────────────────────────────────────
 
-	/**
-	 * Build the frontmatter from doc state. Properties are stored nested
-	 * (e.g. views.<slug>.<field>) as a YAML object.
-	 */
-	toFrontmatter(): DocumentFrontmatter {
+	private ownedKeys(): Record<string, unknown> {
+		const tags = this.tags.map((t) => t.slug);
 		return {
-			id: this.id,
-			tags: this.tags.map((t) => t.slug),
-			created_at: this.createdAt,
-			updated_at: this.updatedAt,
+			...(tags.length ? { tags } : {}),
+			...(this.fileDates.created ? { created_at: this.createdAt } : {}),
 			...this.properties
 		};
 	}
 
-	/**
-	 * Serialize frontmatter + body into a full file string.
-	 */
-	async serialize(body: string, rebuildFrontmatter = false): Promise<string> {
+	private async patchFor(rebuild: boolean, body: string): Promise<Record<string, unknown> | null> {
 		await this.refreshMeta();
-		if (!this.writesMeta) return this.fence + body;
-		if (this.frontmatterError && !rebuildFrontmatter) return body;
-
-		const fm = this.toFrontmatter();
-		const fmStr = yaml.dump(fm, { lineWidth: -1, sortKeys: false });
-		return `---\n${fmStr}---\n${body}`;
+		if (!this.writesMeta || (this.frontmatterError && !rebuild)) return null;
+		const patch = rebuild || !this.hasFile ? this.ownedKeys() : {};
+		if (rebuild && Array.isArray(patch.tags)) {
+			const inText = new Set((await invoke<string[]>('body_tags', { body })).map(tagSlug));
+			const tags = patch.tags.filter((t: string) => !inText.has(t));
+			if (tags.length) patch.tags = tags;
+			else delete patch.tags;
+		}
+		if (this.fileDates.updated) patch.updated_at = this.updatedAt;
+		return Object.keys(patch).length ? patch : null;
 	}
 
 	/**
@@ -283,6 +282,18 @@ class MarkdownHandle extends Doc {
 		return match ? match[2] : raw;
 	}
 
+	private static readTags(value: unknown): string[] {
+		const items = Array.isArray(value)
+			? value
+			: typeof value === 'string'
+				? value.split(/[\s,]+/)
+				: [];
+		return items
+			.filter((t): t is string => typeof t === 'string')
+			.map((t) => t.replace(/^#/, ''))
+			.filter(Boolean);
+	}
+
 	static deserialize(raw: string): {
 		frontmatter: DocumentFrontmatter | null;
 		body: string;
@@ -293,17 +304,18 @@ class MarkdownHandle extends Doc {
 
 		let parsed: Record<string, any>;
 		try {
-			const loaded = yaml.load(match[1]);
+			const loaded = yaml.load(match[1], { schema: yaml.CORE_SCHEMA });
 			parsed = loaded && typeof loaded === 'object' ? (loaded as Record<string, any>) : {};
 		} catch (e) {
 			return { frontmatter: null, body: raw, error: yamlErrorText(e) };
 		}
+		const { tag, tags, ...rest } = parsed;
 		const frontmatter: DocumentFrontmatter = {
-			...parsed,
+			...rest,
 			id: parsed.id ?? '',
-			tags: Array.isArray(parsed.tags) ? parsed.tags.filter((t) => typeof t === 'string') : [],
-			created_at: validDate(parsed.created_at) ?? new Date(),
-			updated_at: validDate(parsed.updated_at) ?? new Date()
+			tags: MarkdownHandle.readTags(tags ?? tag),
+			created_at: validDate(parsed.created_at),
+			updated_at: validDate(parsed.updated_at)
 		};
 
 		return { frontmatter, body: match[2], error: null };
@@ -331,16 +343,8 @@ class MarkdownHandle extends Doc {
 		this.hasFile = true;
 		const { frontmatter, body, error } = MarkdownHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
-		this.fence = raw.slice(0, raw.length - body.length);
-		this.idOnDisk = frontmatter?.id === this.id;
 
-		if (frontmatter) {
-			const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
-			if (created_at) this.createdAt = new Date(created_at);
-			if (updated_at) this.updatedAt = new Date(updated_at);
-			this.properties = remaining;
-			this.tags = await Tag.fromSlugs(tags);
-		}
+		await this.adoptFrontmatter(frontmatter, !!error);
 
 		await this.markAccessed();
 
@@ -349,8 +353,23 @@ class MarkdownHandle extends Doc {
 	}
 
 	private recordHistory(body: string): void {
-		if (!this.idOnDisk) return;
 		addChangeHistory(this, body).catch((e) => console.error('history record failed', e));
+	}
+
+	private async snapshot(body?: string): Promise<void> {
+		if (!this.hasFile) return;
+		try {
+			if (body === undefined) {
+				const raw = await invoke<string>('read_document', {
+					sourceId: this.source.id,
+					relPath: this._relPath
+				});
+				body = MarkdownHandle.stripFence(raw);
+			}
+			await addChangeHistory(this, body);
+		} catch (e) {
+			console.error('history snapshot failed', e);
+		}
 	}
 
 	/**
@@ -369,14 +388,25 @@ class MarkdownHandle extends Doc {
 		} catch {
 			return;
 		}
-		const { frontmatter, body, error } = MarkdownHandle.deserialize(raw);
+		const { frontmatter, error } = MarkdownHandle.deserialize(raw);
 		this.frontmatterError = this.writesMeta ? error : null;
-		this.fence = raw.slice(0, raw.length - body.length);
-		this.idOnDisk = frontmatter?.id === this.id;
-		if (!frontmatter) return;
-		const { id, tags, created_at, updated_at, ...remaining } = frontmatter;
+		await this.adoptFrontmatter(frontmatter, !!error);
+	}
+
+	private async adoptFrontmatter(
+		frontmatter: DocumentFrontmatter | null,
+		broken: boolean
+	): Promise<void> {
+		if (!frontmatter) {
+			this.fileDates = { created: false, updated: false };
+			if (!broken) this.tags = [];
+			return;
+		}
+		const { id: _id, tags, created_at, updated_at, ...remaining } = frontmatter;
+		this.fileDates = { created: created_at !== undefined, updated: updated_at !== undefined };
+		if (created_at) this.createdAt = created_at;
+		if (updated_at) this.updatedAt = updated_at;
 		this.properties = remaining;
-		if (created_at) this.createdAt = new Date(created_at);
 		this.tags = await Tag.fromSlugs(tags);
 	}
 
@@ -388,17 +418,18 @@ class MarkdownHandle extends Doc {
 		await this.refreshMetaFromDisk(); // this is hmm possibly not needed
 		if (opts.properties) this.properties = { ...this.properties, ...opts.properties };
 		this.updatedAt = new Date();
-		const contents = await this.serialize(body, opts.rebuildFrontmatter);
+		const rebuild = !!opts.rebuildFrontmatter;
 		const mtime = await invoke<number>('write_document', {
 			sourceId: this.source.id,
 			relPath: this._relPath,
-			contents,
+			body,
+			patch: await this.patchFor(rebuild, body),
+			rebuild,
 			updatedAt: this.updatedAt.getTime(),
 			create: !this.hasFile
 		});
 		noteSelfWrite(this.source.id, this._relPath, mtime);
 		this.hasFile = true;
-		this.idOnDisk = MarkdownHandle.deserialize(contents).frontmatter?.id === this.id;
 		this.recordHistory(body);
 	}
 
@@ -425,20 +456,17 @@ class MarkdownHandle extends Doc {
 			? await MarkdownHandle.uniqueRelPath(this.source, dirOf(wanted), base)
 			: wanted;
 		this.updateLocation(this.source, relPath, relPath.split('/').pop()!.replace(/\.md$/i, ''));
-		await this.refreshMeta();
 		this.updatedAt = new Date();
-		const fm = yaml.dump(this.toFrontmatter(), { lineWidth: -1, sortKeys: false });
-		const contents = `---\n${fm}---\n${body}`;
 		await invoke('restore_document', {
 			sourceId: this.source.id,
 			id: this.id,
 			relPath,
-			contents,
+			body,
+			patch: await this.patchFor(true, body),
 			updatedAt: this.updatedAt.getTime()
 		});
 		this.deletedAt = undefined;
 		this.hasFile = true;
-		this.idOnDisk = true;
 		this.recordHistory(body);
 	}
 
@@ -456,7 +484,8 @@ class MarkdownHandle extends Doc {
 	}
 
 	/** Delete the document from disk and the index. */
-	async delete(): Promise<boolean> {
+	async delete(body?: string): Promise<boolean> {
+		await this.snapshot(body);
 		const kept = await invoke<boolean>('delete_document', {
 			id: this.id,
 			sourceId: this.source.id,
@@ -472,15 +501,12 @@ class MarkdownHandle extends Doc {
 			`SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2 AND deleted_at IS NULL`,
 			[source.id, relPath]
 		);
-		const kept = await invoke<boolean>('delete_document', {
-			id: row?.id ?? null,
-			sourceId: source.id,
-			relPath
-		});
-		if (row && !kept) {
-			removeHistory({ id: row.id, source }).catch((e) => console.error('history remove failed', e));
+		if (!row) {
+			await invoke('delete_document', { id: null, sourceId: source.id, relPath });
+			return null;
 		}
-		return row?.id ?? null;
+		await (await MarkdownHandle.fromID(row.id)).delete();
+		return row.id;
 	}
 
 	/**
@@ -523,6 +549,7 @@ class MarkdownHandle extends Doc {
 	 */
 	async moveToSource(newSource: Source, newRelPath: string): Promise<void> {
 		await this.ensureFile();
+		await settleHistory(this.id);
 		const oldSourceId = this.source.id;
 		await invoke('move_document', {
 			sourceId: oldSourceId,
@@ -530,11 +557,9 @@ class MarkdownHandle extends Doc {
 			newRelPath,
 			newSourceId: newSource.id
 		});
-		moveHistory(this.id, oldSourceId, newSource.id).catch((e) =>
-			console.error('history move failed', e)
-		);
 		const oldRelPath = this._relPath;
 		this.updateLocation(newSource, newRelPath, stemOf(newRelPath));
+		await retargetHistory(this.id, newSource.id);
 		await this.refreshMeta();
 		await this.stripLeftProjects(oldSourceId, oldRelPath);
 	}

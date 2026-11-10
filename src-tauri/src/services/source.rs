@@ -24,7 +24,7 @@
 //!     - same path AND same mtime => unchanged
 //!     - same path AND NOT same mtime => modified
 //!     - on disk but not found in db (by rel_path) => new_paths
-//!     - in db but not found on disk => missing, delete from cache (TODO: soft-delete, recoverable)
+//!     - in db but not found on disk => missing, delete from cache
 //!       -> later can prompt to restore for autpmerge history in UI, and allows a better missing
 //!       doc page
 //! 4. Extract and parse frontmatter, quickly ideally
@@ -33,9 +33,11 @@
 //! 7. Cleanup orphaned tags
 //!
 
-use crate::services::body::fold_tag;
-use crate::services::frontmatter;
-use crate::services::fs::{atomic_write, clean_location, mtime_ms};
+use crate::services::body::{fold_tag, lookalikes, LOOKALIKE_MAX_PAIRS};
+use crate::services::frontmatter::{self, Head};
+use crate::services::fs::{
+    atomic_write, clean_location, docs_root, mtime_ms, read_meta, repath_meta,
+};
 use crate::services::sidecar::{self, Sidecar};
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
@@ -248,7 +250,15 @@ pub fn create_source(
 
 // ── The Big Scan ─────────────────────────────────────────────────────────────────────
 
-const KNOWN_FM_KEYS: &[&str] = &["id", "tags", "created_at", "updated_at", "accessed_at"];
+const KNOWN_FM_KEYS: &[&str] = &[
+    "id",
+    "tags",
+    "tag",
+    "created_at",
+    "updated_at",
+    "accessed_at",
+];
+// "tag" is for obsid compat
 
 /// extract everything outside known keys as a json string
 pub fn fm_properties(fm: &serde_json::Value) -> String {
@@ -281,7 +291,7 @@ pub struct ResolvedDoc {
     pub db_mtime: Option<i64>,
     pub existing: bool,
     pub moved: bool,
-    pub rewrite_id: bool,
+    pub created_at: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -530,48 +540,46 @@ pub fn extract_frontmatter(
     source_path: &Path,
     paths: &[String],
     buffer_size: usize,
-) -> Vec<(String, Option<serde_json::Value>)> {
+) -> Vec<(String, Head)> {
     paths
         .par_iter()
         .map(|rel_path| {
             let full_path = source_path.join(rel_path);
-            let fm = read_frontmatter(&full_path, buffer_size);
-            (rel_path.clone(), fm)
+            let head = read_frontmatter(&full_path, buffer_size);
+            (rel_path.clone(), head)
         })
         .collect()
 }
 
 // escalate the read window until the closing fence fits (or the whole file is in)
-fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<serde_json::Value> {
+fn read_frontmatter(path: &Path, buffer_size: usize) -> Head {
     let mut limit = buffer_size.max(64) as u64;
     loop {
         let mut buf = Vec::new();
-        fs::File::open(path)
-            .ok()?
-            .take(limit)
-            .read_to_end(&mut buf)
-            .ok()?;
+        let read = fs::File::open(path).and_then(|f| f.take(limit).read_to_end(&mut buf));
+        if read.is_err() {
+            return Head::Absent;
+        }
         let whole_file = (buf.len() as u64) < limit;
 
         // tolerate a multibyte char split at the window edge
         let content = match std::str::from_utf8(&buf) {
             Ok(s) => s,
-            Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).ok()?,
+            Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).unwrap_or(""),
         };
-        let trimmed = content.trim_start();
-        if !trimmed.starts_with("---") {
-            return None;
-        }
-        let after_open = &trimmed[3..];
-        if let Some(close) = frontmatter::find_closing_fence(after_open) {
-            return serde_yml::from_str(&after_open[..close]).ok();
+        let trimmed = content.trim_start_matches('\u{feff}').trim_start();
+        let Some(after_open) = trimmed.strip_prefix("---") else {
+            return Head::Absent;
+        };
+        if frontmatter::find_closing_fence(after_open).is_some() {
+            return frontmatter::head(content).0;
         }
         if whole_file {
-            return None;
+            return Head::Absent;
         }
         let next = limit.saturating_mul(16).min(1 << 22);
         if next == limit {
-            return None;
+            return Head::Absent;
         }
         limit = next;
     }
@@ -580,104 +588,124 @@ fn read_frontmatter(path: &Path, buffer_size: usize) -> Option<serde_json::Value
 // Id-first resolution: every read (new/modified) file resolves to exactly one document id
 pub fn resolve_plan(
     diff: &ReconciliationDiff,
-    frontmatter: &[(String, Option<serde_json::Value>)],
     db_docs: &HashMap<String, (String, i64)>,
     deleted_ids: &HashSet<String>,
-    foreign_ids: &HashSet<String>,
+    seeds: &HashMap<String, (String, i64)>,
+    renames: &[(String, String)],
+    lookalikes: &[(String, String)],
 ) -> ReconcilePlan {
-    let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
-        .iter()
-        .map(|(p, fm)| (p.as_str(), fm.as_ref()))
-        .collect();
-    let db_path_to_id: HashMap<&str, &str> = db_docs
-        .iter()
-        .filter(|(id, _)| !deleted_ids.contains(id.as_str()))
-        .map(|(id, (path, _))| (path.as_str(), id.as_str()))
-        .collect();
-    let unchanged: HashSet<&str> = diff.unchanged.iter().map(|p| p.as_str()).collect();
-
-    let mut read_paths: Vec<(&str, i64)> = diff
-        .modified
-        .iter()
-        .chain(diff.new_paths.iter())
-        .map(|(p, m)| (p.as_str(), *m))
-        .collect();
-    read_paths.sort();
-
-    let claims: HashMap<&str, &str> = read_paths
-        .iter()
-        .filter_map(|(p, _)| {
-            fm_map
-                .get(p)
-                .copied()
-                .flatten()
-                .and_then(|f| f.get("id"))
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(|id| (*p, id))
-        })
-        .collect();
-
-    let mut assigned: HashSet<&str> = HashSet::new();
-    let mut docs: Vec<ResolvedDoc> = Vec::new();
-    let mut claimless: Vec<(&str, i64)> = Vec::new();
-
-    for (path, mtime) in &read_paths {
-        let Some(&claim) = claims.get(path) else {
-            claimless.push((path, *mtime));
-            continue;
-        };
-        let holder = db_docs.get(claim).map(|(p, _)| p.as_str());
-        // a claim is granted unless the id's current holder keeps it (duplicate)
-        let granted = !assigned.contains(claim)
-            && !foreign_ids.contains(claim)
-            && match holder {
-                Some(q) if q == *path => true,
-                Some(q) => !unchanged.contains(q) && claims.get(q) != Some(&claim),
-                None => true,
-            };
-        if granted {
-            assigned.insert(claim);
-            docs.push(ResolvedDoc {
-                id: claim.to_string(),
-                rel_path: path.to_string(),
-                mtime: *mtime,
-                db_mtime: db_docs.get(claim).map(|(_, m)| *m),
-                existing: holder.is_some(),
-                moved: holder.is_some_and(|q| q != *path),
-                rewrite_id: false,
-            });
-        } else {
-            docs.push(ResolvedDoc {
-                id: Uuid::new_v4().to_string(),
-                rel_path: path.to_string(),
-                mtime: *mtime,
-                db_mtime: None,
-                existing: false,
-                moved: false,
-                rewrite_id: true,
-            });
+    let mut by_path: HashMap<&str, &str> = HashMap::new();
+    for live in [false, true] {
+        for (id, (path, _)) in db_docs {
+            if deleted_ids.contains(id) != live {
+                by_path.insert(path.as_str(), id.as_str());
+            }
         }
     }
+    let resolved = |id: &str, path: &str, mtime: i64| ResolvedDoc {
+        id: id.to_string(),
+        rel_path: path.to_string(),
+        mtime,
+        db_mtime: db_docs.get(id).map(|(_, m)| *m),
+        existing: true,
+        moved: db_docs.get(id).is_some_and(|(p, _)| p != path),
+        created_at: None,
+    };
 
-    for (path, mtime) in claimless {
-        let existing = db_path_to_id
-            .get(path)
-            .copied()
-            .filter(|id| !assigned.contains(id));
-        if let Some(id) = existing {
-            assigned.insert(id);
+    let mut docs: Vec<ResolvedDoc> = diff
+        .modified
+        .iter()
+        .filter_map(|(path, mtime)| Some(resolved(by_path.get(path.as_str())?, path, *mtime)))
+        .collect();
+
+    let mut vacated: HashMap<i64, Vec<&str>> = HashMap::new();
+    for path in &diff.missing {
+        if let Some(&id) = by_path.get(path.as_str()) {
+            if let Some((_, mtime)) = db_docs.get(id).filter(|(_, m)| *m != 0) {
+                vacated.entry(*mtime).or_default().push(id);
+            }
         }
-        docs.push(ResolvedDoc {
-            id: existing
-                .map(str::to_string)
-                .unwrap_or_else(|| Uuid::new_v4().to_string()),
-            rel_path: path.to_string(),
-            mtime,
-            db_mtime: existing.and_then(|id| db_docs.get(id).map(|(_, m)| *m)),
-            existing: existing.is_some(),
-            moved: false,
-            rewrite_id: false,
+    }
+    let mut arrivals: HashMap<i64, usize> = HashMap::new();
+    for (_, mtime) in &diff.new_paths {
+        *arrivals.entry(*mtime).or_default() += 1;
+    }
+    let mut hinted: HashMap<String, &str> = HashMap::new();
+    for (from, to) in renames {
+        for path in &diff.missing {
+            let moved = if path == from {
+                to.clone()
+            } else if let Some(rest) = path
+                .strip_prefix(from.as_str())
+                .and_then(|r| r.strip_prefix('/'))
+            {
+                format!("{to}/{rest}")
+            } else {
+                continue;
+            };
+            if let Some(&id) = by_path
+                .get(path.as_str())
+                .filter(|id| !deleted_ids.contains(**id))
+            {
+                hinted.insert(moved, id);
+            }
+        }
+    }
+    let mut lookalike: HashMap<&str, &str> = HashMap::new();
+    for (from, to) in lookalikes {
+        if let Some(&id) = by_path
+            .get(from.as_str())
+            .filter(|id| !deleted_ids.contains(**id))
+        {
+            lookalike.insert(to, id);
+        }
+    }
+    let mut taken: HashSet<&str> = HashSet::new();
+    let mut ids: Vec<Option<&str>> = diff
+        .new_paths
+        .iter()
+        .map(|(path, mtime)| {
+            let renamed = match vacated.get(mtime).map(Vec::as_slice) {
+                Some([id]) if arrivals[mtime] == 1 => Some(*id),
+                _ => None,
+            };
+            hinted
+                .get(path.as_str())
+                .copied()
+                .or_else(|| {
+                    by_path
+                        .get(path.as_str())
+                        .copied()
+                        .filter(|id| deleted_ids.contains(*id))
+                })
+                .or_else(|| seeds.get(path.as_str()).map(|(id, _)| id.as_str()))
+                .or(renamed)
+                .filter(|id| taken.insert(id))
+        })
+        .collect();
+    for (slot, (path, _)) in ids.iter_mut().zip(&diff.new_paths) {
+        if slot.is_none() {
+            *slot = lookalike
+                .get(path.as_str())
+                .copied()
+                .filter(|id| taken.insert(id));
+        }
+    }
+    for ((path, mtime), id) in diff.new_paths.iter().zip(ids) {
+        docs.push(match id {
+            Some(id) if db_docs.contains_key(id) => resolved(id, path, *mtime),
+            _ => {
+                let seed = id.map(|id| (id, seeds[path.as_str()].1));
+                ResolvedDoc {
+                    id: seed.map_or_else(|| Uuid::new_v4().to_string(), |(id, _)| id.to_string()),
+                    rel_path: path.to_string(),
+                    mtime: *mtime,
+                    db_mtime: None,
+                    existing: false,
+                    moved: false,
+                    created_at: seed.map(|(_, created)| created),
+                }
+            }
         });
     }
 
@@ -685,9 +713,9 @@ pub fn resolve_plan(
         .iter()
         .map(|d| d.id.as_str())
         .chain(
-            unchanged
+            diff.unchanged
                 .iter()
-                .filter_map(|p| db_path_to_id.get(p).copied()),
+                .filter_map(|p| by_path.get(p.as_str()).copied()),
         )
         .collect();
     let delete_ids: Vec<String> = db_docs
@@ -721,17 +749,6 @@ fn fs_mtime_ms(path: &Path) -> i64 {
     mtime_ms(path).unwrap_or(0)
 }
 
-fn fm_tags(fm: Option<&serde_json::Value>) -> Vec<String> {
-    fm.and_then(|f| f.get("tags"))
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 fn fm_date(fm: Option<&serde_json::Value>, key: &str) -> Option<i64> {
     fm.and_then(|f| f.get(key))
         .and_then(|v| v.as_str())
@@ -740,36 +757,22 @@ fn fm_date(fm: Option<&serde_json::Value>, key: &str) -> Option<i64> {
 
 pub async fn apply_plan(
     plan: &ReconcilePlan,
-    frontmatter: &[(String, Option<serde_json::Value>)],
+    frontmatter: &[(String, Head)],
     source_id: &str,
     source_path: &Path,
     db: &SqlitePool,
 ) -> sqlx::Result<()> {
-    let fm_map: HashMap<&str, Option<&serde_json::Value>> = frontmatter
+    let fm_map: HashMap<&str, &Head> = frontmatter
         .iter()
-        .map(|(p, fm)| (p.as_str(), fm.as_ref()))
+        .map(|(path, head)| (path.as_str(), head))
         .collect();
-
-    // duplicates get a fresh id written back so they stay stable across runs
-    for doc in plan
-        .docs
-        .iter()
-        .filter(|d| d.rewrite_id && document_type(&d.rel_path) == "md")
-    {
-        let id = doc.id.clone();
-        let _ = frontmatter::rewrite_frontmatter(&source_path.join(&doc.rel_path), move |fm| {
-            if let Some(obj) = fm.as_object_mut() {
-                obj.insert("id".into(), serde_json::Value::String(id.clone()));
-            }
-        });
-    }
 
     let mut tx = db.begin().await?;
 
     let now = Utc::now().timestamp_millis();
     let mut unlinked_tags: Vec<String> = Vec::new();
     for id in &plan.delete_ids {
-        if crate::services::fs::history_dir(source_path, id).is_dir() {
+        if crate::services::fs::doc_dir(source_path, id).is_dir() {
             sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2")
                 .bind(now)
                 .bind(id)
@@ -808,24 +811,22 @@ pub async fn apply_plan(
     }
 
     for doc in &plan.docs {
-        let fm = fm_map.get(doc.rel_path.as_str()).copied().flatten();
+        let head = fm_map.get(doc.rel_path.as_str()).copied();
+        let fm = head.and_then(Head::value);
+        let broken = head.is_some_and(Head::broken);
         let title = Path::new(&doc.rel_path)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled");
-        let properties = fm.map(fm_properties).unwrap_or_else(|| "{}".to_string());
-        let full_path = source_path.join(&doc.rel_path);
-        let mtime = if doc.rewrite_id {
-            fs_mtime_ms(&full_path)
-        } else {
-            doc.mtime
-        };
+        let properties =
+            (!broken).then(|| fm.map(fm_properties).unwrap_or_else(|| "{}".to_string()));
+        let mtime = doc.mtime;
         let updated_at = fm_date(fm, "updated_at").unwrap_or(mtime);
 
         let wrote = if doc.existing {
             sqlx::query(
-                "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4, updated_at = ?5,
-                     deleted_at = NULL
+                "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = coalesce(?4, properties),
+                     updated_at = ?5, deleted_at = NULL
                  WHERE id = ?6 AND coalesce(mtime, 0) = ?7",
             )
             .bind(&doc.rel_path)
@@ -840,24 +841,20 @@ pub async fn apply_plan(
             .rows_affected()
                 > 0
         } else {
-            let created_at =
-                fm_date(fm, "created_at").unwrap_or_else(|| fs_birth_ms(&full_path, mtime));
+            let created_at = fm_date(fm, "created_at")
+                .or(doc.created_at)
+                .unwrap_or_else(|| fs_birth_ms(&source_path.join(&doc.rel_path), mtime));
             let accessed_at = fm_date(fm, "accessed_at").unwrap_or(mtime);
             sqlx::query(
                 "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at, document_type)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-                 ON CONFLICT(id) DO UPDATE SET source_id = excluded.source_id, rel_path = excluded.rel_path,
-                     title = excluded.title, mtime = excluded.mtime, properties = excluded.properties,
-                     updated_at = excluded.updated_at, folder_id = NULL, deleted_at = NULL
-                     WHERE documents.deleted_at IS NOT NULL
-                 ON CONFLICT DO NOTHING",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             )
             .bind(&doc.id)
             .bind(source_id)
             .bind(&doc.rel_path)
             .bind(title)
             .bind(mtime)
-            .bind(&properties)
+            .bind(properties.as_deref().unwrap_or("{}"))
             .bind(created_at)
             .bind(updated_at)
             .bind(accessed_at)
@@ -870,8 +867,13 @@ pub async fn apply_plan(
 
         // a lost write means a race edit is faster
         if wrote {
-            sync_tags(&mut tx, &doc.id, &fm_tags(fm)).await?;
+            if !broken {
+                sync_tags(&mut tx, &doc.id, &frontmatter::tags(fm)).await?;
+            }
             sync_folders(&mut tx, source_id, &doc.id, &doc.rel_path).await?;
+            if doc.moved {
+                let _ = repath_meta(source_path, &doc.id, &doc.rel_path);
+            }
         }
     }
 
@@ -1131,8 +1133,11 @@ pub async fn index_document(
     fm_buffer_size: usize,
 ) -> sqlx::Result<()> {
     let full = source_path.join(rel_path);
-    let fm = if document_type(rel_path) == "pdf" {
-        sidecar::read(source_path, doc_id).ok().flatten()
+    let head = if document_type(rel_path) == "pdf" {
+        sidecar::read(source_path, doc_id)
+            .ok()
+            .flatten()
+            .map_or(Head::Absent, Head::Block)
     } else {
         read_frontmatter(&full, fm_buffer_size)
     };
@@ -1140,15 +1145,16 @@ pub async fn index_document(
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("Untitled");
-    let properties = fm
-        .as_ref()
-        .map(fm_properties)
-        .unwrap_or_else(|| "{}".to_string());
+    let properties = (!head.broken()).then(|| {
+        head.value()
+            .map(fm_properties)
+            .unwrap_or_else(|| "{}".to_string())
+    });
     let mtime = fs_mtime_ms(&full);
 
     let mut tx = db.begin().await?;
     sqlx::query(
-        "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = ?4 WHERE id = ?5",
+        "UPDATE documents SET rel_path = ?1, title = ?2, mtime = ?3, properties = coalesce(?4, properties) WHERE id = ?5",
     )
     .bind(rel_path)
     .bind(title)
@@ -1159,17 +1165,8 @@ pub async fn index_document(
     .await?;
 
     sync_folders(&mut tx, source_id, doc_id, rel_path).await?;
-    if let Some(fm) = fm.as_ref() {
-        let tags: Vec<String> = fm
-            .get("tags")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
-        sync_tags(&mut tx, doc_id, &tags).await?;
+    if let Some(fm) = head.value() {
+        sync_tags(&mut tx, doc_id, &frontmatter::tags(Some(fm))).await?;
     }
 
     tx.commit().await?;
@@ -1200,7 +1197,7 @@ async fn claim_pdfs(
     source_path: &Path,
     files: &[(String, i64)],
     sizes: &HashMap<String, u64>,
-) -> sqlx::Result<HashSet<String>> {
+) -> sqlx::Result<()> {
     let on_disk: HashMap<&str, i64> = files.iter().map(|(p, m)| (p.as_str(), *m)).collect();
     let local = sidecar::load_all(source_path);
     for s in &local {
@@ -1223,7 +1220,7 @@ async fn claim_pdfs(
         .filter_map(|(p, m)| Some((p.as_str(), *m, *sizes.get(p)?)))
         .collect();
     if candidates.is_empty() {
-        return Ok(HashSet::new());
+        return Ok(());
     }
 
     let mut strays: Vec<(Option<PathBuf>, Sidecar)> = local
@@ -1244,7 +1241,6 @@ async fn claim_pdfs(
     }
 
     let refs: Vec<&Sidecar> = strays.iter().map(|(_, s)| s).collect();
-    let mut adopted = HashSet::new();
     for (i, path) in pick_adoptions(&refs, &candidates) {
         let (home, s) = &strays[i];
         let moved = match home {
@@ -1267,12 +1263,38 @@ async fn claim_pdfs(
             .execute(db)
             .await?;
         }
-        adopted.insert(path.to_string());
     }
-    Ok(adopted)
+    Ok(())
 }
 
 // ENTRY POINT
+
+fn read_seeds(
+    source_path: &Path,
+    db_docs: &HashMap<String, (String, i64)>,
+) -> HashMap<String, (String, i64)> {
+    let mut seeds: HashMap<String, (String, i64)> = HashMap::new();
+    for entry in fs::read_dir(docs_root(source_path))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let id = entry.file_name().to_string_lossy().into_owned();
+        if Uuid::parse_str(&id).is_err() || db_docs.contains_key(&id) {
+            continue;
+        }
+        let Some(meta) = read_meta(&entry.path()) else {
+            continue;
+        };
+        let seed = seeds
+            .entry(meta.rel_path)
+            .or_insert((String::new(), i64::MIN));
+        if meta.created_at > seed.1 {
+            *seed = (id, meta.created_at);
+        }
+    }
+    seeds
+}
 
 pub async fn reconcile_source(
     source: &Source,
@@ -1280,6 +1302,7 @@ pub async fn reconcile_source(
     extensions: &[&str],
     frontmatter_buffer_size: usize,
     git_off: bool,
+    renames: &[(String, String)],
 ) -> sqlx::Result<(Vec<(String, String)>, usize)> {
     use std::time::Instant;
     let t_total = Instant::now();
@@ -1316,7 +1339,7 @@ pub async fn reconcile_source(
         skipped,
     } = walk_source(source, extensions);
 
-    let adopted = claim_pdfs(db, source_id, source_path, &fs_entries, &sizes).await?;
+    claim_pdfs(db, source_id, source_path, &fs_entries, &sizes).await?;
     let sidecars = sidecar::load_all(source_path);
     let fs_entries: Vec<(String, i64)> = {
         let written: HashMap<&str, i64> = sidecars
@@ -1361,13 +1384,27 @@ pub async fn reconcile_source(
 
     let mut diff = diff_against_db(&db_entries, &fs_entries);
     let fs_mtimes: HashMap<&str, i64> = fs_entries.iter().map(|(p, m)| (p.as_str(), *m)).collect();
-    diff.unchanged.retain(|p| {
-        let forced = adopted.contains(p);
-        if forced {
-            diff.modified.push((p.clone(), fs_mtimes[p.as_str()]));
-        }
-        !forced
-    });
+    let claimed: HashMap<&str, &Sidecar> = sidecars
+        .iter()
+        .filter(|s| fs_mtimes.contains_key(s.path.as_str()))
+        .map(|s| (s.path.as_str(), s))
+        .collect();
+    let live_at: HashMap<&str, &str> = db_docs
+        .iter()
+        .filter(|(id, _)| !deleted_ids.contains(*id))
+        .map(|(id, (path, _))| (path.as_str(), id.as_str()))
+        .collect();
+    let rekeyed: Vec<&str> = claimed
+        .values()
+        .filter(|s| live_at.get(s.path.as_str()).is_some_and(|id| *id != s.id))
+        .map(|s| s.path.as_str())
+        .collect();
+    for path in rekeyed {
+        diff.unchanged.retain(|p| p != path);
+        diff.modified.retain(|(p, _)| p != path);
+        diff.missing.push(path.to_string());
+        diff.new_paths.push((path.to_string(), fs_mtimes[path]));
+    }
 
     // only md is opened here
     let paths_to_read: Vec<String> = diff
@@ -1379,26 +1416,97 @@ pub async fn reconcile_source(
         .collect();
     let mut frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
 
-    let claimed: HashMap<&str, &Sidecar> = sidecars.iter().map(|s| (s.path.as_str(), s)).collect();
     for (path, _) in diff.new_paths.iter().chain(diff.modified.iter()) {
         if let Some(s) = claimed.get(path.as_str()) {
-            let mut fm = s.meta.clone();
-            if let Some(obj) = fm.as_object_mut() {
-                obj.insert("id".into(), serde_json::Value::String(s.id.clone()));
-            }
-            frontmatter.push((path.clone(), Some(fm)));
+            frontmatter.push((path.clone(), Head::Block(s.meta.clone())));
         }
     }
 
-    let foreign_ids: HashSet<String> =
-        sqlx::query_scalar("SELECT id FROM documents WHERE source_id != ?1 AND deleted_at IS NULL")
+    let mut seeds = if diff.new_paths.is_empty() {
+        HashMap::new()
+    } else {
+        read_seeds(source_path, &db_docs)
+    };
+    let mut renames = renames.to_vec();
+    for s in claimed.values() {
+        match db_docs.get(&s.id) {
+            Some((path, _)) if *path != s.path => renames.push((path.clone(), s.path.clone())),
+            Some(_) => {}
+            None => {
+                let created_at = fm_date(Some(&s.meta), "created_at").unwrap_or_else(|| {
+                    fs_birth_ms(&source_path.join(&s.path), fs_mtimes[s.path.as_str()])
+                });
+                seeds.insert(s.path.clone(), (s.id.clone(), created_at));
+            }
+        }
+    }
+    let covered = |path: &str| {
+        renames.iter().any(|(from, to)| {
+            [from, to].iter().any(|r| {
+                path == r.as_str()
+                    || path
+                        .strip_prefix(r.as_str())
+                        .is_some_and(|rest| rest.starts_with('/'))
+            })
+        })
+    };
+    let deleted_paths: HashSet<&str> = db_docs
+        .iter()
+        .filter(|(id, _)| deleted_ids.contains(*id))
+        .map(|(_, (path, _))| path.as_str())
+        .collect();
+    let vacated: Vec<&str> = diff
+        .missing
+        .iter()
+        .map(String::as_str)
+        .filter(|p| document_type(p) == "md" && !covered(p))
+        .collect();
+    let arrivals: Vec<&str> = diff
+        .new_paths
+        .iter()
+        .map(|(p, _)| p.as_str())
+        .filter(|p| document_type(p) == "md" && !deleted_paths.contains(p) && !covered(p))
+        .collect();
+    let lookalike_pairs = if vacated.is_empty()
+        || arrivals.is_empty()
+        || vacated.len() * arrivals.len() > LOOKALIKE_MAX_PAIRS
+    {
+        Vec::new()
+    } else {
+        let mut gone = Vec::new();
+        for path in vacated {
+            let body: Option<String> = sqlx::query_scalar(
+                "SELECT f.body FROM documents_fts f JOIN documents d ON d.rowid = f.rowid
+                 WHERE d.source_id = ?1 AND d.rel_path = ?2 AND d.deleted_at IS NULL",
+            )
             .bind(source_id)
-            .fetch_all(db)
-            .await?
+            .bind(path)
+            .fetch_optional(db)
+            .await?;
+            if let Some(body) = body {
+                gone.push((path.to_string(), body));
+            }
+        }
+        let here: Vec<(String, String)> = arrivals
             .into_iter()
+            .filter_map(|path| {
+                let text = fs::read_to_string(source_path.join(path)).ok()?;
+                Some((
+                    path.to_string(),
+                    frontmatter::split_content(&text).1.to_string(),
+                ))
+            })
             .collect();
-
-    let plan = resolve_plan(&diff, &frontmatter, &db_docs, &deleted_ids, &foreign_ids);
+        lookalikes(&gone, &here)
+    };
+    let plan = resolve_plan(
+        &diff,
+        &db_docs,
+        &deleted_ids,
+        &seeds,
+        &renames,
+        &lookalike_pairs,
+    );
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
@@ -1426,65 +1534,27 @@ pub async fn reconcile_source(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    fn fm(id: &str) -> Option<serde_json::Value> {
-        Some(json!({ "id": id }))
-    }
 
     fn plan(
         unchanged: &[&str],
-        modified: &[&str],
-        new_paths: &[&str],
+        modified: &[(&str, i64)],
+        new_paths: &[(&str, i64)],
         missing: &[&str],
-        frontmatter: &[(&str, Option<serde_json::Value>)],
-        db: &[(&str, &str)],
-        foreign: &[&str],
+        db: &[(&str, &str, i64)],
+        deleted: &[&str],
     ) -> ReconcilePlan {
         let diff = ReconciliationDiff {
             unchanged: unchanged.iter().map(|s| s.to_string()).collect(),
-            modified: modified.iter().map(|s| (s.to_string(), 1)).collect(),
-            new_paths: new_paths.iter().map(|s| (s.to_string(), 1)).collect(),
+            modified: modified.iter().map(|(s, m)| (s.to_string(), *m)).collect(),
+            new_paths: new_paths.iter().map(|(s, m)| (s.to_string(), *m)).collect(),
             missing: missing.iter().map(|s| s.to_string()).collect(),
         };
-        let frontmatter: Vec<(String, Option<serde_json::Value>)> = frontmatter
-            .iter()
-            .map(|(p, f)| (p.to_string(), f.clone()))
-            .collect();
         let db_docs: HashMap<String, (String, i64)> = db
             .iter()
-            .map(|(id, p)| (id.to_string(), (p.to_string(), 0)))
+            .map(|(id, p, m)| (id.to_string(), (p.to_string(), *m)))
             .collect();
-        let foreign_ids: HashSet<String> = foreign.iter().map(|s| s.to_string()).collect();
-        resolve_plan(&diff, &frontmatter, &db_docs, &HashSet::new(), &foreign_ids)
-    }
-
-    #[test]
-    fn deleted_row_is_revived_by_its_id_and_never_counted_missing() {
-        let diff = ReconciliationDiff {
-            unchanged: vec![],
-            modified: vec![],
-            new_paths: vec![("back/a.md".to_string(), 1)],
-            missing: vec![],
-        };
-        let frontmatter = vec![("back/a.md".to_string(), fm("id-a"))];
-        let db_docs: HashMap<String, (String, i64)> =
-            [("id-a".to_string(), ("a.md".to_string(), 0))].into();
-        let deleted: HashSet<String> = ["id-a".to_string()].into();
-        let p = resolve_plan(&diff, &frontmatter, &db_docs, &deleted, &HashSet::new());
-        let d = doc(&p, "back/a.md");
-        assert_eq!(d.id, "id-a");
-        assert!(d.existing && d.moved && !d.rewrite_id);
-        assert!(p.delete_ids.is_empty());
-
-        let empty = ReconciliationDiff {
-            unchanged: vec![],
-            modified: vec![],
-            new_paths: vec![],
-            missing: vec![],
-        };
-        let p = resolve_plan(&empty, &[], &db_docs, &deleted, &HashSet::new());
-        assert!(p.docs.is_empty() && p.delete_ids.is_empty());
+        let deleted_ids: HashSet<String> = deleted.iter().map(|s| s.to_string()).collect();
+        resolve_plan(&diff, &db_docs, &deleted_ids, &HashMap::new(), &[], &[])
     }
 
     fn doc<'a>(p: &'a ReconcilePlan, path: &str) -> &'a ResolvedDoc {
@@ -1492,142 +1562,219 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_of_unchanged_file_gets_fresh_id() {
-        let p = plan(
-            &["a.md"],
-            &[],
-            &["a copy.md"],
-            &[],
-            &[("a copy.md", fm("id-a"))],
-            &[("id-a", "a.md")],
-            &[],
-        );
-        let d = doc(&p, "a copy.md");
-        assert_ne!(d.id, "id-a");
-        assert!(d.rewrite_id);
-        assert!(!d.existing);
-        assert!(p.delete_ids.is_empty());
-    }
-
-    #[test]
-    fn duplicate_of_modified_holder_loses_to_holder() {
+    fn modified_keeps_its_row_and_missing_deletes() {
         let p = plan(
             &[],
-            &["a.md"],
-            &["a copy.md"],
+            &[("a.md", 2)],
             &[],
-            &[("a.md", fm("id-a")), ("a copy.md", fm("id-a"))],
-            &[("id-a", "a.md")],
-            &[],
-        );
-        assert_eq!(doc(&p, "a.md").id, "id-a");
-        assert!(doc(&p, "a copy.md").rewrite_id);
-    }
-
-    #[test]
-    fn pure_swap_moves_both_rows() {
-        let p = plan(
-            &[],
-            &["a.md", "b.md"],
-            &[],
-            &[],
-            &[("a.md", fm("id-b")), ("b.md", fm("id-a"))],
-            &[("id-a", "a.md"), ("id-b", "b.md")],
-            &[],
-        );
-        let a = doc(&p, "a.md");
-        let b = doc(&p, "b.md");
-        assert_eq!(a.id, "id-b");
-        assert_eq!(b.id, "id-a");
-        assert!(a.moved && b.moved);
-        assert!(a.existing && b.existing);
-        assert!(p.delete_ids.is_empty());
-    }
-
-    #[test]
-    fn replaced_content_inserts_new_id_and_deletes_old() {
-        let p = plan(
-            &[],
-            &["a.md"],
-            &[],
-            &[],
-            &[("a.md", fm("id-new"))],
-            &[("id-old", "a.md")],
+            &["gone.md"],
+            &[("id-a", "a.md", 1), ("id-gone", "gone.md", 1)],
             &[],
         );
         let d = doc(&p, "a.md");
-        assert_eq!(d.id, "id-new");
-        assert!(!d.existing);
-        assert_eq!(p.delete_ids, vec!["id-old".to_string()]);
+        assert_eq!(d.id, "id-a");
+        assert!(d.existing && !d.moved);
+        assert_eq!(p.delete_ids, vec!["id-gone".to_string()]);
     }
 
     #[test]
-    fn rename_is_a_move_not_delete_insert() {
+    fn rename_pairs_a_vacated_row_with_the_arrival_sharing_its_mtime() {
         let p = plan(
-            &[],
-            &[],
             &["b.md"],
+            &[],
+            &[("sub/renamed.md", 7)],
             &["a.md"],
-            &[("b.md", fm("id-a"))],
-            &[("id-a", "a.md")],
+            &[("id-a", "a.md", 7), ("id-b", "b.md", 7)],
             &[],
         );
-        let d = doc(&p, "b.md");
+        let d = doc(&p, "sub/renamed.md");
         assert_eq!(d.id, "id-a");
         assert!(d.existing && d.moved);
         assert!(p.delete_ids.is_empty());
     }
 
     #[test]
-    fn vacated_path_gets_indexed_same_pass() {
-        let p = plan(
-            &[],
-            &["a.md"],
-            &["c.md"],
-            &[],
-            &[("a.md", fm("id-2")), ("c.md", fm("id-1"))],
-            &[("id-1", "a.md")],
+    fn a_new_path_adopts_the_id_whose_meta_names_it() {
+        let diff = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![("a.md".to_string(), 3), ("b.md".to_string(), 3)],
+            missing: vec![],
+        };
+        let seeds: HashMap<String, (String, i64)> =
+            HashMap::from([("a.md".to_string(), ("id-a".to_string(), 42))]);
+        let p = resolve_plan(&diff, &HashMap::new(), &HashSet::new(), &seeds, &[], &[]);
+        let a = doc(&p, "a.md");
+        assert_eq!(a.id, "id-a");
+        assert_eq!(a.created_at, Some(42));
+        assert!(!a.existing);
+        let b = doc(&p, "b.md");
+        assert_ne!(b.id, "id-a");
+        assert_eq!(b.created_at, None);
+    }
+
+    #[test]
+    fn a_seed_outranks_an_equal_mtime_pairing() {
+        let diff = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![("b.pdf".to_string(), 5)],
+            missing: vec!["a.pdf".to_string()],
+        };
+        let db_docs: HashMap<String, (String, i64)> =
+            HashMap::from([("id-a".to_string(), ("a.pdf".to_string(), 5))]);
+        let seeds: HashMap<String, (String, i64)> =
+            HashMap::from([("b.pdf".to_string(), ("id-seed".to_string(), 7))]);
+        let p = resolve_plan(&diff, &db_docs, &HashSet::new(), &seeds, &[], &[]);
+        let b = doc(&p, "b.pdf");
+        assert_eq!(b.id, "id-seed");
+        assert!(!b.existing);
+        assert_eq!(b.created_at, Some(7));
+        assert_eq!(p.delete_ids, vec!["id-a".to_string()]);
+    }
+
+    #[test]
+    fn a_watcher_rename_pairs_regardless_of_mtime_and_covers_a_moved_folder() {
+        let diff = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![("new.md".to_string(), 9), ("dst/deep/c.md".to_string(), 9)],
+            missing: vec!["old.md".to_string(), "src/deep/c.md".to_string()],
+        };
+        let db_docs: HashMap<String, (String, i64)> = HashMap::from([
+            ("id-old".to_string(), ("old.md".to_string(), 1)),
+            ("id-c".to_string(), ("src/deep/c.md".to_string(), 2)),
+        ]);
+        let renames = vec![
+            ("old.md".to_string(), "new.md".to_string()),
+            ("src".to_string(), "dst".to_string()),
+        ];
+        let p = resolve_plan(
+            &diff,
+            &db_docs,
+            &HashSet::new(),
+            &HashMap::new(),
+            &renames,
             &[],
         );
-        assert_eq!(doc(&p, "c.md").id, "id-1");
-        assert!(doc(&p, "c.md").moved);
-        let a = doc(&p, "a.md");
-        assert_eq!(a.id, "id-2");
-        assert!(!a.existing);
+        let n = doc(&p, "new.md");
+        assert_eq!(n.id, "id-old");
+        assert!(n.existing && n.moved);
+        let c = doc(&p, "dst/deep/c.md");
+        assert_eq!(c.id, "id-c");
+        assert!(c.existing && c.moved);
         assert!(p.delete_ids.is_empty());
     }
 
     #[test]
-    fn cross_source_copy_gets_fresh_id() {
-        let p = plan(
+    fn a_lookalike_pairs_after_every_stronger_rule_and_never_reuses_a_row() {
+        let diff = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![("new.md".to_string(), 9), ("copy.md".to_string(), 1)],
+            missing: vec!["old.md".to_string()],
+        };
+        let db_docs: HashMap<String, (String, i64)> =
+            HashMap::from([("id-old".to_string(), ("old.md".to_string(), 1))]);
+        let looks = vec![("old.md".to_string(), "new.md".to_string())];
+        let p = resolve_plan(
+            &diff,
+            &db_docs,
+            &HashSet::new(),
+            &HashMap::new(),
             &[],
-            &[],
-            &["a.md"],
-            &[],
-            &[("a.md", fm("id-elsewhere"))],
-            &[],
-            &["id-elsewhere"],
+            &looks,
         );
-        let d = doc(&p, "a.md");
-        assert_ne!(d.id, "id-elsewhere");
-        assert!(d.rewrite_id);
+        assert_eq!(doc(&p, "copy.md").id, "id-old");
+        assert_ne!(doc(&p, "new.md").id, "id-old");
+        assert!(p.delete_ids.is_empty());
     }
 
     #[test]
-    fn claimless_modified_keeps_row_and_missing_deletes() {
+    fn ambiguous_mtimes_never_pair() {
         let p = plan(
             &[],
+            &[],
+            &[("x.md", 7)],
+            &["a.md", "c.md"],
+            &[("id-a", "a.md", 7), ("id-c", "c.md", 7)],
+            &[],
+        );
+        let d = doc(&p, "x.md");
+        assert!(!d.existing);
+        let mut deleted = p.delete_ids.clone();
+        deleted.sort();
+        assert_eq!(deleted, vec!["id-a".to_string(), "id-c".to_string()]);
+
+        let p = plan(
+            &[],
+            &[],
+            &[("x.md", 7), ("y.md", 7)],
             &["a.md"],
+            &[("id-a", "a.md", 7)],
             &[],
-            &["gone.md"],
-            &[("a.md", None)],
-            &[("id-a", "a.md"), ("id-gone", "gone.md")],
+        );
+        assert!(!doc(&p, "x.md").existing && !doc(&p, "y.md").existing);
+        assert_eq!(p.delete_ids, vec!["id-a".to_string()]);
+    }
+
+    #[test]
+    fn unknown_mtime_never_pairs() {
+        let p = plan(
             &[],
+            &[],
+            &[("x.md", 0)],
+            &["a.md"],
+            &[("id-a", "a.md", 0)],
+            &[],
+        );
+        assert!(!doc(&p, "x.md").existing);
+    }
+
+    #[test]
+    fn a_file_back_at_a_deleted_rows_path_revives_it() {
+        let p = plan(
+            &[],
+            &[],
+            &[("a.md", 3)],
+            &[],
+            &[("id-a", "a.md", 1)],
+            &["id-a"],
         );
         let d = doc(&p, "a.md");
         assert_eq!(d.id, "id-a");
-        assert!(d.existing && !d.moved && !d.rewrite_id);
-        assert_eq!(p.delete_ids, vec!["id-gone".to_string()]);
+        assert!(d.existing && !d.moved);
+        assert!(p.delete_ids.is_empty());
+    }
+
+    #[test]
+    fn a_live_row_shadows_a_deleted_one_at_the_same_path() {
+        let p = plan(
+            &[],
+            &[("a.md", 3)],
+            &[],
+            &[],
+            &[("id-old", "a.md", 1), ("id-new", "a.md", 2)],
+            &["id-old"],
+        );
+        assert_eq!(doc(&p, "a.md").id, "id-new");
+        assert!(p.delete_ids.is_empty());
+    }
+
+    #[test]
+    fn a_copy_is_a_new_doc_and_leaves_the_original_alone() {
+        let p = plan(
+            &["a.md"],
+            &[],
+            &[("a copy.md", 7)],
+            &[],
+            &[("id-a", "a.md", 7)],
+            &[],
+        );
+        let d = doc(&p, "a copy.md");
+        assert_ne!(d.id, "id-a");
+        assert!(!d.existing);
+        assert!(p.delete_ids.is_empty());
     }
 
     #[test]
