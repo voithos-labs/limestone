@@ -1105,7 +1105,7 @@
 		// editor's live text and would write the file back after the backend removed it.
 		deleted = true;
 		try {
-			const kept = await h.delete();
+			const kept = await h.delete(body);
 			if (go) {
 				go.go();
 				tab.forward.length = 0;

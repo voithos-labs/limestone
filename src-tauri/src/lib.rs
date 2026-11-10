@@ -1,7 +1,8 @@
 use serde::Serialize;
 use serde_json::Value;
 use sqlx::{AssertSqlSafe, SqlitePool};
-use std::sync::RwLock;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, RwLock};
 use tauri::Manager;
 use tauri_plugin_fs::FsExt;
 
@@ -51,6 +52,9 @@ pub struct AppData {
     pub settings: RwLock<Value>,
     pub db: SqlitePool,
     pub bulk: services::BulkRunner,
+    // only one scan at a time per soruce
+    pub scans: Mutex<HashMap<String, Arc<tauri::async_runtime::Mutex<()>>>>,
+    pub renames: Mutex<HashMap<String, Vec<(String, String)>>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -196,6 +200,8 @@ pub fn run() {
                 settings: RwLock::new(initial_settings),
                 db: pool.clone(),
                 bulk: bulk.clone(),
+                scans: Mutex::default(),
+                renames: Mutex::default(),
             });
             app.manage(commands::watch_commands::Watchers::default());
 
@@ -268,6 +274,7 @@ pub fn run() {
             commands::source_commands::set_folder_frontmatter,
             commands::source_commands::rekey_folder_frontmatter,
             commands::source_commands::contains_git_repo,
+            commands::source_commands::is_empty_dir,
             commands::source_commands::get_source_by_id,
             commands::source_commands::update_source,
             commands::source_commands::create_source,
@@ -303,6 +310,7 @@ pub fn run() {
             commands::document_commands::set_document_tags,
             commands::document_commands::strip_body_tag,
             commands::document_commands::read_document_tags,
+            commands::document_commands::body_tags,
             commands::document_commands::strip_document_tag,
             commands::document_commands::delete_document,
             commands::document_commands::restore_document,

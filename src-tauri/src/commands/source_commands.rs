@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_fs::FsExt;
 use uuid::Uuid;
 
-use crate::services::fs::{clean_location, resolve_in_source};
+use crate::services::fs::{clean_location, repath_meta, resolve_in_source};
 use crate::services::{self, dot_get, JsonSettingsStore, Source, SourceRecord, Sources};
 use crate::AppData;
 
@@ -123,8 +123,24 @@ pub(crate) async fn run_reconcile(
     git_off: bool,
 ) {
     let source_id = source.id.to_string();
+    let scan = app_handle
+        .state::<AppData>()
+        .scans
+        .lock()
+        .unwrap()
+        .entry(source_id.clone())
+        .or_default()
+        .clone();
+    let _running = scan.lock().await;
+    let renames = app_handle
+        .state::<AppData>()
+        .renames
+        .lock()
+        .unwrap()
+        .remove(&source_id)
+        .unwrap_or_default();
     let (changed, skipped) =
-        services::reconcile_source(&source, &pool, &["md"], fm_buf_size, git_off)
+        services::reconcile_source(&source, &pool, &["md"], fm_buf_size, git_off, &renames)
             .await
             .unwrap_or_else(|e| {
                 eprintln!("reconcile failed: {e}");
@@ -250,6 +266,14 @@ pub fn check_sources(app: AppHandle) -> Vec<(String, bool)> {
         .into_iter()
         .map(|s| (s.id.to_string(), s.path.is_dir()))
         .collect()
+}
+
+#[tauri::command]
+pub fn is_empty_dir(path: String) -> bool {
+    match std::fs::read_dir(&path) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    }
 }
 
 #[tauri::command]
@@ -502,7 +526,32 @@ pub async fn move_folder(
     if !new_full.parent().is_some_and(|p| p.is_dir()) {
         return Err(FolderOpError::new("not_found"));
     }
+    let old_prefix = format!("{old_rel_dir}/");
+    let under: Vec<(String, String)> = sqlx::query_as(
+        "SELECT id, rel_path FROM documents
+         WHERE source_id = ?1 AND deleted_at IS NULL AND substr(rel_path, 1, length(?2)) = ?2",
+    )
+    .bind(&source_id)
+    .bind(&old_prefix)
+    .fetch_all(&app_data.db)
+    .await
+    .unwrap_or_default();
     std::fs::rename(&old_full, &new_full).map_err(|e| FolderOpError::io(&e))?;
+    let moved: Vec<(String, String, String)> = under
+        .into_iter()
+        .map(|(id, rel)| {
+            let new_rel = format!("{new_rel_dir}/{}", &rel[old_prefix.len()..]);
+            (id, rel, new_rel)
+        })
+        .collect();
+    if let Err(e) = repath_rows(&app_data.db, &source_id, &moved).await {
+        eprintln!("folder move repath failed: {e}");
+    }
+    for (id, _, new_rel) in &moved {
+        if let Err(e) = repath_meta(&root, id, new_rel) {
+            eprintln!("meta repath failed: {e}");
+        }
+    }
 
     let uuid = Uuid::parse_str(&source_id).map_err(|_| FolderOpError::new("source_missing"))?;
     rekey_frontmatter_dirs(&app, uuid, &old_rel_dir, &new_rel_dir);
@@ -516,6 +565,23 @@ pub async fn move_folder(
     )
     .await;
     Ok(())
+}
+
+async fn repath_rows(
+    db: &sqlx::SqlitePool,
+    source_id: &str,
+    moved: &[(String, String, String)],
+) -> sqlx::Result<()> {
+    let mut tx = db.begin().await?;
+    for (id, _, new_rel) in moved {
+        sqlx::query("UPDATE documents SET rel_path = ?1 WHERE id = ?2")
+            .bind(new_rel)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        services::sync_folders(&mut tx, source_id, id, new_rel).await?;
+    }
+    tx.commit().await
 }
 
 #[tauri::command]

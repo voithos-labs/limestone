@@ -6,9 +6,6 @@ import wasmUrl from '@automerge/automerge/automerge.wasm?url';
 import { fromBase64, toBase64 } from '#lib/services/assets.js';
 import { getAppInfo } from '#lib/models/Settings.svelte.js';
 import { registerFlush } from '#lib/services/platform.js';
-import { execute, select } from '#lib/services/db.js';
-import { defaultNoteDir, getSource } from '#lib/models/Source.js';
-import { sanitizeSegment } from '#lib/util/paths.js';
 
 // region store
 // ── Per-Doc Automerge Store ──────────────────────────────────────────────────────────
@@ -50,32 +47,39 @@ function actorOf(uuid: string): string {
 	return uuid.replace(/-/g, '');
 }
 
-function genesis(docId: string): Uint8Array {
-	const doc = Automerge.change(
-		Automerge.init<DocHistoryShape>({ actor: actorOf(docId) }),
-		{ time: 0 },
-		(d) => {
-			d.text = '';
-		}
-	);
+const GENESIS_ACTOR = '0'.repeat(32);
+
+function legacyGenesisActor(docId: string): string {
+	return actorOf(docId);
+}
+
+function genesis(actor: string): Uint8Array {
+	const doc = Automerge.change(Automerge.init<DocHistoryShape>({ actor }), { time: 0 }, (d) => {
+		d.text = '';
+	});
 	return Automerge.getLastLocalChange(doc)!;
 }
 
-function loadChunks(sourceId: string, docId: string): Promise<string[]> {
-	return invoke<string[]>('history_load', { sourceId, docId });
+function loadChunks(ref: DocRef): Promise<string[]> {
+	return invoke<string[]>('history_load', { sourceId: ref.source.id, docId: ref.id });
+}
+
+function loadChain(actor: string, root: string, chunks: string[]): [Doc, boolean] {
+	let doc = Automerge.loadIncremental(Automerge.init<DocHistoryShape>({ actor }), genesis(root));
+	const rootHeads = Automerge.getHeads(doc).join();
+	for (const chunk of chunks) doc = Automerge.loadIncremental(doc, fromBase64(chunk));
+	return [doc, chunks.length === 0 || Automerge.getHeads(doc).join() !== rootHeads];
 }
 
 function buildDoc(actor: string, docId: string, chunks: string[]): Doc {
-	let doc = Automerge.init<DocHistoryShape>({ actor });
-	doc = Automerge.loadIncremental(doc, genesis(docId));
-	for (const chunk of chunks) doc = Automerge.loadIncremental(doc, fromBase64(chunk));
-	return doc;
+	const [doc, attached] = loadChain(actor, GENESIS_ACTOR, chunks);
+	return attached ? doc : loadChain(actor, legacyGenesisActor(docId), chunks)[0];
 }
 
 async function openHistory(ref: DocRef): Promise<HistoryEntry> {
 	const docId = ref.id;
 	const sourceId = ref.source.id;
-	const [actor, chunks] = await Promise.all([ensureReady(), loadChunks(sourceId, docId)]);
+	const [actor, chunks] = await Promise.all([ensureReady(), loadChunks(ref)]);
 	return { sourceId, doc: buildDoc(actor, docId, chunks), chain: Promise.resolve() };
 }
 
@@ -143,8 +147,8 @@ async function adoptHistory({ doc_id, source_id, holder_source_id }: HistoryOrph
 	if (entry) await settled(entry);
 	const [actor, foreign, own] = await Promise.all([
 		ensureReady(),
-		loadChunks(source_id, doc_id),
-		loadChunks(holder_source_id, doc_id)
+		loadChunks({ id: doc_id, source: { id: source_id } }),
+		loadChunks({ id: doc_id, source: { id: holder_source_id } })
 	]);
 	if (foreign.length === 0) return;
 	let change: { hash: string; data: string } | null = null;
@@ -172,41 +176,6 @@ void listen<HistoryOrphan>('history-orphan', (e) => {
 	adoptHistory(e.payload).catch((err) => console.error('history adopt failed', err));
 });
 
-interface HistoryDeleted {
-	doc_id: string;
-	source_id: string;
-	deleted_at: number;
-}
-
-function titleFromText(text: string): string {
-	const line = text
-		.split('\n')
-		.map((l) => l.trim())
-		.find((l) => l.length > 0);
-	return line?.replace(/^#+\s*/, '').slice(0, 80) || 'Untitled';
-}
-
-async function recordDeleted({ doc_id, source_id, deleted_at }: HistoryDeleted): Promise<void> {
-	const [row] = await select<{ id: string }>('SELECT id FROM documents WHERE id = ?1', [doc_id]);
-	if (row) return;
-	const text = await lastHistoryText({ id: doc_id, source: { id: source_id } });
-	if (text === null) return;
-	const source = await getSource(source_id);
-	const title = titleFromText(text);
-	const dir = defaultNoteDir(source);
-	const base = sanitizeSegment(title) || 'Untitled';
-	const relPath = dir ? `${dir}/${base}.md` : `${base}.md`;
-	await execute(
-		`INSERT OR IGNORE INTO documents (id, source_id, rel_path, title, deleted_at, created_at, updated_at, accessed_at)
-		 VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?5, ?5)`,
-		[doc_id, source_id, relPath, title, deleted_at || Date.now()]
-	);
-}
-
-void listen<HistoryDeleted>('history-deleted', (e) => {
-	recordDeleted(e.payload).catch((err) => console.error('deleted record failed', err));
-});
-
 export async function lastHistoryText(ref: DocRef): Promise<string | null> {
 	try {
 		const last = (await historyCheckpoints(ref)).at(-1);
@@ -217,15 +186,13 @@ export async function lastHistoryText(ref: DocRef): Promise<string | null> {
 	}
 }
 
-export async function moveHistory(
-	docId: string,
-	sourceId: string,
-	newSourceId: string
-): Promise<void> {
+export async function settleHistory(docId: string): Promise<void> {
 	const entry = entries.get(docId);
 	if (entry) await settled(entry);
-	await invoke('history_move', { sourceId, newSourceId, docId });
-	const loaded = await entry?.catch(() => null);
+}
+
+export async function retargetHistory(docId: string, newSourceId: string): Promise<void> {
+	const loaded = await entries.get(docId)?.catch(() => null);
 	if (loaded) loaded.sourceId = newSourceId;
 }
 
@@ -249,8 +216,8 @@ const CHECKPOINT_GAP_MS = 5_000;
 const CHECKPOINT_MAX_SPAN_MS = 30_000;
 
 function buildCheckpoints(docId: string, doc: Doc): Checkpoint[] {
-	const skip = actorOf(docId);
-	const meta = Automerge.getChangesMetaSince(doc, []).filter((c) => c.actor !== skip);
+	const roots = [GENESIS_ACTOR, legacyGenesisActor(docId)];
+	const meta = Automerge.getChangesMetaSince(doc, []).filter((c) => !roots.includes(c.actor));
 	const checkpoints: Checkpoint[] = [];
 	let last: { hash: string; time: number } | null = null;
 	let bucketStart = 0;
