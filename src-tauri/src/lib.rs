@@ -54,6 +54,7 @@ pub struct AppData {
     pub bulk: services::BulkRunner,
     // only one scan at a time per soruce
     pub scans: Mutex<HashMap<String, Arc<tauri::async_runtime::Mutex<()>>>>,
+    pub renames: Mutex<HashMap<String, Vec<(String, String)>>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -200,6 +201,7 @@ pub fn run() {
                 db: pool.clone(),
                 bulk: bulk.clone(),
                 scans: Mutex::default(),
+                renames: Mutex::default(),
             });
             app.manage(commands::watch_commands::Watchers::default());
 

@@ -584,6 +584,7 @@ pub fn resolve_plan(
     db_docs: &HashMap<String, (String, i64)>,
     deleted_ids: &HashSet<String>,
     seeds: &HashMap<String, (String, i64)>,
+    renames: &[(String, String)],
 ) -> ReconcilePlan {
     let mut by_path: HashMap<&str, &str> = HashMap::new();
     for live in [false, true] {
@@ -621,15 +622,35 @@ pub fn resolve_plan(
     for (_, mtime) in &diff.new_paths {
         *arrivals.entry(*mtime).or_default() += 1;
     }
+    let mut hinted: HashMap<String, &str> = HashMap::new();
+    for (from, to) in renames {
+        for path in &diff.missing {
+            let moved = if path == from {
+                to.clone()
+            } else if let Some(rest) = path.strip_prefix(from.as_str()).and_then(|r| r.strip_prefix('/')) {
+                format!("{to}/{rest}")
+            } else {
+                continue;
+            };
+            if let Some(&id) = by_path.get(path.as_str()).filter(|id| !deleted_ids.contains(**id)) {
+                hinted.insert(moved, id);
+            }
+        }
+    }
     for (path, mtime) in &diff.new_paths {
         let renamed = match vacated.get(mtime).map(Vec::as_slice) {
             Some([id]) if arrivals[mtime] == 1 => Some(*id),
             _ => None,
         };
-        let id = by_path
+        let id = hinted
             .get(path.as_str())
             .copied()
-            .filter(|id| deleted_ids.contains(*id))
+            .or_else(|| {
+                by_path
+                    .get(path.as_str())
+                    .copied()
+                    .filter(|id| deleted_ids.contains(*id))
+            })
             .or(renamed);
         docs.push(match id {
             Some(id) => resolved(id, path, *mtime),
@@ -1129,6 +1150,7 @@ pub async fn reconcile_source(
     extensions: &[&str],
     frontmatter_buffer_size: usize,
     git_off: bool,
+    renames: &[(String, String)],
 ) -> sqlx::Result<(Vec<(String, String)>, usize)> {
     use std::time::Instant;
     let t_total = Instant::now();
@@ -1206,7 +1228,7 @@ pub async fn reconcile_source(
     } else {
         read_seeds(source_path, &db_docs)
     };
-    let plan = resolve_plan(&diff, &db_docs, &deleted_ids, &seeds);
+    let plan = resolve_plan(&diff, &db_docs, &deleted_ids, &seeds, renames);
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
@@ -1254,7 +1276,7 @@ mod tests {
             .map(|(id, p, m)| (id.to_string(), (p.to_string(), *m)))
             .collect();
         let deleted_ids: HashSet<String> = deleted.iter().map(|s| s.to_string()).collect();
-        resolve_plan(&diff, &db_docs, &deleted_ids, &HashMap::new())
+        resolve_plan(&diff, &db_docs, &deleted_ids, &HashMap::new(), &[])
     }
 
     fn doc<'a>(p: &'a ReconcilePlan, path: &str) -> &'a ResolvedDoc {
@@ -1303,7 +1325,7 @@ mod tests {
         };
         let seeds: HashMap<String, (String, i64)> =
             HashMap::from([("a.md".to_string(), ("id-a".to_string(), 42))]);
-        let p = resolve_plan(&diff, &HashMap::new(), &HashSet::new(), &seeds);
+        let p = resolve_plan(&diff, &HashMap::new(), &HashSet::new(), &seeds, &[]);
         let a = doc(&p, "a.md");
         assert_eq!(a.id, "id-a");
         assert_eq!(a.created_at, Some(42));
@@ -1311,6 +1333,32 @@ mod tests {
         let b = doc(&p, "b.md");
         assert_ne!(b.id, "id-a");
         assert_eq!(b.created_at, None);
+    }
+
+    #[test]
+    fn a_watcher_rename_pairs_regardless_of_mtime_and_covers_a_moved_folder() {
+        let diff = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![("new.md".to_string(), 9), ("dst/deep/c.md".to_string(), 9)],
+            missing: vec!["old.md".to_string(), "src/deep/c.md".to_string()],
+        };
+        let db_docs: HashMap<String, (String, i64)> = HashMap::from([
+            ("id-old".to_string(), ("old.md".to_string(), 1)),
+            ("id-c".to_string(), ("src/deep/c.md".to_string(), 2)),
+        ]);
+        let renames = vec![
+            ("old.md".to_string(), "new.md".to_string()),
+            ("src".to_string(), "dst".to_string()),
+        ];
+        let p = resolve_plan(&diff, &db_docs, &HashSet::new(), &HashMap::new(), &renames);
+        let n = doc(&p, "new.md");
+        assert_eq!(n.id, "id-old");
+        assert!(n.existing && n.moved);
+        let c = doc(&p, "dst/deep/c.md");
+        assert_eq!(c.id, "id-c");
+        assert!(c.existing && c.moved);
+        assert!(p.delete_ids.is_empty());
     }
 
     #[test]

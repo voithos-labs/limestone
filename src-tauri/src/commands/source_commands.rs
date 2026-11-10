@@ -132,8 +132,15 @@ pub(crate) async fn run_reconcile(
         .or_default()
         .clone();
     let _running = scan.lock().await;
+    let renames = app_handle
+        .state::<AppData>()
+        .renames
+        .lock()
+        .unwrap()
+        .remove(&source_id)
+        .unwrap_or_default();
     let (changed, skipped) =
-        services::reconcile_source(&source, &pool, &["md"], fm_buf_size, git_off)
+        services::reconcile_source(&source, &pool, &["md"], fm_buf_size, git_off, &renames)
             .await
             .unwrap_or_else(|e| {
                 eprintln!("reconcile failed: {e}");
