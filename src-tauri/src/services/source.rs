@@ -33,7 +33,7 @@
 //! 7. Cleanup orphaned tags
 //!
 
-use crate::services::body::fold_tag;
+use crate::services::body::{fold_tag, lookalikes, LOOKALIKE_MAX_PAIRS};
 use crate::services::frontmatter::{self, Head};
 use crate::services::fs::{
     atomic_write, clean_location, docs_root, mtime_ms, read_meta, repath_meta,
@@ -585,6 +585,7 @@ pub fn resolve_plan(
     deleted_ids: &HashSet<String>,
     seeds: &HashMap<String, (String, i64)>,
     renames: &[(String, String)],
+    lookalikes: &[(String, String)],
 ) -> ReconcilePlan {
     let mut by_path: HashMap<&str, &str> = HashMap::new();
     for live in [false, true] {
@@ -637,21 +638,43 @@ pub fn resolve_plan(
             }
         }
     }
-    for (path, mtime) in &diff.new_paths {
-        let renamed = match vacated.get(mtime).map(Vec::as_slice) {
-            Some([id]) if arrivals[mtime] == 1 => Some(*id),
-            _ => None,
-        };
-        let id = hinted
-            .get(path.as_str())
-            .copied()
-            .or_else(|| {
-                by_path
-                    .get(path.as_str())
-                    .copied()
-                    .filter(|id| deleted_ids.contains(*id))
-            })
-            .or(renamed);
+    let mut lookalike: HashMap<&str, &str> = HashMap::new();
+    for (from, to) in lookalikes {
+        if let Some(&id) = by_path.get(from.as_str()).filter(|id| !deleted_ids.contains(**id)) {
+            lookalike.insert(to, id);
+        }
+    }
+    let mut taken: HashSet<&str> = HashSet::new();
+    let mut ids: Vec<Option<&str>> = diff
+        .new_paths
+        .iter()
+        .map(|(path, mtime)| {
+            let renamed = match vacated.get(mtime).map(Vec::as_slice) {
+                Some([id]) if arrivals[mtime] == 1 => Some(*id),
+                _ => None,
+            };
+            hinted
+                .get(path.as_str())
+                .copied()
+                .or_else(|| {
+                    by_path
+                        .get(path.as_str())
+                        .copied()
+                        .filter(|id| deleted_ids.contains(*id))
+                })
+                .or(renamed)
+                .filter(|id| taken.insert(id))
+        })
+        .collect();
+    for (slot, (path, _)) in ids.iter_mut().zip(&diff.new_paths) {
+        if slot.is_none() {
+            *slot = lookalike
+                .get(path.as_str())
+                .copied()
+                .filter(|id| taken.insert(id));
+        }
+    }
+    for ((path, mtime), id) in diff.new_paths.iter().zip(ids) {
         docs.push(match id {
             Some(id) => resolved(id, path, *mtime),
             None => {
@@ -1228,7 +1251,60 @@ pub async fn reconcile_source(
     } else {
         read_seeds(source_path, &db_docs)
     };
-    let plan = resolve_plan(&diff, &db_docs, &deleted_ids, &seeds, renames);
+    let covered = |path: &str| {
+        renames.iter().any(|(from, to)| {
+            [from, to].iter().any(|r| {
+                path == r.as_str() || path.strip_prefix(r.as_str()).is_some_and(|rest| rest.starts_with('/'))
+            })
+        })
+    };
+    let deleted_paths: HashSet<&str> = db_docs
+        .iter()
+        .filter(|(id, _)| deleted_ids.contains(*id))
+        .map(|(_, (path, _))| path.as_str())
+        .collect();
+    let vacated: Vec<&str> = diff
+        .missing
+        .iter()
+        .map(String::as_str)
+        .filter(|p| !covered(p))
+        .collect();
+    let arrivals: Vec<&str> = diff
+        .new_paths
+        .iter()
+        .map(|(p, _)| p.as_str())
+        .filter(|p| !deleted_paths.contains(p) && !covered(p))
+        .collect();
+    let lookalike_pairs = if vacated.is_empty()
+        || arrivals.is_empty()
+        || vacated.len() * arrivals.len() > LOOKALIKE_MAX_PAIRS
+    {
+        Vec::new()
+    } else {
+        let mut gone = Vec::new();
+        for path in vacated {
+            let body: Option<String> = sqlx::query_scalar(
+                "SELECT f.body FROM documents_fts f JOIN documents d ON d.rowid = f.rowid
+                 WHERE d.source_id = ?1 AND d.rel_path = ?2 AND d.deleted_at IS NULL",
+            )
+            .bind(source_id)
+            .bind(path)
+            .fetch_optional(db)
+            .await?;
+            if let Some(body) = body {
+                gone.push((path.to_string(), body));
+            }
+        }
+        let here: Vec<(String, String)> = arrivals
+            .into_iter()
+            .filter_map(|path| {
+                let text = fs::read_to_string(source_path.join(path)).ok()?;
+                Some((path.to_string(), frontmatter::split_content(&text).1.to_string()))
+            })
+            .collect();
+        lookalikes(&gone, &here)
+    };
+    let plan = resolve_plan(&diff, &db_docs, &deleted_ids, &seeds, renames, &lookalike_pairs);
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
@@ -1276,7 +1352,7 @@ mod tests {
             .map(|(id, p, m)| (id.to_string(), (p.to_string(), *m)))
             .collect();
         let deleted_ids: HashSet<String> = deleted.iter().map(|s| s.to_string()).collect();
-        resolve_plan(&diff, &db_docs, &deleted_ids, &HashMap::new(), &[])
+        resolve_plan(&diff, &db_docs, &deleted_ids, &HashMap::new(), &[], &[])
     }
 
     fn doc<'a>(p: &'a ReconcilePlan, path: &str) -> &'a ResolvedDoc {
@@ -1325,7 +1401,7 @@ mod tests {
         };
         let seeds: HashMap<String, (String, i64)> =
             HashMap::from([("a.md".to_string(), ("id-a".to_string(), 42))]);
-        let p = resolve_plan(&diff, &HashMap::new(), &HashSet::new(), &seeds, &[]);
+        let p = resolve_plan(&diff, &HashMap::new(), &HashSet::new(), &seeds, &[], &[]);
         let a = doc(&p, "a.md");
         assert_eq!(a.id, "id-a");
         assert_eq!(a.created_at, Some(42));
@@ -1351,13 +1427,30 @@ mod tests {
             ("old.md".to_string(), "new.md".to_string()),
             ("src".to_string(), "dst".to_string()),
         ];
-        let p = resolve_plan(&diff, &db_docs, &HashSet::new(), &HashMap::new(), &renames);
+        let p = resolve_plan(&diff, &db_docs, &HashSet::new(), &HashMap::new(), &renames, &[]);
         let n = doc(&p, "new.md");
         assert_eq!(n.id, "id-old");
         assert!(n.existing && n.moved);
         let c = doc(&p, "dst/deep/c.md");
         assert_eq!(c.id, "id-c");
         assert!(c.existing && c.moved);
+        assert!(p.delete_ids.is_empty());
+    }
+
+    #[test]
+    fn a_lookalike_pairs_after_every_stronger_rule_and_never_reuses_a_row() {
+        let diff = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![("new.md".to_string(), 9), ("copy.md".to_string(), 1)],
+            missing: vec!["old.md".to_string()],
+        };
+        let db_docs: HashMap<String, (String, i64)> =
+            HashMap::from([("id-old".to_string(), ("old.md".to_string(), 1))]);
+        let looks = vec![("old.md".to_string(), "new.md".to_string())];
+        let p = resolve_plan(&diff, &db_docs, &HashSet::new(), &HashMap::new(), &[], &looks);
+        assert_eq!(doc(&p, "copy.md").id, "id-old");
+        assert_ne!(doc(&p, "new.md").id, "id-old");
         assert!(p.delete_ids.is_empty());
     }
 

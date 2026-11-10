@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ops::Range;
 
 #[derive(Debug, PartialEq)]
@@ -10,6 +11,8 @@ struct Tag {
     hash: usize,
     name: Range<usize>,
 }
+
+/* ---------------------------------- Util ---------------------------------- */
 
 // lowercase, no trailing slash, as Obsidian reads them; a leading slash is part of the name.
 // A tag of only slashes folds to nothing, since "/" alone would be the source root's prop key
@@ -401,6 +404,73 @@ pub fn asset_rel_path(target: &str, asset_location: &str) -> Option<String> {
     })
 }
 
+/* ----------------------- Fuzzy similarity (Jaccard) ----------------------- */
+
+const LOOKALIKE_MIN_LINES: usize = 4;
+const LOOKALIKE_MIN_SCORE: f64 = 0.5;
+const LOOKALIKE_MARGIN: f64 = 0.2;
+pub const LOOKALIKE_MAX_PAIRS: usize = 10_000;
+
+fn line_sets(docs: &[(String, String)]) -> Vec<(&str, HashSet<&str>)> {
+    docs.iter()
+        .map(|(path, body)| {
+            let lines = body
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .collect::<HashSet<_>>();
+            (path.as_str(), lines)
+        })
+        .filter(|(_, lines)| lines.len() >= LOOKALIKE_MIN_LINES)
+        .collect()
+}
+
+fn jaccard(a: &HashSet<&str>, b: &HashSet<&str>) -> f64 {
+    let shared = a.intersection(b).count();
+    shared as f64 / (a.len() + b.len() - shared) as f64
+}
+
+fn clear_best(scores: impl Iterator<Item = f64>) -> Option<usize> {
+    let mut best = (0, f64::MIN);
+    let mut second = f64::MIN;
+    for (i, score) in scores.enumerate() {
+        if score > best.1 {
+            second = best.1;
+            best = (i, score);
+        } else if score > second {
+            second = score;
+        }
+    }
+    (best.1 >= LOOKALIKE_MIN_SCORE && second <= best.1 - LOOKALIKE_MARGIN).then_some(best.0)
+}
+
+pub fn lookalikes(
+    vacated: &[(String, String)],
+    arrivals: &[(String, String)],
+) -> Vec<(String, String)> {
+    let gone = line_sets(vacated);
+    let here = line_sets(arrivals);
+    if gone.is_empty() || here.is_empty() || gone.len() * here.len() > LOOKALIKE_MAX_PAIRS {
+        return Vec::new();
+    }
+    let scores: Vec<Vec<f64>> = gone
+        .iter()
+        .map(|(_, g)| here.iter().map(|(_, h)| jaccard(g, h)).collect())
+        .collect();
+    let mut pairs = Vec::new();
+    for (gi, (gone_path, _)) in gone.iter().enumerate() {
+        let Some(hi) = clear_best(scores[gi].iter().copied()) else {
+            continue;
+        };
+        if clear_best(scores.iter().map(|row| row[hi])) == Some(gi) {
+            pairs.push((gone_path.to_string(), here[hi].0.to_string()));
+        }
+    }
+    pairs
+}
+
+/* ---------------------------------- Tests --------------------------------- */
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,5 +629,66 @@ mod asset_ref_tests {
             asset_rel_path("docs/report.pdf", "files").as_deref(),
             Some("docs/report.pdf")
         );
+    }
+}
+
+#[cfg(test)]
+mod lookalike_tests {
+    use super::*;
+
+    fn body(lines: &[&str]) -> String {
+        lines.join("\n")
+    }
+
+    #[test]
+    fn a_renamed_and_edited_note_pairs_by_content() {
+        let gone = vec![(
+            "old.md".to_string(),
+            body(&["# Plan", "- buy milk", "- call mum", "- fix bike", "- read"]),
+        )];
+        let here = vec![
+            (
+                "new.md".to_string(),
+                body(&[
+                    "# Plan",
+                    "- buy milk",
+                    "- call mum",
+                    "- fix bike",
+                    "- read",
+                    "- sleep",
+                ]),
+            ),
+            (
+                "other.md".to_string(),
+                body(&["# Other", "alpha", "beta", "gamma", "delta"]),
+            ),
+        ];
+        assert_eq!(
+            lookalikes(&gone, &here),
+            vec![("old.md".to_string(), "new.md".to_string())]
+        );
+    }
+
+    #[test]
+    fn templated_twins_and_short_notes_never_pair() {
+        let skeleton = body(&["## Tasks", "## Notes", "## Log", "## Links"]);
+        let gone = vec![
+            ("a.md".to_string(), skeleton.clone()),
+            ("b.md".to_string(), skeleton.clone()),
+        ];
+        let here = vec![
+            ("c.md".to_string(), skeleton.clone()),
+            ("d.md".to_string(), skeleton),
+        ];
+        assert!(lookalikes(&gone, &here).is_empty());
+        let tiny = vec![("t.md".to_string(), body(&["# Title", "one line"]))];
+        assert!(lookalikes(&tiny, &tiny).is_empty());
+    }
+
+    #[test]
+    fn a_rewrite_sharing_under_half_its_lines_is_a_new_note() {
+        let gone = vec![("old.md".to_string(), body(&["a", "b", "c", "d", "e", "f"]))];
+        let here = vec![("new.md".to_string(), body(&["a", "b", "x", "y", "z", "w"]))];
+        assert!(lookalikes(&gone, &here).is_empty());
     }
 }
