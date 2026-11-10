@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use crate::commands::source_commands::find_source;
 use crate::services::fs::{
-    atomic_write, doc_dir, docs_root, move_dir, newest_change_ms, write_meta, DocMeta, META_FILE,
+    atomic_write, doc_dir, docs_root, move_dir, newest_change_ms, read_meta, write_meta, DocMeta,
+    META_FILE,
 };
 use crate::services::Source;
 use crate::AppData;
@@ -150,13 +151,6 @@ pub(crate) struct HistoryOrphan {
     pub doc_id: String,
     pub source_id: String,
     pub holder_source_id: String,
-}
-
-#[derive(serde::Serialize, Clone)]
-pub(crate) struct HistoryDeleted {
-    pub doc_id: String,
-    pub source_id: String,
-    pub deleted_at: i64,
 }
 
 fn retention_days(app: &AppHandle) -> i64 {
@@ -309,15 +303,25 @@ pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, sour
                 );
             }
             None => {
-                let deleted_at = newest_change_ms(&entry.path());
-                let _ = app.emit(
-                    "history-deleted",
-                    HistoryDeleted {
-                        doc_id,
-                        source_id: source_id.clone(),
-                        deleted_at,
-                    },
-                );
+                let Some(meta) = read_meta(&entry.path()) else {
+                    continue;
+                };
+                let title = Path::new(&meta.rel_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled");
+                let _ = sqlx::query(
+                    "INSERT OR IGNORE INTO documents (id, source_id, rel_path, title, created_at, deleted_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                )
+                .bind(&doc_id)
+                .bind(&source_id)
+                .bind(&meta.rel_path)
+                .bind(title)
+                .bind(meta.created_at)
+                .bind(newest_change_ms(&entry.path()))
+                .execute(pool)
+                .await;
             }
         }
     }

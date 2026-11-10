@@ -36,7 +36,7 @@
 use crate::services::body::fold_tag;
 use crate::services::frontmatter::{self, Head};
 use crate::services::fs::{
-    atomic_write, clean_location, docs_root, mtime_ms, newest_change_ms, read_meta, repath_meta,
+    atomic_write, clean_location, docs_root, mtime_ms, read_meta, repath_meta,
 };
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
@@ -290,6 +290,7 @@ pub struct ResolvedDoc {
     pub db_mtime: Option<i64>,
     pub existing: bool,
     pub moved: bool,
+    pub created_at: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -582,6 +583,7 @@ pub fn resolve_plan(
     diff: &ReconciliationDiff,
     db_docs: &HashMap<String, (String, i64)>,
     deleted_ids: &HashSet<String>,
+    seeds: &HashMap<String, (String, i64)>,
 ) -> ReconcilePlan {
     let mut by_path: HashMap<&str, &str> = HashMap::new();
     for live in [false, true] {
@@ -598,6 +600,7 @@ pub fn resolve_plan(
         db_mtime: db_docs.get(id).map(|(_, m)| *m),
         existing: true,
         moved: db_docs.get(id).is_some_and(|(p, _)| p != path),
+        created_at: None,
     };
 
     let mut docs: Vec<ResolvedDoc> = diff
@@ -630,14 +633,18 @@ pub fn resolve_plan(
             .or(renamed);
         docs.push(match id {
             Some(id) => resolved(id, path, *mtime),
-            None => ResolvedDoc {
-                id: Uuid::new_v4().to_string(),
-                rel_path: path.to_string(),
-                mtime: *mtime,
-                db_mtime: None,
-                existing: false,
-                moved: false,
-            },
+            None => {
+                let seed = seeds.get(path.as_str());
+                ResolvedDoc {
+                    id: seed.map_or_else(|| Uuid::new_v4().to_string(), |(id, _)| id.clone()),
+                    rel_path: path.to_string(),
+                    mtime: *mtime,
+                    db_mtime: None,
+                    existing: false,
+                    moved: false,
+                    created_at: seed.map(|(_, created)| *created),
+                }
+            }
         });
     }
 
@@ -766,6 +773,7 @@ pub async fn apply_plan(
                 > 0
         } else {
             let created_at = fm_date(fm, "created_at")
+                .or(doc.created_at)
                 .unwrap_or_else(|| fs_birth_ms(&source_path.join(&doc.rel_path), mtime));
             let accessed_at = fm_date(fm, "accessed_at").unwrap_or(mtime);
             sqlx::query(
@@ -1090,65 +1098,29 @@ pub async fn index_document(
 
 // ENTRY POINT
 
-async fn seed_from_meta(
-    db: &SqlitePool,
-    source_id: &str,
+fn read_seeds(
     source_path: &Path,
-    fs_entries: &[(String, i64)],
-) -> sqlx::Result<Vec<(String, String, i64, bool)>> {
-    let present: HashSet<&str> = fs_entries.iter().map(|(p, _)| p.as_str()).collect();
-    let mut rows = Vec::new();
+    db_docs: &HashMap<String, (String, i64)>,
+) -> HashMap<String, (String, i64)> {
+    let mut seeds: HashMap<String, (String, i64)> = HashMap::new();
     for entry in fs::read_dir(docs_root(source_path))
         .into_iter()
         .flatten()
         .flatten()
     {
         let id = entry.file_name().to_string_lossy().into_owned();
-        if Uuid::parse_str(&id).is_err() {
+        if Uuid::parse_str(&id).is_err() || db_docs.contains_key(&id) {
             continue;
         }
         let Some(meta) = read_meta(&entry.path()) else {
             continue;
         };
-        let live = present.contains(meta.rel_path.as_str())
-            && sqlx::query(
-                "INSERT OR IGNORE INTO documents (id, source_id, rel_path, title, mtime, created_at)
-                 VALUES (?1, ?2, ?3, '', 0, ?4)",
-            )
-            .bind(&id)
-            .bind(source_id)
-            .bind(&meta.rel_path)
-            .bind(meta.created_at)
-            .execute(db)
-            .await?
-            .rows_affected()
-                > 0;
-        if live {
-            rows.push((id, meta.rel_path, 0, false));
-            continue;
-        }
-        let title = Path::new(&meta.rel_path)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("oh shit");
-        let gone = sqlx::query(
-            "INSERT OR IGNORE INTO documents (id, source_id, rel_path, title, created_at, deleted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        )
-        .bind(&id)
-        .bind(source_id)
-        .bind(&meta.rel_path)
-        .bind(title)
-        .bind(meta.created_at)
-        .bind(newest_change_ms(&entry.path()))
-        .execute(db)
-        .await?
-        .rows_affected();
-        if gone > 0 {
-            rows.push((id, meta.rel_path, 0, true));
+        let seed = seeds.entry(meta.rel_path).or_insert((String::new(), i64::MIN));
+        if meta.created_at > seed.1 {
+            *seed = (id, meta.created_at);
         }
     }
-    Ok(rows)
+    seeds
 }
 
 pub async fn reconcile_source(
@@ -1197,15 +1169,12 @@ pub async fn reconcile_source(
     tx.commit().await?;
     sync_folder_meta(db, source, git_off).await?;
 
-    let mut db_rows: Vec<(String, String, i64, bool)> = sqlx::query_as(
+    let db_rows: Vec<(String, String, i64, bool)> = sqlx::query_as(
         "SELECT id, rel_path, coalesce(mtime, 0), deleted_at IS NOT NULL FROM documents WHERE source_id = ?1",
     )
     .bind(source_id)
     .fetch_all(db)
     .await?;
-    if db_rows.is_empty() {
-        db_rows = seed_from_meta(db, source_id, source_path, &fs_entries).await?;
-    }
 
     let db_entries: Vec<(String, i64)> = db_rows
         .iter()
@@ -1232,7 +1201,12 @@ pub async fn reconcile_source(
         .collect();
     let frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
 
-    let plan = resolve_plan(&diff, &db_docs, &deleted_ids);
+    let seeds = if diff.new_paths.is_empty() {
+        HashMap::new()
+    } else {
+        read_seeds(source_path, &db_docs)
+    };
+    let plan = resolve_plan(&diff, &db_docs, &deleted_ids, &seeds);
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
     apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
@@ -1280,7 +1254,7 @@ mod tests {
             .map(|(id, p, m)| (id.to_string(), (p.to_string(), *m)))
             .collect();
         let deleted_ids: HashSet<String> = deleted.iter().map(|s| s.to_string()).collect();
-        resolve_plan(&diff, &db_docs, &deleted_ids)
+        resolve_plan(&diff, &db_docs, &deleted_ids, &HashMap::new())
     }
 
     fn doc<'a>(p: &'a ReconcilePlan, path: &str) -> &'a ResolvedDoc {
@@ -1317,6 +1291,26 @@ mod tests {
         assert_eq!(d.id, "id-a");
         assert!(d.existing && d.moved);
         assert!(p.delete_ids.is_empty());
+    }
+
+    #[test]
+    fn a_new_path_adopts_the_id_whose_meta_names_it() {
+        let diff = ReconciliationDiff {
+            unchanged: vec![],
+            modified: vec![],
+            new_paths: vec![("a.md".to_string(), 3), ("b.md".to_string(), 3)],
+            missing: vec![],
+        };
+        let seeds: HashMap<String, (String, i64)> =
+            HashMap::from([("a.md".to_string(), ("id-a".to_string(), 42))]);
+        let p = resolve_plan(&diff, &HashMap::new(), &HashSet::new(), &seeds);
+        let a = doc(&p, "a.md");
+        assert_eq!(a.id, "id-a");
+        assert_eq!(a.created_at, Some(42));
+        assert!(!a.existing);
+        let b = doc(&p, "b.md");
+        assert_ne!(b.id, "id-a");
+        assert_eq!(b.created_at, None);
     }
 
     #[test]
