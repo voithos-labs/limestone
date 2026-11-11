@@ -14,8 +14,8 @@
 
 use crate::services::body;
 use crate::services::frontmatter;
+use crate::services::fs::rewrite_meta;
 use crate::services::fs::{atomic_write, resolve_in_source};
-use crate::services::sidecar;
 use crate::services::source::{document_type, tag_id};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -720,7 +720,7 @@ async fn execute(
 
 enum Target<'a> {
     File(&'a Path),
-    Sidecar {
+    Meta {
         root: &'a Path,
         id: &'a str,
         rel: &'a str,
@@ -731,7 +731,7 @@ impl Target<'_> {
     fn rewrite_frontmatter(&self, mutate: impl Fn(&mut Value)) -> std::io::Result<()> {
         match self {
             Target::File(path) => frontmatter::rewrite_frontmatter(path, mutate),
-            Target::Sidecar { root, id, rel } => sidecar::rewrite(root, id, rel, mutate),
+            Target::Meta { root, id, rel } => rewrite_meta(root, id, rel, mutate),
         }
     }
 
@@ -742,15 +742,15 @@ impl Target<'_> {
     ) -> std::io::Result<()> {
         match (self, mutate_fm) {
             (Target::File(path), _) => frontmatter::rewrite_document(path, mutate_fm, mutate_body),
-            (Target::Sidecar { .. }, Some(mutate)) => self.rewrite_frontmatter(mutate),
-            (Target::Sidecar { .. }, None) => Ok(()),
+            (Target::Meta { .. }, Some(mutate)) => self.rewrite_frontmatter(mutate),
+            (Target::Meta { .. }, None) => Ok(()),
         }
     }
 
     fn strip_frontmatter(&self) -> std::io::Result<()> {
         match self {
             Target::File(path) => frontmatter::strip_frontmatter(path),
-            Target::Sidecar { .. } => Ok(()),
+            Target::Meta { .. } => Ok(()),
         }
     }
 }
@@ -785,7 +785,7 @@ async fn write_files(
                 resolve_in_source(&source_path, rel).and_then(|path| match pdf_ids.get(rel) {
                     Some(id) => write(
                         rel,
-                        &Target::Sidecar {
+                        &Target::Meta {
                             root: &source_path,
                             id,
                             rel,

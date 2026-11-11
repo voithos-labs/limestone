@@ -4,11 +4,11 @@ use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
 use crate::services::frontmatter::Head;
 use crate::services::fs::{
-    atomic_write, doc_dir, is_taken, move_file, mtime_ms, repath_meta, resolve_in_source,
-    validate_file_name,
+    atomic_write, doc_dir, has_history, is_taken, move_file, mtime_ms, read_meta, repath_meta,
+    resolve_in_source, rewrite_meta, touch_meta, validate_file_name,
 };
 use crate::services::{
-    document_type, fm_properties, frontmatter, index_document, sidecar, sync_folders, sync_tags,
+    document_type, fm_properties, frontmatter, index_document, sync_folders, sync_tags,
 };
 use crate::AppData;
 use serde::Serialize;
@@ -47,7 +47,7 @@ fn is_pdf(rel_path: &str) -> bool {
     document_type(rel_path) == "pdf"
 }
 
-fn rewrite_meta(
+fn rewrite_fields(
     root: &Path,
     id: &str,
     rel_path: &str,
@@ -55,7 +55,7 @@ fn rewrite_meta(
     mutate: impl Fn(&mut Value),
 ) -> std::io::Result<()> {
     if is_pdf(rel_path) {
-        sidecar::rewrite(root, id, rel_path, mutate)
+        rewrite_meta(root, id, rel_path, mutate)
     } else {
         frontmatter::rewrite_frontmatter(full_path, mutate)
     }
@@ -361,7 +361,7 @@ pub async fn set_document_tags(
 
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
-    rewrite_meta(&root, &id, &rel_path, &full_path, |fm| {
+    rewrite_fields(&root, &id, &rel_path, &full_path, |fm| {
         frontmatter::set_tags(fm, &tags)
     })
     .map_err(OpError::from)?;
@@ -384,7 +384,10 @@ pub fn read_document_tags(
 ) -> Result<DocumentTags, OpError> {
     let root = root_of(&app, &source_id)?;
     if is_pdf(&rel_path) {
-        let fm = id.and_then(|id| sidecar::read(&root, &id).ok().flatten());
+        let fm = id
+            .and_then(|id| read_meta(&doc_dir(&root, &id)))
+            .map(|m| m.frontmatter)
+            .filter(Value::is_object);
         return Ok(DocumentTags {
             frontmatter: frontmatter::tags(fm.as_ref()),
             body: Vec::new(),
@@ -415,17 +418,16 @@ pub async fn file_digest(
 }
 
 /// returns a pdf's loose ink: the strokes drawn on it that aren't part of an annotation yet.
-/// kept in the pdf's sidecar file under "ink"
+/// kept in the pdf's meta.json under "ink"
 #[tauri::command]
 pub fn read_pdf_ink(app: AppHandle, source_id: String, id: String) -> Result<Value, OpError> {
     let root = root_of(&app, &source_id)?;
-    let meta = sidecar::read(&root, &id).map_err(OpError::from)?;
-    Ok(meta
-        .and_then(|m| m.get("ink").cloned())
+    Ok(read_meta(&doc_dir(&root, &id))
+        .and_then(|m| m.frontmatter.get("ink").cloned())
         .unwrap_or_else(|| Value::Array(Vec::new())))
 }
 
-/// saves a pdf's loose ink into its sidecar file, making the sidecar if the pdf has none yet
+/// saves a pdf's loose ink into its meta.json, making the doc folder if the pdf has none yet
 #[tauri::command]
 pub fn save_pdf_ink(
     app: AppHandle,
@@ -435,7 +437,7 @@ pub fn save_pdf_ink(
     ink: Value,
 ) -> Result<(), OpError> {
     let root = root_of(&app, &source_id)?;
-    sidecar::rewrite(&root, &id, &rel_path, move |meta| {
+    rewrite_meta(&root, &id, &rel_path, move |meta| {
         if let Some(obj) = meta.as_object_mut() {
             if ink.as_array().is_some_and(|strokes| strokes.is_empty()) {
                 obj.shift_remove("ink");
@@ -493,18 +495,7 @@ pub async fn rename_document(
     if is_taken(&old_full, &new_full) {
         return Err(OpError::named("already_exists", &new_name));
     }
-    let doc_id: Option<String> = sqlx::query_scalar(
-        "SELECT id FROM documents WHERE source_id = ?1 AND rel_path = ?2 AND deleted_at IS NULL",
-    )
-    .bind(&source_id)
-    .bind(&rel_path)
-    .fetch_optional(&app_data.db)
-    .await
-    .map_err(OpError::from)?;
     std::fs::rename(&old_full, &new_full).map_err(OpError::from)?;
-    if let Some(id) = doc_id.filter(|_| is_pdf(&new_rel)) {
-        sidecar::relocate(&root, &id, &new_rel).map_err(OpError::from)?;
-    }
 
     let title = std::path::Path::new(&new_name)
         .file_stem()
@@ -551,7 +542,7 @@ pub async fn save_document_meta(
     // Patch frontmatter on fs
     let c = created_at.clone();
     let u = updated_at.clone();
-    rewrite_meta(&root, &id, &rel_path, &full_path, |fm| {
+    rewrite_fields(&root, &id, &rel_path, &full_path, |fm| {
         if let Some(obj) = fm.as_object_mut() {
             if let Some(c) = &c {
                 obj.insert(
@@ -631,22 +622,13 @@ pub async fn move_document(
     .map_err(OpError::from)?;
 
     if let Some(doc_id) = doc_id {
-        if is_pdf(&new_rel_path) {
-            if dest_source_id != source_id {
-                sidecar::move_between(&root, &dest_source, &doc_id, &new_rel_path)
-            } else {
-                sidecar::relocate(&root, &doc_id, &new_rel_path)
-            }
-            .map_err(OpError::from)?;
-        } else {
-            if dest_source_id != source_id {
-                let _ = ensure_writable(&dest_source);
-            }
-            if let Err(e) = move_doc_dir(&root, &dest_source, &doc_id)
-                .and_then(|_| repath_meta(&dest_source, &doc_id, &new_rel_path))
-            {
-                eprintln!("history move failed: {e}");
-            }
+        if dest_source_id != source_id {
+            let _ = ensure_writable(&dest_source);
+        }
+        if let Err(e) = move_doc_dir(&root, &dest_source, &doc_id)
+            .and_then(|_| repath_meta(&dest_source, &doc_id, &new_rel_path))
+        {
+            eprintln!("history move failed: {e}");
         }
         let mut assets: Vec<(String, bool)> = Vec::new();
         if dest_source_id != source_id {
@@ -726,7 +708,7 @@ pub async fn delete_document(
         return Ok(false);
     };
 
-    if doc_dir(&root, &id).is_dir() {
+    if has_history(&doc_dir(&root, &id)) {
         sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2 AND source_id = ?3")
             .bind(chrono::Utc::now().timestamp_millis())
             .bind(&id)
@@ -736,7 +718,7 @@ pub async fn delete_document(
             .map_err(OpError::from)?;
         return Ok(true);
     }
-    sidecar::touch(&root, &id).map_err(OpError::from)?;
+    touch_meta(&root, &id).map_err(OpError::from)?;
 
     let tag_ids: Vec<String> =
         sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")

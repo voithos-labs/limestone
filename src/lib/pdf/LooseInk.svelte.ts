@@ -1,7 +1,7 @@
 /**
  * loose ink: strokes drawn on a pdf that aren't part of an annotation yet.
  *
- * They aren't notes, so they live in the pdf's sidecar file (`.limestone/sidecars/<id>.json`)
+ * They aren't notes, so they live in the pdf's meta file (`.limestone/docs/<id>/meta.json`)
  * instead. Lassoing some and giving them a comment or a citation makes them an ink annotation. This
  * class holds them, and writes them back shortly after drawing stops and when the viewer closes.
  */
@@ -12,7 +12,7 @@ import { reportError } from '#lib/overlays.svelte.js';
 import { isStroke } from './annotation.js';
 import type { LooseStroke } from './ink.js';
 
-/** A PDF's loose ink: strokes drawn but not yet lassoed, kept in the PDF's sidecar. */
+/** A PDF's loose ink: strokes drawn but not yet lassoed, kept in the PDF's meta.json. */
 export default class LooseInk {
 	// raw, so `take` hands back the very strokes `add` stored and a history step can find them again
 	strokes: LooseStroke[] = $state.raw([]);

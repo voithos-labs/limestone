@@ -88,7 +88,7 @@ export default class PdfAnnotations {
 		namedBy = fields.quote
 	): Promise<Annotation> {
 		const pdf = this.pdf();
-		// The PDF's first metadata write creates its sidecar, which is what keeps its id when it's
+		// The PDF's first metadata write creates its doc folder, which is what keeps its id when it's
 		// renamed or moved. Every note made here points at that id.
 		await pdf.saveMeta({ createdAt: pdf.createdAt });
 		const edition = await this.preserve();

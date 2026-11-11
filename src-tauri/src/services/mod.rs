@@ -4,7 +4,6 @@ pub mod frontmatter;
 pub mod fs;
 mod fts_index;
 mod settings;
-pub mod sidecar;
 mod source;
 mod user;
 

@@ -8,15 +8,13 @@ use uuid::Uuid;
 
 use crate::commands::source_commands::find_source;
 use crate::services::fs::{
-    atomic_write, doc_dir, docs_root, move_dir, newest_change_ms, read_meta, write_meta, DocMeta,
-    META_FILE,
+    atomic_write, doc_dir, docs_root, has_history, move_dir, newest_change_ms, read_meta,
+    write_meta, DocMeta, META_FILE,
 };
-use crate::services::{sidecar, Source};
+use crate::services::Source;
 use crate::AppData;
 
 pub(crate) const DELETED_RETENTION_DAYS: &str = "sources.deleted_retention_days";
-
-const GITIGNORE: &[u8] = b"docs/\n";
 
 fn component_ok(c: &str) -> bool {
     !c.is_empty()
@@ -48,11 +46,7 @@ fn dir_of(root: &Path, doc_id: &str) -> Result<PathBuf, String> {
 }
 
 pub(crate) fn ensure_writable(source_path: &Path) -> Result<(), String> {
-    let ignore = source_path.join(".limestone").join(".gitignore");
-    if fs::read(&ignore).is_ok_and(|current| current == GITIGNORE) {
-        return Ok(());
-    }
-    atomic_write(&ignore, GITIGNORE).map_err(|e| e.to_string())
+    crate::services::fs::ensure_writable(source_path).map_err(|e| e.to_string())
 }
 
 pub(crate) fn move_doc_dir(old_root: &Path, new_root: &Path, doc_id: &str) -> std::io::Result<()> {
@@ -114,6 +108,7 @@ pub async fn history_append(
             let meta = DocMeta {
                 rel_path,
                 created_at,
+                ..Default::default()
             };
             write_meta(&dir, &meta).map_err(|e| e.to_string())?;
         }
@@ -167,7 +162,6 @@ pub(crate) async fn sweep_expired(app: &AppHandle, pool: &sqlx::SqlitePool, sour
         return;
     }
     let cutoff = chrono::Utc::now().timestamp_millis() - days * 24 * 60 * 60 * 1000;
-    sidecar::sweep_strays(&source.path, cutoff);
     let expired: Vec<String> = match sqlx::query_scalar(
         "SELECT id FROM documents WHERE source_id = ?1 AND deleted_at < ?2",
     )
@@ -199,7 +193,6 @@ pub(crate) async fn purge_row(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.to_string()),
     }
-    sidecar::remove(source_path, doc_id).map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query(
         "DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = ?1)",
@@ -263,6 +256,8 @@ pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, sour
             }
         };
     migrate_layout(&source.path, &rows);
+    let days = retention_days(app);
+    let cutoff = chrono::Utc::now().timestamp_millis() - days * 24 * 60 * 60 * 1000;
     let live_by_path: HashMap<String, String> = sqlx::query_as(
         "SELECT rel_path, id FROM documents WHERE source_id = ?1 AND deleted_at IS NULL",
     )
@@ -290,6 +285,7 @@ pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, sour
                 let meta = DocMeta {
                     rel_path: rel_path.to_string(),
                     created_at: *created_at,
+                    ..Default::default()
                 };
                 let _ = write_meta(&entry.path(), &meta);
             }
@@ -323,6 +319,12 @@ pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, sour
                     .filter(|dir| !dir.exists());
                 if let Some(dir) = occupant {
                     let _ = move_dir(&entry.path(), &dir);
+                    continue;
+                }
+                if !has_history(&entry.path()) {
+                    if days > 0 && newest_change_ms(&entry.path()) < cutoff {
+                        let _ = fs::remove_dir_all(entry.path());
+                    }
                     continue;
                 }
                 let title = Path::new(&meta.rel_path)
