@@ -32,7 +32,8 @@ import {
 	type Source
 } from '#lib/models/Source.js';
 import Folder, { folderIdPath, folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
-import DocHandle from '#lib/models/DocHandle.js';
+import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+import Doc from '#lib/models/Doc.js';
 import { sanitizeSegment } from '#lib/util/paths.js';
 import { tagId } from '#lib/models/Tag.js';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
@@ -79,8 +80,7 @@ function sameRow(a: MemberRow, b: MemberRow): boolean {
 		a.updated_at === b.updated_at &&
 		a.deleted_at === b.deleted_at &&
 		a.properties === b.properties &&
-		a.source_id === b.source_id &&
-		a.writes_meta === b.writes_meta
+		a.source_id === b.source_id
 	);
 }
 
@@ -278,13 +278,6 @@ export class FaceRows {
 		return (this.rowTags[rowId] ?? []).map((t) => t.slug);
 	}
 
-	// a unit's fields count only on the unit's members: a todo checkbox on a note without
-	// the tag is inert, so it's drawn but not live. Folder units are always satisfied here,
-	// their views only ever hold their own subtree
-	writable(row: MemberRow): boolean {
-		return row.writes_meta !== 0;
-	}
-
 	memberOf(row: MemberRow, field: ViewField): boolean {
 		const unit = field.unit;
 		if (!unit || !unit.startsWith('tag:')) return true;
@@ -388,7 +381,6 @@ export class FaceRows {
 	}
 
 	async writeCell(row: MemberRow, field: ViewField, value: unknown): Promise<void> {
-		if (!this.writable(row)) return;
 		const extra = this.companion(row, field, value);
 		const writes: Write[] = extra ? [{ field, value }, extra] : [{ field, value }];
 		const prev: Write[] = writes.map((w) => ({
@@ -443,7 +435,6 @@ export class FaceRows {
 	}
 
 	toggle(row: MemberRow, field: ViewField): void {
-		if (!this.writable(row)) return;
 		if (isStatusField(field)) {
 			const done = statusIsDone(field, statusOf(row, field));
 			this.writeCell(row, field, firstStatus(field, !done));
@@ -452,8 +443,12 @@ export class FaceRows {
 		this.writeCell(row, field, rawStatefulValue(row, field) !== true);
 	}
 
-	private readTags(row: MemberRow): Promise<{ frontmatter: string[]; body: string[] }> {
-		return invoke('read_document_tags', { sourceId: row.source_id, relPath: row.rel_path });
+	private readTags(row: MemberRow): Promise<{ metadata: string[]; body: string[] }> {
+		return invoke('read_document_tags', {
+			sourceId: row.source_id,
+			relPath: row.rel_path,
+			id: row.id
+		});
 	}
 
 	async textTags(row: MemberRow): Promise<Map<string, number>> {
@@ -470,7 +465,7 @@ export class FaceRows {
 
 	async setTag(rowId: string, slug: string, on: boolean): Promise<RowTag[] | null> {
 		const row = this.rows.find((r) => r.id === rowId);
-		if (!row || !this.writable(row)) return null;
+		if (!row) return null;
 		history.push(this.view().id, {
 			back: async () => void (await this.applyTag(rowId, slug, !on)),
 			forward: async () => void (await this.applyTag(rowId, slug, on)),
@@ -484,8 +479,8 @@ export class FaceRows {
 		if (!row) return null;
 		try {
 			const id = tagId(slug);
-			const { frontmatter, body } = await this.readTags(row);
-			const kept = frontmatter.filter((t) => tagId(t) !== id);
+			const { metadata, body } = await this.readTags(row);
+			const kept = metadata.filter((t) => tagId(t) !== id);
 			if (!on && body.some((t) => tagId(t) === id)) {
 				await invoke('strip_document_tag', {
 					id: rowId,
@@ -494,8 +489,8 @@ export class FaceRows {
 					slug
 				});
 			}
-			if (on || kept.length !== frontmatter.length) {
-				const doc = await DocHandle.fromID(rowId);
+			if (on || kept.length !== metadata.length) {
+				const doc = await Doc.load(rowId);
 				await doc.setTags(on ? [...kept, slug] : kept);
 			}
 			const tags = (await this.fetchTags([row]))[rowId] ?? [];
@@ -524,7 +519,7 @@ export class FaceRows {
 		const prev = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		this.patchRow(rowId, { title: title.trim() });
 		try {
-			const doc = await DocHandle.fromID(rowId);
+			const doc = await Doc.load(rowId);
 			await doc.rename(title.trim());
 			this.patchRow(rowId, { title: doc.title });
 		} catch (e) {
@@ -536,10 +531,10 @@ export class FaceRows {
 	async delete(rowId: string): Promise<void> {
 		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		try {
-			const doc = await DocHandle.fromID(rowId);
+			const doc = await Doc.load(rowId);
 			const kept = await doc.delete();
 			this.dropRow(rowId);
-			if (!kept) return;
+			if (!kept || !(doc instanceof MarkdownHandle)) return;
 			history.push(this.view().id, {
 				back: () => this.restoreDoc(doc),
 				forward: async () => {
@@ -562,7 +557,7 @@ export class FaceRows {
 		this.total = Math.max(0, this.total - 1);
 	}
 
-	private async restoreDoc(doc: DocHandle): Promise<void> {
+	private async restoreDoc(doc: MarkdownHandle): Promise<void> {
 		try {
 			const text = await lastHistoryText(doc);
 			if (text === null) throw new Error('nothing to restore');
@@ -576,13 +571,13 @@ export class FaceRows {
 	}
 
 	async restoreRow(rowId: string): Promise<void> {
-		await this.restoreDoc(await DocHandle.fromID(rowId));
+		await this.restoreDoc(await MarkdownHandle.fromID(rowId));
 	}
 
 	async purge(rowId: string): Promise<void> {
 		const title = this.rows.find((r) => r.id === rowId)?.title ?? '';
 		try {
-			const doc = await DocHandle.fromID(rowId);
+			const doc = await Doc.load(rowId);
 			await doc.purge();
 			this.dropRow(rowId);
 		} catch (e) {
@@ -607,7 +602,9 @@ export class FaceRows {
 		const dir = ctx.folderGroupId ? folderPath(ctx.folderGroupId) : '';
 		const base = sanitizeSegment(title);
 		if (!base) return false;
-		return DocHandle.pathTaken(source, dir ? `${dir}/${base}.md` : `${base}.md`).catch(() => false);
+		return MarkdownHandle.pathTaken(source, dir ? `${dir}/${base}.md` : `${base}.md`).catch(
+			() => false
+		);
 	}
 
 	async renameTaken(row: MemberRow, title: string): Promise<boolean> {
@@ -617,7 +614,7 @@ export class FaceRows {
 		const cut = row.rel_path.lastIndexOf('/');
 		const rel = cut === -1 ? `${base}.md` : `${row.rel_path.slice(0, cut)}/${base}.md`;
 		if (rel.toLowerCase() === row.rel_path.toLowerCase()) return false;
-		return DocHandle.pathTaken(source, rel).catch(() => false);
+		return MarkdownHandle.pathTaken(source, rel).catch(() => false);
 	}
 
 	async create(title = '', values: Record<string, unknown> = {}): Promise<string | null> {
@@ -666,8 +663,8 @@ async function createFromContext(
 	ctx: CreateContext,
 	source: Source,
 	title: string
-): Promise<DocHandle> {
-	const doc = await DocHandle.createFromTitle(source, {
+): Promise<MarkdownHandle> {
+	const doc = await MarkdownHandle.createFromTitle(source, {
 		title: title.trim() || 'Untitled',
 		dir: ctx.folderGroupId ? folderPath(ctx.folderGroupId) : '',
 		groupIds: [...ctx.tagGroupIds],
@@ -921,10 +918,10 @@ export class PreviewCache {
 				let hit = this.cache.get(key);
 				if (hit === undefined) {
 					const src = byId.get(r.source_id);
-					if (!src) return;
+					if (!src || r.document_type !== 'md') return;
 					try {
 						const raw = await readTextFile(`${src.path}/${r.rel_path}`);
-						const body = DocHandle.deserialize(raw).body;
+						const body = MarkdownHandle.deserialize(raw).body;
 						hit = { text: stripMd(body).slice(0, PREVIEW_MAX), image: firstImage(body, src) };
 					} catch {
 						hit = { text: '', image: '' };

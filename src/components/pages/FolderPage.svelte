@@ -9,7 +9,7 @@
 	import View, { listSavedViewJSON, coverArt } from '#lib/models/View.svelte.js';
 	import type { CoverArt, FilterNode, ViewField, ViewFieldType } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
-	import type { TabState } from '#lib/models/EditorState.svelte.js';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import {
 		foldersHidden as foldersHiddenSetting,
 		type SettingsState
@@ -27,7 +27,7 @@
 		sourceName,
 		type Source
 	} from '#lib/models/Source.js';
-	import DocHandle from '#lib/models/DocHandle.js';
+	import Doc from '#lib/models/Doc.js';
 	import { mark } from '#lib/overlays.svelte.js';
 	import { addSourceRequest } from '#lib/overlays.svelte.js';
 	import { folderNameProblem } from '#lib/util/paths.js';
@@ -38,7 +38,6 @@
 	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
 	import frog from '#assets/art/frog.txt?raw';
 	import { openProjectSetup } from '#lib/views/project.svelte.js';
-	import { metaDialog } from '#lib/overlays.svelte.js';
 	import {
 		isMove,
 		readMove,
@@ -73,9 +72,7 @@
 		FolderInput,
 		ArrowDownUp,
 		SquareCheck,
-		GitBranch,
-		FileLock,
-		FilePen
+		GitBranch
 	} from '@lucide/svelte';
 
 	// A folder or a source opened as a place, not as a filtered view: what's directly inside it,
@@ -314,9 +311,9 @@
 	}
 
 	function onOpenRow(rowId: string, newTab: boolean | 'side' = false) {
-		DocHandle.fromID(rowId)
+		Doc.load(rowId)
 			.then((d) => {
-				const content = { type: 'markdown', handle: d } as const;
+				const content = TabState.docContent(d);
 				if (newTab === 'side') editor.beside().openDetail(content, view.slug);
 				else if (newTab || !tab) editor.openDoc(d);
 				else if (editor.peer) editor.peer.openDetail(content, view.slug);
@@ -416,22 +413,12 @@
 		if (!menuOpen) confirmingDelete = false;
 	});
 
-	function metaItem(f: Folder) {
-		return {
-			value: 'meta',
-			label: 'Metadata…',
-			icon: f.writesMeta ? FilePen : FileLock,
-			hint: f.writesMeta ? 'On' : 'Off'
-		};
-	}
-
 	// making things here is the fab's job; this menu is about the folder itself
 	const menuItems = $derived([
 		isRoot
 			? { value: 'configure', label: 'Configure source', icon: Settings }
 			: { value: 'rename', label: 'Rename', icon: Pencil },
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
-		...(here ? [metaItem(here)] : []),
 		{ kind: 'divider' as const },
 		{ value: 'project', label: 'Turn into project', icon: Bookmark },
 		{ kind: 'divider' as const },
@@ -487,9 +474,6 @@
 				break;
 			case 'configure':
 				if (source) sourceDialogOpen = true;
-				break;
-			case 'meta':
-				metaDialog.show(unitId);
 				break;
 			case 'project':
 				openProjectSetup(editor, { id: unitId, name: crumbs.at(-1)?.slug ?? view.slug }, tab);

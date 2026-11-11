@@ -1,4 +1,3 @@
-use crate::commands::source_commands::{refresh_folder_meta, GIT_FRONTMATTER_OFF};
 use crate::services::{dot_get, JsonSettingsStore};
 use crate::AppData;
 use serde::Serialize;
@@ -44,9 +43,6 @@ pub fn set_setting_global(
     let store = JsonSettingsStore::for_app(&app);
     store.set_global(&key, value).map_err(|e| e.to_string())?;
     *app_data.settings.write().unwrap() = store.load_merged();
-    if key == GIT_FRONTMATTER_OFF {
-        refresh_folder_meta(&app, &app_data);
-    }
     Ok(())
 }
 
@@ -59,9 +55,6 @@ pub fn reset_setting_global(
     let store = JsonSettingsStore::for_app(&app);
     store.remove_global(&key).map_err(|e| e.to_string())?;
     *app_data.settings.write().unwrap() = store.load_merged();
-    if key == GIT_FRONTMATTER_OFF {
-        refresh_folder_meta(&app, &app_data);
-    }
     Ok(())
 }
 
@@ -70,6 +63,5 @@ pub fn reset_all_settings(app: AppHandle, app_data: State<AppData>) -> Result<()
     let store = JsonSettingsStore::for_app(&app);
     store.clear_global().map_err(|e| e.to_string())?;
     *app_data.settings.write().unwrap() = store.load_merged();
-    refresh_folder_meta(&app, &app_data);
     Ok(())
 }

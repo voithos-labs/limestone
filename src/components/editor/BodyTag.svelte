@@ -1,4 +1,11 @@
 <script lang="ts">
+	/**
+	 * what aragonite draws for a #tag in a note.
+	 *
+	 * It's the tag as written, in a pill. Clicking it opens the tag's view, shift-click beside and
+	 * ctrl-click in a new tab, by sending ACTIVATE_EVENT up the page as WikiLink.svelte does.
+	 */
+
 	import { type InlineWidgetComponentProps } from '@voithos-labs/aragonite/plugin';
 	import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 

@@ -36,7 +36,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import DocHandle from '#lib/models/DocHandle.js';
+import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+import PdfHandle from '#lib/models/PdfHandle.js';
+import type { AnyDoc } from '#lib/models/Doc.js';
 import View, { listSavedViewJSON, unitDisplayName } from '#lib/models/View.svelte.js';
 import type Session from '#lib/models/Session.svelte.js';
 
@@ -48,7 +50,8 @@ export type FocusTarget =
 // ── Tabs ─────────────────────────────────────────────────────────────────────────────
 
 export type TabContent =
-	| { type: 'markdown'; handle: DocHandle }
+	| { type: 'markdown'; handle: MarkdownHandle }
+	| { type: 'pdf'; handle: PdfHandle }
 	| { type: 'view'; view: View }
 	| { type: 'new'; id: string }
 	| { type: 'home'; id: string }
@@ -66,6 +69,7 @@ type Visit = { content: TabContent; state: Record<string, any> };
 
 type TabJSONBase =
 	| { type: 'markdown'; handleId: string; state: Record<string, any>; pinned?: boolean }
+	| { type: 'pdf'; handleId: string; state: Record<string, any>; pinned?: boolean }
 	| { type: 'view'; view: ReturnType<View['toJSON']>; state: Record<string, any>; pinned?: boolean }
 	| { type: 'view-ref'; viewId: string; state: Record<string, any>; pinned?: boolean }
 	| { type: 'new'; id: string; state: Record<string, any>; pinned?: boolean }
@@ -102,6 +106,7 @@ export class TabState {
 	static idOf(content: TabContent): string {
 		switch (content.type) {
 			case 'markdown':
+			case 'pdf':
 				return content.handle.id;
 			case 'view':
 				return content.view.id;
@@ -124,6 +129,7 @@ export class TabState {
 	static titleOf(content: TabContent): string {
 		switch (content.type) {
 			case 'markdown':
+			case 'pdf':
 				return content.handle.title;
 			case 'view':
 				return content.view.slug;
@@ -145,7 +151,7 @@ export class TabState {
 	}
 
 	// dep
-	get handle(): DocHandle | undefined {
+	get handle(): MarkdownHandle | undefined {
 		return this.content.type === 'markdown' ? this.content.handle : undefined;
 	}
 
@@ -164,8 +170,8 @@ export class TabState {
 		state: Record<string, any>,
 		pinned: boolean
 	): TabJSONBase {
-		if (content.type === 'markdown') {
-			return { type: 'markdown', handleId: content.handle.id, state, pinned };
+		if (content.type === 'markdown' || content.type === 'pdf') {
+			return { type: content.type, handleId: content.handle.id, state, pinned };
 		}
 		if (content.type === 'new' || content.type === 'home' || content.type === 'licenses') {
 			return { type: content.type, id: content.id, state, pinned };
@@ -176,8 +182,14 @@ export class TabState {
 		return { type: 'view', view: content.view.toJSON(), state, pinned };
 	}
 
-	static forDoc(doc: DocHandle): TabState {
-		return new TabState({ type: 'markdown', handle: doc });
+	static docContent(doc: AnyDoc): TabContent {
+		return doc instanceof PdfHandle
+			? { type: 'pdf', handle: doc }
+			: { type: 'markdown', handle: doc };
+	}
+
+	static forDoc(doc: AnyDoc): TabState {
+		return new TabState(TabState.docContent(doc));
 	}
 
 	static forView(view: View): TabState {
@@ -225,8 +237,12 @@ export class TabState {
 
 	private static async contentFromJSON(json: TabJSONBase): Promise<TabState> {
 		if (json.type === 'markdown') {
-			const handle = await DocHandle.fromID(json.handleId);
+			const handle = await MarkdownHandle.fromID(json.handleId);
 			return new TabState({ type: 'markdown', handle }, json.state ?? {}, json.pinned ?? false);
+		}
+		if (json.type === 'pdf') {
+			const handle = await PdfHandle.fromID(json.handleId);
+			return new TabState({ type: 'pdf', handle }, json.state ?? {}, json.pinned ?? false);
 		}
 		if (json.type === 'view' || json.type === 'view-ref') {
 			const saved =
@@ -325,7 +341,7 @@ class EditorState {
 		return this.tabs.find((v) => v.id === id);
 	}
 
-	get focusedDocument(): DocHandle | undefined {
+	get focusedDocument(): MarkdownHandle | undefined {
 		const tab = this.focusedTab;
 		return tab?.content.type === 'markdown' ? tab.content.handle : undefined;
 	}
@@ -352,7 +368,7 @@ class EditorState {
 		for (const tabJson of json.tabs ?? []) {
 			const id =
 				tabJson.tab_id ??
-				(tabJson.type === 'markdown'
+				(tabJson.type === 'markdown' || tabJson.type === 'pdf'
 					? tabJson.handleId
 					: tabJson.type === 'view'
 						? tabJson.view.id
@@ -401,16 +417,24 @@ class EditorState {
 	// show something in the bookmark's transient surface, replacing whatever was there; if
 	// it's already a real tab, that tab is the place to be
 	showPreview(tab: TabState) {
-		const existing = this.tabs.find((t) => t.id === tab.id);
+		const shown = TabState.idOf(tab.content);
+		const existing = this.tabs.find((t) => TabState.idOf(t.content) === shown);
 		if (existing) return this.focusTab({ kind: 'tab', id: existing.id });
 		this.preview = tab;
 		this.focused = { kind: 'preview' };
 		this.focusOrder = [...this.focusOrder.filter((t) => t.kind !== 'preview'), { kind: 'preview' }];
 	}
 
-	openTab(tab: TabState) {
-		if (this.tabs.some((d) => d.id === tab.id)) return; // dupe
-		this.tabs.push(tab);
+	/**
+	 * A tab keeps its first content's id after it navigates on, so a new tab for that
+	 * content takes a fresh id, rather than being dropped as that tab's duplicate.
+	 */
+	openTab(tab: TabState): TabState {
+		const same = this.tabs.find((t) => t.id === tab.id);
+		if (same && TabState.idOf(same.content) === TabState.idOf(tab.content)) return same;
+		const added = same ? new TabState(tab.content, tab.state, tab.pinned, uuidv4()) : tab;
+		this.tabs.push(added);
+		return added;
 	}
 
 	insertTab(tab: TabState, index = this.tabs.length) {
@@ -423,19 +447,17 @@ class EditorState {
 	}
 
 	// `state` is merged into the tab's own, e.g. a heading for the editor to jump to once it opens
-	openDoc(doc: DocHandle, state: Record<string, any> = {}) {
-		const existing = this.tabs.find(
-			(t) => t.content.type === 'markdown' && t.content.handle.id === doc.id
-		);
-		const tab = existing ?? TabState.forDoc(doc);
+	openDoc(doc: AnyDoc, state: Record<string, any> = {}) {
+		const existing = this.tabs.find((t) => TabState.idOf(t.content) === doc.id);
+		const tab = existing ?? this.openTab(TabState.forDoc(doc));
 		Object.assign(tab.state, state);
-		if (!existing) this.openTab(tab);
 		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	openView(view: View) {
-		this.openTab(TabState.forView(view));
-		this.focusTab({ kind: 'tab', id: view.id });
+		const existing = this.tabs.find((t) => TabState.idOf(t.content) === view.id);
+		const tab = existing ?? this.openTab(TabState.forView(view));
+		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	// a tab navigates like a browser tab: it keeps its slot and its identity, remembering where it
@@ -448,8 +470,8 @@ class EditorState {
 		this.swapContent(tab, { type: 'view', view }, tab.state);
 	}
 
-	showDocInTab(tab: TabState, doc: DocHandle, state: Record<string, any> = {}) {
-		this.showInTab(tab, { type: 'markdown', handle: doc }, state);
+	showDocInTab(tab: TabState, doc: AnyDoc, state: Record<string, any> = {}) {
+		this.showInTab(tab, TabState.docContent(doc), state);
 	}
 
 	showSetupInTab(tab: TabState, state: Record<string, any> = {}) {
@@ -507,14 +529,13 @@ class EditorState {
 	// the landing page; one of it, focused if it's already open
 	openHome() {
 		const existing = this.tabs.find((t) => t.content.type === 'home');
-		const tab = existing ?? TabState.forHome();
-		if (!existing) this.openTab(tab);
+		const tab = existing ?? this.openTab(TabState.forHome());
 		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	openLicenses() {
-		this.openTab(TabState.forLicenses());
-		this.focusTab({ kind: 'tab', id: 'licenses' });
+		const tab = this.openTab(TabState.forLicenses());
+		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
 	focusAdjacentTab(delta: number) {

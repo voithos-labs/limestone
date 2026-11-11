@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { reportError, type ReportError } from '#lib/overlays.svelte.js';
-	import type DocHandle from '#lib/models/DocHandle.js';
+	import type Doc from '#lib/models/Doc.js';
 	import View from '#lib/models/View.svelte.js';
 	import type { ViewField, MemberRow } from '#lib/models/View.svelte.js';
 	import {
@@ -27,7 +27,7 @@
 		onCount,
 		onError = reportError
 	}: {
-		handle: DocHandle;
+		handle: Doc;
 		open?: boolean;
 		inline?: boolean;
 		onCount?: (n: number) => void;

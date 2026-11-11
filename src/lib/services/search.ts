@@ -30,6 +30,7 @@ interface DocRow {
 	source_id: string | null;
 	accessed_at: number | null;
 	deleted_at: number | null;
+	document_type: string;
 }
 
 interface FtsRow extends DocRow {
@@ -77,6 +78,7 @@ function docResult(row: DocRow): SearchResult {
 		score: 0,
 		match_indices: [],
 		kind: 'document',
+		document_type: row.document_type,
 		group_type: null,
 		snippet: null,
 		deleted: !!row.deleted_at
@@ -86,7 +88,7 @@ function docResult(row: DocRow): SearchResult {
 async function recents(scope?: SearchScope): Promise<SearchResult[]> {
 	const s = scoped(scope);
 	const docs = await select<DocRow>(
-		`SELECT id, title, rel_path, source_id, accessed_at, deleted_at FROM documents d
+		`SELECT id, title, rel_path, source_id, accessed_at, deleted_at, document_type FROM documents d
 		 WHERE d.deleted_at IS NULL${s.and} ORDER BY accessed_at DESC LIMIT ?`,
 		[...s.params, MAX_RESULTS]
 	);
@@ -130,7 +132,7 @@ async function titleMatches(q: string, scope?: SearchScope): Promise<DocRow[]> {
 	const s = scoped(scope);
 	const needle = q.toLowerCase();
 	return select<DocRow>(
-		`SELECT id, title, rel_path, source_id, accessed_at, deleted_at FROM documents d
+		`SELECT id, title, rel_path, source_id, accessed_at, deleted_at, document_type FROM documents d
 		 WHERE instr(lower(d.title), ?) > 0${liveOnly(scope)}${s.and}
 		 ORDER BY instr(lower(d.title), ?) ASC, length(d.title) ASC LIMIT ?`,
 		[needle, ...s.params, needle, TITLE_POOL]
@@ -175,7 +177,7 @@ async function ftsPass(match: string | null, scope?: SearchScope): Promise<FtsRo
 	const s = scoped(scope);
 	try {
 		return await select<FtsRow>(
-			`SELECT d.id, d.title, d.rel_path, d.source_id, d.accessed_at, d.deleted_at,
+			`SELECT d.id, d.title, d.rel_path, d.source_id, d.accessed_at, d.deleted_at, d.document_type,
 			        snippet(documents_fts, 1, ?, ?, '…', 16) AS snippet, bm25(documents_fts) AS bm25
 			 FROM documents_fts JOIN documents d ON d.rowid = documents_fts.rowid
 			 WHERE documents_fts MATCH ?${liveOnly(scope)}${s.and}
@@ -339,6 +341,7 @@ export interface SearchResult {
 	score: number;
 	match_indices: number[];
 	kind: 'document' | 'group' | 'source' | 'view';
+	document_type?: string;
 	group_type: string | null;
 	snippet?: string | null;
 	emoji?: string;

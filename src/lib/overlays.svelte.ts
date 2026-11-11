@@ -12,6 +12,8 @@ export interface Toast {
 	message: string;
 	action?: ToastAction;
 	variant: ToastVariant;
+	/** text shown as-is under the message, like the citation that was just copied */
+	code?: string;
 }
 
 export type MarkKind = 'source' | 'project' | 'folder' | 'tag' | 'note';
@@ -39,14 +41,20 @@ class ToastController {
 
 	push(
 		message: string,
-		opts: { action?: ToastAction; timeout?: number; variant?: ToastVariant; sticky?: boolean } = {}
+		opts: {
+			action?: ToastAction;
+			timeout?: number;
+			variant?: ToastVariant;
+			sticky?: boolean;
+			code?: string;
+		} = {}
 	): number {
-		const shown = this.items.find((t) => t.message === message);
+		const shown = this.items.find((t) => t.message === message && t.code === opts.code);
 		if (shown) return shown.id;
 		const id = ++this.seq;
 		this.items = [
 			...this.items,
-			{ id, message, action: opts.action, variant: opts.variant ?? 'error' }
+			{ id, message, action: opts.action, variant: opts.variant ?? 'error', code: opts.code }
 		];
 		const timeout = opts.sticky ? 0 : (opts.timeout ?? (opts.action ? 0 : 5000));
 		if (timeout > 0) setTimeout(() => this.dismiss(id), timeout);
@@ -124,8 +132,6 @@ export function describeError(e: unknown, fallback: string): string {
 			return named ? `Something named "${named}" is already there.` : 'The name is already taken.';
 		case 'invalid_name':
 			return named ? `"${named}" can't be used as a name.` : "The name can't be used.";
-		case 'no_metadata':
-			return "This folder keeps metadata out of its files, so that can't be saved here.";
 		case 'invalid_data':
 			return "The file isn't readable as text.";
 		default:
@@ -273,23 +279,6 @@ class PaletteController {
 }
 
 export const palette = new PaletteController();
-
-// The folder metadata dialog, one for the app: any menu or notice can raise it for a folder
-class MetaDialogController {
-	open = $state(false);
-	folderId = $state('');
-
-	show(folderId: string) {
-		this.folderId = folderId;
-		this.open = true;
-	}
-
-	close() {
-		this.open = false;
-	}
-}
-
-export const metaDialog = new MetaDialogController();
 
 class AddSourceRequest {
 	pending = $state(false);

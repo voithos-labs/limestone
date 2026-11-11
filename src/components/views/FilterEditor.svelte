@@ -9,7 +9,7 @@
 		FilterLeaf,
 		FilterNode
 	} from '#lib/models/View.svelte.js';
-	import { METADATA_FIELD, VIEW_FIELD_OPS } from '#lib/models/View.svelte.js';
+	import { VIEW_FIELD_OPS } from '#lib/models/View.svelte.js';
 	import Tag from '#lib/models/Tag.js';
 	import Folder, { folderIdSource, isSourceRoot } from '#lib/models/Folder.js';
 	import { getSource, sourceName } from '#lib/models/Source.js';
@@ -49,7 +49,7 @@
 			: null
 	);
 
-	const filterFields = $derived([...view.fields, METADATA_FIELD]);
+	const filterFields = $derived(view.fields);
 	const fieldsById = $derived(new Map(filterFields.map((f: ViewField) => [f.id, f])));
 	const leaves = $derived(
 		filter.children.filter((n: FilterNode): n is FilterLeaf => 'field_id' in n)

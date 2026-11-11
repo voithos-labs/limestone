@@ -7,6 +7,7 @@
 	import type Session from '#lib/models/Session.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import WindowControls from './WindowControls.svelte';
+	import PdfIcon from '../ui/PdfIcon.svelte';
 	import { hostWindowStyle, resolveWindowStyle } from '#lib/services/platform.js';
 
 	import {
@@ -360,6 +361,8 @@
 		<House size={13} />
 	{:else if d.origin.type === 'licenses'}
 		<Scale size={13} />
+	{:else if d.origin.type === 'pdf'}
+		<PdfIcon size={13} />
 	{:else if !compactTabs || collapsed}
 		<TextAlignStart class="doc-icon" size={13} />
 	{/if}
@@ -412,6 +415,8 @@
 							<House size={14} />
 						{:else if ed.preview?.origin.type === 'markdown'}
 							<TextAlignStart size={14} />
+						{:else if ed.preview?.origin.type === 'pdf'}
+							<PdfIcon size={14} />
 						{:else}
 							<Bookmark size={16} />
 						{/if}

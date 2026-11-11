@@ -13,7 +13,10 @@
  * for history handling, I can't simply do it on save because watcher + recc can send updates from
  * disk that do not trigger saves, so I need maybe an authoritative flag
  *
- *
+ * --- 2026-10-04 --- [daniel]
+ * "I kind of need to create a parent Doc type, and let shit do whatever under that."
+ * done.
+ * this file is now just the markdown implementation built on Doc in Doc.ts
  *
  *
  */
@@ -22,8 +25,6 @@
 
 // External
 import { v4 as uuidv4 } from 'uuid';
-import { untrack } from 'svelte';
-import { SvelteMap } from 'svelte/reactivity';
 import { exists, readTextFile } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import * as yaml from 'js-yaml';
@@ -36,33 +37,13 @@ import {
 	retargetHistory,
 	settleHistory
 } from '#lib/services/history.js';
-import { LinkRewriteFailure, rewriteLinksForMove } from '#lib/services/links.svelte.js';
-import { isRetryable, toasts, mark } from '#lib/overlays.svelte.js';
 import { sanitizeSegment } from '#lib/util/paths.js';
-import { creationSource, defaultNoteDir, getSource, noteSelfWrite, type Source } from './Source';
-import Tag, { tagSlug, type TagRow } from './Tag';
+import { creationSource, defaultNoteDir, noteSelfWrite, type Source } from './Source';
+import Tag, { tagSlug } from './Tag';
 import Folder from './Folder';
-import { leftProjectKeys, removeViewKey } from './View.svelte';
+import Doc, { type DocumentRow } from './Doc';
 
 // ── Interfaces ───────────────────────────────────────────────────────────────────────
-
-/**
- * Yes I am using snakecase here, this is what they are in the db
- * Fuck you
- */
-export interface DocumentRow {
-	id: string;
-	source_id: string;
-	document_type: string;
-	rel_path: string;
-	title: string;
-	created_at: number;
-	updated_at: number;
-	accessed_at: number;
-	mtime: number | null;
-	deleted_at: number | null;
-	properties: string;
-}
 
 const FENCE_RE = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
 
@@ -126,58 +107,20 @@ export function readErrorKind(e: unknown): ReadErrorKind {
 	return READ_ERROR_KINDS.find((k) => k === kind) ?? 'other';
 }
 
-type Place = { sourceId: string; relPath: string; title: string };
-
-const places = new SvelteMap<string, Place>();
-
-class DocHandle {
-	// db fields *not all, just what is needed
-	readonly id: string; // primary id
-	readonly source: Source; // source instance, for data and UI
+class MarkdownHandle extends Doc {
 	private hasFile = true;
 	private static unopened = new Set<string>();
 
-	get title(): string {
-		return places.get(this.id)!.title;
-	}
-
-	get relPath(): string {
-		return places.get(this.id)!.relPath;
-	}
-
-	private get _relPath(): string {
-		return untrack(() => places.get(this.id)!.relPath);
-	}
-
-	private place(relPath: string, title: string): void {
-		places.set(this.id, { sourceId: this.source.id, relPath, title });
-	}
-
-	private get _title(): string {
-		return untrack(() => places.get(this.id)!.title);
-	}
-	tags: Tag[];
-	properties: Record<string, unknown>;
-	createdAt: Date;
-	updatedAt: Date;
-	accessedAt: Date;
-	deletedAt?: Date; // todo: handle deleted cases, e.g. load from id, where you return a stub
 	frontmatterError: string | null = null;
-	writesMeta = true;
-	inRepo = false;
 	private fileDates = { created: false, updated: false };
 
-	private constructor(row: DocumentRow, source: Source) {
-		this.id = row.id;
-		this.source = source;
-		this.place(row.rel_path, row.title);
-		this.tags = [];
-		this.properties =
-			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
-		this.createdAt = new Date(row.created_at);
-		this.updatedAt = new Date(row.updated_at);
-		this.accessedAt = new Date(row.accessed_at);
-		this.deletedAt = row.deleted_at ? new Date(row.deleted_at) : undefined;
+	constructor(row: DocumentRow, source: Source) {
+		if (row.document_type !== 'md') {
+			throw new Error(
+				`you dumbass, ${row.document_type} is an unsupported document type for markdown. \ndoc id is this: ${row.id}, figure it out.`
+			);
+		}
+		super(row, source);
 	}
 
 	static async create(
@@ -186,10 +129,8 @@ class DocHandle {
 		relPath: string,
 		groupIds: string[] = [],
 		properties: Record<string, unknown> = {}
-	): Promise<DocHandle> {
+	): Promise<MarkdownHandle> {
 		const id = uuidv4();
-		const meta = await Folder.metaAt(source.id, dirOf(relPath));
-		if (!meta.writes) properties = {};
 
 		// insert new doc stub
 		await execute(
@@ -205,40 +146,11 @@ class DocHandle {
 			[id]
 		);
 
-		const doc = new DocHandle(row, source);
+		const doc = new MarkdownHandle(row, source);
 		doc.hasFile = false;
-		doc.applyMeta(meta);
-		if (groupIds.length > 0 && meta.writes) {
+		if (groupIds.length > 0) {
 			doc.tags = await Tag.fromIDs(groupIds);
 		}
-		return doc;
-	}
-
-	static async fromID(id: string): Promise<DocHandle> {
-		type Row = DocumentRow & {
-			source_path: string;
-			source_title: string;
-			tags_json: string | null;
-		};
-		// get doc AND join source and tag data
-		const [row] = await select<Row>(
-			`SELECT d.*, s.path as source_path, s.title as source_title,
-                (SELECT json_group_array(json_object(
-                    'id', t.id, 'slug', t.slug, 'created_at', t.created_at,
-                    'updated_at', t.updated_at, 'accessed_at', t.accessed_at
-                ))
-                FROM document_tags dt JOIN tags t ON t.id = dt.tag_id
-                WHERE dt.document_id = d.id) as tags_json
-             FROM documents d JOIN sources s ON s.id = d.source_id
-             WHERE d.id = ?1`,
-			[id]
-		);
-		if (!row) throw new Error(`Document not found: ${id}`);
-		const source = await getSource(row.source_id);
-		const doc = new DocHandle(row, source);
-		const tags: TagRow[] = row.tags_json ? JSON.parse(row.tags_json) : [];
-		doc.tags = tags.filter((r) => r.id !== null).map((r) => new Tag(r));
-		doc.applyMeta(await Folder.metaAt(source.id, dirOf(row.rel_path)));
 		return doc;
 	}
 
@@ -256,14 +168,14 @@ class DocHandle {
 	}
 
 	static async pathTaken(source: Source, relPath: string): Promise<boolean> {
-		if (await DocHandle.pathExists(source.id, relPath)) return true;
+		if (await MarkdownHandle.pathExists(source.id, relPath)) return true;
 		return exists(`${source.path}/${relPath}`);
 	}
 
 	static async uniqueRelPath(source: Source, dir: string, base: string): Promise<string> {
 		let candidate = dir ? `${dir}/${base}.md` : `${base}.md`;
 		let n = 2;
-		while (await DocHandle.pathTaken(source, candidate)) {
+		while (await MarkdownHandle.pathTaken(source, candidate)) {
 			candidate = dir ? `${dir}/${base} ${n}.md` : `${base} ${n}.md`;
 			n++;
 		}
@@ -280,21 +192,21 @@ class DocHandle {
 			body?: string;
 			draft?: boolean;
 		}
-	): Promise<DocHandle> {
+	): Promise<MarkdownHandle> {
 		const base = sanitizeSegment(opts.title) || 'Untitled';
 		const dir = opts.dir || defaultNoteDir(source);
-		const relPath = await DocHandle.uniqueRelPath(source, dir, base);
+		const relPath = await MarkdownHandle.uniqueRelPath(source, dir, base);
 		// Title must match the de-duplicated filename (e.g. "Untitled 2"), not the
 		// requested title, or two files end up sharing one title in the UI
 		const title = relPath.split('/').pop()!.replace(/\.md$/i, '');
-		const doc = await DocHandle.create(
+		const doc = await MarkdownHandle.create(
 			source,
 			title,
 			relPath,
 			opts.groupIds ?? [],
 			opts.properties ?? {}
 		);
-		if (base === 'Untitled') DocHandle.unopened.add(doc.id);
+		if (base === 'Untitled') MarkdownHandle.unopened.add(doc.id);
 		if (opts.draft && !opts.body) {
 			doc.hasFile = false;
 		} else {
@@ -303,10 +215,10 @@ class DocHandle {
 		return doc;
 	}
 
-	static async createDraft(): Promise<DocHandle | null> {
+	static async createDraft(): Promise<MarkdownHandle | null> {
 		const source = await creationSource();
 		if (!source) return null;
-		return DocHandle.createFromTitle(source, { title: 'Untitled', draft: true });
+		return MarkdownHandle.createFromTitle(source, { title: 'Untitled', draft: true });
 	}
 
 	// ── Groups ───────────────────────────────────────────────────────────────────────
@@ -338,8 +250,7 @@ class DocHandle {
 	}
 
 	private async patchFor(rebuild: boolean, body: string): Promise<Record<string, unknown> | null> {
-		await this.refreshMeta();
-		if (!this.writesMeta || (this.frontmatterError && !rebuild)) return null;
+		if (this.frontmatterError && !rebuild) return null;
 		const patch = rebuild || !this.hasFile ? this.ownedKeys() : {};
 		if (rebuild && Array.isArray(patch.tags)) {
 			const inText = new Set((await invoke<string[]>('body_tags', { body })).map(tagSlug));
@@ -392,7 +303,7 @@ class DocHandle {
 		const frontmatter: DocumentFrontmatter = {
 			...rest,
 			id: parsed.id ?? '',
-			tags: DocHandle.readTags(tags ?? tag),
+			tags: MarkdownHandle.readTags(tags ?? tag),
 			created_at: validDate(parsed.created_at),
 			updated_at: validDate(parsed.updated_at)
 		};
@@ -420,20 +331,12 @@ class DocHandle {
 			throw e;
 		}
 		this.hasFile = true;
-		const { frontmatter, body, error } = DocHandle.deserialize(raw);
-		this.frontmatterError = this.writesMeta ? error : null;
+		const { frontmatter, body, error } = MarkdownHandle.deserialize(raw);
+		this.frontmatterError = error;
 
 		await this.adoptFrontmatter(frontmatter, !!error);
 
-		// update accessed_at
-		const now = Date.now();
-		await execute(
-			`UPDATE documents
-             SET accessed_at = ?2
-             WHERE id = ?1`,
-			[this.id, now]
-		);
-		this.accessedAt = new Date(now);
+		await this.markAccessed();
 
 		this.recordHistory(body);
 		return body;
@@ -451,7 +354,7 @@ class DocHandle {
 					sourceId: this.source.id,
 					relPath: this._relPath
 				});
-				body = DocHandle.stripFence(raw);
+				body = MarkdownHandle.stripFence(raw);
 			}
 			await addChangeHistory(this, body);
 		} catch (e) {
@@ -475,8 +378,8 @@ class DocHandle {
 		} catch {
 			return;
 		}
-		const { frontmatter, error } = DocHandle.deserialize(raw);
-		this.frontmatterError = this.writesMeta ? error : null;
+		const { frontmatter, error } = MarkdownHandle.deserialize(raw);
+		this.frontmatterError = error;
 		await this.adoptFrontmatter(frontmatter, !!error);
 	}
 
@@ -497,8 +400,13 @@ class DocHandle {
 		this.tags = await Tag.fromSlugs(tags);
 	}
 
-	async saveContent(body: string, opts: { rebuildFrontmatter?: boolean } = {}): Promise<void> {
+	/** pass `properties` to also update those frontmatter keys (pdf annotations save this way) */
+	async saveContent(
+		body: string,
+		opts: { rebuildFrontmatter?: boolean; properties?: Record<string, unknown> } = {}
+	): Promise<void> {
 		await this.refreshMetaFromDisk(); // this is hmm possibly not needed
+		if (opts.properties) this.properties = { ...this.properties, ...opts.properties };
 		this.updatedAt = new Date();
 		const rebuild = !!opts.rebuildFrontmatter;
 		const mtime = await invoke<number>('write_document', {
@@ -515,15 +423,6 @@ class DocHandle {
 		this.recordHistory(body);
 	}
 
-	private applyMeta(meta: { writes: boolean; repo: boolean }): void {
-		this.writesMeta = meta.writes;
-		this.inRepo = meta.repo;
-	}
-
-	async refreshMeta(): Promise<void> {
-		this.applyMeta(await Folder.metaAt(this.source.id, dirOf(this._relPath)));
-	}
-
 	async restore(body: string, overwrite: boolean): Promise<void> {
 		if (this.deletedAt) return this.revive(body);
 		this.hasFile = overwrite;
@@ -534,10 +433,10 @@ class DocHandle {
 	private async revive(body: string): Promise<void> {
 		const wanted = this._relPath;
 		const base = wanted.split('/').pop()!.replace(/\.md$/i, '');
-		const relPath = (await DocHandle.pathTaken(this.source, wanted))
-			? await DocHandle.uniqueRelPath(this.source, dirOf(wanted), base)
+		const relPath = (await MarkdownHandle.pathTaken(this.source, wanted))
+			? await MarkdownHandle.uniqueRelPath(this.source, dirOf(wanted), base)
 			: wanted;
-		this.place(relPath, relPath.split('/').pop()!.replace(/\.md$/i, ''));
+		this.updateLocation(this.source, relPath, relPath.split('/').pop()!.replace(/\.md$/i, ''));
 		this.updatedAt = new Date();
 		await invoke('restore_document', {
 			sourceId: this.source.id,
@@ -587,7 +486,7 @@ class DocHandle {
 			await invoke('delete_document', { id: null, sourceId: source.id, relPath });
 			return null;
 		}
-		await (await DocHandle.fromID(row.id)).delete();
+		await (await MarkdownHandle.fromID(row.id)).delete();
 		return row.id;
 	}
 
@@ -598,36 +497,18 @@ class DocHandle {
 	 * @param newRelPath Path, relative to source, to move the document to
 	 */
 	static async syncSource(sourceId: string): Promise<void> {
-		const ids = [...places].filter(([, p]) => p.sourceId === sourceId).map(([id]) => id);
+		const ids = [...this.places].filter(([, p]) => p.sourceId === sourceId).map(([id]) => id);
 		if (ids.length === 0) return;
 		const rows = await select<{ id: string; rel_path: string; title: string }>(
 			`SELECT id, rel_path, title FROM documents WHERE id IN (${ids.map(() => '?').join(', ')})`,
 			ids
 		);
 		for (const row of rows) {
-			const p = places.get(row.id);
+			const p = this.places.get(row.id);
 			if (p && (p.relPath !== row.rel_path || p.title !== row.title)) {
-				places.set(row.id, { ...p, relPath: row.rel_path, title: row.title });
+				this.places.set(row.id, { ...p, relPath: row.rel_path, title: row.title });
 			}
 		}
-	}
-
-	async refreshPath(): Promise<boolean> {
-		const [row] = await select<{ source_id: string; rel_path: string; title: string }>(
-			`SELECT source_id, rel_path, title
-             FROM documents
-             WHERE id = ?1`,
-			[this.id]
-		);
-		if (!row) return false;
-		const movedSource = row.source_id !== this.source.id;
-		if (!movedSource && row.rel_path === this._relPath && row.title === this._title) return false;
-		if (movedSource) {
-			(this as { source: Source }).source = await getSource(row.source_id);
-			await this.refreshMeta();
-		}
-		this.place(row.rel_path, row.title);
-		return true;
 	}
 
 	async moveToPath(newRelPath: string): Promise<void> {
@@ -638,37 +519,9 @@ class DocHandle {
 			relPath: oldRelPath,
 			newRelPath
 		});
-		this.place(newRelPath, stemOf(newRelPath));
-		await this.refreshMeta();
+		this.updateLocation(this.source, newRelPath, stemOf(newRelPath));
 		await this.updateLinks(oldRelPath);
 		await this.stripLeftProjects(this.source.id, oldRelPath);
-	}
-
-	private async stripLeftProjects(oldSourceId: string, oldRelPath: string): Promise<void> {
-		const left = await leftProjectKeys(
-			{ sourceId: oldSourceId, dir: dirOf(oldRelPath) },
-			{ sourceId: this.source.id, dir: dirOf(this._relPath) }
-		);
-		const views = this.properties.views as Record<string, unknown> | undefined;
-		for (const key of left) {
-			if (!views || !(key in views)) continue;
-			if (await removeViewKey(this.source.id, key, [this.id])) delete views[key];
-		}
-	}
-
-	private async updateLinks(oldRelPath: string): Promise<void> {
-		try {
-			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this._relPath);
-		} catch (e) {
-			console.error('link rewrite failed', e);
-			let message = `Links to ${mark('note', this.title)} still use its old name`;
-			if (e instanceof LinkRewriteFailure && e.failed > 0)
-				message += ` in ${e.failed} ${e.failed === 1 ? 'note' : 'notes'}`;
-			if (e instanceof LinkRewriteFailure && e.reason) message += `: ${e.reason}`;
-			else message += '.';
-			const retry = { label: 'Retry', run: () => void this.updateLinks(oldRelPath) };
-			toasts.push(message, { action: isRetryable(e) ? retry : undefined });
-		}
 	}
 
 	/**
@@ -684,11 +537,9 @@ class DocHandle {
 			newRelPath,
 			newSourceId: newSource.id
 		});
-		(this as { source: Source }).source = newSource;
-		await retargetHistory(this.id, newSource.id);
 		const oldRelPath = this._relPath;
-		this.place(newRelPath, stemOf(newRelPath));
-		await this.refreshMeta();
+		this.updateLocation(newSource, newRelPath, stemOf(newRelPath));
+		await retargetHistory(this.id, newSource.id);
 		await this.stripLeftProjects(oldSourceId, oldRelPath);
 	}
 
@@ -723,7 +574,7 @@ class DocHandle {
 			relPath: oldRelPath,
 			newName: title + ext
 		});
-		this.place(newRel, title);
+		this.updateLocation(this.source, newRel, title);
 		await this.updateLinks(oldRelPath);
 	}
 
@@ -734,12 +585,12 @@ class DocHandle {
 	}
 
 	get isNew(): boolean {
-		return this.isDraft || DocHandle.unopened.has(this.id);
+		return this.isDraft || MarkdownHandle.unopened.has(this.id);
 	}
 
 	markOpened() {
-		DocHandle.unopened.delete(this.id);
+		MarkdownHandle.unopened.delete(this.id);
 	}
 }
 
-export default DocHandle;
+export default MarkdownHandle;

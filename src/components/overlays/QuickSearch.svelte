@@ -9,7 +9,7 @@
 		sourceName,
 		type Source
 	} from '#lib/models/Source.js';
-	import DocHandle from '#lib/models/DocHandle.js';
+	import Doc from '#lib/models/Doc.js';
 	import Tag from '#lib/models/Tag.js';
 	import Folder, { folderId, folderIdSource } from '#lib/models/Folder.js';
 	import { foldersHidden } from '#lib/models/Settings.svelte.js';
@@ -57,8 +57,7 @@
 		if (tab) {
 			editor.replaceTab(tab.id, next);
 		} else {
-			editor.openTab(next);
-			editor.focusTab({ kind: 'tab', id: next.id });
+			editor.focusTab({ kind: 'tab', id: editor.openTab(next).id });
 		}
 	}
 
@@ -182,7 +181,7 @@
 			editor.focusTab({ kind: 'tab', id: existing.id });
 			return;
 		}
-		const doc = await DocHandle.fromID(result.id);
+		const doc = await Doc.load(result.id);
 		openInTab(TabState.forDoc(doc));
 	}
 

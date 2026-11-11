@@ -1,5 +1,6 @@
 use atomicwrites::{AtomicFile, OverwriteBehavior::AllowOverwrite};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
@@ -52,10 +53,16 @@ pub fn doc_dir(source_path: &Path, doc_id: &str) -> PathBuf {
     docs_root(source_path).join(doc_id)
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
 pub struct DocMeta {
     pub rel_path: String,
     pub created_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mtime: Option<i64>,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub fields: Value,
 }
 
 pub fn read_meta(dir: &Path) -> Option<DocMeta> {
@@ -64,6 +71,14 @@ pub fn read_meta(dir: &Path) -> Option<DocMeta> {
 
 pub fn write_meta(dir: &Path, meta: &DocMeta) -> io::Result<()> {
     atomic_write(&dir.join(META_FILE), &serde_json::to_vec(meta)?)
+}
+
+pub fn has_history(dir: &Path) -> bool {
+    fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| e.file_name() != META_FILE)
 }
 
 pub fn newest_change_ms(dir: &Path) -> i64 {
@@ -90,6 +105,68 @@ pub fn repath_meta(source_path: &Path, doc_id: &str, rel_path: &str) -> io::Resu
         ),
         _ => Ok(()),
     }
+}
+
+const GITIGNORE: &[u8] = b"docs/\n";
+
+pub fn ensure_writable(source_path: &Path) -> io::Result<()> {
+    let ignore = source_path.join(".limestone").join(".gitignore");
+    if fs::read(&ignore).is_ok_and(|current| current == GITIGNORE) {
+        return Ok(());
+    }
+    atomic_write(&ignore, GITIGNORE)
+}
+
+pub fn rewrite_meta(
+    source_path: &Path,
+    doc_id: &str,
+    rel_path: &str,
+    mutate: impl FnOnce(&mut Value),
+) -> io::Result<()> {
+    let dir = doc_dir(source_path, doc_id);
+    let existing = read_meta(&dir);
+    let mut fields = match existing.as_ref().map(|m| &m.fields) {
+        Some(Value::Object(map)) => Value::Object(map.clone()),
+        _ => Value::Object(Map::new()),
+    };
+    mutate(&mut fields);
+    let empty = fields.as_object().is_none_or(Map::is_empty);
+    if existing.is_none() && empty {
+        return Ok(());
+    }
+    let file = source_path.join(rel_path);
+    let next = DocMeta {
+        rel_path: rel_path.to_string(),
+        created_at: existing.as_ref().map_or_else(
+            || birth_ms(&file).or_else(|| mtime_ms(&file)).unwrap_or(0),
+            |m| m.created_at,
+        ),
+        size: fs::metadata(&file).ok().map(|m| m.len()),
+        mtime: mtime_ms(&file),
+        fields: if empty { Value::Null } else { fields },
+    };
+    if existing.as_ref() == Some(&next) {
+        return Ok(());
+    }
+    if existing.is_none() {
+        ensure_writable(source_path)?;
+    }
+    write_meta(&dir, &next)
+}
+
+pub fn touch_meta(source_path: &Path, doc_id: &str) -> io::Result<()> {
+    let path = doc_dir(source_path, doc_id).join(META_FILE);
+    match fs::read(&path) {
+        Ok(bytes) => atomic_write(&path, &bytes),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn birth_ms(path: &Path) -> Option<i64> {
+    let created = fs::metadata(path).ok()?.created().ok()?;
+    let since = created.duration_since(std::time::UNIX_EPOCH).ok()?;
+    Some(since.as_millis() as i64)
 }
 
 pub fn move_dir(from: &Path, to: &Path) -> io::Result<()> {
@@ -195,6 +272,7 @@ mod tests {
         let meta = DocMeta {
             rel_path: "notes/a.md".into(),
             created_at: 1700000000000,
+            ..Default::default()
         };
         write_meta(&dir, &meta).unwrap();
         assert_eq!(read_meta(&dir), Some(meta));
@@ -208,6 +286,7 @@ mod tests {
             &DocMeta {
                 rel_path: "a.md".into(),
                 created_at: 5,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -217,9 +296,38 @@ mod tests {
             Some(DocMeta {
                 rel_path: "b.md".into(),
                 created_at: 5,
+                ..Default::default()
             })
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn meta_fields_are_lazy_and_record_the_file_they_describe() {
+        let root = std::env::temp_dir().join(format!("ls-meta-fm-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("a")).unwrap();
+        fs::write(root.join("a/doc.pdf"), b"%PDF-1.7").unwrap();
+        rewrite_meta(&root, "doc-1", "a/doc.pdf", |_| {}).unwrap();
+        assert_eq!(read_meta(&doc_dir(&root, "doc-1")), None);
+        rewrite_meta(&root, "doc-1", "a/doc.pdf", |fm| {
+            fm.as_object_mut()
+                .unwrap()
+                .insert("tags".into(), serde_json::json!(["exam"]));
+        })
+        .unwrap();
+        let meta = read_meta(&doc_dir(&root, "doc-1")).unwrap();
+        assert_eq!(meta.rel_path, "a/doc.pdf");
+        assert_eq!(meta.size, Some(8));
+        assert_eq!(meta.mtime, mtime_ms(&root.join("a/doc.pdf")));
+        assert_eq!(meta.fields, serde_json::json!({ "tags": ["exam"] }));
+        rewrite_meta(&root, "doc-1", "a/doc.pdf", |fm| {
+            fm.as_object_mut().unwrap().clear();
+        })
+        .unwrap();
+        let meta = read_meta(&doc_dir(&root, "doc-1")).unwrap();
+        assert_eq!(meta.fields, Value::Null);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

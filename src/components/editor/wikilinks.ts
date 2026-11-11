@@ -1,3 +1,12 @@
+/**
+ * the editor plugin for [[links]] and #tags, in notes and pdf comments.
+ *
+ * It finds them as the markdown is parsed and has aragonite draw them with WikiLink.svelte and
+ * BodyTag.svelte. Clicking one opens its note or the tag's view, through follow-link.ts. The [[
+ * and # menus (note-links.ts, body-tags.ts) use the helpers here to write links and to tell when
+ * a # starts a tag.
+ */
+
 import {
 	definePlugin,
 	declarePluginInlineKind,
@@ -12,18 +21,10 @@ import WikiLink from './WikiLink.svelte';
 import BodyTag from './BodyTag.svelte';
 import { parseWikiTarget } from '#lib/services/links.svelte.js';
 
+/* ------------------------------- The plugin ------------------------------- */
+
 export const WIKILINK_KIND = 'limestone-wikilink';
 export const BODY_TAG_KIND = 'limestone-tag';
-
-export interface ActivateDetail {
-	kind: 'wikilink' | 'tag';
-	target: string;
-	fragment?: string;
-	side?: boolean;
-	newTab?: boolean;
-}
-
-export const ACTIVATE_EVENT = 'limestone-activate';
 
 export function wikiLinksPlugin(): EditorPlugin {
 	return definePlugin({
@@ -58,8 +59,7 @@ export function wikiLinksPlugin(): EditorPlugin {
 	});
 }
 
-export const LINK_OPEN = '[[';
-const LINK_CLOSE = ']]';
+/* --------------------- Recognizing and writing links ---------------------- */
 
 export interface WikiLinkSpan {
 	start: number;
@@ -67,11 +67,8 @@ export interface WikiLinkSpan {
 	inner: string;
 }
 
-export interface TagSpan {
-	start: number;
-	end: number;
-	name: string;
-}
+export const LINK_OPEN = '[[';
+const LINK_CLOSE = ']]';
 
 export function recognizeWikiLink(raw: string, pos: number, end: number): WikiLinkSpan | null {
 	if (!raw.startsWith(LINK_OPEN, pos)) return null;
@@ -90,8 +87,8 @@ export function recognizeWikiLink(raw: string, pos: number, end: number): WikiLi
 	return null;
 }
 
-// The link as text, or null if recognizeWikiLink would read it back as a different link (a name
-// holding # or |, say), so nothing written from here can come back wrong.
+// the link as text, or null when recognizeWikiLink would read it back as a different link, like
+// a name with # or | in it. the [[ menu writes its links through this, so none come back wrong
 export function writeWikiLink(target: string, fragment?: string): string | null {
 	const text = `${LINK_OPEN}${target}${fragment ? `#${fragment}` : ''}${LINK_CLOSE}`;
 	const span = recognizeWikiLink(text, 0, text.length);
@@ -101,18 +98,15 @@ export function writeWikiLink(target: string, fragment?: string): string | null 
 	return same ? text : null;
 }
 
+/* ---------------------------- Recognizing tags ---------------------------- */
+
+export interface TagSpan {
+	start: number;
+	end: number;
+	name: string;
+}
+
 const TAG_CHAR = /[\p{L}\p{N}_\-/]/u;
-
-// A # opens a tag at the start of a block, after whitespace or after (, never mid-word (C#)
-export function isTagOpening(raw: string, pos: number): boolean {
-	const prev = pos > 0 ? raw[pos - 1] : '';
-	return prev === '' || /\s/.test(prev) || prev === '(';
-}
-
-// Whether what follows a # could still be a tag name, the empty name included
-export function isTagQuery(query: string): boolean {
-	return [...query].every((ch) => TAG_CHAR.test(ch));
-}
 
 export function recognizeTag(raw: string, pos: number, end: number): TagSpan | null {
 	if (raw[pos] !== '#' || !isTagOpening(raw, pos)) return null;
@@ -123,3 +117,28 @@ export function recognizeTag(raw: string, pos: number, end: number): TagSpan | n
 	if (!name || /^\d+$/.test(name)) return null;
 	return { start: pos, end: pos + 1 + name.length, name };
 }
+
+// a # opens a tag at the start of a block, after whitespace or after (, never mid-word (C#).
+// the # menu uses it to decide where it opens
+export function isTagOpening(raw: string, pos: number): boolean {
+	const prev = pos > 0 ? raw[pos - 1] : '';
+	return prev === '' || /\s/.test(prev) || prev === '(';
+}
+
+// whether what follows a # could still be a tag name, the empty name included. the # menu
+// stays open while it is
+export function isTagQuery(query: string): boolean {
+	return [...query].every((ch) => TAG_CHAR.test(ch));
+}
+
+/* ------------------------- Clicking a link or tag ------------------------- */
+
+export interface ActivateDetail {
+	kind: 'wikilink' | 'tag';
+	target: string;
+	fragment?: string;
+	side?: boolean;
+	newTab?: boolean;
+}
+
+export const ACTIVATE_EVENT = 'limestone-activate';

@@ -14,6 +14,7 @@
 	import { isStatusField, isManualSort, saveStatuses } from '#lib/models/View.svelte.js';
 	import { checkDone, statusOf, statusKind, statusColor } from '#lib/views/fieldValue.js';
 	import StatusIcon from '../StatusIcon.svelte';
+	import PdfIcon from '../../ui/PdfIcon.svelte';
 	import { leave } from '#lib/views/FaceRows.svelte.js';
 	import { history } from '#lib/views/FaceRows.svelte.js';
 	import { highlightTitle } from '#lib/util/dom.js';
@@ -1049,6 +1050,9 @@
 							onfocus={(e) => (focusIdx = items().indexOf(e.currentTarget))}
 							oncontextmenu={(e) => editors.menu(e, row.id)}
 						>
+							{#if row.document_type === 'pdf'}
+								<span class="row-type" title="PDF"><PdfIcon size={16} /></span>
+							{/if}
 							{#if checkField && isStatusField(checkField)}
 								{@const sv = statusOf(row, checkField)}
 								<button
@@ -1059,8 +1063,7 @@
 									title={sv}
 									onclick={(e) => {
 										e.stopPropagation();
-										if (rows.writable(row))
-											editors.edit(row, checkField, e.currentTarget as HTMLElement);
+										editors.edit(row, checkField, e.currentTarget as HTMLElement);
 									}}
 								>
 									<StatusIcon
@@ -1069,7 +1072,7 @@
 										size={16}
 									/>
 								</button>
-							{:else if checkField && member && rows.writable(row)}
+							{:else if checkField && member}
 								<button
 									class="check"
 									class:done
@@ -1593,6 +1596,20 @@
 	}
 
 	/* out past the row's end, so its last column lines up with the headers above */
+	.row-type {
+		position: absolute;
+		top: 50%;
+		right: calc(100% - 10px);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		transform: translateY(-50%);
+		color: var(--color-ui-muted);
+		pointer-events: none;
+	}
+
 	.row-btn {
 		position: absolute;
 		top: 50%;

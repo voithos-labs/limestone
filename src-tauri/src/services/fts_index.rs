@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use crate::services::body;
 use crate::services::frontmatter;
-use crate::services::source::tag_id;
+use crate::services::source::{document_type, tag_id};
 use crate::services::Source;
 
 const CHUNK_SIZE: usize = 500;
@@ -19,13 +19,16 @@ pub async fn index_fts(
 
     let missing: Vec<(String, String)> = sqlx::query_as(
         "SELECT id, rel_path FROM documents WHERE source_id = ?1 AND deleted_at IS NULL
-         AND rowid NOT IN (SELECT rowid FROM documents_fts)",
+         AND document_type = 'md' AND rowid NOT IN (SELECT rowid FROM documents_fts)",
     )
     .bind(&source_id)
     .fetch_all(db)
     .await?;
 
-    let mut docs = changed;
+    let mut docs: Vec<(String, String)> = changed
+        .into_iter()
+        .filter(|(_, rel_path)| document_type(rel_path) == "md")
+        .collect();
     let seen: HashSet<String> = docs.iter().map(|(id, _)| id.clone()).collect();
     docs.extend(missing.into_iter().filter(|(id, _)| !seen.contains(id)));
 

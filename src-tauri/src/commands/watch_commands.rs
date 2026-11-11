@@ -23,7 +23,8 @@ impl NoteIds {
             return;
         }
         let is_dir = path.is_dir();
-        if !is_dir && path.extension().and_then(|e| e.to_str()) != Some("md") {
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !is_dir && !["md", "pdf"].iter().any(|e| ext.eq_ignore_ascii_case(e)) {
             return;
         }
         if let Ok(id) = get_file_id(path) {
@@ -106,7 +107,10 @@ fn watch(app: AppHandle, source_id: String, root: PathBuf) -> Result<SourceWatch
             let mut renames = Vec::new();
             let mut touched = BTreeSet::new();
             for e in &events {
-                if matches!(e.kind, EventKind::Modify(ModifyKind::Name(RenameMode::Both))) {
+                if matches!(
+                    e.kind,
+                    EventKind::Modify(ModifyKind::Name(RenameMode::Both))
+                ) {
                     if let [from, to] = e.paths.as_slice() {
                         if let (Some(from), Some(to)) = (rel_of(from), rel_of(to)) {
                             renames.push((from, to));

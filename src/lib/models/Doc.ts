@@ -1,114 +1,19 @@
 /*
 
-So hmm
+--- 2026-08-19 --- [finn]
 
-There is of course a set of things all docs have, but it's not as
-static as it seems and may cluster into types.
-
-E.g. fs-element, virtual-element
-
-Fs-element is something placed in the native folder system
-virtual-element is something that exists in a native format,
-perhaps stored as .json etc. etc. or automerge history but
-does not live in a useful location on the fs, and is indexed
-into the db.
-
-Now, I don't really want to split up my cute simple sqlite db too
-much.
-
-Really, the fs/not-fs elements, as far as I can foresee, do not
-actually need a class each, since there are only really a few
-types of documents, it's just a way of thinking about
-where to put said fs values, e.g. rel_path and mtime.
-
-and where does the true internal source 'live'? Is it source_id null?
-maybe a flag like "materialized" would fit the circumstances better?
-
-Only other things that comes to mind right now is
-
-table documents:
-- id
-- title
-- document_type
-- created_at
-- updated_at
-- accessed_at
-- properties
-- file_id [nullable] -> table 'files' id
-
-table files:
-- id
-- source_id
-- rel_path
-- mtime
-- deleted_at
-
--> considering 2-way, e.g. document_id
-
-this is fine-ish, remotely, kind of -- it's perhaps slightly better
-than just having several nullable fields in the main documents table
-
-it also occurs to me that it makes the source scan kind of cute,
-since it could theoretically just interact with this 'files' table
-and that's a nice aesthetic point.
-
-if a source is a doc do I just wire this through properties?
-I think the answer comes down to: do I need to see sources in global
-search and how much metadata do they need to display
-
-Because I could just do
-
-table sources:
-- id
-- document_id
-- path
-
-where document_id -> documents row with type 'source'?
-
-And I suppose the same applies for groups (tags only?) e.g.:
-
-table tags:
-- id
-- slug [unique]
-- document_id
-
-and folders,
-table folders:
-- id
-- source_id
-- document_id
-- name/title/slug
-- parent_folder_id [nullable]
-
-so-called "small update"
-
-The question that comes to mind reviewing this is:
-where does document information live for all documents? E.g. a doc
-for a group, it can't just live in the DB (DB is a cache), so we
-need to store it somewhere.
-
-per type and it's indexed? e.g. views.json, each view just has this
-doc info and at index time they're sorted into the db nicely
-
-but what about so-called virtual notes? Simplest solution that comes to mind is literally just
-an internal source that is specially flagged in the frontend. No subfolders, just a flat list of
-notes.
-
-this does introduce name conflict issues and loses some benefits in sync simplicity, where you
-would have many documents represented in a format closer to the db rather than .md files. E.g. when
-you sync from another device, mapping source=>source is generally a pain in the cock, and so having
-them store their source data just in metadata could have been nice for simplifying sync.
+~ compacted ~
 
 Even easier though would be <app-data-dir>/external_sources/<source>/<source shit> I imagine.
 Rel_path makes this easy enough on a fast disk, it's just a folder move when you want to actually
 place it somewhere on the device.
 
---- 2026-09-18 ---
+--- 2026-09-18 --- [finn]
 
 Discard everything above.
 
-so from the above, I did end up seperating out folders and tags, because the old age model
-they were from had discohered.
+so from the above, I did end up separating out folders and tags, because the old age model
+they were from had decohered.
 
 otherwise, locallly, I'm not doing so-called 'virtual' notes. It's extra machinery for... what?
 To avoid name conflicts? Fml, have your name conflicts and stuff it
@@ -126,14 +31,43 @@ kinda nasty
 - video files
 - other file-shaped things you reasonably may want to open in limestone
 
+--- 2026-10-04 --- [daniel]
+can i discard your rambling - they are in git history anyways
+
+--- 2026-10-07 --- [finn]
+^ I compacted it
+
+Oh, sweet Fancy! let her loose;
+Every thing is spoilt by use:
+Where's the cheek that doth not fade,
+Too much gaz'd at? Where's the maid
+Whose lip mature is ever new?
+Where's the eye, however blue,
+Doth not weary? Where's the face
+One would meet in every place?
+Where's the voice, however soft,
+One would hear so very oft?
+
+- Keats
+
+--- ~ ---
  */
 
-import type { Source } from '#lib/models/Source.js';
-import type Tag from '#lib/models/Tag.js';
+import { untrack } from 'svelte';
+import { SvelteMap } from 'svelte/reactivity';
+import { execute, select } from '#lib/services/db.js';
+import { getSource, type Source } from '#lib/models/Source.js';
+import Tag, { type TagRow } from '#lib/models/Tag.js';
+import { leftProjectKeys, removeViewKey } from '#lib/models/View.svelte.js';
+import { LinkRewriteFailure, rewriteLinksForMove } from '#lib/services/links.svelte.js';
+import { isRetryable, toasts, mark } from '#lib/overlays.svelte.js';
+import type MarkdownHandle from '#lib/models/MarkdownHandle.js';
+import type PdfHandle from '#lib/models/PdfHandle.js';
 
 /**
  * Yes I am using snakecase here, this is what they are in the db
  * Fuck you
+ * No u
  */
 export interface DocumentRow {
 	id: string;
@@ -149,25 +83,43 @@ export interface DocumentRow {
 	properties: string;
 }
 
-abstract class Doc {
-	readonly id: string; // primary id
-	private _relPath: string; // path relative to source root
-	readonly source: Source; // source instance, for data and UI
-	private hasFile = true;
+type DocumentPlace = { sourceId: string; relPath: string; title: string };
+function dirOf(relPath: string): string {
+	return relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : '';
+}
 
-	title: string;
+type TaggedRow = DocumentRow & { tags_json: string | null };
+
+function tagsOf(row: TaggedRow): Tag[] {
+	const tags: TagRow[] = row.tags_json ? JSON.parse(row.tags_json) : [];
+	return tags.filter((t) => t.id !== null).map((t) => new Tag(t));
+}
+type DocCtor<T extends Doc> = new (row: DocumentRow, source: Source) => T;
+export type AnyDoc = MarkdownHandle | PdfHandle;
+
+// shared document state
+// protected (not public) such that outside code cannot call it
+// its honestly just the convention of giving things the needed minimum scope
+export default abstract class Doc {
+	protected static readonly places = new SvelteMap<string, DocumentPlace>();
+
+	readonly id: string; // primary id
+	readonly documentType: string;
+	// imma write the prefix _ as its the convention for private backing fields
+	// private backing fields, btw, is a stupid ass name
+	private _source: Source; // source instance, for data and ui
 	tags: Tag[];
 	properties: Record<string, unknown>;
 	createdAt: Date;
 	updatedAt: Date;
 	accessedAt: Date;
-	deletedAt?: Date;
+	deletedAt?: Date; // todo[finn]: handle deleted cases, e.g. load from id, where you return a stub
 
-	private constructor(row: DocumentRow, source: Source) {
+	protected constructor(row: DocumentRow, source: Source) {
 		this.id = row.id;
-		this._relPath = row.rel_path;
-		this.source = source;
-		this.title = row.title;
+		this.documentType = row.document_type;
+		this._source = source;
+		this.updateLocation(source, row.rel_path, row.title);
 		this.tags = [];
 		this.properties =
 			typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties;
@@ -176,4 +128,129 @@ abstract class Doc {
 		this.accessedAt = new Date(row.accessed_at);
 		this.deletedAt = row.deleted_at ? new Date(row.deleted_at) : undefined;
 	}
+
+	// again, the idea of giving things min needed scope.
+	// now source and relPath read only for outside code
+	get source(): Source {
+		return this._source;
+	}
+
+	get relPath(): string {
+		return Doc.places.get(this.id)!.relPath;
+	}
+
+	get title(): string {
+		return Doc.places.get(this.id)!.title;
+	}
+
+	protected get _relPath(): string {
+		return untrack(() => Doc.places.get(this.id)!.relPath);
+	}
+
+	protected get _title(): string {
+		return untrack(() => Doc.places.get(this.id)!.title);
+	}
+
+	// such that subclass can still write
+	protected updateLocation(source: Source, relPath: string, title: string): void {
+		this._source = source;
+		Doc.places.set(this.id, { sourceId: source.id, relPath, title });
+	}
+
+	static async fromID<T extends Doc>(this: DocCtor<T>, id: string): Promise<T> {
+		return Doc.build(this, await Doc.selectRow(id));
+	}
+
+	static async load(id: string): Promise<AnyDoc> {
+		const row = await Doc.selectRow(id);
+		if (row.document_type === 'pdf') {
+			return (await import('#lib/models/PdfHandle.js')).default.fromRow(row);
+		}
+		return (await import('#lib/models/MarkdownHandle.js')).default.fromRow(row);
+	}
+
+	static fromRow<T extends Doc>(this: DocCtor<T>, row: TaggedRow): Promise<T> {
+		return Doc.build(this, row);
+	}
+
+	static async selectRow(id: string): Promise<TaggedRow> {
+		const [row] = await select<TaggedRow>(
+			`SELECT d.*,
+                (SELECT json_group_array(json_object(
+                    'id', t.id, 'slug', t.slug, 'created_at', t.created_at,
+                    'updated_at', t.updated_at, 'accessed_at', t.accessed_at
+                ))
+                FROM document_tags dt JOIN tags t ON t.id = dt.tag_id
+                WHERE dt.document_id = d.id) as tags_json
+             FROM documents d
+             WHERE d.id = ?1`,
+			[id]
+		);
+		if (!row) throw new Error(`Document not found: ${id}`);
+		return row;
+	}
+
+	private static async build<T extends Doc>(ctor: DocCtor<T>, row: TaggedRow): Promise<T> {
+		const doc = new ctor(row, await getSource(row.source_id));
+		doc.tags = tagsOf(row);
+		await doc.hydrate();
+		return doc;
+	}
+
+	protected async reload(): Promise<void> {
+		const row = await Doc.selectRow(this.id);
+		this.tags = tagsOf(row);
+		this.properties = JSON.parse(row.properties);
+	}
+
+	async refreshPath(): Promise<boolean> {
+		const [row] = await select<{ source_id: string; rel_path: string; title: string }>(
+			`SELECT source_id, rel_path, title FROM documents WHERE id = ?1`,
+			[this.id]
+		);
+		if (!row) return false;
+		const movedSource = row.source_id !== this.source.id;
+		if (!movedSource && row.rel_path === this._relPath && row.title === this._title) return false;
+		this.updateLocation(
+			movedSource ? await getSource(row.source_id) : this.source,
+			row.rel_path,
+			row.title
+		);
+		return true;
+	}
+
+	protected async stripLeftProjects(oldSourceId: string, oldRelPath: string): Promise<void> {
+		const left = await leftProjectKeys(
+			{ sourceId: oldSourceId, dir: dirOf(oldRelPath) },
+			{ sourceId: this.source.id, dir: dirOf(this._relPath) }
+		);
+		const views = this.properties.views as Record<string, unknown> | undefined;
+		for (const key of left) {
+			if (!views || !(key in views)) continue;
+			if (await removeViewKey(this.source.id, key, [this.id])) delete views[key];
+		}
+	}
+
+	protected async updateLinks(oldRelPath: string): Promise<void> {
+		try {
+			await rewriteLinksForMove(this.source.id, this.id, oldRelPath, this._relPath);
+		} catch (e) {
+			console.error('link rewrite failed', e);
+			let message = `Links to ${mark('note', this.title)} still use its old name`;
+			if (e instanceof LinkRewriteFailure && e.failed > 0)
+				message += ` in ${e.failed} ${e.failed === 1 ? 'note' : 'notes'}`;
+			if (e instanceof LinkRewriteFailure && e.reason) message += `: ${e.reason}`;
+			else message += '.';
+			const retry = { label: 'Retry', run: () => void this.updateLinks(oldRelPath) };
+			toasts.push(message, { action: isRetryable(e) ? retry : undefined });
+		}
+	}
+
+	protected async markAccessed(): Promise<void> {
+		const now = Date.now();
+		await execute(`UPDATE documents SET accessed_at = ?2 WHERE id = ?1`, [this.id, now]);
+		this.accessedAt = new Date(now);
+	}
+
+	protected async hydrate(): Promise<void> {}
 }

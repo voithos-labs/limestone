@@ -1,4 +1,5 @@
-import DocHandle from '#lib/models/DocHandle.js';
+import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+import Doc, { type AnyDoc } from '#lib/models/Doc.js';
 import Folder, { folderIdPath, folderIdSource } from '#lib/models/Folder.js';
 import { mark, errorKind } from '#lib/overlays.svelte.js';
 import { getSource, sourceName, type Source } from '#lib/models/Source.js';
@@ -124,7 +125,7 @@ export async function moveInto(
 		p.kind === 'doc' ? 'This note' : mark('folder', folderIdPath(p.id).split('/').pop() ?? '');
 	try {
 		if (p.kind === 'doc') {
-			const d = await DocHandle.fromID(p.id);
+			const d = await Doc.load(p.id);
 			subject = mark('note', d.title);
 			const file = d.relPath.split('/').pop() ?? d.relPath;
 			const newRel = targetPath ? `${targetPath}/${file}` : file;
@@ -222,7 +223,7 @@ function placeMark(source: Source, rel: string): string {
 }
 
 export async function moveNote(
-	doc: DocHandle,
+	doc: AnyDoc,
 	target: Source,
 	newRel: string,
 	batch = new MoveBatch()
@@ -243,7 +244,7 @@ export async function moveNote(
 	if (choice === 'cancel') return false;
 	if (choice === 'replace') {
 		await flushAll();
-		const replaced = await DocHandle.trashAt(target, newRel);
+		const replaced = await MarkdownHandle.trashAt(target, newRel);
 		if (replaced) moveConflict.onReplaced?.(replaced);
 		await go(newRel);
 	} else {

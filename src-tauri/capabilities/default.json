@@ -24,6 +24,8 @@
 		"fs:allow-mkdir",
 		"fs:allow-remove",
 		"fs:allow-rename",
+		"fs:allow-copy-file",
+		"fs:allow-stat",
 		"store:default",
 		"dialog:default",
 		"updater:default",

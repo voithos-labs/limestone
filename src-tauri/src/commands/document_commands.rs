@@ -1,13 +1,13 @@
 use crate::commands::history_commands::{ensure_writable, move_doc_dir};
-use crate::commands::source_commands::{doc_writes_meta, source_root};
+use crate::commands::source_commands::source_root;
 use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
-use crate::services::frontmatter::Head;
 use crate::services::fs::{
-    atomic_write, doc_dir, is_taken, move_file, mtime_ms, repath_meta, resolve_in_source,
-    validate_file_name,
+    atomic_write, doc_dir, has_history, is_taken, move_file, mtime_ms, read_meta, repath_meta,
+    resolve_in_source, rewrite_meta, touch_meta, validate_file_name,
 };
-use crate::services::{fm_properties, frontmatter, index_document, sync_folders, sync_tags};
+use crate::services::metadata::{self, Head};
+use crate::services::{frontmatter, index_document, sync_folders, sync_tags};
 use crate::AppData;
 use serde::Serialize;
 use serde_json::Value;
@@ -25,8 +25,10 @@ async fn sync_file_tags(
     path: &Path,
     mut tags: Vec<String>,
 ) -> Result<(), OpError> {
-    if let Ok(contents) = std::fs::read_to_string(path) {
-        merge_body_tags(&mut tags, frontmatter::split_content(&contents).1);
+    if metadata::in_file(&path.to_string_lossy()) {
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            merge_body_tags(&mut tags, frontmatter::split_content(&contents).1);
+        }
     }
     let mut tx = db.begin().await.map_err(OpError::from)?;
     sqlx::query("UPDATE documents SET mtime = ?1 WHERE id = ?2")
@@ -61,22 +63,40 @@ fn read_kind(e: &std::io::Error) -> &'static str {
     }
 }
 
+fn read_in_source<T>(
+    app: &AppHandle,
+    source_id: &str,
+    rel_path: &str,
+    read: impl FnOnce(&std::path::Path) -> std::io::Result<T>,
+) -> Result<T, ReadError> {
+    let fail = |kind| ReadError { kind };
+    let root = source_root(app, source_id).map_err(|_| fail("source_missing"))?;
+    if !root.is_dir() {
+        return Err(fail("source_missing"));
+    }
+    let path = resolve_in_source(&root, rel_path).map_err(|_| fail("not_found"))?;
+    read(&path).map_err(|e| match read_kind(&e) {
+        "permission" if std::fs::read_dir(&root).is_err() => fail("source_permission"),
+        kind => fail(kind),
+    })
+}
+
 #[tauri::command]
 pub fn read_document(
     app: AppHandle,
     source_id: String,
     rel_path: String,
 ) -> Result<String, ReadError> {
-    let fail = |kind| ReadError { kind };
-    let root = source_root(&app, &source_id).map_err(|_| fail("source_missing"))?;
-    if !root.is_dir() {
-        return Err(fail("source_missing"));
-    }
-    let path = resolve_in_source(&root, &rel_path).map_err(|_| fail("not_found"))?;
-    std::fs::read_to_string(&path).map_err(|e| match read_kind(&e) {
-        "permission" if std::fs::read_dir(&root).is_err() => fail("source_permission"),
-        kind => fail(kind),
-    })
+    read_in_source(&app, &source_id, &rel_path, |p| std::fs::read_to_string(p))
+}
+
+#[tauri::command]
+pub async fn read_document_bytes(
+    app: AppHandle,
+    source_id: String,
+    rel_path: String,
+) -> Result<tauri::ipc::Response, ReadError> {
+    read_in_source(&app, &source_id, &rel_path, |p| std::fs::read(p)).map(tauri::ipc::Response::new)
 }
 
 #[tauri::command]
@@ -130,11 +150,11 @@ pub async fn write_document(
     .map_err(OpError::from)?;
 
     if let Some(fm) = head.value() {
-        let properties = fm_properties(fm);
+        let properties = metadata::properties(fm);
         let created_ms = fm
             .get("created_at")
             .and_then(|v| v.as_str())
-            .and_then(frontmatter::date_ms);
+            .and_then(metadata::date_ms);
 
         sqlx::query(
             "UPDATE documents
@@ -190,7 +210,7 @@ async fn index_body(
     body: &str,
 ) -> Result<(), OpError> {
     if !head.broken() {
-        let mut tags = frontmatter::tags(head.value());
+        let mut tags = metadata::tags(head.value());
         merge_body_tags(&mut tags, body);
         sync_tags(tx, doc_id, &tags).await.map_err(OpError::from)?;
     }
@@ -246,7 +266,7 @@ pub async fn restore_document(
     let (head, body) = frontmatter::head(&contents);
     let properties = head
         .value()
-        .map(fm_properties)
+        .map(metadata::properties)
         .unwrap_or_else(|| "{}".to_string());
     let title = Path::new(&rel_path)
         .file_stem()
@@ -315,21 +335,19 @@ pub async fn set_document_tags(
     rel_path: String,
     tags: Vec<String>,
 ) -> Result<(), OpError> {
-    if !doc_writes_meta(&app_data.db, &source_id, &rel_path).await? {
-        return Err(OpError::new("no_metadata"));
-    }
-
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
-    frontmatter::rewrite_frontmatter(&full_path, |fm| frontmatter::set_tags(fm, &tags))
-        .map_err(OpError::from)?;
+    metadata::rewrite(&root, &id, &rel_path, |meta| {
+        metadata::set_tags(meta, &tags)
+    })
+    .map_err(OpError::from)?;
 
     sync_file_tags(&app_data.db, &id, &full_path, tags).await
 }
 
 #[derive(Serialize)]
 pub struct DocumentTags {
-    frontmatter: Vec<String>,
+    metadata: Vec<String>,
     body: Vec<String>,
 }
 
@@ -338,15 +356,70 @@ pub fn read_document_tags(
     app: AppHandle,
     source_id: String,
     rel_path: String,
+    id: Option<String>,
 ) -> Result<DocumentTags, OpError> {
     let root = root_of(&app, &source_id)?;
+    if !metadata::in_file(&rel_path) {
+        let head = metadata::read(&root, &id.unwrap_or_default(), &rel_path, 0);
+        return Ok(DocumentTags {
+            metadata: metadata::tags(head.value()),
+            body: Vec::new(),
+        });
+    }
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
     let contents = std::fs::read_to_string(&full_path).map_err(OpError::from)?;
-    let (fm, body) = frontmatter::split_content(&contents);
+    let (meta, body) = frontmatter::split_content(&contents);
     Ok(DocumentTags {
-        frontmatter: frontmatter::tags(fm.as_ref()),
+        metadata: metadata::tags(meta.as_ref()),
         body: tag_mentions(body),
     })
+}
+
+/// hashes a file with blake3 and returns the hash as hex.
+/// the pdf viewer uses this to tell a pdf's editions apart
+#[tauri::command]
+pub async fn file_digest(
+    app: AppHandle,
+    source_id: String,
+    rel_path: String,
+) -> Result<String, ReadError> {
+    read_in_source(&app, &source_id, &rel_path, |p| {
+        let mut hasher = blake3::Hasher::new();
+        std::io::copy(&mut std::fs::File::open(p)?, &mut hasher)?;
+        Ok(hasher.finalize().to_hex().to_string())
+    })
+}
+
+/// returns a pdf's loose ink: the strokes drawn on it that aren't part of an annotation yet.
+/// kept in the pdf's meta.json under "ink"
+#[tauri::command]
+pub fn read_pdf_ink(app: AppHandle, source_id: String, id: String) -> Result<Value, OpError> {
+    let root = root_of(&app, &source_id)?;
+    Ok(read_meta(&doc_dir(&root, &id))
+        .and_then(|m| m.fields.get("ink").cloned())
+        .unwrap_or_else(|| Value::Array(Vec::new())))
+}
+
+/// saves a pdf's loose ink into its meta.json, making the doc folder if the pdf has none yet
+#[tauri::command]
+pub fn save_pdf_ink(
+    app: AppHandle,
+    id: String,
+    source_id: String,
+    rel_path: String,
+    ink: Value,
+) -> Result<(), OpError> {
+    let root = root_of(&app, &source_id)?;
+    rewrite_meta(&root, &id, &rel_path, move |meta| {
+        if let Some(obj) = meta.as_object_mut() {
+            if ink.as_array().is_some_and(|strokes| strokes.is_empty()) {
+                obj.shift_remove("ink");
+            } else {
+                obj.insert("ink".to_string(), ink);
+            }
+        }
+    })
+    .map_err(OpError::from)
 }
 
 #[tauri::command]
@@ -368,7 +441,7 @@ pub async fn strip_document_tag(
     frontmatter::rewrite_document(&full_path, None, &|body| rewrite_tags(body, &slug, None))
         .map_err(OpError::from)?;
     let contents = std::fs::read_to_string(&full_path).map_err(OpError::from)?;
-    let tags = frontmatter::tags(frontmatter::split_content(&contents).0.as_ref());
+    let tags = metadata::tags(frontmatter::split_content(&contents).0.as_ref());
     sync_file_tags(&app_data.db, &id, &full_path, tags).await
 }
 
@@ -432,18 +505,13 @@ pub async fn save_document_meta(
     created_at: Option<String>,
     updated_at: Option<String>,
 ) -> Result<i64, OpError> {
-    if !doc_writes_meta(&app_data.db, &source_id, &rel_path).await? {
-        return Err(OpError::new("no_metadata"));
-    }
-
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
 
-    // Patch frontmatter on fs
     let c = created_at.clone();
     let u = updated_at.clone();
-    frontmatter::rewrite_frontmatter(&full_path, |fm| {
-        if let Some(obj) = fm.as_object_mut() {
+    metadata::rewrite(&root, &id, &rel_path, |meta| {
+        if let Some(obj) = meta.as_object_mut() {
             if let Some(c) = &c {
                 obj.insert(
                     "created_at".to_string(),
@@ -460,8 +528,8 @@ pub async fn save_document_meta(
     })
     .map_err(OpError::from)?;
 
-    let created_ms = created_at.as_deref().and_then(frontmatter::date_ms);
-    let updated_ms = updated_at.as_deref().and_then(frontmatter::date_ms);
+    let created_ms = created_at.as_deref().and_then(metadata::date_ms);
+    let updated_ms = updated_at.as_deref().and_then(metadata::date_ms);
     let mtime = mtime(&full_path);
 
     sqlx::query(
@@ -608,7 +676,7 @@ pub async fn delete_document(
         return Ok(false);
     };
 
-    if doc_dir(&root, &id).is_dir() {
+    if has_history(&doc_dir(&root, &id)) {
         sqlx::query("UPDATE documents SET deleted_at = ?1 WHERE id = ?2 AND source_id = ?3")
             .bind(chrono::Utc::now().timestamp_millis())
             .bind(&id)
@@ -618,6 +686,7 @@ pub async fn delete_document(
             .map_err(OpError::from)?;
         return Ok(true);
     }
+    touch_meta(&root, &id).map_err(OpError::from)?;
 
     let tag_ids: Vec<String> =
         sqlx::query_scalar("SELECT tag_id FROM document_tags WHERE document_id = ?1")

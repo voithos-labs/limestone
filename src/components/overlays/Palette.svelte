@@ -16,6 +16,7 @@
 		FolderPlus
 	} from '@lucide/svelte';
 	import type { Component } from 'svelte';
+	import PdfIcon from '../ui/PdfIcon.svelte';
 	import type Session from '#lib/models/Session.svelte.js';
 	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import type { SearchResult } from '#lib/services/search.js';
@@ -28,7 +29,8 @@
 		touchSource,
 		type Source
 	} from '#lib/models/Source.js';
-	import DocHandle from '#lib/models/DocHandle.js';
+	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import Doc from '#lib/models/Doc.js';
 	import Tag from '#lib/models/Tag.js';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
 	import { foldersHidden } from '#lib/models/Settings.svelte.js';
@@ -52,6 +54,7 @@
 		emoji?: string;
 		kind: 'doc' | 'view' | 'folder' | 'tag' | 'source' | 'command';
 		match?: number[];
+		deleted?: boolean;
 		run: (newTab: boolean) => void | Promise<void>;
 	};
 	type Section = { title: string; items: Item[] };
@@ -62,7 +65,13 @@
 	let active = $state(0);
 	let sources: Source[] = $state([]);
 	let hits: SearchResult[] = $state([]);
-	let recentDocs: { id: string; title: string; rel_path: string; source_id: string }[] = $state([]);
+	let recentDocs: {
+		id: string;
+		title: string;
+		rel_path: string;
+		source_id: string;
+		document_type: string;
+	}[] = $state([]);
 	let projects: View[] = $state([]);
 
 	const trimmed = $derived(query.trim());
@@ -80,12 +89,11 @@
 			else if (next.content.type === 'view') editor.showViewInTab(tab, next.content.view);
 			return;
 		}
-		editor.openTab(next);
-		editor.focusTab({ kind: 'tab', id: next.id });
+		editor.focusTab({ kind: 'tab', id: editor.openTab(next).id });
 	}
 
 	async function newDoc(newTab: boolean) {
-		const doc = await DocHandle.createDraft();
+		const doc = await MarkdownHandle.createDraft();
 		if (doc) openContent(TabState.forDoc(doc), newTab);
 	}
 
@@ -200,11 +208,12 @@
 		return {
 			id: r.id,
 			label: r.title,
-			hint: r.deleted ? [where, 'deleted'].filter(Boolean).join(' · ') : where,
-			icon: TextAlignStart,
+			hint: where,
+			icon: r.document_type === 'pdf' ? PdfIcon : TextAlignStart,
 			kind: 'doc',
 			match: r.match_indices,
-			run: async (newTab) => openContent(TabState.forDoc(await DocHandle.fromID(r.id)), newTab)
+			deleted: r.deleted,
+			run: async (newTab) => openContent(TabState.forDoc(await Doc.load(r.id)), newTab)
 		};
 	}
 
@@ -226,10 +235,9 @@
 						id: d.id,
 						label: d.title,
 						hint: [srcOf(d.source_id), dirOf(d.rel_path)].filter(Boolean).join(' / '),
-						icon: TextAlignStart,
+						icon: d.document_type === 'pdf' ? PdfIcon : TextAlignStart,
 						kind: 'doc' as const,
-						run: async (newTab) =>
-							openContent(TabState.forDoc(await DocHandle.fromID(d.id)), newTab)
+						run: async (newTab) => openContent(TabState.forDoc(await Doc.load(d.id)), newTab)
 					}))
 				});
 			}
@@ -330,8 +338,14 @@
 			})
 			.catch((e) => console.error('palette projects failed', e));
 		// recent means recently opened, which the documents table tracks itself
-		select<{ id: string; title: string; rel_path: string; source_id: string }>(
-			`SELECT id, title, rel_path, source_id FROM documents
+		select<{
+			id: string;
+			title: string;
+			rel_path: string;
+			source_id: string;
+			document_type: string;
+		}>(
+			`SELECT id, title, rel_path, source_id, document_type FROM documents
 			 WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT 5`
 		)
 			.then((rows) => (recentDocs = rows))
@@ -431,6 +445,7 @@
 							<button
 								class="row"
 								class:active={i === active}
+								class:deleted={item.deleted}
 								data-active={i === active ? '' : undefined}
 								type="button"
 								onmouseenter={() => (active = i)}
@@ -617,6 +632,11 @@
 		white-space: nowrap;
 		text-overflow: ellipsis;
 		font-size: 13.5px;
+	}
+
+	.row.deleted .label {
+		color: var(--color-text-secondary);
+		text-decoration: line-through;
 	}
 
 	.label :global(mark) {
