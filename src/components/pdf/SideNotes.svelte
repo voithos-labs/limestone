@@ -17,6 +17,8 @@
 		activeId = null,
 		editingId = null,
 		citedBy = new Map(),
+		viewTop = 0,
+		headBottom = 0,
 		...actions
 	}: NoteActions & {
 		/** The annotations that get a note in the margin. */
@@ -27,23 +29,30 @@
 		editingId?: string | null;
 		/** The notes citing each annotation, by annotation id. */
 		citedBy?: Map<string, Citing[]>;
+		viewTop?: number;
+		headBottom?: number;
 	} = $props();
 
 	const GAP = 10;
 
 	let heights: Record<string, number> = $state({});
 
+	const minTop = $derived(headBottom + GAP);
+
 	const tops = $derived(
 		stackTops(
 			notes,
-			(a) => anchorY(a) - TEXT_INSET,
+			(a) => {
+				const y = anchorY(a);
+				return y < viewTop ? y + minTop - viewTop : Math.max(y - TEXT_INSET, minTop);
+			},
 			(a) => heights[a.id] ?? 0,
 			GAP
 		)
 	);
 </script>
 
-<div class="side-notes">
+<div class="side-notes" style:clip-path="inset({headBottom}px -24px -100000px -24px)">
 	{#each notes as a (a.id)}
 		<div class="slot" style:top="{tops.get(a) ?? 0}px" bind:offsetHeight={heights[a.id]}>
 			<SideNote

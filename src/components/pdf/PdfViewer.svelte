@@ -120,6 +120,7 @@
 	import InkMenu from './InkMenu.svelte';
 	import SelectionMenu from './SelectionMenu.svelte';
 	import SideNotes from './SideNotes.svelte';
+	import SidebarHeader from './SidebarHeader.svelte';
 	import type { NoteActions } from './SideNote.svelte';
 	import MarginMarkers from './MarginMarkers.svelte';
 	import PdfDigest from './PdfDigest.svelte';
@@ -149,10 +150,13 @@
 	const SIDE_PAD = 24;
 	const EDGE_GAP = 2;
 	const MIN_PAGE_WIDTH = 560;
-	const RAIL_WIDTH = 300;
+	const RAIL_MIN = 280;
+	const RAIL_MAX = 420;
+	const RAIL_SHARE = 0.3;
 	const RAIL_GAP = 24;
+	const RAIL_HEAD_TOP = 16;
 	const PAGE_GAP = 10;
-	const RESIZE_SETTLE_MS = 120;
+	const RESIZE_SETTLE_MS = 100;
 	// pages within this of the view are mounted and drawn, and stay until they're twice as far
 	const MOUNT_MARGIN = 1200;
 	const KEEP_MARGIN = 2400;
@@ -328,16 +332,24 @@
 	let zoom = $state(typeof savedZoom === 'number' ? savedZoom : 1);
 	const column = $derived(Math.min(columnMax, paneW - SIDE_PAD * 2));
 	// The column has room for the margin once a page beside it still reads comfortably.
-	const marginRoom = $derived(column >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_WIDTH);
-	const wantsRail = $derived(sidenotesOn ? here.length > 0 : editingId !== null);
+	const marginRoom = $derived(column >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_MIN);
+	let sidenotesOn = $state(untrack(() => tab.state.pdf_sidenotes) !== false);
+	const wantsRail = $derived(sidenotesOn);
+	const railShare = $derived(
+		Math.min(
+			RAIL_MAX,
+			column - RAIL_GAP - MIN_PAGE_WIDTH,
+			Math.max(RAIL_MIN, Math.round(column * RAIL_SHARE))
+		)
+	);
 	const fitWidth = $derived(
-		Math.max(0, column - (marginRoom && wantsRail ? RAIL_GAP + RAIL_WIDTH : 0))
+		Math.max(0, column - (marginRoom && wantsRail ? RAIL_GAP + railShare : 0))
 	);
 	const width = $derived(Math.round(Math.max(0, Math.min(fitWidth * zoom, paneW - EDGE_GAP * 2))));
 	// a page zoomed past that room would push the margin out of the pane, so the markers stand in
-	const railFits = $derived(
-		marginRoom && (!wantsRail || width + RAIL_GAP + RAIL_WIDTH <= paneW - SIDE_PAD * 2)
-	);
+	const railRoom = $derived(paneW - SIDE_PAD * 2 - width - RAIL_GAP);
+	const railWidth = $derived(Math.min(RAIL_MAX, railRoom));
+	const railFits = $derived(marginRoom && (!wantsRail || railRoom >= RAIL_MIN));
 
 	/** Measures the pane, and again each time a resize settles. Attached to the viewer's root. */
 	function measurePane(el: HTMLElement) {
@@ -503,6 +515,7 @@
 	// The view's top in pages coordinates as last seen, kept exact across a correction the
 	// browser rounds to its pixels, so a run of corrections doesn't drift.
 	let viewTop = 0;
+	let railViewTop = $state(0);
 	let wrote: { scrollTop: number; viewTop: number } | null = null;
 	let placed: { layout: PageLayout; pages: HTMLElement } | null = null;
 
@@ -560,6 +573,7 @@
 			wrote = null;
 			viewTop = v.top;
 		}
+		railViewTop = Math.round(v.top);
 		const bottom = v.top + v.height;
 		const next = holdRange(
 			mounted,
@@ -860,7 +874,13 @@
 		draft = { page: pageNumber(page), from: { x: e.clientX, y: e.clientY }, rect: null };
 	}
 
+	let hoverMarkId: string | null = $state(null);
+
 	function onPagesPointerMove(e: PointerEvent) {
+		if (!rail && e.pointerType === 'mouse') {
+			const id = e.buttons === 0 ? (markAt(e)?.id ?? null) : null;
+			if (id !== hoverMarkId) hoverMarkId = id;
+		}
 		if (gesture) inkAt(e);
 		if (!draft) return;
 		const page = pagesEl?.querySelector<HTMLElement>(`.page[data-page="${draft.page}"]`);
@@ -921,15 +941,18 @@
 	}
 
 	/** A click on a mark picks its annotation; a click anywhere else lets go of it. */
-	function pickAt(e: PointerEvent) {
+	function markAt(e: PointerEvent): Annotation | undefined {
 		// while a drawing tool holds the pointer, the event's target is the pages, not the page
 		const page = pageAt(e.target) ?? pageAt(document.elementFromPoint(e.clientX, e.clientY));
 		const [x, y] = page ? pagePoint(e, page) : [0, 0];
 		const n = page ? pageNumber(page) : 0;
-		const hit = (byPage.get(n) ?? []).find((a) =>
+		return (byPage.get(n) ?? []).find((a) =>
 			rectsOn(a, n).some((r) => x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3])
 		);
-		activeId = hit?.id ?? null;
+	}
+
+	function pickAt(e: PointerEvent) {
+		activeId = markAt(e)?.id ?? null;
 		if (editingId && editingId !== activeId) editingId = null;
 		selection = [];
 	}
@@ -970,16 +993,14 @@
 	/*                          Sidenotes and the margin                          */
 	/* -------------------------------------------------------------------------- */
 
-	let sidenotesOn = $state(untrack(() => tab.state.pdf_sidenotes) !== false);
-	// A bare highlight stays out of the margin until it's picked or given a comment. While
-	// sidenotes are hidden, only a comment being written shows.
+	// A bare highlight stays out of the margin until it's picked or given a comment.
 	const notes = $derived(
-		here.filter((a) => a.id === editingId || (sidenotesOn && (a.comment || a.id === activeId)))
+		here.filter((a) => a.comment || a.id === activeId || a.id === editingId)
 	);
-	// The margin opens with a PDF's first annotation, so an unmarked one reads centered.
 	const rail = $derived(railFits && wantsRail);
+	let headHeight = $state(0);
 	// the digest reads at the full column whatever the sidenotes show, since it has no margin
-	const columnWidth = $derived(mode === 'digest' ? column : width + (rail ? RAIL_GAP + RAIL_WIDTH : 0));
+	const columnWidth = $derived(width + (rail ? RAIL_GAP + railWidth : 0));
 
 	function toggleSidenotes() {
 		sidenotesOn = !sidenotesOn;
@@ -1499,7 +1520,7 @@
 			return;
 		}
 		// a narrow pane's floating card closes, as a click away closes it; a menu's Escape is its own
-		if (e.key === 'Escape' && !railFits && !e.defaultPrevented) activeId = editingId = null;
+		if (e.key === 'Escape' && !rail && !e.defaultPrevented) activeId = editingId = null;
 		if (!docked) return;
 		const picked = toolForKey(e.key);
 		if (e.key === 'Escape') tool = 'select';
@@ -1538,6 +1559,10 @@
 
 {#snippet heroExtra()}
 	{#if viewing || elsewhere.length}<span class="meta-sep"></span>{/if}
+	{@render headExtra()}
+{/snippet}
+
+{#snippet headExtra()}
 	{#if viewing}
 		<EditionChip day={viewingDay} onBack={() => openEdition(null)} />
 	{:else if elsewhere.length || inkLeft.length}
@@ -1584,7 +1609,7 @@
 		}}
 	>
 		<div class="column" style:width="{columnWidth}px">
-			{#if handle}
+			{#if notice && handle}
 				<DocumentHero
 					{handle}
 					loaded
@@ -1597,10 +1622,43 @@
 					extra={heroExtra}
 				/>
 			{/if}
+			{#if rail && handle && !notice}
+				<div class="rail" style:left="{width + RAIL_GAP}px" style:width="{railWidth}px">
+					<div class="rail-head">
+						<SidebarHeader
+							{handle}
+							onDelete={deleteDoc}
+							bind:propsOpen
+							bind:height={headHeight}
+							{back}
+							{forward}
+							{onOpenFolder}
+							extra={viewing || elsewhere.length || inkLeft.length || here.length
+								? headExtra
+								: undefined}
+						/>
+					</div>
+					{#if mode === 'pages' && pdf && width > 0}
+						<SideNotes
+							{notes}
+							{anchorY}
+							{activeId}
+							{editingId}
+							{citedBy}
+							viewTop={railViewTop}
+							headBottom={Math.max(0, railViewTop + RAIL_HEAD_TOP) + headHeight}
+							{...noteActions}
+						/>
+					{/if}
+				</div>
+			{/if}
 			{#if notice}
 				<GonePage headline={notice.headline} detail={notice.detail} {actions} />
 			{:else if mode === 'digest'}
-				<div class="digest" style:--font-editor={editorFont}>
+				<div class="digest" style:width="{width}px" style:--font-editor={editorFont}>
+					{#if !rail}
+						<div class="digest-switch"><ModeSwitch {mode} onChange={setMode} /></div>
+					{/if}
 					<PdfDigest
 						annotations={here}
 						{citedBy}
@@ -1623,6 +1681,7 @@
 						onpointerdown={onPagesPointerDown}
 						onpointermove={onPagesPointerMove}
 						onpointerup={onPagesPointerUp}
+						onpointerleave={() => (hoverMarkId = null)}
 					>
 						{#each shownPages as n (n)}
 							<div
@@ -1681,11 +1740,7 @@
 							{layout}
 						/>
 					{/if}
-					{#if rail}
-						<div class="rail" style:left="{width + RAIL_GAP}px">
-							<SideNotes {notes} {anchorY} {activeId} {editingId} {citedBy} {...noteActions} />
-						</div>
-					{:else if !railFits}
+					{#if !rail}
 						<MarginMarkers
 							{notes}
 							{anchorY}
@@ -1693,10 +1748,10 @@
 							{activeId}
 							{editingId}
 							{citedBy}
+							hoverMark={hoverMarkId}
 							{...noteActions}
 							pageWidth={width}
 							pane={{ left: (columnWidth - paneW) / 2, right: (columnWidth + paneW) / 2 }}
-							{dark}
 							onClose={() => (activeId = editingId = null)}
 						/>
 					{/if}
@@ -1812,6 +1867,7 @@
 	/* The column's top padding keeps the hero's back card in place until the reader scrolls past
 	   it, and puts the title where a note's sits. */
 	.column {
+		position: relative;
 		max-width: 100%;
 		margin: 0 auto;
 		padding: 16px 0 96px;
@@ -1875,8 +1931,26 @@
 
 	.rail {
 		position: absolute;
+		top: 16px;
+		bottom: 0;
+	}
+
+	.flow .rail {
 		top: 0;
-		width: 300px;
+	}
+
+	.rail-head {
+		position: sticky;
+		top: 16px;
+		z-index: 3;
+		height: 0;
+		margin-left: -10px;
+	}
+
+	.digest-switch {
+		display: flex;
+		justify-content: flex-end;
+		padding-bottom: 10px;
 	}
 
 	/* ----------------- Pages: paper, print, dark and drawing ------------------ */

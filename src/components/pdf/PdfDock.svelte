@@ -27,7 +27,7 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { MessageSquare, Moon } from '@lucide/svelte';
+	import { Moon, PanelRight } from '@lucide/svelte';
 
 	let {
 		tool = $bindable('select'),
@@ -101,7 +101,7 @@
 			title={sidenotes ? 'Hide sidenotes' : 'Show sidenotes'}
 			onclick={onToggleSidenotes}
 		>
-			<MessageSquare size={14} strokeWidth={1.75} />
+			<PanelRight size={14} strokeWidth={1.75} />
 		</button>
 	</div>
 </div>

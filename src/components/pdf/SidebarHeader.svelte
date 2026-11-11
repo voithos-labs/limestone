@@ -1,0 +1,661 @@
+<script lang="ts">
+	import { onMount, untrack, type Snippet } from 'svelte';
+	import { revealItemInDir } from '@tauri-apps/plugin-opener';
+	import {
+		ArrowLeft,
+		ArrowRight,
+		Bookmark,
+		EllipsisVertical,
+		ExternalLink,
+		FolderInput,
+		FolderOpen,
+		SlidersHorizontal,
+		Plus,
+		Trash2,
+		X
+	} from '@lucide/svelte';
+	import { reportError, type MenuEntry } from '#lib/overlays.svelte.js';
+	import { moveNote } from '#lib/views/move.svelte.js';
+	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import type PdfHandle from '#lib/models/PdfHandle.js';
+	import { sourceName, listSources, type Source } from '#lib/models/Source.js';
+	import { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
+	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import { foldersHidden } from '#lib/models/Settings.svelte.js';
+	import type Tag from '#lib/models/Tag.js';
+	import { tagIcon } from '#lib/views/filterDisplay.js';
+	import { folderDir, fileName } from '#lib/views/fieldValue.js';
+	import { isValidSegment, nameGuard, segmentProblem } from '#lib/util/paths.js';
+	import { flushAll } from '#lib/services/platform.js';
+	import type { Place } from '../editor/tabPlaces.js';
+	import DocProperties from '../editor/DocProperties.svelte';
+	import MoveDialog from '../dialogs/MoveDialog.svelte';
+	import TagMenu from '../views/editors/TagMenu.svelte';
+	import Menu from '../ui/Menu.svelte';
+
+	let {
+		handle,
+		onDelete,
+		propsOpen = $bindable(false),
+		height = $bindable(0),
+		back,
+		forward,
+		onOpenFolder,
+		extra
+	}: {
+		handle: PdfHandle;
+		onDelete?: () => void;
+		propsOpen?: boolean;
+		height?: number;
+		back?: Place;
+		forward?: Place;
+		onOpenFolder?: (unitId: string, name: string, newTab?: boolean) => void;
+		extra?: Snippet;
+	} = $props();
+
+	let title = $state(untrack(() => handle.title));
+	let syncedTitle = untrack(() => handle.title);
+	$effect(() => {
+		const current = handle.title;
+		untrack(() => {
+			if (title === syncedTitle) title = current;
+			syncedTitle = current;
+		});
+	});
+
+	const relPath = $derived(handle.relPath);
+	let source = $state<Source>(untrack(() => handle.source));
+	let sources: Source[] = $state([]);
+	let projects: { unit: string; slug: string; emoji?: string }[] = $state([]);
+
+	onMount(() => {
+		listSources()
+			.then((ss) => (sources = ss))
+			.catch(() => {});
+		listSavedViewJSON()
+			.then((vs) => {
+				projects = vs.flatMap((v) =>
+					v.unit?.startsWith('folder:') ? [{ unit: v.unit, slug: v.slug, emoji: v.emoji }] : []
+				);
+			})
+			.catch((e) => console.error('load projects failed', e));
+	});
+
+	const ext = $derived(relPath.match(/\.[^.]+$/)?.[0] ?? '.pdf');
+	const srcName = $derived(sourceName(source));
+	const dirParts = $derived(folderDir(relPath).split('/').filter(Boolean));
+	const project = $derived.by(() => {
+		for (let depth = dirParts.length; depth >= 0; depth--) {
+			const id = folderId(source.id, dirParts.slice(0, depth).join('/'));
+			const hit = projects.find((p) => p.unit === id);
+			if (hit) return { ...hit, depth };
+		}
+		return null;
+	});
+	const hideFolders = $derived(foldersHidden());
+	const locParts = $derived(hideFolders ? [] : project ? dirParts.slice(project.depth) : dirParts);
+	const fullPath = $derived([srcName, ...dirParts].join(' / '));
+	const currentFolderId = $derived(folderId(source.id, folderDir(relPath)));
+	const locPlace = $derived.by(() => {
+		if (!hideFolders)
+			return { id: currentFolderId, name: dirParts.at(-1) ?? srcName, kind: 'folder' };
+		if (project) return { id: project.unit, name: project.slug, kind: 'project' };
+		return { id: folderId(source.id, ''), name: srcName, kind: 'source' };
+	});
+
+	let titleTaken = $state(false);
+	let titleCheckToken = 0;
+	const titleIllegal = $derived(title.trim() !== '' && !isValidSegment(`${title.trim()}${ext}`));
+
+	function titleCandidate(next: string): string {
+		const dir = folderDir(relPath);
+		return dir ? `${dir}/${next}${ext}` : `${next}${ext}`;
+	}
+
+	$effect(() => {
+		const next = title.trim();
+		const token = ++titleCheckToken;
+		if (!next || next === handle.title) {
+			titleTaken = !next;
+			return;
+		}
+		if (titleCandidate(next).toLowerCase() === relPath.toLowerCase()) {
+			titleTaken = false;
+			return;
+		}
+		MarkdownHandle.pathTaken(source, titleCandidate(next))
+			.then((taken) => {
+				if (token === titleCheckToken) titleTaken = taken;
+			})
+			.catch(() => {});
+	});
+
+	async function commitTitle() {
+		const next = title.trim();
+		if (!next || next === handle.title || !isValidSegment(`${next}${ext}`)) {
+			title = handle.title;
+			return;
+		}
+		try {
+			const caseOnly = titleCandidate(next).toLowerCase() === relPath.toLowerCase();
+			if (!caseOnly && (await MarkdownHandle.pathTaken(source, titleCandidate(next)))) {
+				title = handle.title;
+				return;
+			}
+			await handle.rename(next);
+		} catch (e) {
+			title = handle.title;
+			reportError(e, "This PDF couldn't be renamed.");
+		}
+	}
+
+	function onTitleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') title = handle.title;
+		if (e.key === 'Enter' || e.key === 'Escape') {
+			e.preventDefault();
+			(e.currentTarget as HTMLTextAreaElement).blur();
+		}
+	}
+
+	let folderOpen = $state(false);
+
+	async function onPickFolder(groupId: string) {
+		const target = sources.find((s) => s.id === folderIdSource(groupId)) ?? source;
+		const dir = folderIdPath(groupId);
+		const file = fileName(relPath);
+		const newRel = dir ? `${dir}/${file}` : file;
+		if (target.id === source.id && newRel === relPath) return;
+		try {
+			if (!(await moveNote(handle, target, newRel))) return;
+			source = target;
+		} catch (e) {
+			reportError(e, "This PDF couldn't be moved.", () => onPickFolder(groupId));
+		}
+	}
+
+	let tagList: Tag[] = $state(untrack(() => handle.tags));
+	let tagMenuOpen = $state(false);
+	let tagAnchor: HTMLElement | null = $state(null);
+
+	async function saveTags(slugs: string[], retry: () => unknown) {
+		try {
+			await handle.setTags(slugs);
+		} catch (e) {
+			reportError(e, "Tags couldn't be saved.", retry);
+		}
+		tagList = handle.tags;
+	}
+
+	function toggleTag(tag: Tag): Promise<void> {
+		const has = tagList.some((t) => t.id === tag.id);
+		const next = has ? tagList.filter((t) => t.id !== tag.id) : [...tagList, tag];
+		tagList = next;
+		return saveTags(
+			next.map((t) => t.slug),
+			() => toggleTag(tag)
+		);
+	}
+
+	function createTag(q: string): Promise<void> {
+		const slug = q.trim();
+		if (!slug || tagList.some((t) => t.slug === slug)) return Promise.resolve();
+		return saveTags([...tagList.map((t) => t.slug), slug], () => createTag(q));
+	}
+
+	async function tagsMutated() {
+		try {
+			await handle.fetchTags();
+			tagList = handle.tags;
+		} catch (e) {
+			console.error('refresh tags failed', e);
+		}
+	}
+
+	let menuOpen = $state(false);
+	let menuAnchor: HTMLElement | null = $state(null);
+	let confirmingDelete = $state(false);
+	let propCount = $state(0);
+
+	$effect(() => {
+		if (!menuOpen) confirmingDelete = false;
+	});
+
+	const menuItems: MenuEntry[] = $derived([
+		...(propCount > 0
+			? [
+					{
+						value: 'props',
+						label: propsOpen ? 'Hide properties' : 'Show properties',
+						icon: SlidersHorizontal
+					} as MenuEntry
+				]
+			: []),
+		...(propCount > 0 ? [{ kind: 'divider' } as MenuEntry] : []),
+		...(onOpenFolder
+			? [{ value: 'parent', label: `Go to ${locPlace.kind}`, icon: FolderOpen } as MenuEntry]
+			: []),
+		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
+		confirmingDelete
+			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
+			: { value: 'delete', label: 'Delete document', icon: Trash2, keepOpen: true }
+	]);
+
+	async function revealDoc() {
+		try {
+			await flushAll();
+			await revealItemInDir(`${source.path}/${relPath}`);
+		} catch (e) {
+			console.error('reveal failed', e);
+		}
+	}
+
+	function onMenuSelect(value: string) {
+		if (value === 'delete') {
+			confirmingDelete = true;
+			return;
+		}
+		menuOpen = false;
+		if (value === 'props') propsOpen = !propsOpen;
+		if (value === 'parent') onOpenFolder?.(locPlace.id, locPlace.name);
+		if (value === 'reveal') void revealDoc();
+		if (value === 'confirm-delete') onDelete?.();
+	}
+</script>
+
+{#snippet place(p: Place)}
+	<span class="place">
+		{#if p.emoji}
+			<span class="place-emoji">{p.emoji}</span>
+		{:else}
+			<p.icon size={12} strokeWidth={1.75} />
+		{/if}
+		<span class="place-label">{p.label}</span>
+	</span>
+{/snippet}
+
+<div class="side-head" bind:offsetHeight={height}>
+	{#if back || forward}
+		<div class="nav">
+			{#if back}
+				<button class="chip" type="button" title={back.label} onclick={back.go}>
+					<span class="arrow"><ArrowLeft size={14} strokeWidth={2} /></span>
+					{@render place(back)}
+				</button>
+			{/if}
+			{#if forward}
+				<button class="chip" type="button" title={forward.label} onclick={forward.go}>
+					{@render place(forward)}
+					<span class="arrow"><ArrowRight size={14} strokeWidth={2} /></span>
+				</button>
+			{/if}
+		</div>
+	{/if}
+	<div class="title-line">
+		<span class="title-field">
+			<span class="title-ghost">{title || ' '}</span>
+			<textarea
+				class="title-input"
+				rows="1"
+				class:invalid={titleTaken || titleIllegal}
+				title={titleIllegal
+					? (segmentProblem(`${title.trim()}${ext}`) ?? undefined)
+					: titleTaken
+						? 'A document with this name is already in this folder.'
+						: title}
+				bind:value={title}
+				use:nameGuard
+				onblur={commitTitle}
+				onkeydown={onTitleKeydown}
+				spellcheck="false"></textarea>
+		</span>
+		<button
+			class="kebab"
+			bind:this={menuAnchor}
+			title="More"
+			onclick={() => (menuOpen = !menuOpen)}
+		>
+			<EllipsisVertical size={15} strokeWidth={1.75} />
+		</button>
+	</div>
+	<div class="meta-row">
+		<button
+			class="loc-chip"
+			type="button"
+			title="Move document from {fullPath}"
+			onclick={() => (folderOpen = !folderOpen)}
+		>
+			{#if project?.emoji}
+				<span class="loc-emoji">{project.emoji}</span>
+			{:else if project}
+				<Bookmark size={12} />
+			{:else}
+				<FolderInput size={12} />
+			{/if}
+			<span class="loc-part src">{project?.slug ?? srcName}</span>
+			{#each locParts as part}
+				<span class="crumb-sep">/</span>
+				<span class="loc-part">{part}</span>
+			{/each}
+		</button>
+		<span
+			class="tags-chip"
+			bind:this={tagAnchor}
+			role="button"
+			tabindex="-1"
+			title={tagMenuOpen ? '' : 'Edit tags'}
+			onclick={() => (tagMenuOpen = !tagMenuOpen)}
+		>
+			{#each tagList as t (t.id)}
+				{@const Icon = tagIcon(t.id)}
+				<span class="tag">
+					<Icon size={11} />{t.slug}
+					<button
+						class="tag-x"
+						type="button"
+						tabindex="-1"
+						aria-label="Remove {t.slug}"
+						onclick={(e) => {
+							e.stopPropagation();
+							void toggleTag(t);
+						}}
+					>
+						<X size={9} strokeWidth={2.5} />
+					</button>
+				</span>
+			{/each}
+			{#if !tagList.length}
+				<span class="add-tags"><Plus size={11} />tag</span>
+			{/if}
+		</span>
+	</div>
+	{#if extra}
+		<div class="extra">{@render extra()}</div>
+	{/if}
+	<DocProperties {handle} open={propsOpen} onCount={(n) => (propCount = n)} />
+</div>
+
+<Menu
+	bind:open={menuOpen}
+	anchor={menuAnchor}
+	items={menuItems}
+	onSelect={onMenuSelect}
+	minWidth={140}
+/>
+<MoveDialog bind:open={folderOpen} value={currentFolderId} name={title} onMove={onPickFolder} />
+<TagMenu
+	bind:open={tagMenuOpen}
+	anchor={tagAnchor}
+	selectedIds={tagList.map((t) => t.id)}
+	onToggle={toggleTag}
+	onCreate={createTag}
+	onMutated={tagsMutated}
+	builtinAddOnly
+/>
+
+<style>
+	.side-head {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 10px 12px;
+		border-radius: 8px;
+		background: var(--chip-bg);
+		font-family: var(--font-ui);
+	}
+
+	.title-line {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		width: 100%;
+	}
+
+	.title-field {
+		display: grid;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.title-ghost,
+	.title-input {
+		grid-area: 1 / 1;
+		min-width: 0;
+		padding: 0;
+		font-family: var(--font-ui);
+		font-size: 16px;
+		font-weight: 600;
+		line-height: 22px;
+		letter-spacing: -0.01em;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	.title-ghost {
+		visibility: hidden;
+	}
+
+	.title-input {
+		width: 100%;
+		height: 100%;
+		border: none;
+		outline: none;
+		resize: none;
+		overflow: hidden;
+		background: transparent;
+		color: var(--color-text-primary);
+	}
+
+	.title-input.invalid {
+		text-decoration: underline;
+		text-decoration-color: var(--error-fg);
+		text-underline-offset: 3px;
+	}
+
+	.kebab {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		flex-shrink: 0;
+		padding: 0;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-ui-dulled);
+		cursor: pointer;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
+	}
+
+	.kebab:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.loc-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		max-width: 100%;
+		height: 24px;
+		padding: 0 8px;
+		border: none;
+		border-radius: 6px;
+		background: var(--chip-bg);
+		color: var(--color-ui-muted);
+		font-family: var(--font-ui);
+		font-size: 12px;
+		white-space: nowrap;
+		cursor: pointer;
+		transition: color 120ms ease;
+	}
+
+	.loc-chip:hover {
+		color: var(--color-text-primary);
+	}
+
+	.loc-chip :global(svg) {
+		flex-shrink: 0;
+	}
+
+	.loc-emoji {
+		font-size: 11px;
+		line-height: 1;
+	}
+
+	.loc-part {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.loc-part.src {
+		color: var(--color-text-secondary);
+	}
+
+	.crumb-sep {
+		opacity: 0.5;
+	}
+
+	.meta-row {
+		display: flex;
+		width: 100%;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+		min-width: 0;
+	}
+
+	.tags-chip {
+		display: inline-flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+		min-width: 0;
+		cursor: pointer;
+	}
+
+	.tag,
+	.add-tags {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		height: 24px;
+		padding: 0 9px 0 6px;
+		border-radius: 999px;
+		background: var(--chip-bg);
+		color: var(--color-ui-dulled);
+		font-family: var(--font-ui);
+		font-size: 11px;
+		transition:
+			background-color 120ms ease,
+			color 120ms ease;
+	}
+
+	.add-tags {
+		color: var(--color-ui-muted);
+	}
+
+	.tag :global(svg) {
+		opacity: 0.7;
+	}
+
+	.tags-chip:hover .tag,
+	.tags-chip:hover .add-tags {
+		background: var(--chip-bg-hover);
+	}
+
+	.tag-x {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+		margin: 0 -4px 0 1px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: transparent;
+		color: inherit;
+		opacity: 0.55;
+		cursor: pointer;
+	}
+
+	.tag-x:hover {
+		opacity: 1;
+		background: rgba(127, 127, 127, 0.25);
+	}
+
+	.extra {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+		width: 100%;
+		font-size: 12px;
+		color: var(--color-ui-muted);
+	}
+
+	.nav {
+		display: inline-flex;
+		gap: 4px;
+		height: 24px;
+		max-width: 100%;
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: stretch;
+		min-width: 0;
+		padding: 0;
+		border: none;
+		border-radius: 6px;
+		background: var(--chip-bg);
+		overflow: hidden;
+		font-family: var(--font-ui);
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		transition: background-color 120ms ease;
+	}
+
+	.chip:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.arrow {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		padding: 0 7px;
+		background: var(--accent-a14);
+		color: var(--color-accent);
+	}
+
+	.place {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		min-width: 0;
+		padding: 0 8px 0 7px;
+	}
+
+	.place > :global(svg) {
+		flex-shrink: 0;
+	}
+
+	.place-emoji {
+		font-size: 10px;
+		line-height: 1;
+	}
+
+	.place-label {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+</style>

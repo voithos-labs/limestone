@@ -164,13 +164,15 @@
 		gap: 10px;
 		padding: 10px 12px 10px 10px;
 		border-radius: 8px;
+		background: var(--chip-bg);
 		outline: none;
 		cursor: pointer;
+		transition: background-color 120ms ease;
 	}
 
 	.note:hover .card,
 	.note.active .card {
-		background: var(--chip-bg);
+		background: var(--chip-bg-hover);
 	}
 
 	.bar {
