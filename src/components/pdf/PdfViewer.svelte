@@ -147,6 +147,7 @@
 	// constants
 	const MAX_PAGE_WIDTH = 1000;
 	const SIDE_PAD = 24;
+	const EDGE_GAP = 2;
 	const MIN_PAGE_WIDTH = 560;
 	const RAIL_WIDTH = 300;
 	const RAIL_GAP = 24;
@@ -326,17 +327,17 @@
 	const savedZoom = untrack(() => tab.state.pdf_zoom);
 	let zoom = $state(typeof savedZoom === 'number' ? savedZoom : 1);
 	const column = $derived(Math.min(columnMax, paneW - SIDE_PAD * 2));
-	// The column has room for the margin once a page beside it still reads comfortably. The page
-	// keeps the size it has beside the margin whether or not the margin shows, so showing it only
-	// moves the page.
+	// The column has room for the margin once a page beside it still reads comfortably.
 	const marginRoom = $derived(column >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_WIDTH);
+	const wantsRail = $derived(sidenotesOn ? here.length > 0 : editingId !== null);
 	const fitWidth = $derived(
-		Math.max(0, Math.min(MAX_PAGE_WIDTH, column - (marginRoom ? RAIL_GAP + RAIL_WIDTH : 0)))
+		Math.max(0, column - (marginRoom && wantsRail ? RAIL_GAP + RAIL_WIDTH : 0))
 	);
-	// a zoomed page never runs wider than the pane, which the column would squeeze it to anyway
-	const width = $derived(Math.round(Math.min(fitWidth * zoom, paneW)));
+	const width = $derived(Math.round(Math.max(0, Math.min(fitWidth * zoom, paneW - EDGE_GAP * 2))));
 	// a page zoomed past that room would push the margin out of the pane, so the markers stand in
-	const railFits = $derived(marginRoom && width + RAIL_GAP + RAIL_WIDTH <= paneW - SIDE_PAD * 2);
+	const railFits = $derived(
+		marginRoom && (!wantsRail || width + RAIL_GAP + RAIL_WIDTH <= paneW - SIDE_PAD * 2)
+	);
 
 	/** Measures the pane, and again each time a resize settles. Attached to the viewer's root. */
 	function measurePane(el: HTMLElement) {
@@ -976,11 +977,9 @@
 		here.filter((a) => a.id === editingId || (sidenotesOn && (a.comment || a.id === activeId)))
 	);
 	// The margin opens with a PDF's first annotation, so an unmarked one reads centered.
-	const rail = $derived(railFits && (sidenotesOn ? here.length > 0 : editingId !== null));
+	const rail = $derived(railFits && wantsRail);
 	// the digest reads at the full column whatever the sidenotes show, since it has no margin
-	const columnWidth = $derived(
-		width + ((mode === 'digest' ? marginRoom : rail) ? RAIL_GAP + RAIL_WIDTH : 0)
-	);
+	const columnWidth = $derived(mode === 'digest' ? column : width + (rail ? RAIL_GAP + RAIL_WIDTH : 0));
 
 	function toggleSidenotes() {
 		sidenotesOn = !sidenotesOn;
@@ -1796,6 +1795,12 @@
 
 	.scroll::-webkit-scrollbar {
 		display: none;
+	}
+
+	.pdf-viewer:not(.flow) .scroll {
+		height: calc(100% - 4px);
+		margin: 2px;
+		border-radius: 6px;
 	}
 
 	.flow .scroll {

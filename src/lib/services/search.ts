@@ -274,7 +274,7 @@ function rankByRecency(candidates: Candidate[]): Candidate[] {
 	for (const c of candidates) {
 		const days =
 			c.accessedAt != null ? Math.max(now - c.accessedAt, 0) / 86_400_000 : RECENCY_DEFAULT_DAYS;
-		const boost = 1 + RECENCY_WEIGHT / (1 + days / RECENCY_SCALE_DAYS);
+		const boost = c.result.deleted ? 1 : 1 + RECENCY_WEIGHT / (1 + days / RECENCY_SCALE_DAYS);
 		c.result.score = c.quality * boost;
 	}
 	candidates.sort(
