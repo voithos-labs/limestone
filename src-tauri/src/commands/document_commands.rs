@@ -1,15 +1,13 @@
 use crate::commands::history_commands::{ensure_writable, move_doc_dir};
-use crate::commands::source_commands::{doc_writes_meta, source_root};
+use crate::commands::source_commands::source_root;
 use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
-use crate::services::frontmatter::Head;
 use crate::services::fs::{
     atomic_write, doc_dir, has_history, is_taken, move_file, mtime_ms, read_meta, repath_meta,
     resolve_in_source, rewrite_meta, touch_meta, validate_file_name,
 };
-use crate::services::{
-    document_type, fm_properties, frontmatter, index_document, sync_folders, sync_tags,
-};
+use crate::services::metadata::{self, Head};
+use crate::services::{frontmatter, index_document, sync_folders, sync_tags};
 use crate::AppData;
 use serde::Serialize;
 use serde_json::Value;
@@ -27,7 +25,7 @@ async fn sync_file_tags(
     path: &Path,
     mut tags: Vec<String>,
 ) -> Result<(), OpError> {
-    if !is_pdf(&path.to_string_lossy()) {
+    if metadata::in_file(&path.to_string_lossy()) {
         if let Ok(contents) = std::fs::read_to_string(path) {
             merge_body_tags(&mut tags, frontmatter::split_content(&contents).1);
         }
@@ -41,24 +39,6 @@ async fn sync_file_tags(
         .map_err(OpError::from)?;
     sync_tags(&mut tx, id, &tags).await.map_err(OpError::from)?;
     tx.commit().await.map_err(OpError::from)
-}
-
-fn is_pdf(rel_path: &str) -> bool {
-    document_type(rel_path) == "pdf"
-}
-
-fn rewrite_fields(
-    root: &Path,
-    id: &str,
-    rel_path: &str,
-    full_path: &Path,
-    mutate: impl Fn(&mut Value),
-) -> std::io::Result<()> {
-    if is_pdf(rel_path) {
-        rewrite_meta(root, id, rel_path, mutate)
-    } else {
-        frontmatter::rewrite_frontmatter(full_path, mutate)
-    }
 }
 
 fn root_of(app: &AppHandle, source_id: &str) -> Result<std::path::PathBuf, OpError> {
@@ -170,11 +150,11 @@ pub async fn write_document(
     .map_err(OpError::from)?;
 
     if let Some(fm) = head.value() {
-        let properties = fm_properties(fm);
+        let properties = metadata::properties(fm);
         let created_ms = fm
             .get("created_at")
             .and_then(|v| v.as_str())
-            .and_then(frontmatter::date_ms);
+            .and_then(metadata::date_ms);
 
         sqlx::query(
             "UPDATE documents
@@ -230,7 +210,7 @@ async fn index_body(
     body: &str,
 ) -> Result<(), OpError> {
     if !head.broken() {
-        let mut tags = frontmatter::tags(head.value());
+        let mut tags = metadata::tags(head.value());
         merge_body_tags(&mut tags, body);
         sync_tags(tx, doc_id, &tags).await.map_err(OpError::from)?;
     }
@@ -286,7 +266,7 @@ pub async fn restore_document(
     let (head, body) = frontmatter::head(&contents);
     let properties = head
         .value()
-        .map(fm_properties)
+        .map(metadata::properties)
         .unwrap_or_else(|| "{}".to_string());
     let title = Path::new(&rel_path)
         .file_stem()
@@ -355,14 +335,10 @@ pub async fn set_document_tags(
     rel_path: String,
     tags: Vec<String>,
 ) -> Result<(), OpError> {
-    if !doc_writes_meta(&app_data.db, &source_id, &rel_path).await? {
-        return Err(OpError::new("no_metadata"));
-    }
-
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
-    rewrite_fields(&root, &id, &rel_path, &full_path, |fm| {
-        frontmatter::set_tags(fm, &tags)
+    metadata::rewrite(&root, &id, &rel_path, |meta| {
+        metadata::set_tags(meta, &tags)
     })
     .map_err(OpError::from)?;
 
@@ -371,7 +347,7 @@ pub async fn set_document_tags(
 
 #[derive(Serialize)]
 pub struct DocumentTags {
-    frontmatter: Vec<String>,
+    metadata: Vec<String>,
     body: Vec<String>,
 }
 
@@ -383,21 +359,18 @@ pub fn read_document_tags(
     id: Option<String>,
 ) -> Result<DocumentTags, OpError> {
     let root = root_of(&app, &source_id)?;
-    if is_pdf(&rel_path) {
-        let fm = id
-            .and_then(|id| read_meta(&doc_dir(&root, &id)))
-            .map(|m| m.frontmatter)
-            .filter(Value::is_object);
+    if !metadata::in_file(&rel_path) {
+        let head = metadata::read(&root, &id.unwrap_or_default(), &rel_path, 0);
         return Ok(DocumentTags {
-            frontmatter: frontmatter::tags(fm.as_ref()),
+            metadata: metadata::tags(head.value()),
             body: Vec::new(),
         });
     }
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
     let contents = std::fs::read_to_string(&full_path).map_err(OpError::from)?;
-    let (fm, body) = frontmatter::split_content(&contents);
+    let (meta, body) = frontmatter::split_content(&contents);
     Ok(DocumentTags {
-        frontmatter: frontmatter::tags(fm.as_ref()),
+        metadata: metadata::tags(meta.as_ref()),
         body: tag_mentions(body),
     })
 }
@@ -423,7 +396,7 @@ pub async fn file_digest(
 pub fn read_pdf_ink(app: AppHandle, source_id: String, id: String) -> Result<Value, OpError> {
     let root = root_of(&app, &source_id)?;
     Ok(read_meta(&doc_dir(&root, &id))
-        .and_then(|m| m.frontmatter.get("ink").cloned())
+        .and_then(|m| m.fields.get("ink").cloned())
         .unwrap_or_else(|| Value::Array(Vec::new())))
 }
 
@@ -468,7 +441,7 @@ pub async fn strip_document_tag(
     frontmatter::rewrite_document(&full_path, None, &|body| rewrite_tags(body, &slug, None))
         .map_err(OpError::from)?;
     let contents = std::fs::read_to_string(&full_path).map_err(OpError::from)?;
-    let tags = frontmatter::tags(frontmatter::split_content(&contents).0.as_ref());
+    let tags = metadata::tags(frontmatter::split_content(&contents).0.as_ref());
     sync_file_tags(&app_data.db, &id, &full_path, tags).await
 }
 
@@ -532,18 +505,13 @@ pub async fn save_document_meta(
     created_at: Option<String>,
     updated_at: Option<String>,
 ) -> Result<i64, OpError> {
-    if !doc_writes_meta(&app_data.db, &source_id, &rel_path).await? {
-        return Err(OpError::new("no_metadata"));
-    }
-
     let root = root_of(&app, &source_id)?;
     let full_path = resolve_in_source(&root, &rel_path).map_err(OpError::from)?;
 
-    // Patch frontmatter on fs
     let c = created_at.clone();
     let u = updated_at.clone();
-    rewrite_fields(&root, &id, &rel_path, &full_path, |fm| {
-        if let Some(obj) = fm.as_object_mut() {
+    metadata::rewrite(&root, &id, &rel_path, |meta| {
+        if let Some(obj) = meta.as_object_mut() {
             if let Some(c) = &c {
                 obj.insert(
                     "created_at".to_string(),
@@ -560,8 +528,8 @@ pub async fn save_document_meta(
     })
     .map_err(OpError::from)?;
 
-    let created_ms = created_at.as_deref().and_then(frontmatter::date_ms);
-    let updated_ms = updated_at.as_deref().and_then(frontmatter::date_ms);
+    let created_ms = created_at.as_deref().and_then(metadata::date_ms);
+    let updated_ms = updated_at.as_deref().and_then(metadata::date_ms);
     let mtime = mtime(&full_path);
 
     sqlx::query(

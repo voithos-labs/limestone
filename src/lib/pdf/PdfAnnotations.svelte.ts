@@ -10,7 +10,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { select } from '#lib/services/db.js';
 import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import type PdfHandle from '#lib/models/PdfHandle.js';
-import Folder from '#lib/models/Folder.js';
 import { onSourceReconciled, reconcileSource } from '#lib/models/Source.js';
 import { preserveEdition } from './edition.js';
 import {
@@ -38,7 +37,6 @@ import type { Placement } from './migrate.js';
 export default class PdfAnnotations {
 	items: Annotation[] = $state([]);
 	/** Whether this PDF's folder stores metadata, which annotations need. */
-	writable = $state(true);
 	/** Whether the list has been read at least once, so an empty one means there are none. */
 	loaded = $state(false);
 	/** The edition on screen, which new annotations are made on and preserve. */
@@ -63,17 +61,13 @@ export default class PdfAnnotations {
 	async load(): Promise<void> {
 		const gen = ++this.loadGen;
 		const pdf = this.pdf();
-		const [rows, meta] = await Promise.all([
-			select<NoteRow>(
-				`SELECT id, source_id, rel_path, title FROM documents
-				 WHERE deleted_at IS NULL AND json_extract(properties, '$.${ANNOTATION_KEY}.pdf') = ?1`,
-				[pdf.id]
-			),
-			Folder.metaAt(pdf.source.id, dirOf(pdf.relPath))
-		]);
+		const rows = await select<NoteRow>(
+			`SELECT id, source_id, rel_path, title FROM documents
+			 WHERE deleted_at IS NULL AND json_extract(properties, '$.${ANNOTATION_KEY}.pdf') = ?1`,
+			[pdf.id]
+		);
 		const read = await Promise.all(rows.map((r) => readNote(r).catch(() => null)));
 		if (gen !== this.loadGen) return;
-		this.writable = meta.writes;
 		this.items = read.filter((a): a is Annotation => a !== null).sort(byPlace);
 		this.loaded = true;
 	}

@@ -4,7 +4,6 @@ import View from '#lib/models/View.svelte.js';
 import { TabState, type TabContent } from '#lib/models/EditorState.svelte.js';
 import type EditorState from '#lib/models/EditorState.svelte.js';
 import { getViewIcon } from '#lib/views/filterDisplay.js';
-import { metaDialog } from '#lib/overlays.svelte.js';
 import PdfIcon from '../ui/PdfIcon.svelte';
 
 export type Place = { label: string; icon: Component; emoji?: string; go: () => void };
@@ -45,16 +44,5 @@ export function openFolder(
 	if (!editor) return;
 	View.forUnit(unitId, name)
 		.then((v) => (newTab ? editor.openView(v) : editor.showViewInTab(tab, v)))
-		.catch((e) => console.error('open folder failed', e));
-}
-
-// the folder in a tab of its own, the document staying where it is, with its setting open
-export function openFolderMeta(editor: EditorState | undefined, unitId: string, name: string) {
-	if (!editor) return;
-	View.forUnit(unitId, name)
-		.then((v) => {
-			editor.openView(v);
-			metaDialog.show(unitId);
-		})
 		.catch((e) => console.error('open folder failed', e));
 }

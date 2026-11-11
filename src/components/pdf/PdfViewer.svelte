@@ -51,7 +51,7 @@
 	// editor wiring
 	import type { ActivateDetail } from '../editor/wikilinks';
 	import { followLinks, followTag, followWikiLink } from '../editor/follow-link';
-	import { backPlace, forwardPlace, openFolder, openFolderMeta } from '../editor/tabPlaces.js';
+	import { backPlace, forwardPlace, openFolder } from '../editor/tabPlaces.js';
 
 	// pdf logic (model, pages, ink, undo, citations, editions)
 	import {
@@ -315,8 +315,6 @@
 
 	const onOpenFolder = (unitId: string, name: string, newTab = false) =>
 		openFolder(editor, tab, unitId, name, newTab);
-
-	const onFolderMeta = (unitId: string, name: string) => openFolderMeta(editor, unitId, name);
 
 	/* -------------------------------------------------------------------------- */
 	/*                       Page size, zoom and dark pages                       */
@@ -831,7 +829,7 @@
 
 	let tool: PdfTool = $state('select');
 	let color: AnnotationColor = $state('amber');
-	const canAnnotate = $derived(annotations.writable && !viewing);
+	const canAnnotate = $derived(!viewing);
 	let activeId: string | null = $state(null);
 	let editingId: string | null = $state(null);
 
@@ -1597,7 +1595,6 @@
 					{forward}
 					{onOpenFolder}
 					{showOpenFolder}
-					{onFolderMeta}
 					extra={heroExtra}
 				/>
 			{/if}

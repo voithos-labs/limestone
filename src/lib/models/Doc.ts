@@ -203,8 +203,6 @@ export default abstract class Doc {
 		this.properties = JSON.parse(row.properties);
 	}
 
-	async refreshMeta(): Promise<void> {}
-
 	async refreshPath(): Promise<boolean> {
 		const [row] = await select<{ source_id: string; rel_path: string; title: string }>(
 			`SELECT source_id, rel_path, title FROM documents WHERE id = ?1`,
@@ -218,7 +216,6 @@ export default abstract class Doc {
 			row.rel_path,
 			row.title
 		);
-		if (movedSource) await this.refreshMeta();
 		return true;
 	}
 

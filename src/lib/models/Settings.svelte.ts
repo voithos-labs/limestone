@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Component } from 'svelte';
-import { GitBranch, Trash2 } from '@lucide/svelte';
+import { Trash2 } from '@lucide/svelte';
 import { hostWindowStyle } from '#lib/services/platform.js';
 
 export type SettingValue =
@@ -214,15 +214,6 @@ export const SETTINGS_REGISTRY: SettingCategory[] = [
 		id: 'sources',
 		label: 'Sources',
 		settings: [
-			{
-				key: 'sources.git_frontmatter_off',
-				type: 'boolean',
-				control: 'toggle',
-				label: 'No Frontmatter in Git Repos',
-				icon: GitBranch,
-				description:
-					"Git repos, and everything inside them, don't get metadata written to their files unless you turn it on for that folder."
-			},
 			{
 				key: 'sources.deleted_retention_days',
 				type: 'number',

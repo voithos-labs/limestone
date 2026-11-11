@@ -38,7 +38,6 @@
 	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
 	import frog from '#assets/art/frog.txt?raw';
 	import { openProjectSetup } from '#lib/views/project.svelte.js';
-	import { metaDialog } from '#lib/overlays.svelte.js';
 	import {
 		isMove,
 		readMove,
@@ -73,9 +72,7 @@
 		FolderInput,
 		ArrowDownUp,
 		SquareCheck,
-		GitBranch,
-		FileLock,
-		FilePen
+		GitBranch
 	} from '@lucide/svelte';
 
 	// A folder or a source opened as a place, not as a filtered view: what's directly inside it,
@@ -416,22 +413,12 @@
 		if (!menuOpen) confirmingDelete = false;
 	});
 
-	function metaItem(f: Folder) {
-		return {
-			value: 'meta',
-			label: 'Metadata…',
-			icon: f.writesMeta ? FilePen : FileLock,
-			hint: f.writesMeta ? 'On' : 'Off'
-		};
-	}
-
 	// making things here is the fab's job; this menu is about the folder itself
 	const menuItems = $derived([
 		isRoot
 			? { value: 'configure', label: 'Configure source', icon: Settings }
 			: { value: 'rename', label: 'Rename', icon: Pencil },
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
-		...(here ? [metaItem(here)] : []),
 		{ kind: 'divider' as const },
 		{ value: 'project', label: 'Turn into project', icon: Bookmark },
 		{ kind: 'divider' as const },
@@ -487,9 +474,6 @@
 				break;
 			case 'configure':
 				if (source) sourceDialogOpen = true;
-				break;
-			case 'meta':
-				metaDialog.show(unitId);
 				break;
 			case 'project':
 				openProjectSetup(editor, { id: unitId, name: crumbs.at(-1)?.slug ?? view.slug }, tab);

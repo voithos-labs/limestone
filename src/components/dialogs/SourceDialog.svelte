@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { describeError } from '#lib/overlays.svelte.js';
 	import {
-		containsGitRepo,
 		createSource,
-		GIT_FRONTMATTER_OFF,
 		listDirs,
 		listSources,
 		makeDir,
@@ -13,9 +11,8 @@
 		updateSourcePath,
 		type Source
 	} from '#lib/models/Source.js';
-	import { getSetting } from '#lib/models/Settings.svelte.js';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
-	import { ChevronDown, Folder, GitBranch, TriangleAlert } from '@lucide/svelte';
+	import { ChevronDown, Folder, TriangleAlert } from '@lucide/svelte';
 	import { slide } from 'svelte/transition';
 	import Toggle from '../ui/Toggle.svelte';
 	import FolderValueEditor from '../views/editors/FolderValueEditor.svelte';
@@ -37,10 +34,7 @@
 	let folderPath = $state('');
 	let noteLocation = $state('');
 	let assetLocation = $state('assets');
-	let useFrontmatter = $state(true);
 	let setAsDefault = $state(false);
-	let gitOff = $state(false);
-	let hasRepo = $state(false);
 	let error = $state('');
 	let busy = $state(false);
 
@@ -58,12 +52,7 @@
 				folderPath = '';
 				noteLocation = '';
 				assetLocation = 'assets';
-				useFrontmatter = true;
 				setAsDefault = false;
-				hasRepo = false;
-				getSetting<boolean>(GIT_FRONTMATTER_OFF)
-					.then((v) => (gitOff = v ?? true))
-					.catch(() => {});
 				listSources()
 					.then((ss) => (setAsDefault = ss.length === 0))
 					.catch(() => {});
@@ -78,12 +67,6 @@
 			folderPath = sel;
 			noteLocation = '';
 			assetLocation = 'assets';
-			hasRepo = false;
-			containsGitRepo(sel)
-				.then((found) => {
-					if (folderPath === sel) hasRepo = found;
-				})
-				.catch(() => {});
 		}
 	}
 
@@ -146,12 +129,7 @@
 					return;
 				}
 				const title = folderPath.split(/[\\/]/).filter(Boolean).pop() || 'Untitled';
-				const created = await createSource(
-					folderPath,
-					title,
-					config,
-					useFrontmatter ? null : false
-				);
+				const created = await createSource(folderPath, title, config);
 				if (setAsDefault) await setDefaultSource(created.id);
 			} else if (source) {
 				await updateSource(source.id, config);
@@ -257,33 +235,6 @@
 
 			{#if folderPath}
 				<div class="options" transition:slide={{ duration: 160 }}>
-					{#if mode === 'create' && useFrontmatter && gitOff && hasRepo}
-						<div class="info-card">
-							<GitBranch size={15} strokeWidth={1.75} />
-							<div class="mc-body">
-								<span class="mc-title">Git repo detected</span>
-								<span class="mc-text">
-									Based on your settings, files inside Git repos won't have metadata written to
-									them.
-								</span>
-							</div>
-						</div>
-					{/if}
-
-					{#if mode === 'create'}
-						<div class="option-card">
-							<div class="oc-text">
-								<span class="oc-title">Store metadata in YAML frontmatter</span>
-								<span class="oc-desc">
-									{useFrontmatter
-										? 'Only what you set is written: tags, fields and dates.'
-										: 'Files stay as they are. Text #tags work, properties need it on.'}
-								</span>
-							</div>
-							<Toggle bind:checked={useFrontmatter} />
-						</div>
-					{/if}
-
 					{#if mode === 'create'}
 						<div class="option-card">
 							<div class="oc-text">
@@ -491,10 +442,6 @@
 		flex-direction: column;
 		gap: 8px;
 		margin: 6px 0 18px;
-	}
-
-	.options .info-card {
-		margin-bottom: 0;
 	}
 
 	.option-card {

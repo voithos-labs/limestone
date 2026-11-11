@@ -62,7 +62,7 @@ pub struct DocMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mtime: Option<i64>,
     #[serde(default, skip_serializing_if = "Value::is_null")]
-    pub frontmatter: Value,
+    pub fields: Value,
 }
 
 pub fn read_meta(dir: &Path) -> Option<DocMeta> {
@@ -125,12 +125,12 @@ pub fn rewrite_meta(
 ) -> io::Result<()> {
     let dir = doc_dir(source_path, doc_id);
     let existing = read_meta(&dir);
-    let mut frontmatter = match existing.as_ref().map(|m| &m.frontmatter) {
+    let mut fields = match existing.as_ref().map(|m| &m.fields) {
         Some(Value::Object(map)) => Value::Object(map.clone()),
         _ => Value::Object(Map::new()),
     };
-    mutate(&mut frontmatter);
-    let empty = frontmatter.as_object().is_none_or(Map::is_empty);
+    mutate(&mut fields);
+    let empty = fields.as_object().is_none_or(Map::is_empty);
     if existing.is_none() && empty {
         return Ok(());
     }
@@ -143,7 +143,7 @@ pub fn rewrite_meta(
         ),
         size: fs::metadata(&file).ok().map(|m| m.len()),
         mtime: mtime_ms(&file),
-        frontmatter: if empty { Value::Null } else { frontmatter },
+        fields: if empty { Value::Null } else { fields },
     };
     if existing.as_ref() == Some(&next) {
         return Ok(());
@@ -303,7 +303,7 @@ mod tests {
     }
 
     #[test]
-    fn meta_frontmatter_is_lazy_and_records_the_file_it_describes() {
+    fn meta_fields_are_lazy_and_record_the_file_they_describe() {
         let root = std::env::temp_dir().join(format!("ls-meta-fm-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("a")).unwrap();
@@ -320,13 +320,13 @@ mod tests {
         assert_eq!(meta.rel_path, "a/doc.pdf");
         assert_eq!(meta.size, Some(8));
         assert_eq!(meta.mtime, mtime_ms(&root.join("a/doc.pdf")));
-        assert_eq!(meta.frontmatter, serde_json::json!({ "tags": ["exam"] }));
+        assert_eq!(meta.fields, serde_json::json!({ "tags": ["exam"] }));
         rewrite_meta(&root, "doc-1", "a/doc.pdf", |fm| {
             fm.as_object_mut().unwrap().clear();
         })
         .unwrap();
         let meta = read_meta(&doc_dir(&root, "doc-1")).unwrap();
-        assert_eq!(meta.frontmatter, Value::Null);
+        assert_eq!(meta.fields, Value::Null);
         let _ = fs::remove_dir_all(&root);
     }
 

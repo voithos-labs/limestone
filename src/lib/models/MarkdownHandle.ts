@@ -112,8 +112,6 @@ class MarkdownHandle extends Doc {
 	private static unopened = new Set<string>();
 
 	frontmatterError: string | null = null;
-	writesMeta = true;
-	inRepo = false;
 	private fileDates = { created: false, updated: false };
 
 	constructor(row: DocumentRow, source: Source) {
@@ -133,8 +131,6 @@ class MarkdownHandle extends Doc {
 		properties: Record<string, unknown> = {}
 	): Promise<MarkdownHandle> {
 		const id = uuidv4();
-		const meta = await Folder.metaAt(source.id, dirOf(relPath));
-		if (!meta.writes) properties = {};
 
 		// insert new doc stub
 		await execute(
@@ -152,15 +148,10 @@ class MarkdownHandle extends Doc {
 
 		const doc = new MarkdownHandle(row, source);
 		doc.hasFile = false;
-		doc.applyMeta(meta);
-		if (groupIds.length > 0 && meta.writes) {
+		if (groupIds.length > 0) {
 			doc.tags = await Tag.fromIDs(groupIds);
 		}
 		return doc;
-	}
-
-	protected override hydrate(): Promise<void> {
-		return this.refreshMeta();
 	}
 
 	/** Is there a live (non-deleted) document at this path in the source? */
@@ -259,8 +250,7 @@ class MarkdownHandle extends Doc {
 	}
 
 	private async patchFor(rebuild: boolean, body: string): Promise<Record<string, unknown> | null> {
-		await this.refreshMeta();
-		if (!this.writesMeta || (this.frontmatterError && !rebuild)) return null;
+		if (this.frontmatterError && !rebuild) return null;
 		const patch = rebuild || !this.hasFile ? this.ownedKeys() : {};
 		if (rebuild && Array.isArray(patch.tags)) {
 			const inText = new Set((await invoke<string[]>('body_tags', { body })).map(tagSlug));
@@ -342,7 +332,7 @@ class MarkdownHandle extends Doc {
 		}
 		this.hasFile = true;
 		const { frontmatter, body, error } = MarkdownHandle.deserialize(raw);
-		this.frontmatterError = this.writesMeta ? error : null;
+		this.frontmatterError = error;
 
 		await this.adoptFrontmatter(frontmatter, !!error);
 
@@ -389,7 +379,7 @@ class MarkdownHandle extends Doc {
 			return;
 		}
 		const { frontmatter, error } = MarkdownHandle.deserialize(raw);
-		this.frontmatterError = this.writesMeta ? error : null;
+		this.frontmatterError = error;
 		await this.adoptFrontmatter(frontmatter, !!error);
 	}
 
@@ -431,15 +421,6 @@ class MarkdownHandle extends Doc {
 		noteSelfWrite(this.source.id, this._relPath, mtime);
 		this.hasFile = true;
 		this.recordHistory(body);
-	}
-
-	private applyMeta(meta: { writes: boolean; repo: boolean }): void {
-		this.writesMeta = meta.writes;
-		this.inRepo = meta.repo;
-	}
-
-	override async refreshMeta(): Promise<void> {
-		this.applyMeta(await Folder.metaAt(this.source.id, dirOf(this._relPath)));
 	}
 
 	async restore(body: string, overwrite: boolean): Promise<void> {
@@ -539,7 +520,6 @@ class MarkdownHandle extends Doc {
 			newRelPath
 		});
 		this.updateLocation(this.source, newRelPath, stemOf(newRelPath));
-		await this.refreshMeta();
 		await this.updateLinks(oldRelPath);
 		await this.stripLeftProjects(this.source.id, oldRelPath);
 	}
@@ -560,7 +540,6 @@ class MarkdownHandle extends Doc {
 		const oldRelPath = this._relPath;
 		this.updateLocation(newSource, newRelPath, stemOf(newRelPath));
 		await retargetHistory(this.id, newSource.id);
-		await this.refreshMeta();
 		await this.stripLeftProjects(oldSourceId, oldRelPath);
 	}
 

@@ -70,8 +70,7 @@
 
 	const isDate = (f: ViewField) =>
 		f.type === 'date' || f.type === 'created_at' || f.type === 'updated_at';
-	const editable = (f: ViewField) =>
-		editMode && rows.writable(row) && (f.type === 'tags' || !isDerived(f.type));
+	const editable = (f: ViewField) => editMode && (f.type === 'tags' || !isDerived(f.type));
 
 	function onClick(e: MouseEvent, f: ViewField) {
 		if (!editable(f)) return;

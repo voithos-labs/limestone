@@ -1063,8 +1063,7 @@
 									title={sv}
 									onclick={(e) => {
 										e.stopPropagation();
-										if (rows.writable(row))
-											editors.edit(row, checkField, e.currentTarget as HTMLElement);
+										editors.edit(row, checkField, e.currentTarget as HTMLElement);
 									}}
 								>
 									<StatusIcon
@@ -1073,7 +1072,7 @@
 										size={16}
 									/>
 								</button>
-							{:else if checkField && member && rows.writable(row)}
+							{:else if checkField && member}
 								<button
 									class="check"
 									class:done

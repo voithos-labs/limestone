@@ -10,8 +10,6 @@ function stemOf(relPath: string): string {
 }
 
 class PdfHandle extends Doc {
-	readonly writesMeta = true;
-	readonly inRepo = false;
 	readonly isNew = false;
 
 	constructor(row: DocumentRow, source: Source) {

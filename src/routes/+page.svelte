@@ -9,7 +9,6 @@
 	import Session from '#lib/models/Session.svelte.js';
 	import Pane from '../components/shell/Pane.svelte';
 	import Palette from '../components/overlays/Palette.svelte';
-	import MetadataDialog from '../components/dialogs/MetadataDialog.svelte';
 	import MoveConflictDialog from '../components/dialogs/MoveConflictDialog.svelte';
 	import WelcomeDialog from '../components/dialogs/WelcomeDialog.svelte';
 	import { addSourceRequest } from '#lib/overlays.svelte.js';
@@ -292,7 +291,6 @@
 	</div>
 	<ContextMenu />
 	<Palette {session} onAddSource={addSource} />
-	<MetadataDialog />
 	<MoveConflictDialog {session} />
 	<WelcomeDialog {session} />
 {/if}

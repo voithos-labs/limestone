@@ -1,51 +1,9 @@
-use crate::services::body::same_tag;
 use crate::services::fs::fast_write;
+use crate::services::metadata::Head;
 use serde_json::{Map, Value};
 use std::fs;
 use std::io;
 use std::path::Path;
-
-pub fn date_ms(s: &str) -> Option<i64> {
-    let s = s.trim();
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-        return Some(dt.timestamp_millis());
-    }
-    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-        return Some(ndt.and_utc().timestamp_millis());
-    }
-    if let Ok(nd) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        return Some(nd.and_hms_opt(0, 0, 0)?.and_utc().timestamp_millis());
-    }
-    None
-}
-
-pub fn tags(fm: Option<&Value>) -> Vec<String> {
-    let value = fm.and_then(|f| f.get("tags").or_else(|| f.get("tag")));
-    let items: Vec<&str> = match value {
-        Some(Value::Array(items)) => items.iter().filter_map(Value::as_str).collect(),
-        Some(Value::String(s)) => s.split(|c: char| c == ',' || c.is_whitespace()).collect(),
-        _ => Vec::new(),
-    };
-    items
-        .into_iter()
-        .map(|t| t.trim_start_matches('#'))
-        .filter(|t| !t.is_empty())
-        .map(String::from)
-        .collect()
-}
-
-pub fn set_tags(fm: &mut Value, tags: &[String]) {
-    let Some(root) = fm.as_object_mut() else {
-        return;
-    };
-    root.shift_remove("tag");
-    if tags.is_empty() {
-        root.shift_remove("tags");
-    } else {
-        let list = tags.iter().map(|t| Value::String(t.clone())).collect();
-        root.insert("tags".to_string(), Value::Array(list));
-    }
-}
 
 /// It's in the name, rewrite frontmatter, preserve contents
 pub fn rewrite_frontmatter(path: &Path, mutate: impl Fn(&mut Value)) -> io::Result<()> {
@@ -247,59 +205,6 @@ fn emit_entry(out: &mut String, key: &str, value: &Value, nl: &str) {
 }
 
 /// The file without its frontmatter
-pub fn strip_content(content: &str) -> io::Result<Option<&str>> {
-    match head(content) {
-        (Head::Block(_), body) => Ok(Some(body)),
-        (Head::Broken, _) => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "existing frontmatter could not be parsed",
-        )),
-        (Head::Absent, _) => Ok(None),
-    }
-}
-
-/// Removes the file's frontmatter block, leaving its body exactly as it was
-pub fn strip_frontmatter(path: &Path) -> io::Result<()> {
-    let content = fs::read_to_string(path)?;
-    match strip_content(&content)? {
-        Some(body) => fast_write(path, body.as_bytes()),
-        None => Ok(()),
-    }
-}
-
-/// Whether the file opens with a frontmatter block, judged from its head only
-pub fn has_frontmatter(path: &Path) -> bool {
-    use std::io::Read;
-    let Ok(file) = fs::File::open(path) else {
-        return false;
-    };
-    let mut head = Vec::with_capacity(16 * 1024);
-    if file.take(64 * 1024).read_to_end(&mut head).is_err() {
-        return false;
-    }
-    let text = String::from_utf8_lossy(&head);
-    matches!(split_content(&text), (Some(_), _))
-}
-
-pub enum Head {
-    Absent,
-    Broken,
-    Block(Value),
-}
-
-impl Head {
-    pub fn value(&self) -> Option<&Value> {
-        match self {
-            Head::Block(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn broken(&self) -> bool {
-        matches!(self, Head::Broken)
-    }
-}
-
 pub fn head(content: &str) -> (Head, &str) {
     let trimmed = strip_bom(content).trim_start();
     let Some(after_open) = trimmed.strip_prefix("---") else {
@@ -485,155 +390,10 @@ fn looks_numeric(s: &str) -> bool {
     mantissa_ok && exponent_ok
 }
 
-/// Navigate to a nested object by key path
-fn object_at<'a>(root: &'a mut Value, path: &[&str]) -> &'a mut Map<String, Value> {
-    let mut cur = root;
-    for key in path {
-        if !cur.is_object() {
-            *cur = Value::Object(Map::new());
-        }
-        cur = cur
-            .as_object_mut()
-            .unwrap()
-            .entry((*key).to_string())
-            .or_insert_with(|| Value::Object(Map::new()));
-    }
-    if !cur.is_object() {
-        *cur = Value::Object(Map::new());
-    }
-    cur.as_object_mut().unwrap()
-}
-
-pub fn set_view_field(fm: &mut Value, slug: &str, field: &str, value: Value) {
-    object_at(fm, &["views", slug]).insert(field.to_string(), value);
-}
-
-pub fn rename_view_field(fm: &mut Value, slug: &str, from: &str, to: &str) {
-    let obj = object_at(fm, &["views", slug]);
-    if obj.contains_key(from) {
-        rename_keys(obj, |k| (k == from).then(|| to.to_string()));
-    }
-}
-
-/// Move a whole unit namespace, `views.<from>` to `views.<to>`
-pub fn rename_unit_key(fm: &mut Value, from: &str, to: &str) {
-    let Some(views) = fm
-        .as_object_mut()
-        .and_then(|r| r.get_mut("views"))
-        .and_then(Value::as_object_mut)
-    else {
-        return;
-    };
-    rename_keys(views, |k| (k == from).then(|| to.to_string()));
-}
-
-pub fn remove_unit_key(fm: &mut Value, key: &str) {
-    let Some(root) = fm.as_object_mut() else {
-        return;
-    };
-    let Some(views) = root.get_mut("views").and_then(Value::as_object_mut) else {
-        return;
-    };
-    views.shift_remove(key);
-    if views.is_empty() {
-        root.shift_remove("views");
-    }
-}
-
-fn rename_keys(map: &mut Map<String, Value>, rename: impl Fn(&str) -> Option<String>) {
-    let renamed: Map<String, Value> = std::mem::take(map)
-        .into_iter()
-        .map(|(k, v)| (rename(&k).unwrap_or(k), v))
-        .collect();
-    *map = renamed;
-}
-
-/// Rename a select/multiselect option value in-place within `views.<slug>.<field>`
-pub fn rename_view_option(fm: &mut Value, slug: &str, field: &str, from: &str, to: &str) {
-    let Some(views) = fm.as_object_mut().and_then(|r| r.get_mut("views")) else {
-        return;
-    };
-    let Some(obj) = views.as_object_mut().and_then(|v| v.get_mut(slug)) else {
-        return;
-    };
-    let Some(val) = obj.as_object_mut().and_then(|o| o.get_mut(field)) else {
-        return;
-    };
-    match val {
-        Value::String(s) if s == from => *s = to.to_string(),
-        Value::Array(arr) => {
-            for item in arr.iter_mut() {
-                if matches!(item, Value::String(s) if s == from) {
-                    *item = Value::String(to.to_string());
-                }
-            }
-            let mut seen: Vec<Value> = Vec::with_capacity(arr.len());
-            arr.retain(|v| {
-                if seen.contains(v) {
-                    false
-                } else {
-                    seen.push(v.clone());
-                    true
-                }
-            });
-        }
-        _ => {}
-    }
-}
-
-/// View prop pruning, e.g. removing `views.<slug>.<field>` when the `field` no longer exists in the
-/// view definition or the view itself no longer exists
-pub fn remove_view_field(fm: &mut Value, slug: &str, field: &str) {
-    let Some(root) = fm.as_object_mut() else {
-        return;
-    };
-    let Some(views) = root.get_mut("views").and_then(Value::as_object_mut) else {
-        return;
-    };
-    if let Some(obj) = views.get_mut(slug).and_then(Value::as_object_mut) {
-        obj.shift_remove(field);
-        if obj.is_empty() {
-            views.shift_remove(slug);
-        }
-    }
-    if views.is_empty() {
-        root.shift_remove("views");
-    }
-}
-
-pub fn rename_tag(fm: &mut Value, from: &str, to: &str) {
-    let before = tags(Some(fm));
-    let mut after: Vec<String> = Vec::with_capacity(before.len());
-    for tag in &before {
-        let next = if same_tag(tag, from) {
-            to.to_string()
-        } else {
-            tag.clone()
-        };
-        if !after.iter().any(|t| same_tag(t, &next)) {
-            after.push(next);
-        }
-    }
-    if after != before {
-        set_tags(fm, &after);
-    }
-}
-
-pub fn remove_tag(fm: &mut Value, slug: &str) {
-    let before = tags(Some(fm));
-    let after: Vec<String> = before
-        .iter()
-        .filter(|t| !same_tag(t, slug))
-        .cloned()
-        .collect();
-    if after.len() != before.len() {
-        set_tags(fm, &after);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::metadata::{remove_view_field, rename_view_field, set_view_field};
     use serde_json::json;
 
     #[test]
@@ -780,47 +540,6 @@ mod tests {
     }
 
     #[test]
-    fn strip_takes_the_block_and_keeps_the_body() {
-        let body = strip_content("---\ntags: [a]\ndue: 2026-10-02\n---\n# Title\n\ntext\n")
-            .unwrap()
-            .unwrap();
-        assert_eq!(body, "# Title\n\ntext\n");
-    }
-
-    #[test]
-    fn strip_leaves_a_file_without_a_block() {
-        assert!(strip_content("# Title\n---\nnot a fence\n")
-            .unwrap()
-            .is_none());
-    }
-
-    #[test]
-    fn strip_refuses_an_unparsable_block() {
-        assert!(strip_content("---\ntags: [unclosed\n---\nbody").is_err());
-    }
-
-    #[test]
-    fn strip_keeps_a_rule_inside_the_body() {
-        let body = strip_content("---\na: 1\n---\nabove\n\n---\n\nbelow")
-            .unwrap()
-            .unwrap();
-        assert_eq!(body, "above\n\n---\n\nbelow");
-    }
-
-    #[test]
-    fn strip_writes_only_the_body() {
-        let dir = std::env::temp_dir().join(format!("ls-strip-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("n.md");
-        fs::write(&path, "---\nid: x\n---\nhello\n").unwrap();
-        strip_frontmatter(&path).unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), "hello\n");
-        strip_frontmatter(&path).unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), "hello\n");
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
     fn split_no_frontmatter() {
         let (fm, body) = split_content("hello");
         assert!(fm.is_none());
@@ -905,59 +624,6 @@ mod tests {
     }
 
     #[test]
-    fn set_creates_nested() {
-        let mut v = json!({});
-        set_view_field(&mut v, "my-view", "due", json!("2026-01-01"));
-        assert_eq!(
-            v,
-            json!({ "views": { "my-view": { "due": "2026-01-01" } } })
-        );
-    }
-
-    #[test]
-    fn rename_moves_value() {
-        let mut v = json!({ "views": { "v": { "status": "todo" } } });
-        rename_view_field(&mut v, "v", "status", "state");
-        assert_eq!(v, json!({ "views": { "v": { "state": "todo" } } }));
-    }
-
-    #[test]
-    fn rename_missing_is_noop() {
-        let mut v = json!({ "views": { "v": { "x": 1 } } });
-        rename_view_field(&mut v, "v", "status", "state");
-        assert_eq!(v, json!({ "views": { "v": { "x": 1 } } }));
-    }
-
-    #[test]
-    fn remove_prunes_empty_parents() {
-        let mut v = json!({ "views": { "v": { "x": 1 } } });
-        remove_view_field(&mut v, "v", "x");
-        assert_eq!(v, json!({}));
-    }
-
-    #[test]
-    fn remove_keeps_nonempty_parents() {
-        let mut v = json!({ "views": { "v": { "x": 1, "y": 2 } } });
-        remove_view_field(&mut v, "v", "x");
-        assert_eq!(v, json!({ "views": { "v": { "y": 2 } } }));
-    }
-
-    #[test]
-    fn unit_key_removal_is_exact_and_prunes_empty_views() {
-        let mut v =
-            json!({ "tags": ["a"], "views": { "read": { "n": 1 }, "reading": { "n": 2 } } });
-        remove_unit_key(&mut v, "read");
-        assert_eq!(
-            v,
-            json!({ "tags": ["a"], "views": { "reading": { "n": 2 } } })
-        );
-        remove_unit_key(&mut v, "reading");
-        assert_eq!(v, json!({ "tags": ["a"] }));
-        remove_unit_key(&mut v, "missing");
-        assert_eq!(v, json!({ "tags": ["a"] }));
-    }
-
-    #[test]
     fn dotted_keys_survive_a_yaml_round_trip() {
         let mut v = json!({});
         set_view_field(&mut v, "projects/v1.2/", "due.date", json!("2026-01-01"));
@@ -966,16 +632,6 @@ mod tests {
         let (back, body) = split_content(&out);
         assert_eq!(back.unwrap(), v);
         assert_eq!(body, "body");
-    }
-
-    #[test]
-    fn unit_key_move_is_exact() {
-        let mut v = json!({ "views": { "read": { "n": 1 }, "reading": { "n": 2 } } });
-        rename_unit_key(&mut v, "read", "papers");
-        assert_eq!(
-            v,
-            json!({ "views": { "reading": { "n": 2 }, "papers": { "n": 1 } } })
-        );
     }
 
     #[test]
@@ -998,36 +654,5 @@ mod tests {
             after,
             "---\n# kept\ntitle:   Spaced\ntags: [old]\n---\nsee #new here\n"
         );
-    }
-
-    #[test]
-    fn tag_rewrites_ignore_case() {
-        let mut v = json!({ "tags": ["Todo", "keep"] });
-        rename_tag(&mut v, "todo", "task");
-        assert_eq!(v, json!({ "tags": ["task", "keep"] }));
-        remove_tag(&mut v, "TASK");
-        assert_eq!(v, json!({ "tags": ["keep"] }));
-    }
-
-    #[test]
-    fn tags_read_every_obsidian_form() {
-        assert_eq!(tags(Some(&json!({ "tags": ["a", "#b", 3] }))), ["a", "b"]);
-        assert_eq!(tags(Some(&json!({ "tags": "a, b  c" }))), ["a", "b", "c"]);
-        assert_eq!(tags(Some(&json!({ "tag": "solo" }))), ["solo"]);
-        assert_eq!(tags(Some(&json!({ "tags": ["x"], "tag": "y" }))), ["x"]);
-        assert!(tags(Some(&json!({ "tags": null }))).is_empty());
-        assert!(tags(None).is_empty());
-    }
-
-    #[test]
-    fn tag_rewrites_normalize_only_when_they_change_something() {
-        let mut v = json!({ "tag": "a, b", "title": "t" });
-        rename_tag(&mut v, "zzz", "q");
-        assert_eq!(v, json!({ "tag": "a, b", "title": "t" }));
-        rename_tag(&mut v, "a", "c");
-        assert_eq!(v, json!({ "title": "t", "tags": ["c", "b"] }));
-        remove_tag(&mut v, "b");
-        remove_tag(&mut v, "c");
-        assert_eq!(v, json!({ "title": "t" }));
     }
 }

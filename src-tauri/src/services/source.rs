@@ -10,9 +10,8 @@
 //! Okay, so, a 'source' is a saved folder resource for the app. It is a static path that is indexed
 //! by limestone and made accessible and searchable to the user -- an added folder.
 //!
-//! Per source, there is basic metadata, a UUID for db reference, and the boolean property
-//! `use_frontmatter`, which enables the use of frontmatter in the source's .md documents, which
-//! supports more features downstream.
+//! Per source, there is basic metadata, a UUID for db reference, and a config file in the
+//! source's .limestone folder.
 //!
 //! *Scan & Reconciliation*
 //!
@@ -27,25 +26,25 @@
 //!     - in db but not found on disk => missing, delete from cache
 //!       -> later can prompt to restore for autpmerge history in UI, and allows a better missing
 //!       doc page
-//! 4. Extract and parse frontmatter, quickly ideally
-//! 5. Resolve id-first for each read file, dupes get re-keyed
+//! 4. Resolve id-first for each read file, dupes get re-keyed
+//! 5. Read each resolved document's metadata, quickly ideally
 //! 6. Commit changes
 //! 7. Cleanup orphaned tags
 //!
 
 use crate::services::body::{fold_tag, lookalikes, LOOKALIKE_MAX_PAIRS};
-use crate::services::frontmatter::{self, Head};
+use crate::services::frontmatter;
 use crate::services::fs::{
     atomic_write, birth_ms, clean_location, doc_dir, docs_root, has_history, mtime_ms, read_meta,
     repath_meta, rewrite_meta, touch_meta, META_FILE,
 };
+use crate::services::metadata::{self, Head};
 use chrono::prelude::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::UNIX_EPOCH;
@@ -55,10 +54,6 @@ use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
 pub struct SourceConfig {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub use_frontmatter: Option<bool>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub frontmatter_dirs: BTreeMap<String, bool>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note_location: String,
     #[serde(
@@ -73,8 +68,6 @@ pub struct SourceConfig {
 impl Default for SourceConfig {
     fn default() -> Self {
         Self {
-            use_frontmatter: None,
-            frontmatter_dirs: BTreeMap::new(),
             note_location: String::new(),
             asset_location: default_asset_location(),
             ignore: default_ignore(),
@@ -104,10 +97,6 @@ pub struct Source {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
     pub accessed_at: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub use_frontmatter: Option<bool>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub frontmatter_dirs: BTreeMap<String, bool>,
     pub note_location: String,
     pub asset_location: String,
     pub ignore: Vec<String>,
@@ -133,8 +122,6 @@ impl Source {
             id: record.id,
             created_at: record.created_at,
             accessed_at: record.accessed_at,
-            use_frontmatter: config.use_frontmatter,
-            frontmatter_dirs: config.frontmatter_dirs,
             note_location: config.note_location,
             asset_location: config.asset_location,
             ignore: config.ignore,
@@ -153,8 +140,6 @@ impl Source {
 
     pub fn config(&self) -> SourceConfig {
         SourceConfig {
-            use_frontmatter: self.use_frontmatter,
-            frontmatter_dirs: self.frontmatter_dirs.clone(),
             note_location: self.note_location.clone(),
             asset_location: self.asset_location.clone(),
             ignore: self.ignore.clone(),
@@ -231,7 +216,6 @@ pub fn create_source(
     path: PathBuf,
     note_location: Option<String>,
     asset_location: Option<String>,
-    use_frontmatter: Option<bool>,
 ) -> Result<Source, std::io::Error> {
     fs::create_dir_all(&path)?;
     let title = title.unwrap_or_else(|| {
@@ -242,38 +226,12 @@ pub fn create_source(
     });
 
     let mut source = Source::new(title, path);
-    source.use_frontmatter = use_frontmatter;
     source.note_location = clean_location(&note_location.unwrap_or_default())?;
     source.asset_location = clean_location(&asset_location.unwrap_or_else(default_asset_location))?;
     Ok(source)
 }
 
 // ── The Big Scan ─────────────────────────────────────────────────────────────────────
-
-const KNOWN_FM_KEYS: &[&str] = &[
-    "id",
-    "tags",
-    "tag",
-    "created_at",
-    "updated_at",
-    "accessed_at",
-];
-// "tag" is for obsid compat
-
-/// extract everything outside known keys as a json string
-pub fn fm_properties(fm: &serde_json::Value) -> String {
-    match fm.as_object() {
-        Some(map) => {
-            let props: serde_json::Map<String, serde_json::Value> = map
-                .iter()
-                .filter(|(k, _)| !KNOWN_FM_KEYS.contains(&k.as_str()))
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            serde_json::to_string(&props).unwrap_or_default()
-        }
-        None => "{}".to_string(),
-    }
-}
 
 #[derive(Debug)]
 pub struct ReconciliationDiff {
@@ -471,32 +429,6 @@ pub fn walk_source(source: &Source, extensions: &[&str]) -> WalkResult {
     }
 }
 
-pub fn contains_git_repo(path: &Path) -> bool {
-    let root = path.to_path_buf();
-    let ignore = build_ignore(&Source::new(String::new(), root.clone()));
-    jwalk::WalkDir::new(path)
-        .skip_hidden(false)
-        .max_depth(6)
-        .process_read_dir(move |_depth, _path, _state, children| {
-            children.retain(|entry| {
-                entry.as_ref().is_ok_and(|e| {
-                    if e.file_name == ".git" {
-                        return true;
-                    }
-                    if !e.file_type().is_dir() {
-                        return false;
-                    }
-                    let path = e.path();
-                    let rel = path.strip_prefix(&root).unwrap_or(&path);
-                    keep_dir(&rel.to_string_lossy().replace('\\', "/"), ignore.as_ref())
-                })
-            });
-        })
-        .into_iter()
-        .flatten()
-        .any(|e| e.file_name == ".git")
-}
-
 /// Diff fs and sqlite documents
 pub fn diff_against_db(
     db_entries: &[(String, i64)],
@@ -535,54 +467,17 @@ pub fn diff_against_db(
     diff
 }
 
-/// Read first N bytes and parse frontmatter
-pub fn extract_frontmatter(
+pub fn read_heads(
     source_path: &Path,
-    paths: &[String],
+    docs: &[ResolvedDoc],
     buffer_size: usize,
 ) -> Vec<(String, Head)> {
-    paths
-        .par_iter()
-        .map(|rel_path| {
-            let full_path = source_path.join(rel_path);
-            let head = read_frontmatter(&full_path, buffer_size);
-            (rel_path.clone(), head)
+    docs.par_iter()
+        .map(|doc| {
+            let head = metadata::read(source_path, &doc.id, &doc.rel_path, buffer_size);
+            (doc.rel_path.clone(), head)
         })
         .collect()
-}
-
-// escalate the read window until the closing fence fits (or the whole file is in)
-fn read_frontmatter(path: &Path, buffer_size: usize) -> Head {
-    let mut limit = buffer_size.max(64) as u64;
-    loop {
-        let mut buf = Vec::new();
-        let read = fs::File::open(path).and_then(|f| f.take(limit).read_to_end(&mut buf));
-        if read.is_err() {
-            return Head::Absent;
-        }
-        let whole_file = (buf.len() as u64) < limit;
-
-        // tolerate a multibyte char split at the window edge
-        let content = match std::str::from_utf8(&buf) {
-            Ok(s) => s,
-            Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).unwrap_or(""),
-        };
-        let trimmed = content.trim_start_matches('\u{feff}').trim_start();
-        let Some(after_open) = trimmed.strip_prefix("---") else {
-            return Head::Absent;
-        };
-        if frontmatter::find_closing_fence(after_open).is_some() {
-            return frontmatter::head(content).0;
-        }
-        if whole_file {
-            return Head::Absent;
-        }
-        let next = limit.saturating_mul(16).min(1 << 22);
-        if next == limit {
-            return Head::Absent;
-        }
-        limit = next;
-    }
 }
 
 // Id-first resolution: every read (new/modified) file resolves to exactly one document id
@@ -744,20 +639,14 @@ fn fs_mtime_ms(path: &Path) -> i64 {
     mtime_ms(path).unwrap_or(0)
 }
 
-fn fm_date(fm: Option<&serde_json::Value>, key: &str) -> Option<i64> {
-    fm.and_then(|f| f.get(key))
-        .and_then(|v| v.as_str())
-        .and_then(frontmatter::date_ms)
-}
-
 pub async fn apply_plan(
     plan: &ReconcilePlan,
-    frontmatter: &[(String, Head)],
+    heads: &[(String, Head)],
     source_id: &str,
     source_path: &Path,
     db: &SqlitePool,
 ) -> sqlx::Result<()> {
-    let fm_map: HashMap<&str, &Head> = frontmatter
+    let head_at: HashMap<&str, &Head> = heads
         .iter()
         .map(|(path, head)| (path.as_str(), head))
         .collect();
@@ -806,26 +695,19 @@ pub async fn apply_plan(
     }
 
     for doc in &plan.docs {
-        let meta_head;
-        let head = if document_type(&doc.rel_path) == "md" {
-            fm_map.get(doc.rel_path.as_str()).copied()
-        } else {
-            meta_head = read_meta(&doc_dir(source_path, &doc.id))
-                .map(|m| m.frontmatter)
-                .filter(serde_json::Value::is_object)
-                .map(Head::Block);
-            meta_head.as_ref()
-        };
-        let fm = head.and_then(Head::value);
+        let head = head_at.get(doc.rel_path.as_str()).copied();
+        let meta = head.and_then(Head::value);
         let broken = head.is_some_and(Head::broken);
         let title = Path::new(&doc.rel_path)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled");
-        let properties =
-            (!broken).then(|| fm.map(fm_properties).unwrap_or_else(|| "{}".to_string()));
+        let properties = (!broken).then(|| {
+            meta.map(metadata::properties)
+                .unwrap_or_else(|| "{}".to_string())
+        });
         let mtime = doc.mtime;
-        let updated_at = fm_date(fm, "updated_at").unwrap_or(mtime);
+        let updated_at = metadata::date(meta, "updated_at").unwrap_or(mtime);
 
         let wrote = if doc.existing {
             sqlx::query(
@@ -845,10 +727,10 @@ pub async fn apply_plan(
             .rows_affected()
                 > 0
         } else {
-            let created_at = fm_date(fm, "created_at")
+            let created_at = metadata::date(meta, "created_at")
                 .or(doc.created_at)
                 .unwrap_or_else(|| fs_birth_ms(&source_path.join(&doc.rel_path), mtime));
-            let accessed_at = fm_date(fm, "accessed_at").unwrap_or(mtime);
+            let accessed_at = metadata::date(meta, "accessed_at").unwrap_or(mtime);
             sqlx::query(
                 "INSERT INTO documents (id, source_id, rel_path, title, mtime, properties, created_at, updated_at, accessed_at, document_type)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -872,13 +754,13 @@ pub async fn apply_plan(
         // a lost write means a race edit is faster
         if wrote {
             if !broken {
-                sync_tags(&mut tx, &doc.id, &frontmatter::tags(fm)).await?;
+                sync_tags(&mut tx, &doc.id, &metadata::tags(meta)).await?;
             }
             sync_folders(&mut tx, source_id, &doc.id, &doc.rel_path).await?;
             if doc.moved {
                 let _ = repath_meta(source_path, &doc.id, &doc.rel_path);
             }
-            if document_type(&doc.rel_path) != "md" {
+            if !metadata::in_file(&doc.rel_path) {
                 let _ = rewrite_meta(source_path, &doc.id, &doc.rel_path, |_| {});
             }
         }
@@ -974,8 +856,8 @@ pub(crate) async fn upsert_folder(
     let (parent, slug) = folder_parent_and_slug(path);
     let parent_id = parent.map(|p| folder_id(source_id, p));
     sqlx::query(
-        "INSERT INTO folders (id, source_id, slug, parent_id, writes_meta)
-         VALUES (?1, ?2, ?3, ?4, COALESCE((SELECT writes_meta FROM folders WHERE id = ?4), 1))
+        "INSERT INTO folders (id, source_id, slug, parent_id)
+         VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT DO NOTHING",
     )
     .bind(&id)
@@ -1038,49 +920,7 @@ pub(crate) async fn sync_folder_dirs(
     Ok(())
 }
 
-pub(crate) async fn sync_folder_meta(
-    db: &SqlitePool,
-    source: &Source,
-    git_off: bool,
-) -> sqlx::Result<()> {
-    let source_id = source.id.to_string();
-    let prefix = folder_id(&source_id, "");
-    let mut rows: Vec<(String, bool, bool)> =
-        sqlx::query_as("SELECT id, repo, writes_meta FROM folders WHERE source_id = ?1")
-            .bind(&source_id)
-            .fetch_all(db)
-            .await?;
-    rows.sort_by_key(|(id, ..)| id.len());
-
-    let mut resolved: HashMap<String, bool> = HashMap::with_capacity(rows.len());
-    let mut tx = db.begin().await?;
-    for (id, repo, current) in rows {
-        let Some(path) = id.strip_prefix(&prefix) else {
-            continue;
-        };
-        let (parent, _) = folder_parent_and_slug(path);
-        let explicit = if path.is_empty() {
-            source.use_frontmatter
-        } else {
-            source.frontmatter_dirs.get(path).copied()
-        };
-        let inherited = parent
-            .and_then(|p| resolved.get(p).copied())
-            .unwrap_or(true);
-        let writes = explicit.unwrap_or(inherited && !(git_off && repo));
-        if writes != current {
-            sqlx::query("UPDATE folders SET writes_meta = ?2 WHERE id = ?1")
-                .bind(&id)
-                .bind(writes)
-                .execute(&mut *tx)
-                .await?;
-        }
-        resolved.insert(path.to_string(), writes);
-    }
-    tx.commit().await
-}
-
-/// Sync tags from frontmatter into the tags table (tags are global)
+/// Sync tags from metadata into the tags table (tags are global)
 pub(crate) async fn sync_tags(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     doc_id: &str,
@@ -1140,21 +980,14 @@ pub async fn index_document(
     fm_buffer_size: usize,
 ) -> sqlx::Result<()> {
     let full = source_path.join(rel_path);
-    let head = if document_type(rel_path) == "pdf" {
-        read_meta(&doc_dir(source_path, doc_id))
-            .map(|m| m.frontmatter)
-            .filter(serde_json::Value::is_object)
-            .map_or(Head::Absent, Head::Block)
-    } else {
-        read_frontmatter(&full, fm_buffer_size)
-    };
+    let head = metadata::read(source_path, doc_id, rel_path, fm_buffer_size);
     let title = Path::new(rel_path)
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("Untitled");
     let properties = (!head.broken()).then(|| {
         head.value()
-            .map(fm_properties)
+            .map(metadata::properties)
             .unwrap_or_else(|| "{}".to_string())
     });
     let mtime = fs_mtime_ms(&full);
@@ -1172,8 +1005,8 @@ pub async fn index_document(
     .await?;
 
     sync_folders(&mut tx, source_id, doc_id, rel_path).await?;
-    if let Some(fm) = head.value() {
-        sync_tags(&mut tx, doc_id, &frontmatter::tags(Some(fm))).await?;
+    if let Some(meta) = head.value() {
+        sync_tags(&mut tx, doc_id, &metadata::tags(Some(meta))).await?;
     }
 
     tx.commit().await?;
@@ -1230,7 +1063,6 @@ pub async fn reconcile_source(
     db: &SqlitePool,
     extensions: &[&str],
     frontmatter_buffer_size: usize,
-    git_off: bool,
     renames: &[(String, String)],
 ) -> sqlx::Result<(Vec<(String, String)>, usize)> {
     use std::time::Instant;
@@ -1271,7 +1103,6 @@ pub async fn reconcile_source(
     let mut tx = db.begin().await?;
     sync_folder_dirs(&mut tx, source_id, &fs_dirs, &repos, &views).await?;
     tx.commit().await?;
-    sync_folder_meta(db, source, git_off).await?;
 
     let db_rows: Vec<(String, String, i64, bool)> = sqlx::query_as(
         "SELECT id, rel_path, coalesce(mtime, 0), deleted_at IS NOT NULL FROM documents WHERE source_id = ?1",
@@ -1303,7 +1134,7 @@ pub async fn reconcile_source(
     let fs_entries: Vec<(String, i64)> = {
         let meta_written: HashMap<&str, i64> = live_at
             .iter()
-            .filter(|(path, _)| document_type(path) != "md")
+            .filter(|(path, _)| !metadata::in_file(path))
             .filter_map(|(path, id)| {
                 let written = mtime_ms(&doc_dir(source_path, id).join(META_FILE))?;
                 Some((*path, written))
@@ -1318,16 +1149,6 @@ pub async fn reconcile_source(
             .collect()
     };
     let diff = diff_against_db(&db_entries, &fs_entries);
-
-    // only md is opened here
-    let paths_to_read: Vec<String> = diff
-        .new_paths
-        .iter()
-        .map(|(p, _)| p.clone())
-        .chain(diff.modified.iter().map(|(p, _)| p.clone()))
-        .filter(|p| document_type(p) == "md")
-        .collect();
-    let frontmatter = extract_frontmatter(source_path, &paths_to_read, frontmatter_buffer_size);
 
     let seeds = if diff.new_paths.is_empty() {
         HashMap::new()
@@ -1422,7 +1243,8 @@ pub async fn reconcile_source(
     );
     let ops_count = plan.docs.len() + plan.delete_ids.len();
 
-    apply_plan(&plan, &frontmatter, source_id, source_path, db).await?;
+    let heads = read_heads(source_path, &plan.docs, frontmatter_buffer_size);
+    apply_plan(&plan, &heads, source_id, source_path, db).await?;
 
     eprintln!(
         "[reconcile:{}] {}ms | {} files, {} cached, {} ops, {} skipped",
@@ -1701,7 +1523,7 @@ mod tests {
         assert!(load_source_config(&tmp).is_none());
 
         let mut config = SourceConfig::default();
-        config.frontmatter_dirs.insert("repo".into(), false);
+        config.note_location = "notes".into();
         save_source_config(&tmp, &config).unwrap();
         let text = fs::read_to_string(source_config_path(&tmp)).unwrap();
         assert!(!text.contains("asset_location"));

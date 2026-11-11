@@ -71,7 +71,7 @@
 	import { isImageTarget } from './image-embeds';
 	import { createPasteImportLedger } from './paste-imports';
 	import { historyDecorations } from './history-decorations';
-	import { backPlace, forwardPlace, openFolder, openFolderMeta } from './tabPlaces.js';
+	import { backPlace, forwardPlace, openFolder } from './tabPlaces.js';
 
 	// components
 	import GonePage from '../pages/GonePage.svelte';
@@ -541,7 +541,6 @@
 
 	const onOpenFolder = (unitId: string, name: string, newTab = false) =>
 		openFolder(editor, tab, unitId, name, newTab);
-	const onFolderMeta = (unitId: string, name: string) => openFolderMeta(editor, unitId, name);
 	const back = $derived(backPlace(editor, tab));
 	const forward = $derived(forwardPlace(editor, tab));
 
@@ -1184,7 +1183,6 @@
 			{forward}
 			{onOpenFolder}
 			{showOpenFolder}
-			{onFolderMeta}
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
@@ -1231,7 +1229,6 @@
 			{forward}
 			{onOpenFolder}
 			{showOpenFolder}
-			{onFolderMeta}
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}

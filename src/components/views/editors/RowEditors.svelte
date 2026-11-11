@@ -129,7 +129,7 @@
 					{ value: 'open-tab', label: 'Open in new tab', icon: SquareArrowOutUpRight },
 					{ value: 'open-side', label: 'Open to the side', icon: Columns2 },
 					{ kind: 'divider' as const },
-					...(menuRow && rows.writable(menuRow)
+					...(menuRow
 						? [
 								menuIsTodo
 									? { value: 'untodo', label: 'Remove from #todo', icon: SquareMinus }

@@ -80,8 +80,7 @@ function sameRow(a: MemberRow, b: MemberRow): boolean {
 		a.updated_at === b.updated_at &&
 		a.deleted_at === b.deleted_at &&
 		a.properties === b.properties &&
-		a.source_id === b.source_id &&
-		a.writes_meta === b.writes_meta
+		a.source_id === b.source_id
 	);
 }
 
@@ -279,13 +278,6 @@ export class FaceRows {
 		return (this.rowTags[rowId] ?? []).map((t) => t.slug);
 	}
 
-	// a unit's fields count only on the unit's members: a todo checkbox on a note without
-	// the tag is inert, so it's drawn but not live. Folder units are always satisfied here,
-	// their views only ever hold their own subtree
-	writable(row: MemberRow): boolean {
-		return row.writes_meta !== 0;
-	}
-
 	memberOf(row: MemberRow, field: ViewField): boolean {
 		const unit = field.unit;
 		if (!unit || !unit.startsWith('tag:')) return true;
@@ -389,7 +381,6 @@ export class FaceRows {
 	}
 
 	async writeCell(row: MemberRow, field: ViewField, value: unknown): Promise<void> {
-		if (!this.writable(row)) return;
 		const extra = this.companion(row, field, value);
 		const writes: Write[] = extra ? [{ field, value }, extra] : [{ field, value }];
 		const prev: Write[] = writes.map((w) => ({
@@ -444,7 +435,6 @@ export class FaceRows {
 	}
 
 	toggle(row: MemberRow, field: ViewField): void {
-		if (!this.writable(row)) return;
 		if (isStatusField(field)) {
 			const done = statusIsDone(field, statusOf(row, field));
 			this.writeCell(row, field, firstStatus(field, !done));
@@ -453,7 +443,7 @@ export class FaceRows {
 		this.writeCell(row, field, rawStatefulValue(row, field) !== true);
 	}
 
-	private readTags(row: MemberRow): Promise<{ frontmatter: string[]; body: string[] }> {
+	private readTags(row: MemberRow): Promise<{ metadata: string[]; body: string[] }> {
 		return invoke('read_document_tags', {
 			sourceId: row.source_id,
 			relPath: row.rel_path,
@@ -475,7 +465,7 @@ export class FaceRows {
 
 	async setTag(rowId: string, slug: string, on: boolean): Promise<RowTag[] | null> {
 		const row = this.rows.find((r) => r.id === rowId);
-		if (!row || !this.writable(row)) return null;
+		if (!row) return null;
 		history.push(this.view().id, {
 			back: async () => void (await this.applyTag(rowId, slug, !on)),
 			forward: async () => void (await this.applyTag(rowId, slug, on)),
@@ -489,8 +479,8 @@ export class FaceRows {
 		if (!row) return null;
 		try {
 			const id = tagId(slug);
-			const { frontmatter, body } = await this.readTags(row);
-			const kept = frontmatter.filter((t) => tagId(t) !== id);
+			const { metadata, body } = await this.readTags(row);
+			const kept = metadata.filter((t) => tagId(t) !== id);
 			if (!on && body.some((t) => tagId(t) === id)) {
 				await invoke('strip_document_tag', {
 					id: rowId,
@@ -499,7 +489,7 @@ export class FaceRows {
 					slug
 				});
 			}
-			if (on || kept.length !== frontmatter.length) {
+			if (on || kept.length !== metadata.length) {
 				const doc = await Doc.load(rowId);
 				await doc.setTags(on ? [...kept, slug] : kept);
 			}

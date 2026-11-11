@@ -9,22 +9,10 @@ import {
 	listSavedViewJSON,
 	remapIdsInSavedViews,
 	removeViewKey,
-	renameViewKey,
-	type BulkResult
+	renameViewKey
 } from '#lib/models/View.svelte.js';
 import { flushAll } from '#lib/services/platform.js';
 import { reportError, mark } from '#lib/overlays.svelte.js';
-
-// a folder's metadata policy: its own choice, or whatever its parent (and Git) decide
-export type MetaMode = 'follow' | 'write' | 'off';
-
-export interface FolderMeta {
-	mode: MetaMode;
-	writes: boolean; // what it resolves to now
-	follows: boolean; // what "follow" would resolve to
-	repo: boolean;
-	withFrontmatter: number; // files here and below that carry a block today
-}
 
 export interface FolderRow {
 	id: string;
@@ -32,7 +20,6 @@ export interface FolderRow {
 	slug: string;
 	parent_id: string | null;
 	repo: number;
-	writes_meta: number;
 	created_at: number;
 	updated_at: number;
 	accessed_at: number;
@@ -61,7 +48,6 @@ class Folder {
 	readonly sourceId: string;
 	readonly parentId?: string;
 	readonly repo: boolean;
-	readonly writesMeta: boolean;
 	readonly createdAt: Date;
 	updatedAt: Date;
 	accessedAt: Date;
@@ -73,7 +59,6 @@ class Folder {
 		this.sourceId = row.source_id;
 		this.parentId = row.parent_id ?? undefined;
 		this.repo = row.repo === 1;
-		this.writesMeta = row.writes_meta !== 0;
 		this.createdAt = new Date(row.created_at);
 		this.updatedAt = new Date(row.updated_at);
 		this.accessedAt = new Date(row.accessed_at);
@@ -101,72 +86,6 @@ class Folder {
 		const [row] = await select<FolderRow>(`SELECT * FROM folders WHERE id = ?1`, [id]);
 		if (!row) throw new Error(`Folder not found: ${id}`);
 		return new Folder(row);
-	}
-
-	static async metaAt(sourceId: string, dir: string): Promise<{ writes: boolean; repo: boolean }> {
-		const segs = dir.split('/').filter(Boolean);
-		const ids = [
-			folderId(sourceId, ''),
-			...segs.map((_, i) => folderId(sourceId, segs.slice(0, i + 1).join('/')))
-		];
-		const rows = await select<{ id: string; repo: number; writes_meta: number }>(
-			`SELECT id, repo, writes_meta FROM folders WHERE id IN (${ids.map(() => '?').join(', ')})`,
-			ids
-		);
-		const byId = new Map(rows.map((r) => [r.id, r]));
-		const nearest = ids.reverse().find((id) => byId.has(id));
-		return {
-			writes: nearest ? byId.get(nearest)!.writes_meta !== 0 : true,
-			repo: rows.some((r) => r.repo === 1)
-		};
-	}
-
-	async setWritesMeta(value: boolean, gitOff: boolean): Promise<void> {
-		const [row] = await select<{ parent: number | null }>(
-			`SELECT writes_meta AS parent FROM folders WHERE id = ?1`,
-			[this.parentId ?? '']
-		);
-		const inherited = (row?.parent ?? 1) !== 0 && !(gitOff && this.repo);
-		await invoke('set_folder_frontmatter', {
-			id: this.sourceId,
-			dir: folderIdPath(this.id),
-			value: value === inherited ? null : value
-		});
-	}
-
-	static async meta(id: string): Promise<FolderMeta> {
-		const r = await invoke<{
-			explicit: boolean | null;
-			writes: boolean;
-			follows: boolean;
-			repo: boolean;
-			with_frontmatter: number;
-		}>('folder_meta', { sourceId: folderIdSource(id), dir: folderIdPath(id) });
-		return {
-			mode: r.explicit === null ? 'follow' : r.explicit ? 'write' : 'off',
-			writes: r.writes,
-			follows: r.follows,
-			repo: r.repo,
-			withFrontmatter: r.with_frontmatter
-		};
-	}
-
-	// a policy only: nothing in the files changes until they're next written
-	static async setMetaMode(id: string, mode: MetaMode): Promise<void> {
-		await invoke('set_folder_frontmatter', {
-			id: folderIdSource(id),
-			dir: folderIdPath(id),
-			value: mode === 'follow' ? null : mode === 'write'
-		});
-	}
-
-	// the one thing that does touch files: their frontmatter blocks go, bodies untouched
-	static async stripMeta(id: string): Promise<BulkResult> {
-		await flushAll();
-		return invoke<BulkResult>('strip_folder_frontmatter', {
-			sourceId: folderIdSource(id),
-			folderId: id
-		});
 	}
 
 	async touch(): Promise<void> {

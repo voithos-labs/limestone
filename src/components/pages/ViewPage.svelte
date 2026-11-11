@@ -10,7 +10,6 @@
 	import { DELETED, isBuiltinUnit } from '#lib/models/View.svelte.js';
 	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
 	import { openProjectSetup } from '#lib/views/project.svelte.js';
-	import { metaDialog } from '#lib/overlays.svelte.js';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { mark } from '#lib/overlays.svelte.js';
 	import { addSourceRequest } from '#lib/overlays.svelte.js';
@@ -64,8 +63,6 @@
 		Pencil,
 		ExternalLink,
 		Bookmark,
-		FileLock,
-		FilePen,
 		Settings,
 		SquareCheck,
 		Eye,
@@ -537,16 +534,6 @@
 		history.clear();
 	});
 
-	// the folder under a folder project, for its per-folder metadata switch (the folder page's
-	// own menu carries the same one); re-read whenever the menu opens so it's never stale
-	let unitFolder: Folder | null = $state(null);
-	$effect(() => {
-		if (!moreOpen || unitKind !== 'folder' || !view.unit) return;
-		Folder.fromID(view.unit)
-			.then((f) => (unitFolder = f))
-			.catch(() => (unitFolder = null));
-	});
-
 	let newFolderOpen = $state(false);
 	let fabEl: HTMLButtonElement | null = $state(null);
 
@@ -602,13 +589,6 @@
 			}
 			if (unitKind === 'folder') {
 				items.push({ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink });
-				if (unitFolder)
-					items.push({
-						value: 'meta',
-						label: 'Metadata…',
-						icon: unitFolder.writesMeta ? FilePen : FileLock,
-						hint: unitFolder.writesMeta ? 'On' : 'Off'
-					});
 			}
 			items.push({ kind: 'divider' });
 			items.push(...cover);
@@ -759,7 +739,6 @@
 		if (value === 'rename') header?.focusTitle();
 		if (value === 'configure') configureSource();
 		if (value === 'reveal') revealUnit();
-		if (value === 'meta' && view.unit) metaDialog.show(view.unit);
 		if (value === 'project' && view.unit)
 			openProjectSetup(editor, { id: view.unit, name: view.slug }, tab);
 		if (value === 'unproject') unproject();

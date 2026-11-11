@@ -179,12 +179,6 @@ pub fn run() {
                 services::dot_get(&initial_settings, "indexing.frontmatter_read_buffer_size")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(512) as usize;
-            let git_off = services::dot_get(
-                &initial_settings,
-                commands::source_commands::GIT_FRONTMATTER_OFF,
-            )
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
 
             // wait for db ready (probably done)
             let pool = tauri::async_runtime::block_on(db_handle)
@@ -254,7 +248,6 @@ pub fn run() {
                                 source,
                                 pool,
                                 fm_buf_size,
-                                git_off,
                             ),
                         ));
                     }
@@ -271,9 +264,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::source_commands::get_sources,
-            commands::source_commands::set_folder_frontmatter,
-            commands::source_commands::rekey_folder_frontmatter,
-            commands::source_commands::contains_git_repo,
             commands::source_commands::is_empty_dir,
             commands::source_commands::get_source_by_id,
             commands::source_commands::update_source,
@@ -288,8 +278,6 @@ pub fn run() {
             commands::source_commands::move_folder,
             commands::source_commands::delete_folder,
             commands::source_commands::restore_folder,
-            commands::source_commands::folder_meta,
-            commands::source_commands::strip_folder_frontmatter,
             commands::source_commands::reconcile_source,
             commands::source_commands::check_sources,
             commands::source_commands::update_source_path,
