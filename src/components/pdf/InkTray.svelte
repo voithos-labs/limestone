@@ -20,21 +20,11 @@
 
 <script lang="ts">
 	import { Eraser, Lasso } from '@lucide/svelte';
-	import { INK_COLORS, INK_WIDTHS, type InkColor, type InkWidth } from '#lib/pdf/annotation.js';
-	import { INK_RGB } from './colors.js';
+	import { INK_WIDTHS, type InkWidth } from '#lib/pdf/annotation.js';
 
-	let {
-		color = $bindable('graphite'),
-		width = $bindable('fine'),
-		mode = $bindable('pen')
-	}: { color?: InkColor; width?: InkWidth; mode?: InkMode } = $props();
+	let { width = $bindable('fine'), mode = $bindable('pen') }: { width?: InkWidth; mode?: InkMode } =
+		$props();
 
-	const COLOR_NAMES: Record<InkColor, string> = {
-		graphite: 'Graphite',
-		pink: 'Pink',
-		blue: 'Blue',
-		green: 'Green'
-	};
 	const WIDTH_NAMES: Record<InkWidth, string> = {
 		fine: 'Fine',
 		medium: 'Medium',
@@ -43,21 +33,6 @@
 </script>
 
 <div class="tray">
-	{#each INK_COLORS as c (c)}
-		<button
-			class="opt"
-			class:on={c === color}
-			type="button"
-			title={COLOR_NAMES[c]}
-			onclick={() => {
-				color = c;
-				mode = 'pen';
-			}}
-		>
-			<span class="dot" class:current={c === color} style:--ink={INK_RGB[c]}></span>
-		</button>
-	{/each}
-	<span class="sep"></span>
 	{#each INK_WIDTHS as w (w)}
 		<button
 			class="opt"

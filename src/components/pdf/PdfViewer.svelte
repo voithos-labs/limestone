@@ -55,13 +55,12 @@
 
 	// pdf logic (model, pages, ink, undo, citations, editions)
 	import {
-		INK_COLORS,
+		ANNOTATION_COLORS,
 		pagesOf,
 		rectsOn,
 		type Annotation,
 		type AnnotationColor,
 		type AnnotationFields,
-		type InkColor,
 		type InkStroke,
 		type InkWidth,
 		type PageRect
@@ -158,6 +157,7 @@
 	// pages within this of the view are mounted and drawn, and stay until they're twice as far
 	const MOUNT_MARGIN = 1200;
 	const KEEP_MARGIN = 2400;
+	const ZOOM_MENU = [0.5, 0.75, 1, 1.5, 2, 4];
 	const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
 	const ERASER_RADIUS = 0.012;
 
@@ -297,7 +297,7 @@
 	/*                                 The header                                 */
 	/* -------------------------------------------------------------------------- */
 
-	let propsOpen = $state(false);
+	let propsOpen = $state(true);
 	const back = $derived(backPlace(editor, tab));
 	const forward = $derived(forwardPlace(editor, tab));
 
@@ -626,6 +626,12 @@
 	}
 
 	/** Brings an annotation's passage a third of the way down the view, mounted or not. */
+	function goToPage(n: number) {
+		const v = view();
+		const top = layout.tops[n - 1];
+		if (v && top !== undefined) scrollBy(v, top - barHeight - 12 - v.top);
+	}
+
 	function scrollToAnnotation(a: Annotation) {
 		const v = view();
 		if (v) scrollBy(v, anchorY(a) - v.height / 3 - v.top);
@@ -857,7 +863,7 @@
 	/* -------------------------------------------------------------------------- */
 
 	let tool: PdfTool = $state('select');
-	let color: AnnotationColor = $state('amber');
+	let color: AnnotationColor = $state('accent');
 	const canAnnotate = $derived(!viewing);
 	let activeId: string | null = $state(null);
 	let editingId: string | null = $state(null);
@@ -923,7 +929,7 @@
 				const region: Omit<AnnotationFields, 'pdf'> = {
 					page,
 					kind: 'region',
-					color: 'sky',
+					color,
 					rects: [rect]
 				};
 				const a = await annotate(region, '', coveredText(page, rect));
@@ -1124,7 +1130,6 @@
 	/*                                    Ink                                     */
 	/* -------------------------------------------------------------------------- */
 
-	let inkColor: InkColor = $state('graphite');
 	let inkWidth: InkWidth = $state('fine');
 	let inkMode: InkMode = $state('pen');
 	let gesture: { page: number; points: number[] } | null = $state(null);
@@ -1176,7 +1181,7 @@
 			if (g.points.length >= 2) {
 				const points = simplify(g.points, aspectOf(g.page));
 				const edition = annotations.edition ?? undefined;
-				const stroke = { page: g.page, color: inkColor, width: inkWidth, points, edition };
+				const stroke = { page: g.page, color, width: inkWidth, points, edition };
 				await commit({ added: [stroke] }, stroke.page, strokesBox([stroke]));
 			}
 			return;
@@ -1213,7 +1218,7 @@
 			const ink: Omit<AnnotationFields, 'pdf'> = {
 				page,
 				kind: 'ink',
-				color: 'amber',
+				color,
 				rects: [box],
 				strokes
 			};
@@ -1235,11 +1240,32 @@
 		}
 	}
 
-	/** Strokes in the ink color after their first one's. */
 	function recolored<S extends InkStroke>(strokes: S[]): S[] {
-		const i = INK_COLORS.indexOf(strokes[0]?.color ?? 'graphite');
-		const color = INK_COLORS[(i + 1) % INK_COLORS.length];
-		return strokes.map((s) => ({ ...s, color }));
+		const i = ANNOTATION_COLORS.indexOf(strokes[0]?.color as AnnotationColor);
+		const next = ANNOTATION_COLORS[(i + 1) % ANNOTATION_COLORS.length];
+		return strokes.map((s) => ({ ...s, color: next }));
+	}
+
+	async function pickColor(c: AnnotationColor) {
+		color = c;
+		if (!canAnnotate) return;
+		try {
+			if (selected.length) {
+				const after = selected.map((s) => ({ ...s, color: c }));
+				await commit({ removed: selected, added: after }, after[0].page, strokesBox(after));
+				selection = after;
+				return;
+			}
+			const a = here.find((x) => x.id === activeId);
+			if (!a) return;
+			const strokes = a.strokes?.map((s) => ({ ...s, color: c }));
+			const change = strokes
+				? { id: a.id, before: { strokes: a.strokes }, after: { strokes } }
+				: { id: a.id, before: { color: a.color }, after: { color: c } };
+			await commit({ notes: [change] }, a.page, a.rects[0]);
+		} catch (e) {
+			reportError(e, "The color couldn't be changed.");
+		}
 	}
 
 	/* -------------------------------------------------------------------------- */
@@ -1614,7 +1640,7 @@
 <!-- -------------- Snippets handed to the dock and the hero --------------- -->
 
 {#snippet inkTray()}
-	<InkTray bind:color={inkColor} bind:width={inkWidth} bind:mode={inkMode} />
+	<InkTray bind:width={inkWidth} bind:mode={inkMode} />
 {/snippet}
 
 {#snippet placeHint()}
@@ -1741,7 +1767,7 @@
 									draft={draft?.page === n ? draft.rect : null}
 									loose={looseByPage.get(n)}
 									drawing={gesture?.page === n && inkMode === 'pen'
-										? { color: inkColor, width: inkWidth, points: gesture.points }
+										? { color, width: inkWidth, points: gesture.points }
 										: null}
 									lasso={gesture?.page === n && inkMode === 'lasso' ? gesture.points : null}
 								/>
@@ -1805,10 +1831,7 @@
 			x={menu.x}
 			y={menu.y}
 			writable={canAnnotate}
-			onColor={(c) => {
-				color = c;
-				void fromMenu(() => {});
-			}}
+			onHighlight={() => fromMenu(() => {})}
 			onComment={() =>
 				fromMenu((a) => {
 					activeId = editingId = a.id;
@@ -1842,8 +1865,12 @@
 			pages={ratios.length}
 			{zoom}
 			disabled={!canAnnotate}
-			onZoomReset={() => setZoom(1)}
+			zoomSteps={ZOOM_MENU}
+			onZoom={setZoom}
+			onGoToPage={goToPage}
 			{dark}
+			{color}
+			onColor={pickColor}
 			onToggleDark={() => {
 				darkChoice = !dark;
 				tab.state.pdf_dark = darkChoice;

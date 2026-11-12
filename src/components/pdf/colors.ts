@@ -8,6 +8,7 @@ import type { Annotation, AnnotationColor, InkColor, InkWidth } from '#lib/pdf/a
 
 /** Each color as an `r g b` triplet, set as `--ann` so a fill, ring or bar can take its own alpha. */
 export const ANNOTATION_RGB: Record<AnnotationColor, string> = {
+	accent: 'var(--color-accent-rgb)',
 	amber: '238 187 47',
 	sage: '98 188 128',
 	sky: '73 154 212',
@@ -16,6 +17,7 @@ export const ANNOTATION_RGB: Record<AnnotationColor, string> = {
 };
 
 export const INK_RGB: Record<InkColor, string> = {
+	...ANNOTATION_RGB,
 	graphite: '58 58 54',
 	pink: '208 57 107',
 	blue: '48 141 207',

@@ -121,7 +121,7 @@
 				{#if annotation.strokes?.length}
 					<svg viewBox={rect.join(' ')} preserveAspectRatio="none" aria-hidden="true">
 						{#each annotation.strokes as s, i (i)}
-							<path d={strokePath(s.points, 1)} stroke="rgb({INK_RGB[s.color]})" />
+							<path d={strokePath(s.points, 1)} style:stroke="rgb({INK_RGB[s.color]})" />
 						{/each}
 					</svg>
 				{/if}

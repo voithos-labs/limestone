@@ -58,10 +58,21 @@ export interface Annotation extends AnnotationFields {
 	comment: string;
 }
 
-export const ANNOTATION_COLORS = ['amber', 'sage', 'sky', 'rose', 'violet'] as const;
+export const ANNOTATION_COLORS = ['accent', 'amber', 'sage', 'sky', 'rose', 'violet'] as const;
 export type AnnotationColor = (typeof ANNOTATION_COLORS)[number];
 
-export const INK_COLORS = ['graphite', 'pink', 'blue', 'green'] as const;
+export const INK_COLORS = [
+	'accent',
+	'amber',
+	'sage',
+	'sky',
+	'rose',
+	'violet',
+	'graphite',
+	'pink',
+	'blue',
+	'green'
+] as const;
 export type InkColor = (typeof INK_COLORS)[number];
 
 export const INK_WIDTHS = ['fine', 'medium', 'marker'] as const;

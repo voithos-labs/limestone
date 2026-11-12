@@ -6,15 +6,13 @@
 	 * the text, which is all it offers when annotations can't be saved.
 	 */
 
-	import { Link, MessageSquare, Quote } from '@lucide/svelte';
-	import { ANNOTATION_COLORS, type AnnotationColor } from '#lib/pdf/annotation.js';
-	import { ANNOTATION_RGB } from './colors.js';
+	import { Highlighter, Link, MessageSquare, Quote } from '@lucide/svelte';
 
 	let {
 		x,
 		y,
 		writable = true,
-		onColor,
+		onHighlight,
 		onComment,
 		onCite,
 		onCopyText,
@@ -25,7 +23,7 @@
 		y: number;
 		/** False where annotations can't be saved; only copying the text is offered. */
 		writable?: boolean;
-		onColor: (color: AnnotationColor) => void;
+		onHighlight: () => void;
 		onComment: () => void;
 		onCite: () => void;
 		onCopyText: () => void;
@@ -57,19 +55,10 @@
 
 <div class="selection-menu" bind:this={el} style:left="{x}px" style:top="{y}px" role="menu">
 	{#if writable}
-		<div class="swatches">
-			{#each ANNOTATION_COLORS as c (c)}
-				<button
-					class="swatch"
-					type="button"
-					title={c}
-					onclick={() => onColor(c)}
-				>
-					<span style:--ann={ANNOTATION_RGB[c]}></span>
-				</button>
-			{/each}
-		</div>
-		<div class="divider"></div>
+		<button class="row" type="button" onclick={onHighlight}>
+			<span class="icon"><Highlighter size={13} strokeWidth={1.75} /></span>
+			<span class="label">Highlight</span>
+		</button>
 		<button class="row" type="button" onclick={onComment}>
 			<span class="icon"><MessageSquare size={13} strokeWidth={1.75} /></span>
 			<span class="label">Comment</span>
@@ -107,42 +96,7 @@
 		color: var(--color-text-primary);
 	}
 
-	/* ----------------------------- Color swatches ----------------------------- */
-
-	.swatches {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		padding: 2px;
-	}
-
-	.swatch {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 34px;
-		height: 30px;
-		padding: 0;
-		border: 0;
-		border-radius: 5px;
-		background: transparent;
-		cursor: pointer;
-	}
-
-	.swatch span {
-		width: 14px;
-		height: 14px;
-		border-radius: 999px;
-		background: rgb(var(--ann));
-	}
-
 	/* ---------------------------------- Rows ---------------------------------- */
-
-	.divider {
-		height: 1px;
-		margin: 4px 6px;
-		background: var(--color-border);
-	}
 
 	.row {
 		display: flex;
@@ -159,7 +113,6 @@
 		cursor: pointer;
 	}
 
-	.swatch:hover,
 	.row:hover {
 		background: var(--chip-bg-hover);
 	}

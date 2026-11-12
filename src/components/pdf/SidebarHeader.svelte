@@ -234,7 +234,7 @@
 	});
 
 	const menuItems: MenuEntry[] = $derived([
-		...(propCount > 0
+		...(propCount > 0 || isTodo
 			? [
 					{
 						value: 'props',
@@ -243,7 +243,7 @@
 					} as MenuEntry
 				]
 			: []),
-		...(propCount > 0 ? [{ kind: 'divider' } as MenuEntry] : []),
+		...(propCount > 0 || isTodo ? [{ kind: 'divider' } as MenuEntry] : []),
 		...(onOpenFolder
 			? [{ value: 'parent', label: `Go to ${locPlace.kind}`, icon: FolderOpen } as MenuEntry]
 			: []),
@@ -373,7 +373,7 @@
 					<span class="add-tags"><Plus size={11} />tag</span>
 				{/if}
 			</span>
-			{#if isTodo}
+			{#if isTodo && propsOpen}
 				<span class="sep"></span>
 				<TodoCard {handle} version={tagsSaved} onRemove={removeTodo} />
 			{/if}
@@ -448,9 +448,8 @@
 	.title-field {
 		position: relative;
 		display: inline-flex;
-		flex: 0 1 auto;
+		flex: 0 100 auto;
 		min-width: 48px;
-		max-width: 55%;
 	}
 
 	.title-ghost {
@@ -556,11 +555,15 @@
 
 	.meta-row {
 		display: flex;
-		flex: 1;
+		flex: 1 1 auto;
 		align-items: center;
 		gap: 6px;
 		min-width: 0;
 		overflow: hidden;
+	}
+
+	.meta-row > :global(*) {
+		flex-shrink: 0;
 	}
 
 	.tags-chip {

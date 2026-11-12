@@ -28,6 +28,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { Moon } from '@lucide/svelte';
+	import { ANNOTATION_COLORS, type AnnotationColor } from '#lib/pdf/annotation.js';
+	import { ANNOTATION_RGB } from './colors.js';
 
 	let {
 		tool = $bindable('select'),
@@ -36,7 +38,11 @@
 		zoom,
 		disabled = false,
 		dark = false,
-		onZoomReset,
+		color,
+		onColor,
+		zoomSteps,
+		onZoom,
+		onGoToPage,
 		onToggleDark,
 		tray
 	}: {
@@ -50,16 +56,44 @@
 		disabled?: boolean;
 		/** Whether pages are shown with dark colors. */
 		dark?: boolean;
-		onZoomReset: () => void;
+		color: AnnotationColor;
+		onColor: (color: AnnotationColor) => void;
+		zoomSteps: readonly number[];
+		onZoom: (zoom: number) => void;
+		onGoToPage: (page: number) => void;
 		onToggleDark: () => void;
 		/** Options for the current tool, stacked above the dock. */
 		tray?: Snippet;
 	} = $props();
+
+	let popOpen: 'color' | 'zoom' | null = $state(null);
+
+	function onWindowPointer(e: PointerEvent) {
+		if (popOpen && !(e.target as Element).closest?.('.pop-slot')) popOpen = null;
+	}
+
+	let pageInput: HTMLInputElement | undefined = $state();
+	let pageDraft: string | null = $state(null);
+
+	function commitPage() {
+		const n = parseInt(pageDraft ?? '', 10);
+		if (n >= 1) onGoToPage(Math.min(n, pages));
+		pageInput?.blur();
+	}
 </script>
+
+<svelte:window onpointerdowncapture={onWindowPointer} />
 
 <div class="dock-stack">
 	{@render tray?.()}
-	<div class="dock" role="toolbar" tabindex="-1" onmousedown={(e) => e.preventDefault()}>
+	<div
+		class="dock"
+		role="toolbar"
+		tabindex="-1"
+		onmousedown={(e) => {
+			if (e.target !== pageInput) e.preventDefault();
+		}}
+	>
 		{#each TOOLS as t (t.id)}
 			<button
 				class="tool"
@@ -73,11 +107,87 @@
 			</button>
 		{/each}
 		<span class="sep"></span>
-		<span class="count">{page} <span class="of">/ {pages}</span></span>
+		<span class="pop-slot">
+			{#if popOpen === 'color'}
+				<div class="pop">
+					{#each ANNOTATION_COLORS as c (c)}
+						<button
+							class="tool"
+							class:on={c === color}
+							type="button"
+							title={c}
+							onclick={() => {
+								popOpen = null;
+								onColor(c);
+							}}
+						>
+							<span class="dot" class:accent={c === 'accent'} style:--ann={ANNOTATION_RGB[c]}
+							></span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+			<button
+				class="tool"
+				class:on={popOpen === 'color'}
+				type="button"
+				title="Color"
+				{disabled}
+				onclick={() => (popOpen = popOpen === 'color' ? null : 'color')}
+			>
+				<span class="dot" class:accent={color === 'accent'} style:--ann={ANNOTATION_RGB[color]}
+				></span>
+			</button>
+		</span>
 		<span class="sep"></span>
-		<button class="zoom" type="button" title="Reset zoom" onclick={onZoomReset}>
-			{Math.round(zoom * 100)}%
-		</button>
+		<span class="count" role="presentation" title="Go to page" onclick={() => pageInput?.focus()}>
+			<input
+				class="page-input"
+				bind:this={pageInput}
+				inputmode="numeric"
+				aria-label="Page number"
+				value={pageDraft ?? page}
+				style:width="{String(pageDraft ?? page).length || 1}ch"
+				onfocus={() => {
+					pageDraft = String(page);
+					requestAnimationFrame(() => pageInput?.select());
+				}}
+				oninput={(e) => (pageDraft = e.currentTarget.value.replace(/\D/g, ''))}
+				onblur={() => (pageDraft = null)}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') commitPage();
+					else if (e.key === 'Escape') pageInput?.blur();
+				}}
+			/>
+			<span class="of">/ {pages}</span>
+		</span>
+		<span class="sep"></span>
+		<span class="pop-slot">
+			{#if popOpen === 'zoom'}
+				<div class="pop">
+					{#each zoomSteps as z (z)}
+						<button
+							class="zoom-step"
+							class:on={Math.abs(z - zoom) < 0.001}
+							type="button"
+							onclick={() => {
+								popOpen = null;
+								onZoom(z);
+							}}>{Math.round(z * 100)}%</button
+						>
+					{/each}
+				</div>
+			{/if}
+			<button
+				class="zoom"
+				class:on={popOpen === 'zoom'}
+				type="button"
+				title="Zoom"
+				onclick={() => (popOpen = popOpen === 'zoom' ? null : 'zoom')}
+			>
+				{Math.round(zoom * 100)}%
+			</button>
+		</span>
 		<span class="sep"></span>
 		<button
 			class="tool"
@@ -155,6 +265,46 @@
 		cursor: default;
 	}
 
+	.pop-slot {
+		position: relative;
+		display: flex;
+	}
+
+	.pop {
+		position: absolute;
+		bottom: calc(100% + 10px);
+		left: 50%;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 4px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-bg);
+		box-shadow: var(--menu-shadow);
+		translate: -50% 0;
+	}
+
+	.dot {
+		position: relative;
+		width: 14px;
+		height: 14px;
+		border-radius: 999px;
+		background: rgb(var(--ann));
+	}
+
+	.dot.accent::after {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: var(--color-bg);
+		translate: -50% -50%;
+	}
+
 	/* -------------------- Separators, page count and zoom --------------------- */
 
 	.sep {
@@ -164,9 +314,52 @@
 	}
 
 	.count {
+		display: flex;
+		align-items: baseline;
+		gap: 0.35em;
 		padding: 0 6px;
 		font-variant-numeric: tabular-nums;
 		color: var(--color-text-secondary);
+		cursor: text;
+	}
+
+	.page-input {
+		box-sizing: content-box;
+		min-width: 1ch;
+		padding: 0;
+		border: 0;
+		outline: none;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+	}
+
+	.page-input:focus {
+		box-shadow: 0 1px 0 currentColor;
+	}
+
+	.zoom-step {
+		padding: 4px 10px;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.zoom-step:hover {
+		color: var(--color-text-secondary);
+	}
+
+	.zoom-step.on {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
 	}
 
 	.of {

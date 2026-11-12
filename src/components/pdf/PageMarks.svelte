@@ -51,7 +51,7 @@
 	<path
 		class:erased
 		d={strokePath(s.points, aspect)}
-		stroke="rgb({INK_RGB[s.color]})"
+		style:stroke="rgb({INK_RGB[s.color]})"
 		stroke-width={INK_STROKE[s.width]}
 		stroke-opacity={s.width === 'marker' ? 0.5 : 0.9}
 	/>
