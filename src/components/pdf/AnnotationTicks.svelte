@@ -15,6 +15,7 @@
 		pages,
 		annotations,
 		anchorY,
+		top = TRACK_START,
 		onGoTo
 	}: {
 		scroller: HTMLElement | undefined;
@@ -22,6 +23,7 @@
 		pages: HTMLElement | undefined;
 		annotations: Annotation[];
 		anchorY: (a: Annotation) => number;
+		top?: number;
 		onGoTo: (a: Annotation) => void;
 	} = $props();
 
@@ -35,7 +37,7 @@
 		const measure = () => {
 			const top = column.getBoundingClientRect().top - el.getBoundingClientRect().top;
 			track = {
-				length: trackLength(el.clientHeight, el.scrollHeight),
+				length: trackLength(el.clientHeight, el.scrollHeight, top),
 				content: el.scrollHeight,
 				pagesTop: top + el.scrollTop
 			};
@@ -48,7 +50,7 @@
 	});
 
 	const at = (a: Annotation) =>
-		TRACK_START + ((track.pagesTop + anchorY(a)) / track.content) * track.length;
+		top + ((track.pagesTop + anchorY(a)) / track.content) * track.length;
 </script>
 
 {#if track.length > 0}

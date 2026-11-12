@@ -27,7 +27,7 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Moon, PanelRight } from '@lucide/svelte';
+	import { Moon } from '@lucide/svelte';
 
 	let {
 		tool = $bindable('select'),
@@ -36,10 +36,8 @@
 		zoom,
 		disabled = false,
 		dark = false,
-		sidenotes = true,
 		onZoomReset,
 		onToggleDark,
-		onToggleSidenotes,
 		tray
 	}: {
 		tool?: PdfTool;
@@ -52,11 +50,8 @@
 		disabled?: boolean;
 		/** Whether pages are shown with dark colors. */
 		dark?: boolean;
-		/** Whether comments show beside the pages, in the margin or as markers. */
-		sidenotes?: boolean;
 		onZoomReset: () => void;
 		onToggleDark: () => void;
-		onToggleSidenotes: () => void;
 		/** Options for the current tool, stacked above the dock. */
 		tray?: Snippet;
 	} = $props();
@@ -64,7 +59,7 @@
 
 <div class="dock-stack">
 	{@render tray?.()}
-	<div class="dock">
+	<div class="dock" role="toolbar" tabindex="-1" onmousedown={(e) => e.preventDefault()}>
 		{#each TOOLS as t (t.id)}
 			<button
 				class="tool"
@@ -92,16 +87,6 @@
 			onclick={onToggleDark}
 		>
 			<Moon size={14} strokeWidth={1.75} />
-		</button>
-		<span class="sep"></span>
-		<button
-			class="tool"
-			class:on={sidenotes}
-			type="button"
-			title={sidenotes ? 'Hide sidenotes' : 'Show sidenotes'}
-			onclick={onToggleSidenotes}
-		>
-			<PanelRight size={14} strokeWidth={1.75} />
 		</button>
 	</div>
 </div>

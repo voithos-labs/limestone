@@ -13,7 +13,6 @@
 	let {
 		x,
 		y,
-		color,
 		writable = true,
 		onColor,
 		onComment,
@@ -24,8 +23,6 @@
 		/** Where the menu's top-left sits, in the viewer's own coordinates. */
 		x: number;
 		y: number;
-		/** The color last used, which a plain highlight takes. */
-		color: AnnotationColor;
 		/** False where annotations can't be saved; only copying the text is offered. */
 		writable?: boolean;
 		onColor: (color: AnnotationColor) => void;
@@ -64,7 +61,6 @@
 			{#each ANNOTATION_COLORS as c (c)}
 				<button
 					class="swatch"
-					class:current={c === color}
 					type="button"
 					title={c}
 					onclick={() => onColor(c)}
@@ -138,16 +134,6 @@
 		height: 14px;
 		border-radius: 999px;
 		background: rgb(var(--ann));
-	}
-
-	.swatch.current {
-		background: var(--chip-bg);
-	}
-
-	.swatch.current span {
-		box-shadow:
-			0 0 0 2px var(--color-bg),
-			0 0 0 3.5px var(--color-ui-muted);
 	}
 
 	/* ---------------------------------- Rows ---------------------------------- */

@@ -90,10 +90,15 @@
 		};
 	});
 
-	function placeCaret(inst: EditorInstance) {
+	const CARET_TRIES = 30;
+
+	function placeCaret(inst: EditorInstance, tries = 0) {
+		if (!editing || instance !== inst) return;
 		const box = el?.getBoundingClientRect();
 		const point = untrack(() => at) ?? (box && { x: box.right - 2, y: box.bottom - 4 });
 		if (point) inst.placeCaretAtPoint(point.x, point.y);
+		if (el?.contains(document.activeElement) || tries >= CARET_TRIES) return;
+		requestAnimationFrame(() => placeCaret(inst, tries + 1));
 	}
 
 	function onKeydown(e: KeyboardEvent) {

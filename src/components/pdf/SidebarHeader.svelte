@@ -29,9 +29,11 @@
 	import { flushAll } from '#lib/services/platform.js';
 	import type { Place } from '../editor/tabPlaces.js';
 	import DocProperties from '../editor/DocProperties.svelte';
+	import TodoCard from '../editor/TodoCard.svelte';
 	import MoveDialog from '../dialogs/MoveDialog.svelte';
 	import TagMenu from '../views/editors/TagMenu.svelte';
 	import Menu from '../ui/Menu.svelte';
+	import PdfIcon from '../ui/PdfIcon.svelte';
 
 	let {
 		handle,
@@ -153,7 +155,7 @@
 		if (e.key === 'Escape') title = handle.title;
 		if (e.key === 'Enter' || e.key === 'Escape') {
 			e.preventDefault();
-			(e.currentTarget as HTMLTextAreaElement).blur();
+			(e.currentTarget as HTMLInputElement).blur();
 		}
 	}
 
@@ -184,6 +186,17 @@
 			reportError(e, "Tags couldn't be saved.", retry);
 		}
 		tagList = handle.tags;
+		tagsSaved++;
+	}
+
+	const TODO_ID = 'tag:todo';
+	let tagsSaved = $state(0);
+	const isTodo = $derived(tagList.some((t) => t.id === TODO_ID));
+	const chipTags = $derived(tagList.filter((t) => t.id !== TODO_ID));
+
+	function removeTodo() {
+		const t = tagList.find((x) => x.id === TODO_ID);
+		if (t) void toggleTag(t);
 	}
 
 	function toggleTag(tag: Tag): Promise<void> {
@@ -274,28 +287,28 @@
 {/snippet}
 
 <div class="side-head" bind:offsetHeight={height}>
-	{#if back || forward}
-		<div class="nav">
-			{#if back}
-				<button class="chip" type="button" title={back.label} onclick={back.go}>
-					<span class="arrow"><ArrowLeft size={14} strokeWidth={2} /></span>
-					{@render place(back)}
-				</button>
-			{/if}
-			{#if forward}
-				<button class="chip" type="button" title={forward.label} onclick={forward.go}>
-					{@render place(forward)}
-					<span class="arrow"><ArrowRight size={14} strokeWidth={2} /></span>
-				</button>
-			{/if}
-		</div>
-	{/if}
 	<div class="title-line">
+		{#if back || forward}
+			<div class="nav">
+				{#if back}
+					<button class="chip" type="button" title={back.label} onclick={back.go}>
+						<span class="arrow"><ArrowLeft size={14} strokeWidth={2} /></span>
+						{@render place(back)}
+					</button>
+				{/if}
+				{#if forward}
+					<button class="chip" type="button" title={forward.label} onclick={forward.go}>
+						{@render place(forward)}
+						<span class="arrow"><ArrowRight size={14} strokeWidth={2} /></span>
+					</button>
+				{/if}
+			</div>
+		{/if}
+		<span class="doc-icon"><PdfIcon size={15} /></span>
 		<span class="title-field">
 			<span class="title-ghost">{title || ' '}</span>
-			<textarea
+			<input
 				class="title-input"
-				rows="1"
 				class:invalid={titleTaken || titleIllegal}
 				title={titleIllegal
 					? (segmentProblem(`${title.trim()}${ext}`) ?? undefined)
@@ -306,8 +319,68 @@
 				use:nameGuard
 				onblur={commitTitle}
 				onkeydown={onTitleKeydown}
-				spellcheck="false"></textarea>
+				spellcheck="false"
+			/>
 		</span>
+		<span class="sep"></span>
+		<div class="meta-row">
+			<button
+				class="loc-chip"
+				type="button"
+				title="Move document from {fullPath}"
+				onclick={() => (folderOpen = !folderOpen)}
+			>
+				{#if project?.emoji}
+					<span class="loc-emoji">{project.emoji}</span>
+				{:else if project}
+					<Bookmark size={12} />
+				{:else}
+					<FolderInput size={12} />
+				{/if}
+				<span class="loc-part src">{project?.slug ?? srcName}</span>
+				{#each locParts as part}
+					<span class="crumb-sep">/</span>
+					<span class="loc-part">{part}</span>
+				{/each}
+			</button>
+			<span
+				class="tags-chip"
+				bind:this={tagAnchor}
+				role="button"
+				tabindex="-1"
+				title={tagMenuOpen ? '' : 'Edit tags'}
+				onclick={() => (tagMenuOpen = !tagMenuOpen)}
+			>
+				{#each chipTags as t (t.id)}
+					{@const Icon = tagIcon(t.id)}
+					<span class="tag">
+						<Icon size={11} />{t.slug}
+						<button
+							class="tag-x"
+							type="button"
+							tabindex="-1"
+							aria-label="Remove {t.slug}"
+							onclick={(e) => {
+								e.stopPropagation();
+								void toggleTag(t);
+							}}
+						>
+							<X size={9} strokeWidth={2.5} />
+						</button>
+					</span>
+				{/each}
+				{#if !chipTags.length}
+					<span class="add-tags"><Plus size={11} />tag</span>
+				{/if}
+			</span>
+			{#if isTodo}
+				<span class="sep"></span>
+				<TodoCard {handle} version={tagsSaved} onRemove={removeTodo} />
+			{/if}
+		</div>
+		{#if extra}
+			<div class="extra">{@render extra()}</div>
+		{/if}
 		<button
 			class="kebab"
 			bind:this={menuAnchor}
@@ -317,60 +390,6 @@
 			<EllipsisVertical size={15} strokeWidth={1.75} />
 		</button>
 	</div>
-	<div class="meta-row">
-		<button
-			class="loc-chip"
-			type="button"
-			title="Move document from {fullPath}"
-			onclick={() => (folderOpen = !folderOpen)}
-		>
-			{#if project?.emoji}
-				<span class="loc-emoji">{project.emoji}</span>
-			{:else if project}
-				<Bookmark size={12} />
-			{:else}
-				<FolderInput size={12} />
-			{/if}
-			<span class="loc-part src">{project?.slug ?? srcName}</span>
-			{#each locParts as part}
-				<span class="crumb-sep">/</span>
-				<span class="loc-part">{part}</span>
-			{/each}
-		</button>
-		<span
-			class="tags-chip"
-			bind:this={tagAnchor}
-			role="button"
-			tabindex="-1"
-			title={tagMenuOpen ? '' : 'Edit tags'}
-			onclick={() => (tagMenuOpen = !tagMenuOpen)}
-		>
-			{#each tagList as t (t.id)}
-				{@const Icon = tagIcon(t.id)}
-				<span class="tag">
-					<Icon size={11} />{t.slug}
-					<button
-						class="tag-x"
-						type="button"
-						tabindex="-1"
-						aria-label="Remove {t.slug}"
-						onclick={(e) => {
-							e.stopPropagation();
-							void toggleTag(t);
-						}}
-					>
-						<X size={9} strokeWidth={2.5} />
-					</button>
-				</span>
-			{/each}
-			{#if !tagList.length}
-				<span class="add-tags"><Plus size={11} />tag</span>
-			{/if}
-		</span>
-	</div>
-	{#if extra}
-		<div class="extra">{@render extra()}</div>
-	{/if}
 	<DocProperties {handle} open={propsOpen} onCount={(n) => (propCount = n)} />
 </div>
 
@@ -394,11 +413,12 @@
 
 <style>
 	.side-head {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
 		gap: 8px;
-		padding: 10px 12px;
+		padding: 6px 8px 6px 12px;
 		border-radius: 8px;
 		background: var(--chip-bg);
 		font-family: var(--font-ui);
@@ -406,44 +426,59 @@
 
 	.title-line {
 		display: flex;
-		align-items: flex-start;
-		gap: 6px;
+		align-items: center;
+		gap: 8px;
 		width: 100%;
 	}
 
+	.sep {
+		flex-shrink: 0;
+		width: 1px;
+		height: 16px;
+		margin: 0 6px;
+		background: var(--color-border);
+	}
+
+	.doc-icon {
+		display: flex;
+		flex-shrink: 0;
+		color: var(--color-ui-muted);
+	}
+
 	.title-field {
-		display: grid;
-		flex: 1;
-		min-width: 0;
+		position: relative;
+		display: inline-flex;
+		flex: 0 1 auto;
+		min-width: 48px;
+		max-width: 55%;
+	}
+
+	.title-ghost {
+		overflow: hidden;
+		visibility: hidden;
+		white-space: pre;
 	}
 
 	.title-ghost,
 	.title-input {
-		grid-area: 1 / 1;
 		min-width: 0;
 		padding: 0;
 		font-family: var(--font-ui);
-		font-size: 16px;
+		font-size: 14px;
 		font-weight: 600;
-		line-height: 22px;
+		line-height: 24px;
 		letter-spacing: -0.01em;
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
-	}
-
-	.title-ghost {
-		visibility: hidden;
 	}
 
 	.title-input {
+		position: absolute;
+		inset: 0;
 		width: 100%;
-		height: 100%;
 		border: none;
 		outline: none;
-		resize: none;
-		overflow: hidden;
 		background: transparent;
 		color: var(--color-text-primary);
+		text-overflow: ellipsis;
 	}
 
 	.title-input.invalid {
@@ -521,17 +556,16 @@
 
 	.meta-row {
 		display: flex;
-		width: 100%;
+		flex: 1;
 		align-items: center;
-		flex-wrap: wrap;
 		gap: 6px;
 		min-width: 0;
+		overflow: hidden;
 	}
 
 	.tags-chip {
 		display: inline-flex;
 		align-items: center;
-		flex-wrap: wrap;
 		gap: 6px;
 		min-width: 0;
 		cursor: pointer;
@@ -591,9 +625,8 @@
 	.extra {
 		display: flex;
 		align-items: center;
-		flex-wrap: wrap;
 		gap: 6px;
-		width: 100%;
+		flex-shrink: 0;
 		font-size: 12px;
 		color: var(--color-ui-muted);
 	}

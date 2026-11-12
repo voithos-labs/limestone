@@ -15,7 +15,7 @@
 	/* -------------------------------------------------------------------------- */
 
 	// outside libs
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 	import type {
 		PageViewport,
@@ -26,7 +26,7 @@
 		TextLayer
 	} from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { Pencil, SquareArrowOutUpRight, Trash } from '@lucide/svelte';
+	import { Link, Pencil, Quote, SquareArrowOutUpRight, Trash } from '@lucide/svelte';
 
 	// app-wide models and services
 	import type EditorState from '#lib/models/EditorState.svelte.js';
@@ -127,7 +127,6 @@
 	import AnnotationTicks from './AnnotationTicks.svelte';
 	import EditionChip from './EditionChip.svelte';
 	import NotPlaced, { type InkLeft } from './NotPlaced.svelte';
-	import ModeSwitch from './ModeSwitch.svelte';
 	import PlaceHint from './PlaceHint.svelte';
 
 	/* -------------------------------------------------------------------------- */
@@ -150,17 +149,16 @@
 	const SIDE_PAD = 24;
 	const EDGE_GAP = 2;
 	const MIN_PAGE_WIDTH = 560;
-	const RAIL_MIN = 280;
-	const RAIL_MAX = 420;
-	const RAIL_SHARE = 0.3;
+	const RAIL_MIN = 240;
+	const RAIL_MAX = 320;
 	const RAIL_GAP = 24;
-	const RAIL_HEAD_TOP = 16;
+	const RAIL_EDGE = 12;
 	const PAGE_GAP = 10;
 	const RESIZE_SETTLE_MS = 100;
 	// pages within this of the view are mounted and drawn, and stay until they're twice as far
 	const MOUNT_MARGIN = 1200;
 	const KEEP_MARGIN = 2400;
-	const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+	const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
 	const ERASER_RADIUS = 0.012;
 
 	// elements bound in the markup
@@ -330,26 +328,16 @@
 	let columnMax = $state(MAX_PAGE_WIDTH);
 	const savedZoom = untrack(() => tab.state.pdf_zoom);
 	let zoom = $state(typeof savedZoom === 'number' ? savedZoom : 1);
-	const column = $derived(Math.min(columnMax, paneW - SIDE_PAD * 2));
-	// The column has room for the margin once a page beside it still reads comfortably.
-	const marginRoom = $derived(column >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_MIN);
-	let sidenotesOn = $state(untrack(() => tab.state.pdf_sidenotes) !== false);
-	const wantsRail = $derived(sidenotesOn);
-	const railShare = $derived(
-		Math.min(
-			RAIL_MAX,
-			column - RAIL_GAP - MIN_PAGE_WIDTH,
-			Math.max(RAIL_MIN, Math.round(column * RAIL_SHARE))
+	const fitWidth = $derived(Math.max(0, Math.min(columnMax, paneW - SIDE_PAD * 2)));
+	const width = $derived(
+		Math.round(
+			Math.max(0, flow ? Math.min(fitWidth * zoom, paneW - EDGE_GAP * 2) : fitWidth * zoom)
 		)
 	);
-	const fitWidth = $derived(
-		Math.max(0, column - (marginRoom && wantsRail ? RAIL_GAP + railShare : 0))
+	const railWidth = $derived(
+		Math.min(RAIL_MAX, Math.floor((paneW - width) / 2) - RAIL_GAP - RAIL_EDGE)
 	);
-	const width = $derived(Math.round(Math.max(0, Math.min(fitWidth * zoom, paneW - EDGE_GAP * 2))));
-	// a page zoomed past that room would push the margin out of the pane, so the markers stand in
-	const railRoom = $derived(paneW - SIDE_PAD * 2 - width - RAIL_GAP);
-	const railWidth = $derived(Math.min(RAIL_MAX, railRoom));
-	const railFits = $derived(marginRoom && (!wantsRail || railRoom >= RAIL_MIN));
+	const rail = $derived(railWidth >= RAIL_MIN);
 
 	/** Measures the pane, and again each time a resize settles. Attached to the viewer's root. */
 	function measurePane(el: HTMLElement) {
@@ -386,7 +374,17 @@
 	function onWheel(e: WheelEvent) {
 		if (!e.ctrlKey && !e.metaKey) return;
 		e.preventDefault();
+		const pages = pagesEl;
+		const was = width;
 		stepZoom(e.deltaY < 0 ? 1 : -1);
+		if (!pages || was <= 0 || width === was) return;
+		const rect = pages.getBoundingClientRect();
+		zoomAnchor = {
+			x: e.clientX,
+			y: e.clientY,
+			across: (e.clientX - rect.left) / was,
+			down: e.clientY - rect.top
+		};
 	}
 
 	function zoomKey(e: KeyboardEvent) {
@@ -515,9 +513,9 @@
 	// The view's top in pages coordinates as last seen, kept exact across a correction the
 	// browser rounds to its pixels, so a run of corrections doesn't drift.
 	let viewTop = 0;
-	let railViewTop = $state(0);
 	let wrote: { scrollTop: number; viewTop: number } | null = null;
 	let placed: { layout: PageLayout; pages: HTMLElement } | null = null;
+	let zoomAnchor: { x: number; y: number; across: number; down: number } | null = null;
 
 	// When a page learns its real size, or a zoom or a resize changes every page's, the reader's
 	// place is held by scrolling the difference. The browser's own anchoring is off for the
@@ -530,8 +528,13 @@
 			const before = placed?.pages === pages ? placed.layout : null;
 			placed = { layout: next, pages };
 			const v = view();
-			// with the header still in view there's nothing above the reader to correct for
-			if (before && v && viewTop > 0) {
+			const hold = zoomAnchor;
+			zoomAnchor = null;
+			if (before && v && hold) {
+				const rect = pages.getBoundingClientRect();
+				scrollBy(v, rect.top + keepPlace(before, next, hold.down) - hold.y);
+				if (!flow) v.el.scrollLeft += rect.left + hold.across * next.width - hold.x;
+			} else if (before && v && viewTop > 0) {
 				const delta = keepPlace(before, next, viewTop) - v.top;
 				if (Math.abs(delta) >= 0.5) scrollBy(v, delta);
 			}
@@ -573,7 +576,6 @@
 			wrote = null;
 			viewTop = v.top;
 		}
-		railViewTop = Math.round(v.top);
 		const bottom = v.top + v.height;
 		const next = holdRange(
 			mounted,
@@ -718,12 +720,26 @@
 		}
 	}
 
-	async function saveComment(a: Annotation, comment: string) {
-		try {
-			await annotations.setComment(a.id, comment);
-		} catch (e) {
-			reportError(e, "The comment couldn't be saved.");
-		}
+	let saving: Promise<void> = Promise.resolve();
+
+	function saveComment(a: Annotation, comment: string) {
+		saving = saving.then(async () => {
+			try {
+				await annotations.setComment(a.id, comment);
+			} catch (e) {
+				reportError(e, "The comment couldn't be saved.");
+			}
+		});
+		return saving;
+	}
+
+	async function dropBareRegion(id: string) {
+		await tick();
+		await saving;
+		if (activeId === id || editingId === id) return;
+		const a = annotations.items.find((x) => x.id === id);
+		if (!a || a.kind !== 'region' || a.comment.trim()) return;
+		if (canAnnotate && !citedBy.get(id)?.length) await removeAnnotation(a);
 	}
 
 	/** Deletes an annotation note, which undo brings back. */
@@ -821,9 +837,7 @@
 	/*                              Pages or digest                               */
 	/* -------------------------------------------------------------------------- */
 
-	let mode: 'pages' | 'digest' = $state(
-		untrack(() => tab.state.pdf_mode) === 'digest' ? 'digest' : 'pages'
-	);
+	let mode = $state<'pages' | 'digest'>('pages');
 	// the digest's passages read in the editor's own face, as a note's text does
 	const editorFont = $derived(editor?.session?.settings.get<string>('editor.font') ?? 'sans-serif');
 
@@ -847,6 +861,14 @@
 	const canAnnotate = $derived(!viewing);
 	let activeId: string | null = $state(null);
 	let editingId: string | null = $state(null);
+
+	let held: string | null = null;
+	$effect(() => {
+		const now = editingId ?? activeId;
+		const left = held;
+		held = now;
+		if (left && left !== activeId && left !== editingId) void dropBareRegion(left);
+	});
 
 	/* ------------------------ The pointer on the pages ------------------------ */
 
@@ -967,9 +989,33 @@
 	const moreItems = $derived.by((): MenuEntry[] => [
 		{ value: 'edit', label: moreFor?.comment ? 'Edit comment' : 'Add comment', icon: Pencil },
 		{ value: 'open', label: 'Open as note', icon: SquareArrowOutUpRight },
+		{ value: 'cite', label: 'Copy citation', icon: Quote },
+		{ value: 'link', label: 'Copy link', icon: Link },
 		{ kind: 'divider' },
 		{ value: 'delete', label: 'Delete', icon: Trash, danger: true }
 	]);
+
+	let menuPoint = $state({ x: 0, y: 0 });
+	let menuPointEl: HTMLElement | null = $state(null);
+
+	async function onPagesContextMenu(e: MouseEvent) {
+		const hit = markAt(e as PointerEvent);
+		if (!hit) return;
+		e.preventDefault();
+		menu = null;
+		window.getSelection()?.removeAllRanges();
+		activeId = hit.id;
+		moreFor = hit;
+		menuPoint = { x: e.clientX, y: e.clientY };
+		await tick();
+		moreAnchor = menuPointEl;
+		moreOpen = true;
+	}
+
+	function onPagesMouseDown(e: MouseEvent) {
+		if (e.detail < 2 || (acting !== 'select' && acting !== 'highlight')) return;
+		if (markAt(e as PointerEvent)) e.preventDefault();
+	}
 
 	async function fromMenu(run: (a: Annotation) => unknown) {
 		const m = menu;
@@ -986,6 +1032,8 @@
 		if (!a) return;
 		if (value === 'delete') void removeAnnotation(a);
 		else if (value === 'open') openNote(a.id);
+		else if (value === 'cite') void cite(a);
+		else if (value === 'link') void link(a);
 		else if (value === 'edit') activeId = editingId = a.id;
 	}
 
@@ -994,19 +1042,7 @@
 	/* -------------------------------------------------------------------------- */
 
 	// A bare highlight stays out of the margin until it's picked or given a comment.
-	const notes = $derived(
-		here.filter((a) => a.comment || a.id === activeId || a.id === editingId)
-	);
-	const rail = $derived(railFits && wantsRail);
-	let headHeight = $state(0);
-	// the digest reads at the full column whatever the sidenotes show, since it has no margin
-	const columnWidth = $derived(width + (rail ? RAIL_GAP + railWidth : 0));
-
-	function toggleSidenotes() {
-		sidenotesOn = !sidenotesOn;
-		tab.state.pdf_sidenotes = sidenotesOn;
-	}
-
+	const notes = $derived(here.filter((a) => a.comment || a.id === activeId || a.id === editingId));
 	const noteActions: NoteActions = {
 		onOpenNote: openNote,
 		onActivate: (a) => (activeId = a.id),
@@ -1488,6 +1524,8 @@
 	// takes them, and never while text is being typed.
 	const paneActive = $derived(!editor?.session || editor.session.active === editor);
 	const docked = $derived(!!pdf && !flow && !notice && mode === 'pages');
+	let barHeight = $state(0);
+	const heroOnTop = $derived(flow || !!notice || mode === 'digest');
 
 	function onWindowKey(e: KeyboardEvent) {
 		if (!paneActive || !rootEl?.isConnected || typingIn(e.target)) return;
@@ -1506,6 +1544,15 @@
 			return;
 		}
 		if (e.altKey) return;
+		if (e.key.length === 1 && e.key !== ' ') {
+			const a = seed === null && !editingId && here.find((x) => x.id === activeId);
+			if (seed !== null) seed += e.key;
+			else if (a && !a.comment) typeComment(a, e.key);
+			if (seed !== null) {
+				e.preventDefault();
+				return;
+			}
+		}
 		if ((e.key === 'Delete' || e.key === 'Backspace') && activeId && !editingId) {
 			const a = annotations.items.find((x) => x.id === activeId);
 			if (a) void removeAnnotation(a);
@@ -1537,6 +1584,23 @@
 		if (redo ? history.atPresent : history.index === 0) return;
 		e.preventDefault();
 		walk(redo);
+	}
+
+	let seed: string | null = null;
+
+	function typeComment(a: Annotation, key: string) {
+		seed = key;
+		activeId = editingId = a.id;
+		let tries = 0;
+		const feed = () => {
+			const el = document.activeElement as HTMLElement | null;
+			if (el?.isContentEditable && rootEl?.contains(el)) {
+				document.execCommand('insertText', false, seed ?? '');
+				seed = null;
+			} else if (editingId === a.id && tries++ < 30) requestAnimationFrame(feed);
+			else seed = null;
+		};
+		requestAnimationFrame(feed);
 	}
 
 	function typingIn(target: EventTarget | null): boolean {
@@ -1579,10 +1643,6 @@
 			onOpenEdition={openEdition}
 		/>
 	{/if}
-	<span class="meta-fill"></span>
-	{#if here.length}
-		<ModeSwitch {mode} onChange={setMode} />
-	{/if}
 {/snippet}
 
 <!-- ----------------------------- The viewer ------------------------------ -->
@@ -1608,8 +1668,12 @@
 			if (!el.closest('.pages, .rail, .margin-markers, .ink-menu')) activeId = null;
 		}}
 	>
-		<div class="column" style:width="{columnWidth}px">
-			{#if notice && handle}
+		<div
+			class="column"
+			class:barred={docked}
+			style:width="{mode === 'digest' ? fitWidth : width}px"
+		>
+			{#if handle && heroOnTop}
 				<DocumentHero
 					{handle}
 					loaded
@@ -1622,43 +1686,10 @@
 					extra={heroExtra}
 				/>
 			{/if}
-			{#if rail && handle && !notice}
-				<div class="rail" style:left="{width + RAIL_GAP}px" style:width="{railWidth}px">
-					<div class="rail-head">
-						<SidebarHeader
-							{handle}
-							onDelete={deleteDoc}
-							bind:propsOpen
-							bind:height={headHeight}
-							{back}
-							{forward}
-							{onOpenFolder}
-							extra={viewing || elsewhere.length || inkLeft.length || here.length
-								? headExtra
-								: undefined}
-						/>
-					</div>
-					{#if mode === 'pages' && pdf && width > 0}
-						<SideNotes
-							{notes}
-							{anchorY}
-							{activeId}
-							{editingId}
-							{citedBy}
-							viewTop={railViewTop}
-							headBottom={Math.max(0, railViewTop + RAIL_HEAD_TOP) + headHeight}
-							{...noteActions}
-						/>
-					{/if}
-				</div>
-			{/if}
 			{#if notice}
 				<GonePage headline={notice.headline} detail={notice.detail} {actions} />
 			{:else if mode === 'digest'}
-				<div class="digest" style:width="{width}px" style:--font-editor={editorFont}>
-					{#if !rail}
-						<div class="digest-switch"><ModeSwitch {mode} onChange={setMode} /></div>
-					{/if}
+				<div class="digest" style:--font-editor={editorFont}>
 					<PdfDigest
 						annotations={here}
 						{citedBy}
@@ -1682,6 +1713,8 @@
 						onpointermove={onPagesPointerMove}
 						onpointerup={onPagesPointerUp}
 						onpointerleave={() => (hoverMarkId = null)}
+						onmousedown={onPagesMouseDown}
+						oncontextmenu={onPagesContextMenu}
 					>
 						{#each shownPages as n (n)}
 							<div
@@ -1740,7 +1773,11 @@
 							{layout}
 						/>
 					{/if}
-					{#if !rail}
+					{#if rail}
+						<div class="rail" style:left="{width + RAIL_GAP}px" style:width="{railWidth}px">
+							<SideNotes {notes} {anchorY} {activeId} {editingId} {citedBy} {...noteActions} />
+						</div>
+					{:else}
 						<MarginMarkers
 							{notes}
 							{anchorY}
@@ -1751,7 +1788,11 @@
 							hoverMark={hoverMarkId}
 							{...noteActions}
 							pageWidth={width}
-							pane={{ left: (columnWidth - paneW) / 2, right: (columnWidth + paneW) / 2 }}
+							{dark}
+							pane={{
+								left: Math.min(0, (width - paneW) / 2),
+								right: Math.min(0, (width - paneW) / 2) + paneW
+							}}
 							onClose={() => (activeId = editingId = null)}
 						/>
 					{/if}
@@ -1763,7 +1804,6 @@
 		<SelectionMenu
 			x={menu.x}
 			y={menu.y}
-			{color}
 			writable={canAnnotate}
 			onColor={(c) => {
 				color = c;
@@ -1782,6 +1822,19 @@
 			onClose={() => (menu = null)}
 		/>
 	{/if}
+	{#if docked && handle}
+		<div class="top-bar" bind:clientHeight={barHeight}>
+			<SidebarHeader
+				{handle}
+				onDelete={deleteDoc}
+				bind:propsOpen
+				{back}
+				{forward}
+				{onOpenFolder}
+				extra={viewing || elsewhere.length || inkLeft.length ? headExtra : undefined}
+			/>
+		</div>
+	{/if}
 	{#if docked}
 		<PdfDock
 			bind:tool
@@ -1791,8 +1844,6 @@
 			disabled={!canAnnotate}
 			onZoomReset={() => setZoom(1)}
 			{dark}
-			sidenotes={sidenotesOn}
-			onToggleSidenotes={toggleSidenotes}
 			onToggleDark={() => {
 				darkChoice = !dark;
 				tab.state.pdf_dark = darkChoice;
@@ -1801,7 +1852,7 @@
 		/>
 	{/if}
 	{#if !flow}
-		<ScrollThumb scroller={scrollEl} />
+		<ScrollThumb scroller={scrollEl} top={docked ? barHeight + 8 : undefined} />
 	{/if}
 	{#if docked}
 		<AnnotationTicks
@@ -1809,6 +1860,7 @@
 			pages={pagesEl}
 			annotations={here}
 			{anchorY}
+			top={docked ? barHeight + 8 : undefined}
 			onGoTo={(a) => {
 				activeId = a.id;
 				scrollToAnnotation(a);
@@ -1822,6 +1874,12 @@
 
 <!-- -------------------------- A comment's menu --------------------------- -->
 
+<span
+	class="menu-point"
+	bind:this={menuPointEl}
+	style:left="{menuPoint.x}px"
+	style:top="{menuPoint.y}px"
+></span>
 <Menu
 	bind:open={moreOpen}
 	anchor={moreAnchor}
@@ -1835,6 +1893,7 @@
 
 	.pdf-viewer {
 		position: relative;
+		display: flow-root;
 		height: 100%;
 	}
 
@@ -1842,14 +1901,59 @@
 		height: auto;
 	}
 
+	.top-bar {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 5;
+		background: var(--color-surface);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.top-bar :global(.side-head) {
+		width: calc(100% - 48px);
+		margin: 0 auto;
+		padding: 10px 0;
+		border-radius: 0;
+		background: transparent;
+	}
+
+	.column.barred {
+		padding-top: 60px;
+	}
+
+	.menu-point {
+		position: fixed;
+		width: 0;
+		height: 0;
+		pointer-events: none;
+	}
+
 	.scroll {
 		height: 100%;
 		overflow-y: auto;
-		scrollbar-width: none;
 	}
 
 	.scroll::-webkit-scrollbar {
-		display: none;
+		width: 0;
+		height: 10px;
+	}
+
+	.scroll::-webkit-scrollbar-track,
+	.scroll::-webkit-scrollbar-corner {
+		background: transparent;
+	}
+
+	.scroll::-webkit-scrollbar-thumb {
+		border: 2px solid transparent;
+		border-radius: 5px;
+		background: var(--color-border);
+		background-clip: content-box;
+	}
+
+	.scroll::-webkit-scrollbar-thumb:hover {
+		background-color: var(--color-ui-dulled);
 	}
 
 	.pdf-viewer:not(.flow) .scroll {
@@ -1868,7 +1972,6 @@
 	   it, and puts the title where a note's sits. */
 	.column {
 		position: relative;
-		max-width: 100%;
 		margin: 0 auto;
 		padding: 16px 0 96px;
 	}
@@ -1886,6 +1989,7 @@
 
 	/* In flow the host spaces entries itself, as it does for a note's hero. */
 	.flow .column {
+		max-width: 100%;
 		padding-top: 0;
 	}
 
@@ -1931,26 +2035,7 @@
 
 	.rail {
 		position: absolute;
-		top: 16px;
-		bottom: 0;
-	}
-
-	.flow .rail {
 		top: 0;
-	}
-
-	.rail-head {
-		position: sticky;
-		top: 16px;
-		z-index: 3;
-		height: 0;
-		margin-left: -10px;
-	}
-
-	.digest-switch {
-		display: flex;
-		justify-content: flex-end;
-		padding-bottom: 10px;
 	}
 
 	/* ----------------- Pages: paper, print, dark and drawing ------------------ */

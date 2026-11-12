@@ -13,6 +13,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import type { Annotation } from '#lib/pdf/annotation.js';
 	import type { Citing } from '#lib/pdf/citation.js';
+	import { stackTops } from '#lib/pdf/margin.js';
 	import SideNote, { TEXT_INSET, type NoteActions } from './SideNote.svelte';
 
 	/* -------------------------------------------------------------------------- */
@@ -29,6 +30,7 @@
 		hoverMark = null,
 		pageWidth,
 		pane,
+		dark = false,
 		onClose,
 		...actions
 	}: NoteActions & {
@@ -47,6 +49,7 @@
 		pageWidth: number;
 		/** The pane's left and right edges in the pages column's coordinates. */
 		pane: { left: number; right: number };
+		dark?: boolean;
 		onClose: () => void;
 	} = $props();
 
@@ -54,12 +57,34 @@
 	/*                               The open card                                */
 	/* -------------------------------------------------------------------------- */
 
+	const MARKER = 20;
+	const MARKER_GAP = 4;
+	const MARKER_INSET = 18;
+	const MARKER_RISE = 3;
+
+	const tops = $derived(
+		stackTops(
+			notes.filter((a) => a.comment),
+			(a) => anchorY(a) - MARKER_RISE,
+			() => MARKER,
+			MARKER_GAP
+		)
+	);
+	const markerLeft = $derived(pageWidth - MARKER_INSET - MARKER);
+
+	function toggle(a: Annotation) {
+		clearTimeout(hoverTimer);
+		hoverId = null;
+		if (a.id === pinned?.id) onClose();
+		else actions.onActivate(a);
+	}
+
 	const SURFACE_WIDTH = 312;
 	const SURFACE_GAP = 20;
 	const SURFACE_DROP = 8;
 	const PANE_EDGE = 12;
 	// the surface's border and padding, above the note's own inset
-	const SURFACE_INSET = 5;
+	const SURFACE_INSET = 0;
 
 	const HOVER_ENTER_MS = 300;
 	const HOVER_LEAVE_MS = 250;
@@ -108,13 +133,26 @@
 	const surfaceLeft = $derived(
 		beside
 			? pageWidth + SURFACE_GAP
-			: Math.max(pane.left + PANE_EDGE, pageWidth - SURFACE_GAP - surfaceWidth)
+			: Math.max(
+					pane.left + PANE_EDGE,
+					Math.min(markerLeft - MARKER_GAP * 2, pane.right - PANE_EDGE) - surfaceWidth
+				)
 	);
 	const surfaceTop = (a: Annotation) =>
 		beside ? anchorY(a) - TEXT_INSET - SURFACE_INSET : belowY(a) + SURFACE_DROP;
 </script>
 
-<div class="margin-markers">
+<div class="margin-markers" class:dark>
+	{#each tops as [a, top], i (a.id)}
+		<button
+			class="marker"
+			class:on={a.id === open?.id}
+			type="button"
+			style:left="{markerLeft}px"
+			style:top="{top}px"
+			onclick={() => toggle(a)}>{i + 1}</button
+		>
+	{/each}
 	<!-- keyed, so each annotation gets a card and a draft of its own, as in the margin -->
 	{#each open ? [open] : [] as a (a.id)}
 		<div
@@ -141,14 +179,47 @@
 </div>
 
 <style>
+	.marker {
+		position: absolute;
+		z-index: 2;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		padding: 0;
+		border: 0;
+		border-radius: 999px;
+		background: rgba(0, 0, 0, 0.06);
+		color: rgb(74, 74, 69);
+		font-family: var(--font-ui);
+		font-size: 10px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: background-color 120ms ease;
+	}
+
+	.marker:hover,
+	.marker.on {
+		background: rgba(0, 0, 0, 0.14);
+	}
+
+	.dark .marker {
+		background: rgba(255, 255, 255, 0.08);
+		color: rgb(168, 168, 163);
+	}
+
+	.dark .marker:hover,
+	.dark .marker.on {
+		background: rgba(255, 255, 255, 0.18);
+	}
+
 	.surface {
 		position: absolute;
 		z-index: 4;
 		box-sizing: border-box;
-		padding: 4px;
-		border: 1px solid var(--color-border);
 		border-radius: 8px;
-		background: var(--color-bg);
+		background: var(--color-surface);
 		box-shadow: var(--menu-shadow);
 	}
 </style>

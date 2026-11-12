@@ -48,7 +48,7 @@
 	} = $props();
 
 	let draft = $state('');
-	// where a double-click started the edit, so the caret lands where the reader pointed
+	// where a click started the edit, so the caret lands where the reader pointed
 	let startAt: { x: number; y: number } | null = $state(null);
 
 	// Whatever ends the edit (Escape, a click away, the viewer picking something else) keeps what
@@ -82,8 +82,14 @@
 		tabindex="0"
 		draggable={!editing}
 		ondragstart={(e) => dragCitation(e, a.title)}
-		onclick={() => (editing ? null : actions.onActivate(a))}
-		ondblclick={(e) => {
+		oncontextmenu={(e) => {
+			if (editing) return;
+			e.preventDefault();
+			actions.onMore(a, e.currentTarget as HTMLElement);
+		}}
+		onclick={(e) => {
+			if (editing) return;
+			if ((e.target as Element).closest('a')) return actions.onActivate(a);
 			startAt = { x: e.clientX, y: e.clientY };
 			actions.onEdit(a);
 		}}
