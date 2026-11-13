@@ -3,11 +3,11 @@ use crate::commands::source_commands::source_root;
 use crate::commands::OpError;
 use crate::services::body::{merge_body_tags, rewrite_tags, tag_mentions};
 use crate::services::fs::{
-    atomic_write, doc_dir, has_history, is_taken, move_file, mtime_ms, read_meta, repath_meta,
-    resolve_in_source, rewrite_meta, touch_meta, validate_file_name,
+    atomic_write, doc_dir, has_history, is_taken, move_file, mtime_ms, read_meta, read_text,
+    repath_meta, resolve_in_source, rewrite_meta, touch_meta, validate_file_name, write_text,
 };
 use crate::services::metadata::{self, Head};
-use crate::services::{frontmatter, index_document, sync_folders, sync_tags};
+use crate::services::{frontmatter, index_document, index_pages, sync_folders, sync_tags};
 use crate::AppData;
 use serde::Serialize;
 use serde_json::Value;
@@ -420,6 +420,33 @@ pub fn save_pdf_ink(
         }
     })
     .map_err(OpError::from)
+}
+
+#[tauri::command]
+pub async fn read_pdf_text(
+    app: AppHandle,
+    source_id: String,
+    id: String,
+    rel_path: String,
+) -> Result<Option<Vec<String>>, OpError> {
+    let root = root_of(&app, &source_id)?;
+    Ok(read_text(&root, &id, &rel_path))
+}
+
+#[tauri::command]
+pub async fn save_pdf_text(
+    app_data: State<'_, AppData>,
+    app: AppHandle,
+    id: String,
+    source_id: String,
+    rel_path: String,
+    pages: Vec<String>,
+) -> Result<(), OpError> {
+    let root = root_of(&app, &source_id)?;
+    index_pages(&app_data.db, &id, &pages)
+        .await
+        .map_err(OpError::from)?;
+    write_text(&root, &id, &rel_path, pages).map_err(OpError::from)
 }
 
 #[tauri::command]

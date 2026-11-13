@@ -13,8 +13,10 @@
 	import { fade, fly } from 'svelte/transition';
 	import type { Annotation } from '#lib/pdf/annotation.js';
 	import type { Citing } from '#lib/pdf/citation.js';
+	import { untrack } from 'svelte';
 	import { stackTops } from '#lib/pdf/margin.js';
-	import SideNote, { TEXT_INSET, type NoteActions } from './SideNote.svelte';
+	import { MessageSquare } from '@lucide/svelte';
+	import SideNote, { type NoteActions } from './SideNote.svelte';
 
 	/* -------------------------------------------------------------------------- */
 	/*                                   Props                                    */
@@ -24,6 +26,8 @@
 		notes,
 		anchorY,
 		belowY,
+		leftX,
+		viewBottom,
 		activeId = null,
 		editingId = null,
 		citedBy = new Map(),
@@ -40,6 +44,8 @@
 		anchorY: (a: Annotation) => number;
 		/** The bottom of an annotation's passage on its own page. */
 		belowY: (a: Annotation) => number;
+		leftX: (a: Annotation) => number;
+		viewBottom: () => number;
 		activeId?: string | null;
 		editingId?: string | null;
 		/** The notes citing each annotation, by annotation id. */
@@ -57,10 +63,10 @@
 	/*                               The open card                                */
 	/* -------------------------------------------------------------------------- */
 
-	const MARKER = 20;
+	const MARKER = 18;
 	const MARKER_GAP = 4;
 	const MARKER_INSET = 18;
-	const MARKER_RISE = 3;
+	const MARKER_RISE = 2;
 
 	const tops = $derived(
 		stackTops(
@@ -80,11 +86,8 @@
 	}
 
 	const SURFACE_WIDTH = 312;
-	const SURFACE_GAP = 20;
 	const SURFACE_DROP = 8;
 	const PANE_EDGE = 12;
-	// the surface's border and padding, above the note's own inset
-	const SURFACE_INSET = 0;
 
 	const HOVER_ENTER_MS = 300;
 	const HOVER_LEAVE_MS = 250;
@@ -127,31 +130,32 @@
 	const hovered = $derived(notes.find((a) => a.id === hoverId) ?? null);
 	const open = $derived(editingId ? pinned : (hovered ?? pinned));
 	const surfaceWidth = $derived(Math.min(SURFACE_WIDTH, pane.right - pane.left - PANE_EDGE * 2));
-	const beside = $derived(pageWidth + SURFACE_GAP + surfaceWidth <= pane.right - PANE_EDGE);
-	// beside the page when there's room, else under the passage, so the card doesn't cover the
-	// words it's about
-	const surfaceLeft = $derived(
-		beside
-			? pageWidth + SURFACE_GAP
-			: Math.max(
-					pane.left + PANE_EDGE,
-					Math.min(markerLeft - MARKER_GAP * 2, pane.right - PANE_EDGE) - surfaceWidth
-				)
+	let surfaceHeight = $state(0);
+
+	const surfaceLeft = (a: Annotation) => {
+		const lo = Math.max(pane.left, 0) + PANE_EDGE;
+		const hi = Math.min(pageWidth, pane.right) - PANE_EDGE - surfaceWidth;
+		return Math.max(lo, Math.min(leftX(a), hi));
+	};
+	const above = $derived(
+		!!open && belowY(open) + SURFACE_DROP + surfaceHeight > untrack(viewBottom)
 	);
 	const surfaceTop = (a: Annotation) =>
-		beside ? anchorY(a) - TEXT_INSET - SURFACE_INSET : belowY(a) + SURFACE_DROP;
+		above ? anchorY(a) - SURFACE_DROP - surfaceHeight : belowY(a) + SURFACE_DROP;
 </script>
 
 <div class="margin-markers" class:dark>
-	{#each tops as [a, top], i (a.id)}
+	{#each tops as [a, top] (a.id)}
 		<button
 			class="marker"
 			class:on={a.id === open?.id}
 			type="button"
 			style:left="{markerLeft}px"
 			style:top="{top}px"
-			onclick={() => toggle(a)}>{i + 1}</button
+			onclick={() => toggle(a)}
 		>
+			<MessageSquare size={10} strokeWidth={2} />
+		</button>
 	{/each}
 	<!-- keyed, so each annotation gets a card and a draft of its own, as in the margin -->
 	{#each open ? [open] : [] as a (a.id)}
@@ -162,7 +166,8 @@
 			onpointerleave={unhover}
 			in:fly={{ y: 4, duration: 120 }}
 			out:fade={{ duration: 80 }}
-			style:left="{surfaceLeft}px"
+			bind:offsetHeight={surfaceHeight}
+			style:left="{surfaceLeft(a)}px"
 			style:top="{surfaceTop(a)}px"
 			style:width="{surfaceWidth}px"
 		>
@@ -185,33 +190,20 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 20px;
-		height: 20px;
+		width: 18px;
+		height: 18px;
 		padding: 0;
 		border: 0;
 		border-radius: 999px;
-		background: rgba(0, 0, 0, 0.06);
-		color: rgb(74, 74, 69);
-		font-family: var(--font-ui);
-		font-size: 10px;
-		font-weight: 600;
+		background: linear-gradient(var(--chip-bg), var(--chip-bg)), var(--color-surface);
+		color: var(--color-text-primary);
 		cursor: pointer;
-		transition: background-color 120ms ease;
+		transition: background 120ms ease;
 	}
 
 	.marker:hover,
 	.marker.on {
-		background: rgba(0, 0, 0, 0.14);
-	}
-
-	.dark .marker {
-		background: rgba(255, 255, 255, 0.08);
-		color: rgb(168, 168, 163);
-	}
-
-	.dark .marker:hover,
-	.dark .marker.on {
-		background: rgba(255, 255, 255, 0.18);
+		background: linear-gradient(var(--chip-bg-hover), var(--chip-bg-hover)), var(--color-surface);
 	}
 
 	.surface {

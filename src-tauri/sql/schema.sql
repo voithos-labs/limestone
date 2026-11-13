@@ -71,6 +71,7 @@ create table if not exists asset_refs (
 
 -- FTS --
 create virtual table if not exists documents_fts using fts5(doc_id unindexed, body);
+create virtual table if not exists pdf_text_fts using fts5(doc_id unindexed, page unindexed, body);
 
 -- ── Indexes ──────────────────────────────────────────────────────────────────────────
 

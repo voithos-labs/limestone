@@ -50,6 +50,8 @@ export async function copyLink(title: string): Promise<void> {
 /** Tab state that asks a PDF viewer to land on one annotation once it opens. */
 export const OPEN_AT_ANNOTATION = 'open_at_annotation';
 
+export const OPEN_AT_PAGE = 'open_at_page';
+
 /** Opens the PDF, or its open tab, at one of its annotations. */
 export async function openAtAnnotation(
 	editor: EditorState,

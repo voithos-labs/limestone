@@ -281,7 +281,7 @@ pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, sour
         }
         if let Some((rel_path, created_at)) = own.get(doc_id.as_str()) {
             // todo: switch to lazy-write (meta.json) for 1.0
-            if !entry.path().join(META_FILE).exists() {
+            if !entry.path().join(META_FILE).exists() && has_history(&entry.path()) {
                 let meta = DocMeta {
                     rel_path: rel_path.to_string(),
                     created_at: *created_at,
@@ -311,6 +311,9 @@ pub(crate) async fn sweep_orphans(app: &AppHandle, pool: &sqlx::SqlitePool, sour
             }
             None => {
                 let Some(meta) = read_meta(&entry.path()) else {
+                    if !has_history(&entry.path()) {
+                        let _ = fs::remove_dir_all(entry.path());
+                    }
                     continue;
                 };
                 let occupant = live_by_path

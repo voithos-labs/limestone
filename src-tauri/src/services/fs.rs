@@ -44,6 +44,7 @@ pub fn clean_location(raw: &str) -> io::Result<String> {
 }
 
 pub const META_FILE: &str = "meta.json";
+pub const TEXT_FILE: &str = "text.json";
 
 pub fn docs_root(source_path: &Path) -> PathBuf {
     source_path.join(".limestone").join("docs")
@@ -78,7 +79,41 @@ pub fn has_history(dir: &Path) -> bool {
         .into_iter()
         .flatten()
         .flatten()
-        .any(|e| e.file_name() != META_FILE)
+        .any(|e| e.file_name() != META_FILE && e.file_name() != TEXT_FILE)
+}
+
+#[derive(Serialize, Deserialize)]
+struct DocText {
+    size: u64,
+    mtime: i64,
+    pages: Vec<String>,
+}
+
+pub fn read_text(source_path: &Path, doc_id: &str, rel_path: &str) -> Option<Vec<String>> {
+    let bytes = fs::read(doc_dir(source_path, doc_id).join(TEXT_FILE)).ok()?;
+    let text: DocText = serde_json::from_slice(&bytes).ok()?;
+    let file = source_path.join(rel_path);
+    let current = fs::metadata(&file).ok()?.len() == text.size && mtime_ms(&file)? == text.mtime;
+    current.then_some(text.pages)
+}
+
+pub fn write_text(
+    source_path: &Path,
+    doc_id: &str,
+    rel_path: &str,
+    pages: Vec<String>,
+) -> io::Result<()> {
+    let file = source_path.join(rel_path);
+    let text = DocText {
+        size: fs::metadata(&file)?.len(),
+        mtime: mtime_ms(&file).unwrap_or(0),
+        pages,
+    };
+    ensure_writable(source_path)?;
+    atomic_write(
+        &doc_dir(source_path, doc_id).join(TEXT_FILE),
+        &serde_json::to_vec(&text)?,
+    )
 }
 
 pub fn newest_change_ms(dir: &Path) -> i64 {

@@ -91,6 +91,7 @@
 	import { applyChange, changeStep, type MarkChange, type Marks } from '#lib/pdf/changes.js';
 	import {
 		OPEN_AT_ANNOTATION,
+		OPEN_AT_PAGE,
 		citedIn,
 		copyCitation,
 		copyLink,
@@ -119,6 +120,8 @@
 	import InkMenu from './InkMenu.svelte';
 	import SelectionMenu from './SelectionMenu.svelte';
 	import SideNotes from './SideNotes.svelte';
+	import PdfSearch from './PdfSearch.svelte';
+	import PdfFind from '#lib/pdf/PdfFind.svelte.js';
 	import SidebarHeader from './SidebarHeader.svelte';
 	import type { NoteActions } from './SideNote.svelte';
 	import MarginMarkers from './MarginMarkers.svelte';
@@ -148,10 +151,9 @@
 	const SIDE_PAD = 24;
 	const EDGE_GAP = 2;
 	const MIN_PAGE_WIDTH = 560;
-	const RAIL_MIN = 240;
-	const RAIL_MAX = 320;
+	const RAIL_WIDTH = 320;
 	const RAIL_GAP = 24;
-	const RAIL_EDGE = 12;
+	const DOCK_ROOM = 72;
 	const PAGE_GAP = 10;
 	const RESIZE_SETTLE_MS = 100;
 	// pages within this of the view are mounted and drawn, and stay until they're twice as far
@@ -179,6 +181,7 @@
 	let viewing: string | null = $state(null);
 	let viewingDay: string | null = $state(null);
 	let shownEdition: string | null = $state(null);
+	let pdfIsFile = false;
 
 	$effect(() => {
 		const h = handle;
@@ -208,6 +211,7 @@
 				if (!old) annotations.edition = edition;
 				shownEdition = edition;
 				ratios = Array.from({ length: doc.numPages }, () => first.width / first.height);
+				pdfIsFile = !old;
 				pdf = doc;
 			} catch (e) {
 				if (!cancelled) failure = failureOf(e);
@@ -328,16 +332,23 @@
 	let columnMax = $state(MAX_PAGE_WIDTH);
 	const savedZoom = untrack(() => tab.state.pdf_zoom);
 	let zoom = $state(typeof savedZoom === 'number' ? savedZoom : 1);
-	const fitWidth = $derived(Math.max(0, Math.min(columnMax, paneW - SIDE_PAD * 2)));
+	let sidenotesOn = $state(untrack(() => tab.state.pdf_sidenotes) !== false);
+	const room = $derived(paneW - SIDE_PAD * 2);
+	const railRoom = $derived(sidenotesOn && !flow && room >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_WIDTH);
+	const fitWidth = $derived(
+		Math.max(0, Math.min(columnMax, room - (railRoom ? RAIL_GAP + RAIL_WIDTH : 0)))
+	);
 	const width = $derived(
 		Math.round(
 			Math.max(0, flow ? Math.min(fitWidth * zoom, paneW - EDGE_GAP * 2) : fitWidth * zoom)
 		)
 	);
-	const railWidth = $derived(
-		Math.min(RAIL_MAX, Math.floor((paneW - width) / 2) - RAIL_GAP - RAIL_EDGE)
-	);
-	const rail = $derived(railWidth >= RAIL_MIN);
+	const rail = $derived(railRoom && width + RAIL_GAP + RAIL_WIDTH <= room);
+
+	function toggleSidenotes() {
+		sidenotesOn = !sidenotesOn;
+		tab.state.pdf_sidenotes = sidenotesOn;
+	}
 
 	/** Measures the pane, and again each time a resize settles. Attached to the viewer's root. */
 	function measurePane(el: HTMLElement) {
@@ -475,6 +486,7 @@
 				node.prepend(canvas);
 				text = layText(node, page, viewport, pdfLib);
 				await text.render().catch(() => {});
+				if (live) paintFind();
 			})();
 
 			return () => {
@@ -629,7 +641,7 @@
 	function goToPage(n: number) {
 		const v = view();
 		const top = layout.tops[n - 1];
-		if (v && top !== undefined) scrollBy(v, top - barHeight - 12 - v.top);
+		if (v && top !== undefined) scrollBy(v, top - barHeight - 16 - v.top);
 	}
 
 	function scrollToAnnotation(a: Annotation) {
@@ -673,6 +685,15 @@
 		const i = a.page - 1;
 		const bottom = Math.max(0, ...rectsOn(a, a.page).map((r) => r[1] + r[3]));
 		return (layout.tops[i] ?? 0) + bottom * (layout.heights[i] ?? 0);
+	}
+
+	function leftX(a: Annotation): number {
+		return Math.min(1, ...rectsOn(a, a.page).map((r) => r[0])) * width;
+	}
+
+	function viewBottom(): number {
+		const v = view();
+		return v ? v.top + v.height - DOCK_ROOM : Infinity;
 	}
 
 	/* -------------------------------------------------------------------------- */
@@ -1565,6 +1586,11 @@
 			return;
 		}
 		if (e.ctrlKey || e.metaKey) {
+			if (docked && !e.altKey && e.key.toLowerCase() === 'f') {
+				e.preventDefault();
+				void openSearch();
+				return;
+			}
 			if (docked) historyKey(e);
 			if (!flow) zoomKey(e);
 			return;
@@ -1628,6 +1654,97 @@
 		};
 		requestAnimationFrame(feed);
 	}
+
+	/* ---------------------------------- Find ---------------------------------- */
+
+	const SEARCH_ROOM = 44;
+	const find = new PdfFind(() => pdf);
+	let searchBox: PdfSearch | undefined = $state();
+	let searchOpen = $state(false);
+
+	$effect(() => {
+		const h = handle;
+		const stored = pdf && h && pdfIsFile;
+		untrack(() => {
+			find.reset();
+			if (stored) void find.prime({ id: h.id, sourceId: h.source.id, relPath: h.relPath });
+		});
+	});
+
+	$effect(() => {
+		const n = tab.state[OPEN_AT_PAGE];
+		if (typeof n !== 'number' || !pdf || !pagesEl) return;
+		delete tab.state[OPEN_AT_PAGE];
+		requestAnimationFrame(() => goToPage(n));
+	});
+
+	$effect.pre(() => {
+		void rail;
+		if (!document.activeElement?.closest('.pdf-search')) return;
+		searchOpen = true;
+		void tick().then(() => searchBox?.focus(false));
+	});
+
+	async function openSearch() {
+		searchOpen = true;
+		await tick();
+		searchBox?.focus();
+	}
+
+	async function stepFind(dir: 1 | -1) {
+		const m = find.step(dir, currentPage);
+		if (!m) return;
+		const at = await find.yOf(m);
+		const v = view();
+		if (!v) return;
+		const i = m.page - 1;
+		const y = (layout.tops[i] ?? 0) + at * (layout.heights[i] ?? 0);
+		scrollBy(v, y - v.height / 3 - v.top);
+	}
+
+	function paintFind() {
+		if (!('highlights' in CSS)) return;
+		const needle = find.query.trim().toLowerCase();
+		if (!needle || !pagesEl) {
+			CSS.highlights.delete('pdf-find');
+			return;
+		}
+		const ranges: Range[] = [];
+		for (const layer of pagesEl.querySelectorAll('.textLayer')) {
+			const nodes: Text[] = [];
+			const starts: number[] = [];
+			let text = '';
+			const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
+			for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+				starts.push(text.length);
+				nodes.push(node as Text);
+				text += (node.nodeValue ?? '').toLowerCase();
+			}
+			const locate = (at: number): [Text, number] => {
+				let i = starts.length - 1;
+				while (i > 0 && starts[i] > at) i--;
+				return [nodes[i], at - starts[i]];
+			};
+			for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) {
+				const [from, fromAt] = locate(at);
+				const [to, toAt] = locate(at + needle.length - 1);
+				const range = document.createRange();
+				range.setStart(from, fromAt);
+				range.setEnd(to, toAt + 1);
+				ranges.push(range);
+			}
+		}
+		CSS.highlights.set('pdf-find', new Highlight(...ranges));
+	}
+
+	$effect(() => {
+		void find.query;
+		void shownPages;
+		void tick().then(paintFind);
+		return () => {
+			if ('highlights' in CSS) CSS.highlights.delete('pdf-find');
+		};
+	});
 
 	function typingIn(target: EventTarget | null): boolean {
 		const el = target as HTMLElement | null;
@@ -1696,8 +1813,9 @@
 	>
 		<div
 			class="column"
-			class:barred={docked}
+			style:padding-top={docked ? `${(barHeight || 52) + 16}px` : null}
 			style:width="{mode === 'digest' ? fitWidth : width}px"
+			style:left="{rail ? -(RAIL_GAP + RAIL_WIDTH) / 2 : 0}px"
 		>
 			{#if handle && heroOnTop}
 				<DocumentHero
@@ -1800,14 +1918,27 @@
 						/>
 					{/if}
 					{#if rail}
-						<div class="rail" style:left="{width + RAIL_GAP}px" style:width="{railWidth}px">
-							<SideNotes {notes} {anchorY} {activeId} {editingId} {citedBy} {...noteActions} />
+						<div class="rail" style:left="{width + RAIL_GAP}px" style:width="{RAIL_WIDTH}px">
+							<div class="rail-search" style:top="{barHeight + 16}px">
+								<PdfSearch bind:this={searchBox} {find} onStep={stepFind} />
+							</div>
+							<SideNotes
+								{notes}
+								{anchorY}
+								{activeId}
+								{editingId}
+								{citedBy}
+								minTop={SEARCH_ROOM}
+								{...noteActions}
+							/>
 						</div>
 					{:else}
 						<MarginMarkers
 							{notes}
 							{anchorY}
 							{belowY}
+							{leftX}
+							{viewBottom}
 							{activeId}
 							{editingId}
 							{citedBy}
@@ -1858,6 +1989,16 @@
 			/>
 		</div>
 	{/if}
+	{#if docked && !rail && searchOpen}
+		<div class="float-search" style:top="{barHeight + 14}px">
+			<PdfSearch
+				bind:this={searchBox}
+				{find}
+				onStep={stepFind}
+				onClose={() => (searchOpen = false)}
+			/>
+		</div>
+	{/if}
 	{#if docked}
 		<PdfDock
 			bind:tool
@@ -1871,6 +2012,8 @@
 			{dark}
 			{color}
 			onColor={pickColor}
+			sidenotes={sidenotesOn}
+			onToggleSidenotes={toggleSidenotes}
 			onToggleDark={() => {
 				darkChoice = !dark;
 				tab.state.pdf_dark = darkChoice;
@@ -1941,13 +2084,9 @@
 	.top-bar :global(.side-head) {
 		width: calc(100% - 48px);
 		margin: 0 auto;
-		padding: 10px 0;
+		padding: 12px 0;
 		border-radius: 0;
 		background: transparent;
-	}
-
-	.column.barred {
-		padding-top: 60px;
 	}
 
 	.menu-point {
@@ -2063,6 +2202,28 @@
 	.rail {
 		position: absolute;
 		top: 0;
+		bottom: 0;
+	}
+
+	.rail-search {
+		position: sticky;
+		z-index: 3;
+		height: 0;
+		margin-left: -10px;
+	}
+
+	.float-search {
+		position: absolute;
+		right: 24px;
+		z-index: 5;
+		width: 300px;
+		max-width: calc(100% - 48px);
+		border-radius: 8px;
+		box-shadow: var(--menu-shadow);
+	}
+
+	.textLayer :global(::highlight(pdf-find)) {
+		background: rgb(var(--color-accent-rgb) / 0.4);
 	}
 
 	/* ----------------- Pages: paper, print, dark and drawing ------------------ */

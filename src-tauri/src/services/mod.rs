@@ -9,7 +9,7 @@ mod source;
 mod user;
 
 pub use bulk_ops::BulkRunner;
-pub use fts_index::index_fts;
+pub use fts_index::{index_fts, index_pages};
 pub use settings::{dot_get, JsonSettingsStore};
 pub use source::{
     cleanup_orphan_tags, create_source, index_document, load_source_config, reconcile_source,

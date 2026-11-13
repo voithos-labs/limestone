@@ -27,7 +27,7 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Moon } from '@lucide/svelte';
+	import { Moon, PanelRight } from '@lucide/svelte';
 	import { ANNOTATION_COLORS, type AnnotationColor } from '#lib/pdf/annotation.js';
 	import { ANNOTATION_RGB } from './colors.js';
 
@@ -40,6 +40,8 @@
 		dark = false,
 		color,
 		onColor,
+		sidenotes,
+		onToggleSidenotes,
 		zoomSteps,
 		onZoom,
 		onGoToPage,
@@ -58,6 +60,8 @@
 		dark?: boolean;
 		color: AnnotationColor;
 		onColor: (color: AnnotationColor) => void;
+		sidenotes: boolean;
+		onToggleSidenotes: () => void;
 		zoomSteps: readonly number[];
 		onZoom: (zoom: number) => void;
 		onGoToPage: (page: number) => void;
@@ -197,6 +201,16 @@
 			onclick={onToggleDark}
 		>
 			<Moon size={14} strokeWidth={1.75} />
+		</button>
+		<span class="sep"></span>
+		<button
+			class="tool"
+			class:on={sidenotes}
+			type="button"
+			title={sidenotes ? 'Hide comments sidebar' : 'Show comments sidebar'}
+			onclick={onToggleSidenotes}
+		>
+			<PanelRight size={14} strokeWidth={1.75} />
 		</button>
 	</div>
 </div>

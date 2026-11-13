@@ -31,6 +31,7 @@
 	} from '#lib/models/Source.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 	import Doc from '#lib/models/Doc.js';
+	import { OPEN_AT_PAGE } from '#lib/pdf/citation.js';
 	import Tag from '#lib/models/Tag.js';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
 	import { foldersHidden } from '#lib/models/Settings.svelte.js';
@@ -213,7 +214,11 @@
 			kind: 'doc',
 			match: r.match_indices,
 			deleted: r.deleted,
-			run: async (newTab) => openContent(TabState.forDoc(await Doc.load(r.id)), newTab)
+			run: async (newTab) => {
+				const next = TabState.forDoc(await Doc.load(r.id));
+				if (r.page) next.state[OPEN_AT_PAGE] = r.page;
+				openContent(next, newTab);
+			}
 		};
 	}
 

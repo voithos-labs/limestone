@@ -6,6 +6,7 @@ const MAX_RESULTS = 100;
 const TITLE_POOL = 200;
 const FTS_MIN_CHARS = 5;
 const FTS_CANDIDATE_POOL = 25;
+const PDF_PAGE_POOL = 100;
 const BM25_SATURATION = 5.0;
 const BODY_QUALITY_CAP = 0.9;
 const PHRASE_BONUS = 0.15;
@@ -36,7 +37,32 @@ interface DocRow {
 interface FtsRow extends DocRow {
 	snippet: string;
 	bm25: number;
+	page: number | null;
 }
+
+interface FtsTable {
+	name: string;
+	on: string;
+	body: number;
+	page: string;
+	pool: number;
+}
+
+const NOTES: FtsTable = {
+	name: 'documents_fts',
+	on: 'd.rowid = documents_fts.rowid',
+	body: 1,
+	page: 'NULL',
+	pool: FTS_CANDIDATE_POOL
+};
+
+const PDF_PAGES: FtsTable = {
+	name: 'pdf_text_fts',
+	on: 'd.id = pdf_text_fts.doc_id',
+	body: 2,
+	page: 'pdf_text_fts.page',
+	pool: PDF_PAGE_POOL
+};
 
 export async function searchDocuments(query: string, scope?: SearchScope): Promise<SearchResult[]> {
 	const q = query.trim();
@@ -172,17 +198,22 @@ function ftsPhraseQuery(query: string): string | null {
 	return /\s$/.test(query) ? out : out + '*';
 }
 
-async function ftsPass(match: string | null, scope?: SearchScope): Promise<FtsRow[]> {
+async function ftsPass(
+	t: FtsTable,
+	match: string | null,
+	scope?: SearchScope
+): Promise<FtsRow[]> {
 	if (!match) return [];
 	const s = scoped(scope);
 	try {
 		return await select<FtsRow>(
 			`SELECT d.id, d.title, d.rel_path, d.source_id, d.accessed_at, d.deleted_at, d.document_type,
-			        snippet(documents_fts, 1, ?, ?, '…', 16) AS snippet, bm25(documents_fts) AS bm25
-			 FROM documents_fts JOIN documents d ON d.rowid = documents_fts.rowid
-			 WHERE documents_fts MATCH ?${liveOnly(scope)}${s.and}
-			 ORDER BY bm25(documents_fts) LIMIT ?`,
-			[SNIPPET_MARK_START, SNIPPET_MARK_END, match, ...s.params, FTS_CANDIDATE_POOL]
+			        snippet(${t.name}, ${t.body}, ?, ?, '…', 16) AS snippet, bm25(${t.name}) AS bm25,
+			        ${t.page} AS page
+			 FROM ${t.name} JOIN documents d ON ${t.on}
+			 WHERE ${t.name} MATCH ?${liveOnly(scope)}${s.and}
+			 ORDER BY bm25(${t.name}) LIMIT ?`,
+			[SNIPPET_MARK_START, SNIPPET_MARK_END, match, ...s.params, t.pool]
 		);
 	} catch {
 		return [];
@@ -216,10 +247,14 @@ async function hybrid(
 	scope?: SearchScope
 ): Promise<SearchResult[]> {
 	const runFts = trimmed.length >= FTS_MIN_CHARS;
+	const fts = async (match: string | null) =>
+		runFts
+			? (await Promise.all([ftsPass(NOTES, match, scope), ftsPass(PDF_PAGES, match, scope)])).flat()
+			: [];
 	const [titleRows, matchRows, phraseRows] = await Promise.all([
 		titleMatches(trimmed, scope),
-		runFts ? ftsPass(ftsMatchQuery(query), scope) : [],
-		runFts ? ftsPass(ftsPhraseQuery(query), scope) : []
+		fts(ftsMatchQuery(query)),
+		fts(ftsPhraseQuery(query))
 	]);
 
 	const candidates = titleCandidates(titleRows, trimmed);
@@ -238,10 +273,12 @@ async function hybrid(
 				if (quality > existing.quality) {
 					existing.quality = quality;
 					existing.result.snippet = tidySnippet(row.snippet);
+					existing.result.page = row.page;
 				}
 			} else {
 				const result = docResult(row);
 				result.snippet = tidySnippet(row.snippet);
+				result.page = row.page;
 				candidates.set(row.id, {
 					result,
 					quality: Math.min(base + bonus, cap),
@@ -344,6 +381,7 @@ export interface SearchResult {
 	document_type?: string;
 	group_type: string | null;
 	snippet?: string | null;
+	page?: number | null;
 	emoji?: string;
 	deleted?: boolean;
 }

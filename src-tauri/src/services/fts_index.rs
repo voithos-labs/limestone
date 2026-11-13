@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use crate::services::body;
 use crate::services::frontmatter;
+use crate::services::fs::read_text;
 use crate::services::source::{document_type, tag_id};
 use crate::services::Source;
 
@@ -24,6 +25,15 @@ pub async fn index_fts(
     .bind(&source_id)
     .fetch_all(db)
     .await?;
+
+    for (id, rel_path) in &changed {
+        if document_type(rel_path) == "pdf" {
+            sqlx::query("DELETE FROM pdf_text_fts WHERE doc_id = ?1")
+                .bind(id)
+                .execute(db)
+                .await?;
+        }
+    }
 
     let mut docs: Vec<(String, String)> = changed
         .into_iter()
@@ -101,6 +111,24 @@ pub async fn index_fts(
         tx.commit().await?;
     }
 
+    sqlx::query(
+        "DELETE FROM pdf_text_fts WHERE doc_id NOT IN (SELECT id FROM documents WHERE deleted_at IS NULL)",
+    )
+    .execute(db)
+    .await?;
+    let unread: Vec<(String, String)> = sqlx::query_as(
+        "SELECT id, rel_path FROM documents WHERE source_id = ?1 AND deleted_at IS NULL
+         AND document_type = 'pdf' AND id NOT IN (SELECT doc_id FROM pdf_text_fts)",
+    )
+    .bind(&source_id)
+    .fetch_all(db)
+    .await?;
+    for (id, rel_path) in unread {
+        if let Some(pages) = read_text(&source.path, &id, &rel_path) {
+            index_pages(db, &id, &pages).await?;
+        }
+    }
+
     eprintln!(
         "[fts:{}] {}ms | {} docs indexed",
         source.title,
@@ -109,6 +137,26 @@ pub async fn index_fts(
     );
     Ok(docs.len())
 }
+pub async fn index_pages(db: &SqlitePool, doc_id: &str, pages: &[String]) -> sqlx::Result<()> {
+    let mut tx = db.begin().await?;
+    sqlx::query("DELETE FROM pdf_text_fts WHERE doc_id = ?1")
+        .bind(doc_id)
+        .execute(&mut *tx)
+        .await?;
+    for (i, body) in pages.iter().enumerate() {
+        if body.trim().is_empty() {
+            continue;
+        }
+        sqlx::query("INSERT INTO pdf_text_fts (doc_id, page, body) VALUES (?1, ?2, ?3)")
+            .bind(doc_id)
+            .bind(i as i64 + 1)
+            .bind(body)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await
+}
+
 /// get asset ref index
 fn asset_refs(source: &Source, body: &str) -> Vec<String> {
     body::scan_asset_refs(body)
