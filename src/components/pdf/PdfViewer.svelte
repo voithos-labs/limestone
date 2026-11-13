@@ -2208,6 +2208,9 @@
 			chapters={section ? section.children.filter(inSection) : chapters}
 			pageY={(n) => layout.tops[n - 1] ?? 0}
 			top={docked ? barHeight + 8 : undefined}
+			doc={pdf}
+			{dark}
+			{themed}
 			onGoToPage={goToPage}
 			onGoTo={(a) => {
 				activeId = a.id;
