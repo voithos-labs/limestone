@@ -1575,7 +1575,13 @@
 	const heroOnTop = $derived(flow || !!notice || mode === 'digest');
 
 	function onWindowKey(e: KeyboardEvent) {
-		if (!paneActive || !rootEl?.isConnected || typingIn(e.target)) return;
+		if (!paneActive || !rootEl?.isConnected) return;
+		if (docked && (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f') {
+			e.preventDefault();
+			void openSearch();
+			return;
+		}
+		if (typingIn(e.target)) return;
 		// a drag let go of with Escape changes nothing
 		if (e.key === 'Escape' && gesture) {
 			gesture = erasing = null;
@@ -1586,11 +1592,6 @@
 			return;
 		}
 		if (e.ctrlKey || e.metaKey) {
-			if (docked && !e.altKey && e.key.toLowerCase() === 'f') {
-				e.preventDefault();
-				void openSearch();
-				return;
-			}
 			if (docked) historyKey(e);
 			if (!flow) zoomKey(e);
 			return;

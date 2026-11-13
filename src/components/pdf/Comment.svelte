@@ -129,6 +129,7 @@
 			linkClick="plain"
 			blockDragHandles={false}
 			selectionToolbar={false}
+			searchBar={false}
 			placeholder={editing ? placeholder : undefined}
 			{plugins}
 		/>
