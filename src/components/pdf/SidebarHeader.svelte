@@ -9,6 +9,7 @@
 		ExternalLink,
 		FolderInput,
 		FolderOpen,
+		Rows2,
 		SlidersHorizontal,
 		Plus,
 		Trash2,
@@ -43,7 +44,8 @@
 		back,
 		forward,
 		onOpenFolder,
-		extra
+		extra,
+		sections
 	}: {
 		handle: PdfHandle;
 		onDelete?: () => void;
@@ -53,6 +55,7 @@
 		forward?: Place;
 		onOpenFolder?: (unitId: string, name: string, newTab?: boolean) => void;
 		extra?: Snippet;
+		sections?: { on: boolean; toggle: () => void };
 	} = $props();
 
 	let title = $state(untrack(() => handle.title));
@@ -243,7 +246,17 @@
 					} as MenuEntry
 				]
 			: []),
-		...(propCount > 0 || isTodo ? [{ kind: 'divider' } as MenuEntry] : []),
+		...(sections
+			? [
+					{
+						value: 'sections',
+						label: 'One section at a time',
+						icon: Rows2,
+						hint: sections.on ? 'On' : 'Off'
+					} as MenuEntry
+				]
+			: []),
+		...(propCount > 0 || isTodo || sections ? [{ kind: 'divider' } as MenuEntry] : []),
 		...(onOpenFolder
 			? [{ value: 'parent', label: `Go to ${locPlace.kind}`, icon: FolderOpen } as MenuEntry]
 			: []),
@@ -269,6 +282,7 @@
 		}
 		menuOpen = false;
 		if (value === 'props') propsOpen = !propsOpen;
+		if (value === 'sections') sections?.toggle();
 		if (value === 'parent') onOpenFolder?.(locPlace.id, locPlace.name);
 		if (value === 'reveal') void revealDoc();
 		if (value === 'confirm-delete') onDelete?.();

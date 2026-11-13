@@ -19,17 +19,29 @@ export interface PageLayout {
 }
 
 /** Heights are whole pixels so page edges stay on pixels, and so the DOM and the math agree exactly. */
-export function layoutPages(ratios: readonly number[], width: number, gap: number): PageLayout {
+export function layoutPages(
+	ratios: readonly number[],
+	width: number,
+	gap: number,
+	span?: PageRange
+): PageLayout {
 	const tops: number[] = [];
 	const heights: number[] = [];
+	const first = span?.first ?? 0;
+	const last = span?.last ?? ratios.length - 1;
 	let y = 0;
-	for (const ratio of ratios) {
+	ratios.forEach((ratio, i) => {
+		if (i < first || i > last) {
+			tops.push(i < first ? -Infinity : Infinity);
+			heights.push(0);
+			return;
+		}
 		const h = Math.round(width / ratio);
 		tops.push(y);
 		heights.push(h);
 		y += h + gap;
-	}
-	return { width, tops, heights, total: ratios.length ? y - gap : 0 };
+	});
+	return { width, tops, heights, total: Math.max(0, y - gap) };
 }
 
 /** The page whose top is at or above `y`: the page at that height, or the one whose gap it's in. */

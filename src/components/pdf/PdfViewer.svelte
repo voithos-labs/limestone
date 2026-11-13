@@ -26,7 +26,16 @@
 		TextLayer
 	} from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
-	import { Link, Pencil, Quote, SquareArrowOutUpRight, Trash } from '@lucide/svelte';
+	import {
+		ArrowDown,
+		ChevronDown,
+		Link,
+		ListTree,
+		Pencil,
+		Quote,
+		SquareArrowOutUpRight,
+		Trash
+	} from '@lucide/svelte';
 
 	// app-wide models and services
 	import type EditorState from '#lib/models/EditorState.svelte.js';
@@ -121,6 +130,7 @@
 	import SelectionMenu from './SelectionMenu.svelte';
 	import SideNotes from './SideNotes.svelte';
 	import PdfSearch from './PdfSearch.svelte';
+	import { chaptersOf, type Chapter } from '#lib/pdf/outline.js';
 	import PdfFind from '#lib/pdf/PdfFind.svelte.js';
 	import SidebarHeader from './SidebarHeader.svelte';
 	import type { NoteActions } from './SideNote.svelte';
@@ -383,7 +393,7 @@
 	}
 
 	function onWheel(e: WheelEvent) {
-		if (!e.ctrlKey && !e.metaKey) return;
+		if (!e.ctrlKey && !e.metaKey) return rollOver(e);
 		e.preventDefault();
 		const pages = pagesEl;
 		const was = width;
@@ -426,17 +436,124 @@
 	// each page's width over height: page one's until a page is fetched and says otherwise
 	let ratios: number[] = $state.raw([]);
 	/** Where every page sits, from the ratios, so pages that aren't mounted count too. */
-	const layout = $derived(layoutPages(ratios, width, PAGE_GAP));
+	let chapters: Chapter[] = $state.raw([]);
+	$effect(() => {
+		const doc = pdf;
+		chapters = [];
+		sectionAt = 0;
+		if (!doc) return;
+		void chaptersOf(doc).then((found) => {
+			if (doc !== pdf) return;
+			const page = pageIndexAt(layout.tops, Math.max(viewTop, 0)) + 1;
+			chapters = found;
+			sectionAt = sectionOf(page);
+		});
+	});
+
+	interface Section extends PageRange {
+		title: string;
+		children: Chapter[];
+	}
+
+	let sectioned = $state(untrack(() => tab.state.pdf_sections) === true);
+	let sectionAt = $state(0);
+	const sections = $derived.by(() => {
+		const n = ratios.length;
+		const starts = chapters
+			.filter((c) => c.page >= 1 && c.page <= n)
+			.sort((a, b) => a.page - b.page)
+			.filter((c, i, all) => c.page !== all[i - 1]?.page);
+		const out: Section[] = [];
+		if (starts.length && starts[0].page > 1) {
+			out.push({ title: 'Front matter', first: 0, last: starts[0].page - 2, children: [] });
+		}
+		starts.forEach((c, i) =>
+			out.push({
+				title: c.title,
+				first: c.page - 1,
+				last: (starts[i + 1]?.page ?? n + 1) - 2,
+				children: c.children
+			})
+		);
+		return out;
+	});
+	const section = $derived(
+		sectioned && !flow && sections.length > 1
+			? sections[Math.min(sectionAt, sections.length - 1)]
+			: null
+	);
+	const inSection = (a: { page: number }) =>
+		!section || (a.page - 1 >= section.first && a.page - 1 <= section.last);
+
+	function sectionOf(page: number): number {
+		return Math.max(
+			0,
+			sections.findIndex((s) => page - 1 >= s.first && page - 1 <= s.last)
+		);
+	}
+
+	let landing: (() => void) | null = null;
+
+	function reach(page: number, go: () => void) {
+		const i = sectionOf(page);
+		if (!section || sections[i] === section) return go();
+		landing = go;
+		sectionAt = i;
+	}
+
+	function setSectioned(on: boolean) {
+		sectionAt = sectionOf(pageIndexAt(layout.tops, Math.max(viewTop, 0)) + 1);
+		sectioned = on;
+		tab.state.pdf_sections = on;
+	}
+
+	function stepSection(dir: 1 | -1) {
+		const next = section && sections[sections.indexOf(section) + dir];
+		if (!next) return;
+		landing = () => {
+			const v = view();
+			if (!v) return;
+			if (dir > 0) scrollBy(v, -barHeight - 16 - v.top);
+			else scrollBy(v, layout.total - v.top);
+		};
+		sectionAt = sections.indexOf(next);
+	}
+
+	const ROLL_PX = 240;
+	const ROLL_PAUSE_MS = 150;
+	let roll = 0;
+	let rollArmed = false;
+	let wheeledAt = 0;
+
+	function rollOver(e: WheelEvent) {
+		const el = scrollEl;
+		if (!section || !el || !e.deltaY) return;
+		const atEnd =
+			e.deltaY > 0 ? el.scrollTop + el.clientHeight >= el.scrollHeight - 1 : el.scrollTop <= 0;
+		if (e.timeStamp - wheeledAt > ROLL_PAUSE_MS) rollArmed = atEnd;
+		wheeledAt = e.timeStamp;
+		if (!rollArmed || !atEnd || Math.sign(roll) === -Math.sign(e.deltaY)) roll = 0;
+		if (!rollArmed || !atEnd) return;
+		roll += e.deltaY;
+		if (Math.abs(roll) < ROLL_PX) return;
+		roll = 0;
+		rollArmed = false;
+		stepSection(e.deltaY > 0 ? 1 : -1);
+	}
+
+	const layout = $derived(layoutPages(ratios, width, PAGE_GAP, section ?? undefined));
 	let mounted: PageRange = $state.raw({ first: 0, last: -1 });
 
 	const shownPages = $derived.by(() => {
 		const out: number[] = [];
-		const last = Math.min(mounted.last, ratios.length - 1);
-		for (let i = mounted.first; i <= last; i++) out.push(i + 1);
+		const first = Math.max(mounted.first, section?.first ?? 0);
+		const last = Math.min(mounted.last, section?.last ?? ratios.length - 1);
+		for (let i = first; i <= last; i++) out.push(i + 1);
 		return out;
 	});
 
 	let currentPage = $state(1);
+	let pinnedTop = $state(0);
 
 	function learnRatio(n: number, ratio: number) {
 		if (ratios[n - 1] === ratio) return;
@@ -542,13 +659,16 @@
 			const v = view();
 			const hold = zoomAnchor;
 			zoomAnchor = null;
-			if (before && v && hold) {
+			const land = landing;
+			landing = null;
+			if (land) land();
+			else if (before && v && hold) {
 				const rect = pages.getBoundingClientRect();
 				scrollBy(v, rect.top + keepPlace(before, next, hold.down) - hold.y);
 				if (!flow) v.el.scrollLeft += rect.left + hold.across * next.width - hold.x;
 			} else if (before && v && viewTop > 0) {
 				const delta = keepPlace(before, next, viewTop) - v.top;
-				if (Math.abs(delta) >= 0.5) scrollBy(v, delta);
+				if (Number.isFinite(delta) && Math.abs(delta) >= 0.5) scrollBy(v, delta);
 			}
 			updateWindow();
 		});
@@ -588,6 +708,7 @@
 			wrote = null;
 			viewTop = v.top;
 		}
+		if (rail) pinnedTop = Math.max(0, Math.round(v.top + barHeight + 16));
 		const bottom = v.top + v.height;
 		const next = holdRange(
 			mounted,
@@ -595,7 +716,10 @@
 			pagesBetween(layout, v.top - KEEP_MARGIN, bottom + KEEP_MARGIN)
 		);
 		if (next.first !== mounted.first || next.last !== mounted.last) mounted = next;
-		if (!flow) currentPage = pageIndexAt(layout.tops, v.top + v.height / 3) + 1;
+		if (!flow) {
+			const at = pageIndexAt(layout.tops, v.top + v.height / 3);
+			currentPage = Math.min(Math.max(at, section?.first ?? 0), section?.last ?? at) + 1;
+		}
 	}
 
 	/** Keeps the mounted window in step with scrolling and resizing. Attached to the pages. */
@@ -629,24 +753,30 @@
 
 	/** Scrolls a box on a page into view, unless it's in view already. */
 	function reveal(page: number, rect: PageRect | undefined) {
-		const v = view();
-		if (!v) return;
-		const height = layout.heights[page - 1] ?? 0;
-		const top = (layout.tops[page - 1] ?? 0) + (rect?.[1] ?? 0) * height;
-		const bottom = top + (rect?.[3] ?? 1) * height;
-		if (top < v.top || bottom > v.top + v.height) scrollBy(v, top - v.height / 3 - v.top);
+		reach(page, () => {
+			const v = view();
+			if (!v) return;
+			const height = layout.heights[page - 1] ?? 0;
+			const top = (layout.tops[page - 1] ?? 0) + (rect?.[1] ?? 0) * height;
+			const bottom = top + (rect?.[3] ?? 1) * height;
+			if (top < v.top || bottom > v.top + v.height) scrollBy(v, top - v.height / 3 - v.top);
+		});
 	}
 
 	/** Brings an annotation's passage a third of the way down the view, mounted or not. */
 	function goToPage(n: number) {
-		const v = view();
-		const top = layout.tops[n - 1];
-		if (v && top !== undefined) scrollBy(v, top - barHeight - 16 - v.top);
+		reach(n, () => {
+			const v = view();
+			const top = layout.tops[n - 1];
+			if (v && top !== undefined) scrollBy(v, top - barHeight - 16 - v.top);
+		});
 	}
 
 	function scrollToAnnotation(a: Annotation) {
-		const v = view();
-		if (v) scrollBy(v, anchorY(a) - v.height / 3 - v.top);
+		reach(a.page, () => {
+			const v = view();
+			if (v) scrollBy(v, anchorY(a) - v.height / 3 - v.top);
+		});
 	}
 
 	/* ------------------------ Finding things on a page ------------------------ */
@@ -1069,7 +1199,9 @@
 	/* -------------------------------------------------------------------------- */
 
 	// A bare highlight stays out of the margin until it's picked or given a comment.
-	const notes = $derived(here.filter((a) => a.comment || a.id === activeId || a.id === editingId));
+	const notes = $derived(
+		here.filter((a) => inSection(a) && (a.comment || a.id === activeId || a.id === editingId))
+	);
 	const noteActions: NoteActions = {
 		onOpenNote: openNote,
 		onActivate: (a) => (activeId = a.id),
@@ -1659,8 +1791,22 @@
 	/* ---------------------------------- Find ---------------------------------- */
 
 	const SEARCH_ROOM = 44;
+	const SECTION_ROOM = 40;
+	const CLEAR_PAST = 80;
 	const find = new PdfFind(() => pdf);
 	let searchBox: PdfSearch | undefined = $state();
+
+	let sectionsOpen = $state(false);
+	let sectionsAnchor: HTMLButtonElement | null = $state(null);
+	const nowSection = $derived(section ?? sections[sectionOf(currentPage)]);
+	const sectionItems: MenuEntry[] = $derived(
+		sections.map((s, i) => ({ value: String(i), label: s.title, hint: String(s.first + 1) }))
+	);
+
+	function onSectionSelect(value: string) {
+		sectionsOpen = false;
+		goToPage(sections[Number(value)].first + 1);
+	}
 	let searchOpen = $state(false);
 
 	$effect(() => {
@@ -1696,11 +1842,13 @@
 		const m = find.step(dir, currentPage);
 		if (!m) return;
 		const at = await find.yOf(m);
-		const v = view();
-		if (!v) return;
-		const i = m.page - 1;
-		const y = (layout.tops[i] ?? 0) + at * (layout.heights[i] ?? 0);
-		scrollBy(v, y - v.height / 3 - v.top);
+		reach(m.page, () => {
+			const v = view();
+			if (!v) return;
+			const i = m.page - 1;
+			const y = (layout.tops[i] ?? 0) + at * (layout.heights[i] ?? 0);
+			scrollBy(v, y - v.height / 3 - v.top);
+		});
 	}
 
 	function paintFind() {
@@ -1922,6 +2070,19 @@
 						<div class="rail" style:left="{width + RAIL_GAP}px" style:width="{RAIL_WIDTH}px">
 							<div class="rail-search" style:top="{barHeight + 16}px">
 								<PdfSearch bind:this={searchBox} {find} onStep={stepFind} />
+								{#if sections.length > 1}
+									<button
+										class="section-bar"
+										type="button"
+										title="Go to a section"
+										bind:this={sectionsAnchor}
+										onclick={() => (sectionsOpen = !sectionsOpen)}
+									>
+										<ListTree size={13} strokeWidth={1.75} />
+										<span class="section-name">{nowSection?.title}</span>
+										<ChevronDown size={13} strokeWidth={1.75} />
+									</button>
+								{/if}
 							</div>
 							<SideNotes
 								{notes}
@@ -1929,7 +2090,10 @@
 								{activeId}
 								{editingId}
 								{citedBy}
-								minTop={SEARCH_ROOM}
+								minTop={(a) =>
+									(belowY(a) < pinnedTop - barHeight - CLEAR_PAST ? 0 : pinnedTop) +
+									SEARCH_ROOM +
+									(sections.length > 1 ? SECTION_ROOM : 0)}
 								{...noteActions}
 							/>
 						</div>
@@ -1953,6 +2117,12 @@
 							}}
 							onClose={() => (activeId = editingId = null)}
 						/>
+					{/if}
+					{#if section && sections[sections.indexOf(section) + 1]}
+						<button class="next-section" type="button" onclick={() => stepSection(1)}>
+							<ArrowDown size={12} />
+							{sections[sections.indexOf(section) + 1].title}
+						</button>
 					{/if}
 				</div>
 			{/if}
@@ -1987,6 +2157,9 @@
 				{forward}
 				{onOpenFolder}
 				extra={viewing || elsewhere.length || inkLeft.length ? headExtra : undefined}
+				sections={sections.length > 1
+					? { on: sectioned, toggle: () => setSectioned(!sectioned) }
+					: undefined}
 			/>
 		</div>
 	{/if}
@@ -2029,9 +2202,13 @@
 		<AnnotationTicks
 			scroller={scrollEl}
 			pages={pagesEl}
-			annotations={here}
+			annotations={here.filter(inSection)}
 			{anchorY}
+			endY={belowY}
+			chapters={section ? section.children.filter(inSection) : chapters}
+			pageY={(n) => layout.tops[n - 1] ?? 0}
 			top={docked ? barHeight + 8 : undefined}
+			onGoToPage={goToPage}
 			onGoTo={(a) => {
 				activeId = a.id;
 				scrollToAnnotation(a);
@@ -2052,6 +2229,16 @@
 	style:top="{menuPoint.y}px"
 ></span>
 <Menu
+	bind:open={sectionsOpen}
+	anchor={sectionsAnchor}
+	items={sectionItems}
+	selected={nowSection ? String(sections.indexOf(nowSection)) : undefined}
+	onSelect={onSectionSelect}
+	minWidth={RAIL_WIDTH}
+	searchable
+	placeholder="Find a section…"
+/>
+<Menu
 	bind:open={moreOpen}
 	anchor={moreAnchor}
 	items={moreItems}
@@ -2061,6 +2248,61 @@
 
 <style>
 	/* ----------------------- The viewer and its column ------------------------ */
+
+	.section-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		height: 34px;
+		margin-top: 6px;
+		padding: 0 10px;
+		border: none;
+		border-radius: 8px;
+		background: linear-gradient(var(--chip-bg), var(--chip-bg)), var(--color-surface);
+		color: var(--color-ui-muted);
+		font-family: var(--font-ui);
+		font-size: 12.5px;
+		text-align: left;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.section-bar:hover {
+		color: var(--color-text-primary);
+	}
+
+	.section-bar :global(svg) {
+		flex-shrink: 0;
+	}
+
+	.section-name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: var(--color-text-primary);
+	}
+
+	.next-section {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 16px auto 0;
+		padding: 6px 12px;
+		border: none;
+		border-radius: 6px;
+		background: var(--chip-bg);
+		color: var(--color-ui-muted);
+		font-family: var(--font-ui);
+		font-size: 12px;
+		cursor: pointer;
+	}
+
+	.next-section:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
 
 	.pdf-viewer {
 		position: relative;

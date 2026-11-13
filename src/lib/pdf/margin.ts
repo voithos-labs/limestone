@@ -11,12 +11,12 @@ export function stackTops<T>(
 	anchor: (item: T) => number,
 	height: (item: T) => number,
 	gap: number,
-	minTop = -Infinity
+	minTop: (item: T) => number = () => -Infinity
 ): Map<T, number> {
 	const tops = new Map<T, number>();
-	let floor = minTop;
+	let floor = -Infinity;
 	for (const item of [...items].sort((p, q) => anchor(p) - anchor(q))) {
-		const top = Math.max(anchor(item), floor);
+		const top = Math.max(anchor(item), floor, minTop(item));
 		tops.set(item, top);
 		floor = top + height(item) + gap;
 	}

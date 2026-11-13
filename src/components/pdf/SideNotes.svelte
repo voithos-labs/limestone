@@ -17,7 +17,7 @@
 		activeId = null,
 		editingId = null,
 		citedBy = new Map(),
-		minTop = 0,
+		minTop = () => 0,
 		...actions
 	}: NoteActions & {
 		/** The annotations that get a note in the margin. */
@@ -28,7 +28,7 @@
 		editingId?: string | null;
 		/** The notes citing each annotation, by annotation id. */
 		citedBy?: Map<string, Citing[]>;
-		minTop?: number;
+		minTop?: (a: Annotation) => number;
 	} = $props();
 
 	const GAP = 10;
