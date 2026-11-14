@@ -98,6 +98,8 @@ function rectPage(r: PageRect, own: number): number {
 
 /** The frontmatter key an annotation note's fields live under. */
 export const ANNOTATION_KEY = 'annotation';
+export const ANNOTATION_TAG = 'tag:annotation';
+export const ANNOTATION_PATH = `$.views.${ANNOTATION_KEY}`;
 
 /* -------------------------------- Reading --------------------------------- */
 
@@ -106,7 +108,11 @@ export const ANNOTATION_KEY = 'annotation';
  * are kept, so a later version's fields survive an edit made here.
  */
 export function readAnnotation(properties: Record<string, unknown>): AnnotationFields | null {
-	const raw = properties[ANNOTATION_KEY];
+	const views = properties.views as Record<string, unknown> | undefined;
+	return parseAnnotation(views?.[ANNOTATION_KEY]);
+}
+
+export function parseAnnotation(raw: unknown): AnnotationFields | null {
 	if (!raw || typeof raw !== 'object') return null;
 	const a = raw as Record<string, unknown>;
 	if (typeof a.pdf !== 'string' || !a.pdf) return null;
@@ -212,15 +218,15 @@ function pairs(points: number[]): [number, number][] {
 const LABEL_WORDS = 6;
 
 // greedy, so a PDF title holding its own ", p2 - " still splits at the last one
-const TITLE_SHAPE = /^(.+), p(\d+) - (.+)$/;
+const TITLE_SHAPE = /^(?:(.+), )?p(\d+) - (.+)$/;
 
 /**
  * The note's title, which is also its file name and its link text:
  * `Hale & Ortiz 2023, p3 - The rate tracked particulate deposition`. The PDF's name keeps a bare
  * `[[…]]` link unique across PDFs, and the opening words make it readable outside Limestone.
  */
-export function annotationTitle(pdfTitle: string, page: number, label: string): string {
-	return linkSafe(`${pdfTitle}, p${page} - ${label}`);
+export function annotationTitle(page: number, label: string, pdfTitle = ''): string {
+	return linkSafe(`${pdfTitle ? `${pdfTitle}, ` : ''}p${page} - ${label}`);
 }
 
 /**
@@ -231,9 +237,13 @@ export function parseAnnotationTitle(
 	title: string
 ): { pdfTitle: string; page: number; label: string } | null {
 	if (title.includes('#')) return null;
-	const m = TITLE_SHAPE.exec(title);
+	const path = title.replace(/\\/g, '/');
+	const cut = path.lastIndexOf('/');
+	const m = TITLE_SHAPE.exec(path.slice(cut + 1));
 	const page = Number(m?.[2]);
-	return m && page >= 1 ? { pdfTitle: m[1], page, label: m[3] } : null;
+	if (!m || !(page >= 1)) return null;
+	const folder = cut < 0 ? '' : path.slice(path.lastIndexOf('/', cut - 1) + 1, cut);
+	return { pdfTitle: m[1] ?? folder, page, label: m[3] };
 }
 
 /**

@@ -7,7 +7,7 @@
 		isSourceRoot
 	} from '#lib/models/Folder.js';
 	import Tag, { tagId } from '#lib/models/Tag.js';
-	import { DELETED, isBuiltinUnit } from '#lib/models/View.svelte.js';
+	import { DELETED, isAssignedUnit, isBuiltinUnit } from '#lib/models/View.svelte.js';
 	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
 	import { openProjectSetup } from '#lib/views/project.svelte.js';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
@@ -539,6 +539,7 @@
 
 	const fabItems = $derived.by(() => {
 		const todo = { value: 'new-todo', label: 'New todo', icon: SquareCheck };
+		if (view.unit && isAssignedUnit(view.unit)) return [];
 		if (view.unit && isBuiltinUnit(view.unit)) return [todo];
 		const items = [{ value: 'new-note', label: 'New note', icon: FilePlus }, todo];
 		if (unitKind === 'folder' && !foldersHidden())
@@ -914,7 +915,7 @@
 
 		<ScrollThumb scroller={bodyEl} top={20} />
 
-		{#if showNewFab && !docked}
+		{#if showNewFab && !docked && fabItems.length}
 			<NewFab items={fabItems} onSelect={onFabSelect} bind:el={fabEl} />
 		{/if}
 	{/if}

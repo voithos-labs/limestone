@@ -6,6 +6,7 @@
 	import {
 		BUILTIN_UNITS,
 		isBuiltinUnit,
+		isReadOnlyField,
 		isDerived,
 		describeBulkFailure
 	} from '#lib/models/View.svelte.js';
@@ -126,7 +127,7 @@
 	}
 
 	function onCellClick(e: MouseEvent, view: View, field: ViewField) {
-		if (!row) return;
+		if (!row || isReadOnlyField(field)) return;
 		if (field.type === 'boolean') {
 			const cur = rawStatefulValue(row, field);
 			writeCell(view, field, cur === true ? false : true);

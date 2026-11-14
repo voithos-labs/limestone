@@ -112,11 +112,11 @@
 		const column = pages;
 		if (!el || !column) return;
 		const measure = () => {
-			const top = column.getBoundingClientRect().top - el.getBoundingClientRect().top;
+			const offset = column.getBoundingClientRect().top - el.getBoundingClientRect().top;
 			track = {
 				length: trackLength(el.clientHeight, el.scrollHeight, top),
 				content: el.scrollHeight,
-				pagesTop: top + el.scrollTop
+				pagesTop: offset + el.scrollTop
 			};
 		};
 		const ro = new ResizeObserver(measure);

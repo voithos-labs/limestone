@@ -162,6 +162,7 @@
 	const EDGE_GAP = 2;
 	const MIN_PAGE_WIDTH = 560;
 	const RAIL_WIDTH = 320;
+	const RAIL_OVERHANG = 10;
 	const RAIL_GAP = 24;
 	const DOCK_ROOM = 72;
 	const PAGE_GAP = 10;
@@ -444,7 +445,7 @@
 		if (!doc) return;
 		void chaptersOf(doc).then((found) => {
 			if (doc !== pdf) return;
-			const page = pageIndexAt(layout.tops, Math.max(viewTop, 0)) + 1;
+			const page = currentPage;
 			chapters = found;
 			sectionAt = sectionOf(page);
 		});
@@ -502,7 +503,9 @@
 	}
 
 	function setSectioned(on: boolean) {
-		sectionAt = sectionOf(pageIndexAt(layout.tops, Math.max(viewTop, 0)) + 1);
+		const page = currentPage;
+		sectionAt = sectionOf(page);
+		if (viewTop <= layout.tops[page - 1]) landing = () => goToPage(page);
 		sectioned = on;
 		tab.state.pdf_sections = on;
 	}
@@ -884,7 +887,7 @@
 			try {
 				await annotations.setComment(a.id, comment);
 			} catch (e) {
-				reportError(e, "The comment couldn't be saved.");
+				reportError(e, "The annotation couldn't be saved.");
 			}
 		});
 		return saving;
@@ -925,7 +928,7 @@
 		let cancelled = false;
 		void Promise.all(
 			items.map((a) =>
-				citedIn(a.title, a.id)
+				citedIn(a, annotations.linkOf(a))
 					.catch(() => [])
 					.then((c): [string, Citing[]] => [a.id, c])
 			)
@@ -957,7 +960,8 @@
 
 	async function cite(a: Annotation) {
 		try {
-			await copyCitation(a.title);
+			const noted = await annotations.note(a.id);
+			if (noted) await copyCitation(annotations.linkOf(noted));
 		} catch (e) {
 			reportError(e, "The citation couldn't be copied.");
 		}
@@ -965,7 +969,8 @@
 
 	async function link(a: Annotation) {
 		try {
-			await copyLink(a.title);
+			const noted = await annotations.note(a.id);
+			if (noted) await copyLink(annotations.linkOf(noted));
 		} catch (e) {
 			reportError(e, "The link couldn't be copied.");
 		}
@@ -1144,8 +1149,10 @@
 	let moreOpen = $state(false);
 
 	const moreItems = $derived.by((): MenuEntry[] => [
-		{ value: 'edit', label: moreFor?.comment ? 'Edit comment' : 'Add comment', icon: Pencil },
-		{ value: 'open', label: 'Open as note', icon: SquareArrowOutUpRight },
+		{ value: 'edit', label: moreFor?.comment ? 'Edit annotation' : 'Add annotation', icon: Pencil },
+		...(moreFor?.relPath
+			? [{ value: 'open', label: 'Open as note', icon: SquareArrowOutUpRight }]
+			: []),
 		{ value: 'cite', label: 'Copy citation', icon: Quote },
 		{ value: 'link', label: 'Copy link', icon: Link },
 		{ kind: 'divider' },
@@ -1212,6 +1219,7 @@
 		onSave: saveComment,
 		onCite: cite,
 		onLink: link,
+		linkOf: (a) => annotations.linkOf(a),
 		onMore: (a, anchor) => {
 			// the comment stays picked while its menu is open, so the menu reads as its own
 			activeId = a.id;
@@ -2237,7 +2245,8 @@
 	items={sectionItems}
 	selected={nowSection ? String(sections.indexOf(nowSection)) : undefined}
 	onSelect={onSectionSelect}
-	minWidth={RAIL_WIDTH}
+	minWidth={RAIL_WIDTH + RAIL_OVERHANG}
+	maxWidth={RAIL_WIDTH + RAIL_OVERHANG}
 	searchable
 	placeholder="Find a section…"
 />

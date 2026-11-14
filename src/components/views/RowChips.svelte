@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Check } from '@lucide/svelte';
 	import type { MemberRow, ViewField } from '#lib/models/View.svelte.js';
-	import { isDerived, isStatusField } from '#lib/models/View.svelte.js';
+	import { isDerived, isReadOnlyField, isStatusField } from '#lib/models/View.svelte.js';
 	import {
 		fieldLabel,
 		folderDir,
@@ -70,7 +70,8 @@
 
 	const isDate = (f: ViewField) =>
 		f.type === 'date' || f.type === 'created_at' || f.type === 'updated_at';
-	const editable = (f: ViewField) => editMode && (f.type === 'tags' || !isDerived(f.type));
+	const editable = (f: ViewField) =>
+		editMode && !isReadOnlyField(f) && (f.type === 'tags' || !isDerived(f.type));
 
 	function onClick(e: MouseEvent, f: ViewField) {
 		if (!editable(f)) return;

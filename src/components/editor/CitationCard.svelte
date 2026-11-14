@@ -17,9 +17,9 @@
 	import { select } from '#lib/services/db.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 	import { onSelfWrite, onSourceReconciled } from '#lib/models/Source.js';
-	import { linkIndex } from '#lib/services/links.svelte.js';
+	import { linkIndex, resolveAmong, targetStem } from '#lib/services/links.svelte.js';
 	import {
-		ANNOTATION_KEY,
+		ANNOTATION_PATH,
 		annotationComment,
 		parseAnnotationTitle,
 		readAnnotation,
@@ -100,13 +100,15 @@
 	});
 
 	async function resolve(here: string): Promise<Found | null> {
-		const [row] = await select<{ id: string; source_id: string; rel_path: string }>(
+		const rows = await select<{ id: string; source_id: string; rel_path: string }>(
 			`SELECT id, source_id, rel_path FROM documents
 			 WHERE lower(title) = lower(?1) AND deleted_at IS NULL
-			   AND json_extract(properties, '$.${ANNOTATION_KEY}.pdf') IS NOT NULL
-			 ORDER BY source_id = ?2 DESC LIMIT 1`,
-			[target, here]
+			   AND json_extract(properties, '${ANNOTATION_PATH}.pdf') IS NOT NULL`,
+			[targetStem(target)]
 		);
+		const local = rows.filter((r) => r.source_id === here);
+		const hit = resolveAmong(target, local) ?? resolveAmong(target, rows);
+		const row = rows.find((r) => r.id === hit?.id);
 		if (!row) return null;
 		const raw = await invoke<string>('read_document', {
 			sourceId: row.source_id,
@@ -132,7 +134,7 @@
 
 	function namesTarget(relPath: string): boolean {
 		const name = relPath.slice(relPath.lastIndexOf('/') + 1).replace(/\.md$/i, '');
-		return name.toLowerCase() === target.toLowerCase();
+		return name.toLowerCase() === targetStem(target).toLowerCase();
 	}
 
 	/* -------------------------------------------------------------------------- */
@@ -141,7 +143,7 @@
 
 	const named = parseAnnotationTitle(target);
 	const fields = $derived(found?.fields);
-	const pdfTitle = $derived(found?.pdfTitle ?? named?.pdfTitle ?? target);
+	const pdfTitle = $derived(found?.pdfTitle || named?.pdfTitle || target);
 	const page = $derived(fields?.page ?? named?.page);
 
 	/* -------------------------------------------------------------------------- */

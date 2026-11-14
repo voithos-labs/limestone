@@ -394,10 +394,51 @@ pub async fn file_digest(
 /// kept in the pdf's meta.json under "ink"
 #[tauri::command]
 pub fn read_pdf_ink(app: AppHandle, source_id: String, id: String) -> Result<Value, OpError> {
-    let root = root_of(&app, &source_id)?;
-    Ok(read_meta(&doc_dir(&root, &id))
-        .and_then(|m| m.fields.get("ink").cloned())
+    read_pdf_list(&app, &source_id, &id, "ink")
+}
+
+#[tauri::command]
+pub fn read_pdf_marks(app: AppHandle, source_id: String, id: String) -> Result<Value, OpError> {
+    read_pdf_list(&app, &source_id, &id, "marks")
+}
+
+#[tauri::command]
+pub fn save_pdf_marks(
+    app: AppHandle,
+    id: String,
+    source_id: String,
+    rel_path: String,
+    marks: Value,
+) -> Result<(), OpError> {
+    save_pdf_list(&app, &id, &source_id, &rel_path, "marks", marks)
+}
+
+fn read_pdf_list(app: &AppHandle, source_id: &str, id: &str, key: &str) -> Result<Value, OpError> {
+    let root = root_of(app, source_id)?;
+    Ok(read_meta(&doc_dir(&root, id))
+        .and_then(|m| m.fields.get(key).cloned())
         .unwrap_or_else(|| Value::Array(Vec::new())))
+}
+
+fn save_pdf_list(
+    app: &AppHandle,
+    id: &str,
+    source_id: &str,
+    rel_path: &str,
+    key: &str,
+    list: Value,
+) -> Result<(), OpError> {
+    let root = root_of(app, source_id)?;
+    rewrite_meta(&root, id, rel_path, move |meta| {
+        if let Some(obj) = meta.as_object_mut() {
+            if list.as_array().is_some_and(|items| items.is_empty()) {
+                obj.shift_remove(key);
+            } else {
+                obj.insert(key.to_string(), list);
+            }
+        }
+    })
+    .map_err(OpError::from)
 }
 
 /// saves a pdf's loose ink into its meta.json, making the doc folder if the pdf has none yet
@@ -409,17 +450,7 @@ pub fn save_pdf_ink(
     rel_path: String,
     ink: Value,
 ) -> Result<(), OpError> {
-    let root = root_of(&app, &source_id)?;
-    rewrite_meta(&root, &id, &rel_path, move |meta| {
-        if let Some(obj) = meta.as_object_mut() {
-            if ink.as_array().is_some_and(|strokes| strokes.is_empty()) {
-                obj.shift_remove("ink");
-            } else {
-                obj.insert("ink".to_string(), ink);
-            }
-        }
-    })
-    .map_err(OpError::from)
+    save_pdf_list(&app, &id, &source_id, &rel_path, "ink", ink)
 }
 
 #[tauri::command]

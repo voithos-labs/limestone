@@ -61,7 +61,7 @@
 		</button>
 		<button class="row" type="button" onclick={onComment}>
 			<span class="icon"><MessageSquare size={13} strokeWidth={1.75} /></span>
-			<span class="label">Comment</span>
+			<span class="label">Annotate</span>
 			<span class="key">C</span>
 		</button>
 		<button class="row" type="button" onclick={onCite}>

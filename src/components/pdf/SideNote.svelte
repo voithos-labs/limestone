@@ -16,6 +16,7 @@
 		onSave: (a: Annotation, comment: string) => void;
 		onCite: (a: Annotation) => void;
 		onLink: (a: Annotation) => void;
+		linkOf: (a: Annotation) => string;
 		onMore: (a: Annotation, anchor: HTMLElement) => void;
 	}
 
@@ -80,8 +81,8 @@
 		class="card"
 		role="button"
 		tabindex="0"
-		draggable={!editing}
-		ondragstart={(e) => dragCitation(e, a.title)}
+		draggable={!editing && !!a.relPath}
+		ondragstart={(e) => dragCitation(e, actions.linkOf(a))}
 		oncontextmenu={(e) => {
 			if (editing) return;
 			e.preventDefault();
@@ -113,7 +114,7 @@
 					onDone={finish}
 				/>
 			{:else}
-				<span class="empty">Add a comment…</span>
+				<span class="empty">Add an annotation…</span>
 			{/if}
 			{#if cites.length}
 				<div class="cites">

@@ -40,7 +40,7 @@
 		14}px"
 >
 	<button class="on" type="button" onclick={actions.comment}>
-		<MessageSquare size={12} strokeWidth={1.75} />Comment
+		<MessageSquare size={12} strokeWidth={1.75} />Annotate
 	</button>
 	<button type="button" onclick={actions.cite}>
 		<Quote size={12} strokeWidth={1.75} />Copy citation

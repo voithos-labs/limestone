@@ -51,7 +51,8 @@
 			.catch((e) => console.error('home projects failed', e));
 		select<Recent>(
 			`SELECT id, title, rel_path, source_id, updated_at FROM documents
-			 WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT 5`
+			 WHERE deleted_at IS NULL AND json_extract(properties, '$.views.annotation') IS NULL
+			 ORDER BY accessed_at DESC LIMIT 5`
 		)
 			.then((r) => (recent = r))
 			.catch((e) => console.error('home recents failed', e));

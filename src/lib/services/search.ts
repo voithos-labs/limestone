@@ -95,6 +95,10 @@ function liveOnly(scope?: SearchScope): string {
 	return !scope || scope.includeDeleted ? '' : ' AND d.deleted_at IS NULL';
 }
 
+function namedOnly(scope?: SearchScope): string {
+	return scope ? '' : ` AND json_extract(d.properties, '$.views.annotation') IS NULL`;
+}
+
 function docResult(row: DocRow): SearchResult {
 	return {
 		id: row.id,
@@ -115,7 +119,7 @@ async function recents(scope?: SearchScope): Promise<SearchResult[]> {
 	const s = scoped(scope);
 	const docs = await select<DocRow>(
 		`SELECT id, title, rel_path, source_id, accessed_at, deleted_at, document_type FROM documents d
-		 WHERE d.deleted_at IS NULL${s.and} ORDER BY accessed_at DESC LIMIT ?`,
+		 WHERE d.deleted_at IS NULL${namedOnly(scope)}${s.and} ORDER BY accessed_at DESC LIMIT ?`,
 		[...s.params, MAX_RESULTS]
 	);
 	if (scope) return docs.map(docResult);
@@ -159,7 +163,7 @@ async function titleMatches(q: string, scope?: SearchScope): Promise<DocRow[]> {
 	const needle = q.toLowerCase();
 	return select<DocRow>(
 		`SELECT id, title, rel_path, source_id, accessed_at, deleted_at, document_type FROM documents d
-		 WHERE instr(lower(d.title), ?) > 0${liveOnly(scope)}${s.and}
+		 WHERE instr(lower(d.title), ?) > 0${liveOnly(scope)}${namedOnly(scope)}${s.and}
 		 ORDER BY instr(lower(d.title), ?) ASC, length(d.title) ASC LIMIT ?`,
 		[needle, ...s.params, needle, TITLE_POOL]
 	);

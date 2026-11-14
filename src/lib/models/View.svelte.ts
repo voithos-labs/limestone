@@ -46,7 +46,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import type { Component } from 'svelte';
-import { CircleCheckBig } from '@lucide/svelte';
+import { CircleCheckBig, Highlighter } from '@lucide/svelte';
 import type MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import type Tag from '#lib/models/Tag.js';
 import Folder, {
@@ -231,11 +231,27 @@ export interface BuiltinUnit {
 	icon: Component;
 	fields: ViewField[];
 	display: string[];
+	assigned?: boolean;
 }
 
-function builtinField(unit: string, name: string, type: ViewFieldType): ViewField {
-	return { id: `${unit}/${name}`, name, type, config: {}, unit };
+function builtinField(
+	unit: string,
+	name: string,
+	type: ViewFieldType,
+	config: Record<string, any> = {}
+): ViewField {
+	return { id: `${unit}/${name}`, name, type, config, unit };
 }
+
+export function isReadOnlyField(field: Pick<ViewField, 'config'>): boolean {
+	return !!field.config?.readonly;
+}
+
+export function isAssignedUnit(unitId: string): boolean {
+	return !!BUILTIN_UNITS[unitId]?.assigned;
+}
+
+export const ANNOTATION = 'tag:annotation';
 
 const TODO = 'tag:todo';
 export const TODO_DONE = `${TODO}/done`;
@@ -285,6 +301,26 @@ export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
 			builtinField(TODO, 'scheduled', 'date')
 		],
 		display: [`${TODO}/done`, `${TODO}/due`, `${TODO}/scheduled`]
+	},
+	[ANNOTATION]: {
+		unit: ANNOTATION,
+		icon: Highlighter,
+		assigned: true,
+		fields: [
+			builtinField(ANNOTATION, 'quote', 'text', { readonly: true }),
+			builtinField(ANNOTATION, 'page', 'number', { readonly: true }),
+			builtinField(ANNOTATION, 'color', 'select', {
+				options: [
+					{ value: 'accent', color: 0 },
+					{ value: 'amber', color: 4 },
+					{ value: 'sage', color: 7 },
+					{ value: 'sky', color: 10 },
+					{ value: 'rose', color: 15 },
+					{ value: 'violet', color: 13 }
+				]
+			})
+		],
+		display: [`${ANNOTATION}/quote`, `${ANNOTATION}/color`, `${ANNOTATION}/page`]
 	}
 };
 
@@ -1276,6 +1312,18 @@ class View {
 				(t) => view.fields.find((f) => f.type === t)!.id
 			);
 			view.faces = [ViewFace.create('list', ids)];
+		} else if (unitId === ANNOTATION) {
+			const id = (type: ViewFieldType) => view.fields.find((f) => f.type === type)!.id;
+			const [quote, color, page] = builtin.display;
+			view.faces = [
+				ViewFace.create(
+					'list',
+					[id('title'), quote, color, id('folder'), page],
+					undefined,
+					[{ field_id: id('updated_at'), direction: 'desc', nulls: 'last' }],
+					{ right: [id('folder'), page] }
+				)
+			];
 		} else if (builtin) {
 			const title = view.fields.find((f) => f.type === 'title')!.id;
 			const [done, ...rest] = builtin.display;

@@ -128,9 +128,9 @@ class MarkdownHandle extends Doc {
 		title: string,
 		relPath: string,
 		groupIds: string[] = [],
-		properties: Record<string, unknown> = {}
+		properties: Record<string, unknown> = {},
+		id = uuidv4()
 	): Promise<MarkdownHandle> {
-		const id = uuidv4();
 
 		// insert new doc stub
 		await execute(
@@ -186,6 +186,7 @@ class MarkdownHandle extends Doc {
 		source: Source,
 		opts: {
 			title: string;
+			id?: string;
 			dir?: string;
 			groupIds?: string[];
 			properties?: Record<string, unknown>;
@@ -204,7 +205,8 @@ class MarkdownHandle extends Doc {
 			title,
 			relPath,
 			opts.groupIds ?? [],
-			opts.properties ?? {}
+			opts.properties ?? {},
+			opts.id
 		);
 		if (base === 'Untitled') MarkdownHandle.unopened.add(doc.id);
 		if (opts.draft && !opts.body) {
@@ -249,9 +251,16 @@ class MarkdownHandle extends Doc {
 		};
 	}
 
-	private async patchFor(rebuild: boolean, body: string): Promise<Record<string, unknown> | null> {
+	private async patchFor(
+		rebuild: boolean,
+		body: string,
+		extra: Record<string, unknown> = {}
+	): Promise<Record<string, unknown> | null> {
 		if (this.frontmatterError && !rebuild) return null;
-		const patch = rebuild || !this.hasFile ? this.ownedKeys() : {};
+		const patch: Record<string, unknown> = {
+			...(rebuild || !this.hasFile ? this.ownedKeys() : {}),
+			...extra
+		};
 		if (rebuild && Array.isArray(patch.tags)) {
 			const inText = new Set((await invoke<string[]>('body_tags', { body })).map(tagSlug));
 			const tags = patch.tags.filter((t: string) => !inText.has(t));
@@ -400,20 +409,28 @@ class MarkdownHandle extends Doc {
 		this.tags = await Tag.fromSlugs(tags);
 	}
 
-	/** pass `properties` to also update those frontmatter keys (pdf annotations save this way) */
 	async saveContent(
 		body: string,
-		opts: { rebuildFrontmatter?: boolean; properties?: Record<string, unknown> } = {}
+		opts: {
+			rebuildFrontmatter?: boolean;
+			unit?: { key: string; values: Record<string, unknown> };
+		} = {}
 	): Promise<void> {
 		await this.refreshMetaFromDisk(); // this is hmm possibly not needed
-		if (opts.properties) this.properties = { ...this.properties, ...opts.properties };
+		if (opts.unit) {
+			const views = (this.properties.views ?? {}) as Record<string, unknown>;
+			this.properties = {
+				...this.properties,
+				views: { ...views, [opts.unit.key]: opts.unit.values }
+			};
+		}
 		this.updatedAt = new Date();
 		const rebuild = !!opts.rebuildFrontmatter;
 		const mtime = await invoke<number>('write_document', {
 			sourceId: this.source.id,
 			relPath: this._relPath,
 			body,
-			patch: await this.patchFor(rebuild, body),
+			patch: await this.patchFor(rebuild, body, opts.unit && { views: this.properties.views }),
 			rebuild,
 			updatedAt: this.updatedAt.getTime(),
 			create: !this.hasFile

@@ -9,6 +9,7 @@
 
 import { toasts } from '#lib/overlays.svelte.js';
 import { select } from '#lib/services/db.js';
+import { stripExt } from '#lib/services/links.svelte.js';
 import Doc from '#lib/models/Doc.js';
 import type EditorState from '#lib/models/EditorState.svelte.js';
 
@@ -32,7 +33,7 @@ export function dragCitation(e: DragEvent, title: string): void {
 /** Copies the embed and says so, offering the plain link instead. */
 export async function copyCitation(title: string): Promise<void> {
 	await navigator.clipboard.writeText(citationEmbed(title));
-	toasts.push('Citation copied: paste into any note to embed the quote and comment.', {
+	toasts.push('Citation copied: paste into any note to embed the quote and annotation.', {
 		variant: 'info',
 		timeout: 6000,
 		code: citationEmbed(title),
@@ -74,9 +75,14 @@ export interface Citing {
  * The notes that link to or embed an annotation note. The search index narrows to notes holding
  * the title's words, then each body is checked for an actual `[[title` link.
  */
-export async function citedIn(title: string, annotationId: string): Promise<Citing[]> {
-	const words = title.match(/[\p{L}\p{N}]+/gu);
+export async function citedIn(
+	note: { id: string; title: string; relPath: string },
+	link: string
+): Promise<Citing[]> {
+	const { title, id: annotationId } = note;
+	const words = note.relPath ? title.match(/[\p{L}\p{N}]+/gu) : null;
 	if (!words) return [];
+	const targets = [...new Set([link, stripExt(note.relPath)])];
 	const rows = await select<{ id: string; title: string; rel_path: string; body: string }>(
 		`SELECT d.id, d.title, d.rel_path, f.body FROM documents_fts f
 		 JOIN documents d ON d.id = f.doc_id
@@ -85,7 +91,7 @@ export async function citedIn(title: string, annotationId: string): Promise<Citi
 	);
 	const out: Citing[] = [];
 	for (const row of rows) {
-		const line = citingLine(row.body, title);
+		const line = citingLine(row.body, targets);
 		if (line !== null) out.push({ id: row.id, title: row.title, relPath: row.rel_path, line });
 	}
 	return out;
@@ -95,9 +101,12 @@ export async function citedIn(title: string, annotationId: string): Promise<Citi
  * The text around the first link to `title` in `body`, or null if there is none. A citation on a
  * line of its own reads with the line before it, which is what usually introduces it.
  */
-function citingLine(body: string, title: string): string | null {
+function citingLine(body: string, targets: string[]): string | null {
 	const lines = body.split('\n');
-	const link = new RegExp(`!?\\[\\[${escapeRegExp(title)}(?:[|#][^\\]]*)?\\]\\]`, 'i');
+	const link = new RegExp(
+		`!?\\[\\[(?:${targets.map(escapeRegExp).join('|')})(?:[|#][^\\]]*)?\\]\\]`,
+		'i'
+	);
 	const at = lines.findIndex((l) => link.test(l));
 	if (at < 0) return null;
 	const own = plain(lines[at].replace(link, ''));

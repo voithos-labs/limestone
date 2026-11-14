@@ -216,7 +216,8 @@
 			deleted: r.deleted,
 			run: async (newTab) => {
 				const next = TabState.forDoc(await Doc.load(r.id));
-				if (r.page) next.state[OPEN_AT_PAGE] = r.page;
+				const open = editor.tabs.find((t) => t.id === r.id) ?? next;
+				if (r.page) open.state[OPEN_AT_PAGE] = r.page;
 				openContent(next, newTab);
 			}
 		};
@@ -351,7 +352,8 @@
 			document_type: string;
 		}>(
 			`SELECT id, title, rel_path, source_id, document_type FROM documents
-			 WHERE deleted_at IS NULL ORDER BY accessed_at DESC LIMIT 5`
+			 WHERE deleted_at IS NULL AND json_extract(properties, '$.views.annotation') IS NULL
+			 ORDER BY accessed_at DESC LIMIT 5`
 		)
 			.then((rows) => (recentDocs = rows))
 			.catch((e) => console.error('palette recents failed', e));

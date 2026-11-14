@@ -207,7 +207,7 @@
 			class="tool"
 			class:on={sidenotes}
 			type="button"
-			title={sidenotes ? 'Hide comments sidebar' : 'Show comments sidebar'}
+			title={sidenotes ? 'Hide annotations sidebar' : 'Show annotations sidebar'}
 			onclick={onToggleSidenotes}
 		>
 			<PanelRight size={14} strokeWidth={1.75} />

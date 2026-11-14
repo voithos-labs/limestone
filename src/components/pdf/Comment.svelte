@@ -29,7 +29,7 @@
 		text,
 		editing = false,
 		at = null,
-		placeholder = 'Add a comment…',
+		placeholder = 'Add an annotation…',
 		plugins = EDITOR_PLUGINS,
 		onInput,
 		onDone
