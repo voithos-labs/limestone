@@ -19,7 +19,6 @@
 	import type { Attachment } from 'svelte/attachments';
 	import type {
 		PageViewport,
-		PDFDocumentLoadingTask,
 		PDFDocumentProxy,
 		PDFPageProxy,
 		RenderTask,
@@ -83,7 +82,7 @@
 		type TextTarget
 	} from '#lib/pdf/anchor.js';
 	import PdfAnnotations from '#lib/pdf/PdfAnnotations.svelte.js';
-	import { loadPdf, openPdf, pdfLib, type PdfLib } from '#lib/pdf/open.js';
+	import { holdPdf, loadPdf, pdfLib, type PdfLib } from '#lib/pdf/open.js';
 	import {
 		canvasScale,
 		holdRange,
@@ -110,7 +109,6 @@
 		discardEdition,
 		editionDate,
 		editionOf,
-		editionPath,
 		editionSize,
 		isPreserved
 	} from '#lib/pdf/edition.js';
@@ -200,23 +198,19 @@
 		void attempt;
 		if (!h) return;
 		let cancelled = false;
-		let task: PDFDocumentLoadingTask | null = null;
+		const release = holdPdf(h.id, old ?? undefined);
 		failure = null;
 		void (async () => {
 			try {
 				// the file's edition is hashed while pdf.js opens it, so neither waits on the other
 				const file = { sourceId: h.source.id, sourcePath: h.source.path, relPath: h.relPath };
-				const [mod, opening, edition] = await Promise.all([
+				const [mod, doc, edition] = await Promise.all([
 					pdfLib(),
-					old ? openPdf({ ...file, relPath: editionPath(old) }) : h.open(),
+					old ? loadPdf(h.id, old) : h.open(),
 					old ?? editionOf(file)
 				]);
-				// closed while opening: the cleanup ran before there was a task to stop
-				if (cancelled) return void opening.destroy();
-				task = opening;
-				lib = mod;
-				const doc = await task.promise;
 				if (cancelled) return;
+				lib = mod;
 				const first = (await doc.getPage(1)).getViewport({ scale: 1 });
 				if (cancelled) return;
 				if (!old) annotations.edition = edition;
@@ -231,7 +225,7 @@
 		return () => {
 			cancelled = true;
 			pdf = null;
-			void task?.destroy();
+			release();
 		};
 	});
 

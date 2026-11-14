@@ -153,13 +153,14 @@
 		return [...root.querySelectorAll(selector)].map((el) => el.getBoundingClientRect());
 	}
 
-	function onPointerDown(e: PointerEvent, from: EditorState, index: number) {
+	function onPointerDown(e: PointerEvent, from: EditorState, index: number, target: FocusTarget) {
 		if ((e.target as HTMLElement).closest('.close-btn')) return;
 		if (e.button !== 0 || !navEl) return;
 
 		e.preventDefault();
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 		session.activate(from, true);
+		from.focusTab(target);
 
 		dragFrom = from;
 		dragTab = from.tabs[index];
@@ -447,10 +448,7 @@
 						style:transform={tabTransform(ed, i)}
 						title={collapsed ? d.title : null}
 						use:ctxMenu={() => tabMenu(ed, d)}
-						onclick={() => {
-							if (ed.tabs.includes(d)) ed.focusTab(target);
-						}}
-						onpointerdown={(e) => onPointerDown(e, ed, i)}
+						onpointerdown={(e) => onPointerDown(e, ed, i, target)}
 						onpointermove={onPointerMove}
 						onpointerup={onPointerUp}
 						onpointercancel={onPointerUp}

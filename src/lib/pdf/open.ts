@@ -8,7 +8,12 @@
  */
 
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { stat } from '@tauri-apps/plugin-fs';
+import type {
+	PDFDocumentLoadingTask,
+	PDFDocumentProxy,
+	PDFWorker
+} from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { select } from '#lib/services/db.js';
 import { getSource } from '#lib/models/Source.js';
@@ -39,6 +44,8 @@ export interface PdfFile {
 const FIRST_CHUNK = 1 << 20;
 const CHUNK = 1 << 18;
 
+let worker: PDFWorker | null = null;
+
 /**
  * Starts loading a PDF. A file that can't be read rejects with the same `{ kind }` errors the
  * byte read gives, so callers keep telling a missing source from a locked file.
@@ -67,7 +74,9 @@ export async function openPdf(file: PdfFile): Promise<PDFDocumentLoadingTask> {
 			stop.abort();
 		}
 	}
+	worker ??= new lib.PDFWorker();
 	const task = lib.getDocument({
+		worker,
 		range: new Ranges(length, initial),
 		rangeChunkSize: CHUNK,
 		disableAutoFetch: true,
@@ -101,36 +110,87 @@ async function readFailure(file: PdfFile): Promise<unknown> {
 
 // several cards for one PDF share its loaded document, and a few PDFs stay open between notes
 const CACHE_SIZE = 4;
-const loaded = new Map<string, Promise<PDFDocumentProxy>>();
+
+interface Opened {
+	doc: PDFDocumentProxy;
+	path: string;
+	stamp: string;
+}
+
+const loaded = new Map<string, Promise<Opened>>();
+const held = new Map<string, number>();
+const keyOf = (pdfId: string, edition?: string) => `${pdfId}@${edition ?? ''}`;
+
+async function stampOf(path: string): Promise<string> {
+	try {
+		const { size, mtime } = await stat(path);
+		return `${size}:${mtime?.getTime()}`;
+	} catch {
+		return '';
+	}
+}
+
+function drop(key: string) {
+	const opening = loaded.get(key);
+	loaded.delete(key);
+	opening?.then((o) => o.doc.loadingTask.destroy()).catch(() => {});
+}
+
+function trim() {
+	for (const key of [...loaded.keys()]) {
+		if (loaded.size <= CACHE_SIZE) return;
+		if (!held.has(key)) drop(key);
+	}
+}
+
+export function holdPdf(pdfId: string, edition?: string): () => void {
+	const key = keyOf(pdfId, edition);
+	held.set(key, (held.get(key) ?? 0) + 1);
+	return () => {
+		const n = (held.get(key) ?? 1) - 1;
+		if (n) held.set(key, n);
+		else held.delete(key);
+		trim();
+	};
+}
 
 /**
  * A PDF opened by its document id, from the edition's preserved copy when there is one and its
  * current file otherwise. A few stay open, so callers share them and never destroy one.
  */
-export function loadPdf(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
-	const key = `${pdfId}@${edition ?? ''}`;
+export async function loadPdf(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
+	const key = keyOf(pdfId, edition);
 	const hit = loaded.get(key);
 	if (hit) {
-		loaded.delete(key);
-		loaded.set(key, hit);
-		return hit;
+		const open = await hit.catch(() => null);
+		if (open && (await stampOf(open.path)) === open.stamp) {
+			if (loaded.get(key) === hit) {
+				loaded.delete(key);
+				loaded.set(key, hit);
+			}
+			return open.doc;
+		}
+		if (loaded.get(key) === hit) {
+			if (held.has(key)) loaded.delete(key);
+			else drop(key);
+		}
 	}
-	const next = openById(pdfId, edition);
-	loaded.set(key, next);
-	next.catch(() => {
-		if (loaded.get(key) === next) loaded.delete(key);
-	});
-	while (loaded.size > CACHE_SIZE) {
-		const [oldest, doc] = loaded.entries().next().value!;
-		loaded.delete(oldest);
-		doc.then((d) => d.loadingTask.destroy()).catch(() => {});
+	let next = loaded.get(key);
+	if (!next) {
+		const opening = openById(pdfId, edition);
+		next = opening;
+		loaded.set(key, opening);
+		opening.catch(() => {
+			if (loaded.get(key) === opening) loaded.delete(key);
+		});
+		trim();
 	}
-	return next;
+	return (await next).doc;
 }
 
 // Opens the file itself rather than through PdfHandle.open, which marks the PDF opened:
 // a note showing a crop isn't the reader opening the PDF.
-async function openById(pdfId: string, edition?: string): Promise<PDFDocumentProxy> {
+async function openById(pdfId: string, edition?: string): Promise<Opened> {
 	const [row] = await select<{ source_id: string; rel_path: string }>(
 		`SELECT source_id, rel_path FROM documents WHERE id = ?1 AND document_type = 'pdf'`,
 		[pdfId]
@@ -139,10 +199,9 @@ async function openById(pdfId: string, edition?: string): Promise<PDFDocumentPro
 	const source = await getSource(row.source_id);
 	// a box marked on bytes since replaced is drawn from those bytes, while they're kept
 	const preserved = edition && (await isPreserved(source.path, edition));
-	const task = await openPdf({
-		sourceId: source.id,
-		sourcePath: source.path,
-		relPath: preserved ? editionPath(edition) : row.rel_path
-	});
-	return task.promise;
+	const relPath = preserved ? editionPath(edition) : row.rel_path;
+	const path = `${source.path}/${relPath}`;
+	const stamp = await stampOf(path);
+	const task = await openPdf({ sourceId: source.id, sourcePath: source.path, relPath });
+	return { doc: await task.promise, path, stamp };
 }

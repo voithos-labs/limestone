@@ -18,6 +18,14 @@ interface Runs {
 	ys: number[];
 }
 
+const texts = new WeakMap<PDFDocumentProxy, Map<number, string>>();
+
+function textsOf(doc: PDFDocumentProxy): Map<number, string> {
+	let pages = texts.get(doc);
+	if (!pages) texts.set(doc, (pages = new Map()));
+	return pages;
+}
+
 export default class PdfFind {
 	query = $state('');
 	matches: FindMatch[] = $state.raw([]);
@@ -25,7 +33,6 @@ export default class PdfFind {
 	scanning = $state(false);
 
 	#doc: () => PDFDocumentProxy | null;
-	#pages = new Map<number, string>();
 	#run = 0;
 
 	constructor(doc: () => PDFDocumentProxy | null) {
@@ -33,24 +40,25 @@ export default class PdfFind {
 	}
 
 	reset() {
-		this.#pages.clear();
 		void this.search('');
 	}
 
 	async prime(file: StoredAs) {
 		const doc = this.#doc();
 		if (!doc) return;
+		const known = textsOf(doc);
+		if (known.size === doc.numPages) return;
 		const stored = await invoke<string[] | null>('read_pdf_text', { ...file }).catch(() => null);
 		if (doc !== this.#doc()) return;
 		if (stored?.length === doc.numPages) {
-			stored.forEach((text, i) => this.#pages.set(i + 1, text.toLowerCase()));
+			stored.forEach((text, i) => known.set(i + 1, text.toLowerCase()));
 			return;
 		}
 		const pages: string[] = [];
 		for (let n = 1; n <= doc.numPages; n++) {
 			const page = await runs(doc, n).catch(() => null);
 			if (!page || doc !== this.#doc()) return;
-			this.#pages.set(n, page.text.toLowerCase());
+			known.set(n, page.text.toLowerCase());
 			pages.push(page.text);
 		}
 		await invoke('save_pdf_text', { ...file, pages }).catch(() => {});
@@ -104,10 +112,11 @@ export default class PdfFind {
 	}
 
 	async #text(doc: PDFDocumentProxy, n: number): Promise<string> {
-		const cached = this.#pages.get(n);
+		const known = textsOf(doc);
+		const cached = known.get(n);
 		if (cached !== undefined) return cached;
 		const text = (await runs(doc, n)).text.toLowerCase();
-		this.#pages.set(n, text);
+		known.set(n, text);
 		return text;
 	}
 }
