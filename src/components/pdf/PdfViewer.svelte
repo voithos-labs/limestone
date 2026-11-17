@@ -2416,7 +2416,7 @@
 		right: 0;
 		z-index: 5;
 		background: var(--color-surface);
-		border-bottom: 1px solid var(--color-border);
+		border-bottom: 1px solid var(--color-bg);
 	}
 
 	.top-bar :global(.side-head) {
