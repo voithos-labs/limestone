@@ -150,7 +150,7 @@ function isColor(v: unknown): v is AnnotationColor {
 }
 
 function parseRect(v: unknown): unknown {
-	if (typeof v !== 'string') return v;
+	if (typeof v !== 'string') return null;
 	const [, page, box] = /^\s*(?:p(\d+)\s+)?(.*)$/s.exec(v)!;
 	const rect = box.trim().split(/\s+/).map(Number);
 	if (rect.length !== 4) return null;
@@ -166,7 +166,7 @@ function isRect(v: unknown): v is PageRect {
 }
 
 function parseStroke(v: unknown): unknown {
-	if (!v || typeof v !== 'object' || typeof (v as InkStroke).points !== 'string') return v;
+	if (!v || typeof v !== 'object' || typeof (v as InkStroke).points !== 'string') return null;
 	const text = (v as { points: string }).points;
 	return {
 		...v,
@@ -217,16 +217,15 @@ function pairs(points: number[]): [number, number][] {
 
 const LABEL_WORDS = 6;
 
-// greedy, so a PDF title holding its own ", p2 - " still splits at the last one
-const TITLE_SHAPE = /^(?:(.+), )?p(\d+) - (.+)$/;
+const TITLE_SHAPE = /^p(\d+) - (.+)$/;
 
 /**
  * The note's title, which is also its file name and its link text:
  * `Hale & Ortiz 2023, p3 - The rate tracked particulate deposition`. The PDF's name keeps a bare
  * `[[…]]` link unique across PDFs, and the opening words make it readable outside Limestone.
  */
-export function annotationTitle(page: number, label: string, pdfTitle = ''): string {
-	return linkSafe(`${pdfTitle ? `${pdfTitle}, ` : ''}p${page} - ${label}`);
+export function annotationTitle(page: number, label: string): string {
+	return linkSafe(`p${page} - ${label}`);
 }
 
 /**
@@ -240,10 +239,10 @@ export function parseAnnotationTitle(
 	const path = title.replace(/\\/g, '/');
 	const cut = path.lastIndexOf('/');
 	const m = TITLE_SHAPE.exec(path.slice(cut + 1));
-	const page = Number(m?.[2]);
+	const page = Number(m?.[1]);
 	if (!m || !(page >= 1)) return null;
 	const folder = cut < 0 ? '' : path.slice(path.lastIndexOf('/', cut - 1) + 1, cut);
-	return { pdfTitle: m[1] ?? folder, page, label: m[3] };
+	return { pdfTitle: folder, page, label: m[2] };
 }
 
 /**

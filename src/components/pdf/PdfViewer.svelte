@@ -15,6 +15,7 @@
 	/* -------------------------------------------------------------------------- */
 
 	// outside libs
+	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { tick, untrack } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 	import type {
@@ -128,7 +129,7 @@
 	import SelectionMenu from './SelectionMenu.svelte';
 	import SideNotes from './SideNotes.svelte';
 	import PdfSearch from './PdfSearch.svelte';
-	import { chaptersOf, type Chapter } from '#lib/pdf/outline.js';
+	import { chaptersOf, destOf, type Chapter } from '#lib/pdf/outline.js';
 	import PdfFind from '#lib/pdf/PdfFind.svelte.js';
 	import SidebarHeader from './SidebarHeader.svelte';
 	import type { NoteActions } from './SideNote.svelte';
@@ -605,7 +606,10 @@
 				node.prepend(canvas);
 				text = layText(node, page, viewport, pdfLib);
 				await text.render().catch(() => {});
-				if (live) paintFind();
+				if (!live) return;
+				paintFind();
+				const links = await page.getAnnotations().catch(() => []);
+				if (live) layLinks(node, links, viewport);
 			})();
 
 			return () => {
@@ -635,6 +639,41 @@
 			container,
 			viewport
 		});
+	}
+
+	function layLinks(node: HTMLElement, annotations: any[], viewport: PageViewport) {
+		const container = node.querySelector<HTMLElement>('.links')!;
+		container.replaceChildren();
+		for (const a of annotations) {
+			if (a.subtype !== 'Link' || !(a.dest || a.url)) continue;
+			const [x1, y1] = viewport.convertToViewportPoint(a.rect[0], a.rect[1]);
+			const [x2, y2] = viewport.convertToViewportPoint(a.rect[2], a.rect[3]);
+			const link = document.createElement('a');
+			link.draggable = false;
+			link.style.left = `${(Math.min(x1, x2) / viewport.width) * 100}%`;
+			link.style.top = `${(Math.min(y1, y2) / viewport.height) * 100}%`;
+			link.style.width = `${(Math.abs(x2 - x1) / viewport.width) * 100}%`;
+			link.style.height = `${(Math.abs(y2 - y1) / viewport.height) * 100}%`;
+			if (a.url) link.title = a.url;
+			link.onclick = () => void (a.url ? openUrl(a.url) : followDest(a.dest));
+			container.append(link);
+		}
+	}
+
+	async function followDest(raw: string | unknown[]) {
+		const doc = pdf;
+		if (!doc) return;
+		const to = await destOf(doc, raw).catch(() => null);
+		if (!to) return;
+		const [, kind, a, b] = to.dest as [unknown, { name?: string }?, unknown?, unknown?];
+		const name = kind?.name ?? '';
+		const y = name === 'XYZ' ? b : /^Fit(B?)H$/.test(name) ? a : null;
+		let offset = 0;
+		if (typeof y === 'number') {
+			const box = (await doc.getPage(to.page)).getViewport({ scale: 1 });
+			offset = Math.min(1, Math.max(0, box.convertToViewportPoint(0, y)[1] / box.height));
+		}
+		if (pdf === doc) goToPlace({ page: to.page, offset });
 	}
 
 	/* -------------------- Scrolling and the reader's place -------------------- */
@@ -2090,6 +2129,7 @@
 									lasso={gesture?.page === n && inkMode === 'lasso' ? gesture.points : null}
 								/>
 								<div class="textLayer"></div>
+								<div class="links"></div>
 							</div>
 						{/each}
 					</div>
@@ -2606,6 +2646,28 @@
 	}
 
 	.drawing .textLayer {
+		pointer-events: none;
+	}
+
+	.links {
+		position: absolute;
+		inset: 0;
+		z-index: 2;
+		pointer-events: none;
+	}
+
+	.links :global(a) {
+		position: absolute;
+		border-radius: 2px;
+		cursor: pointer;
+		pointer-events: auto;
+	}
+
+	.links :global(a:hover) {
+		background: var(--accent-a22);
+	}
+
+	.drawing .links :global(a) {
 		pointer-events: none;
 	}
 

@@ -251,7 +251,7 @@ export default class PdfAnnotations {
 		if (named?.page !== a.page) return;
 		const doc = await MarkdownHandle.fromID(a.id);
 		try {
-			await doc.rename(annotationTitle(page, named.label, named.pdfTitle));
+			await doc.rename(annotationTitle(page, named.label));
 		} catch (e) {
 			// a note already holding the new name keeps the old one; the placement still stands
 			console.error('annotation rename failed', e);
