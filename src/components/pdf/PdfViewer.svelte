@@ -211,6 +211,10 @@
 				]);
 				if (cancelled) return;
 				lib = mod;
+				const at = placeOf(tab.state.place, doc.numPages);
+				readingAt = null;
+				const elsewhere = OPEN_AT_PAGE in tab.state || OPEN_AT_ANNOTATION in tab.state;
+				if (at && !flow && !elsewhere) landing = () => goToPlace(at);
 				const first = (await doc.getPage(1)).getViewport({ scale: 1 });
 				if (cancelled) return;
 				if (!old) annotations.edition = edition;
@@ -224,6 +228,7 @@
 		})();
 		return () => {
 			cancelled = true;
+			savePlace();
 			pdf = null;
 			release();
 		};
@@ -335,9 +340,9 @@
 	let paneW = $state(0);
 	// the reading column a note gets, which the page and its margin share
 	let columnMax = $state(MAX_PAGE_WIDTH);
-	const savedZoom = untrack(() => tab.state.pdf_zoom);
+	const savedZoom = untrack(() => tab.state.zoom);
 	let zoom = $state(typeof savedZoom === 'number' ? savedZoom : 1);
-	let sidenotesOn = $state(untrack(() => tab.state.pdf_sidenotes) !== false);
+	let sidenotesOn = $state(untrack(() => tab.state.sidenotes) !== false);
 	const room = $derived(paneW - SIDE_PAD * 2);
 	const railRoom = $derived(sidenotesOn && !flow && room >= MIN_PAGE_WIDTH + RAIL_GAP + RAIL_WIDTH);
 	const fitWidth = $derived(
@@ -352,7 +357,7 @@
 
 	function toggleSidenotes() {
 		sidenotesOn = !sidenotesOn;
-		tab.state.pdf_sidenotes = sidenotesOn;
+		tab.state.sidenotes = sidenotesOn;
 	}
 
 	/** Measures the pane, and again each time a resize settles. Attached to the viewer's root. */
@@ -379,7 +384,7 @@
 
 	function setZoom(next: number) {
 		zoom = Math.min(ZOOM_STEPS.at(-1)!, Math.max(ZOOM_STEPS[0], next));
-		tab.state.pdf_zoom = zoom;
+		tab.state.zoom = zoom;
 	}
 
 	function stepZoom(dir: 1 | -1) {
@@ -414,7 +419,7 @@
 	/* ------------------------------- Dark pages ------------------------------- */
 
 	// dark pages follow the app's theme until this PDF's own toggle says otherwise
-	const savedDark = untrack(() => tab.state.pdf_dark);
+	const savedDark = untrack(() => tab.state.dark);
 	let darkChoice = $state<boolean | undefined>(
 		typeof savedDark === 'boolean' ? savedDark : undefined
 	);
@@ -450,7 +455,7 @@
 		children: Chapter[];
 	}
 
-	let sectioned = $state(untrack(() => tab.state.pdf_sections) === true);
+	let sectioned = $state(untrack(() => tab.state.sections) === true);
 	let sectionAt = $state(0);
 	const sections = $derived.by(() => {
 		const n = ratios.length;
@@ -501,7 +506,7 @@
 		sectionAt = sectionOf(page);
 		if (viewTop <= layout.tops[page - 1]) landing = () => goToPage(page);
 		sectioned = on;
-		tab.state.pdf_sections = on;
+		tab.state.sections = on;
 	}
 
 	function stepSection(dir: 1 | -1) {
@@ -713,6 +718,7 @@
 			pagesBetween(layout, v.top - KEEP_MARGIN, bottom + KEEP_MARGIN)
 		);
 		if (next.first !== mounted.first || next.last !== mounted.last) mounted = next;
+		notePlace();
 		if (!flow) {
 			const at = pageIndexAt(layout.tops, v.top + v.height / 3);
 			currentPage = Math.min(Math.max(at, section?.first ?? 0), section?.last ?? at) + 1;
@@ -761,6 +767,49 @@
 	}
 
 	/** Brings an annotation's passage a third of the way down the view, mounted or not. */
+	interface Place {
+		page: number;
+		offset: number;
+	}
+
+	const PLACE_SETTLE_MS = 500;
+	let readingAt: Place | null = null;
+	let placeTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function placeOf(raw: unknown, pages: number): Place | null {
+		const { page, offset } = (raw ?? {}) as Partial<Place>;
+		if (!Number.isInteger(page) || page! < 1 || page! > pages) return null;
+		const into = typeof offset === 'number' ? Math.min(1, Math.max(0, offset)) : 0;
+		return { page: page!, offset: into };
+	}
+
+	function goToPlace(at: Place) {
+		reach(at.page, () => {
+			const v = view();
+			const top = layout.tops[at.page - 1];
+			if (v && top !== undefined) {
+				scrollBy(v, top + at.offset * layout.heights[at.page - 1] - v.top);
+			}
+		});
+	}
+
+	function notePlace() {
+		if (flow || !pdfIsFile || landing) return;
+		const i = pageIndexAt(layout.tops, Math.max(viewTop, 0));
+		const height = layout.heights[i];
+		if (!height) return;
+		const offset = Math.min(1, Math.max(0, (viewTop - layout.tops[i]) / height));
+		readingAt = { page: i + 1, offset };
+		clearTimeout(placeTimer);
+		placeTimer = setTimeout(savePlace, PLACE_SETTLE_MS);
+	}
+
+	function savePlace() {
+		clearTimeout(placeTimer);
+		if (readingAt) tab.state.place = readingAt;
+		readingAt = null;
+	}
+
 	function goToPage(n: number) {
 		reach(n, () => {
 			const v = view();
@@ -1004,7 +1053,7 @@
 
 	function setMode(next: 'pages' | 'digest') {
 		mode = next;
-		tab.state.pdf_mode = next;
+		tab.state.mode = next;
 		menu = null;
 	}
 
@@ -2192,7 +2241,7 @@
 			onToggleSidenotes={toggleSidenotes}
 			onToggleDark={() => {
 				darkChoice = !dark;
-				tab.state.pdf_dark = darkChoice;
+				tab.state.dark = darkChoice;
 			}}
 			tray={placing ? placeHint : tool === 'ink' ? inkTray : undefined}
 		/>

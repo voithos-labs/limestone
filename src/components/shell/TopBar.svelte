@@ -26,7 +26,8 @@
 		PinOff,
 		CircleX,
 		Scale,
-		Columns2
+		Columns2,
+		Copy
 	} from '@lucide/svelte';
 	import { ctxMenu, contextMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import { listSources, sourceName, type Source } from '#lib/models/Source.js';
@@ -314,6 +315,9 @@
 				action: () => session.moveTab(tab, from, session.beside(from)),
 				disabled: !split && from.tabs.length < 2
 			},
+			...(tab.content.type === 'pdf'
+				? [{ label: 'Duplicate', icon: Copy, action: () => from.duplicateTab(tab) }]
+				: []),
 			{ divider: true },
 			{ label: 'Close', icon: X, action: () => from.closeTab(tab.id) },
 			{

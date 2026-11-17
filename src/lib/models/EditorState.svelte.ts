@@ -189,7 +189,24 @@ export class TabState {
 	}
 
 	static forDoc(doc: AnyDoc): TabState {
-		return new TabState(TabState.docContent(doc));
+		const content = TabState.docContent(doc);
+		return new TabState(content, TabState.recall(content));
+	}
+
+	static remembered: Record<string, Record<string, any>> = {};
+	private static readonly MAX_REMEMBERED = 200;
+
+	static recall(content: TabContent): Record<string, any> {
+		return content.type === 'pdf' ? $state.snapshot(TabState.remembered[content.handle.id] ?? {}) : {};
+	}
+
+	static remember(content: TabContent, state: Record<string, any>) {
+		if (content.type !== 'pdf') return;
+		const all = TabState.remembered;
+		delete all[content.handle.id];
+		all[content.handle.id] = state;
+		const ids = Object.keys(all);
+		if (ids.length > TabState.MAX_REMEMBERED) delete all[ids[0]];
 	}
 
 	static forView(view: View): TabState {
@@ -454,6 +471,11 @@ class EditorState {
 		this.focusTab({ kind: 'tab', id: tab.id });
 	}
 
+	duplicateTab(tab: TabState) {
+		const copy = new TabState(tab.content, $state.snapshot(tab.state), false, uuidv4());
+		this.insertTab(copy, this.tabs.indexOf(tab) + 1);
+	}
+
 	openView(view: View) {
 		const existing = this.tabs.find((t) => TabState.idOf(t.content) === view.id);
 		const tab = existing ?? this.openTab(TabState.forView(view));
@@ -482,7 +504,7 @@ class EditorState {
 		if (TabState.idOf(content) === TabState.idOf(tab.content)) return;
 		tab.history.push({ content: tab.content, state: tab.state });
 		tab.forward = [];
-		this.swapContent(tab, content, state);
+		this.swapContent(tab, content, { ...TabState.recall(content), ...state });
 	}
 
 	goBack(tab: TabState) {
@@ -505,16 +527,17 @@ class EditorState {
 		if (open) return this.focusTab({ kind: 'tab', id: open.id });
 		let tab = this.tabs.find((t) => t.detail);
 		if (!tab) {
-			tab = new TabState(content, {}, false, uuidv4());
+			tab = new TabState(content, TabState.recall(content), false, uuidv4());
 			this.openTab(tab);
 		}
 		tab.detail = origin;
 		tab.history = [];
 		tab.forward = [];
-		this.swapContent(tab, content, {});
+		this.swapContent(tab, content, TabState.recall(content));
 	}
 
 	private swapContent(tab: TabState, content: TabContent, state: Record<string, any>) {
+		TabState.remember(tab.content, tab.state);
 		tab.content = content;
 		tab.state = state;
 		if (tab !== this.preview) this.focusTab({ kind: 'tab', id: tab.id });
@@ -581,6 +604,7 @@ class EditorState {
 		}
 		const idx = this.tabs.findIndex((v) => v.id === id);
 		if (idx === -1) return;
+		TabState.remember(this.tabs[idx].content, this.tabs[idx].state);
 
 		if (remember) {
 			this.closedTabs.push({ tab: this.tabs[idx], index: idx });
