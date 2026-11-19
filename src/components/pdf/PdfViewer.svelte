@@ -1301,6 +1301,7 @@
 		onSave: saveComment,
 		onCite: cite,
 		onLink: link,
+		onColor: (a, c) => recolor(a, c).catch((e) => reportError(e, "The color couldn't be changed.")),
 		linkOf: (a) => annotations.linkOf(a),
 		onMore: (a, anchor) => {
 			// the comment stays picked while its menu is open, so the menu reads as its own
@@ -1500,15 +1501,18 @@
 				return;
 			}
 			const a = here.find((x) => x.id === activeId);
-			if (!a) return;
-			const strokes = a.strokes?.map((s) => ({ ...s, color: c }));
-			const change = strokes
-				? { id: a.id, before: { strokes: a.strokes }, after: { strokes } }
-				: { id: a.id, before: { color: a.color }, after: { color: c } };
-			await commit({ notes: [change] }, a.page, a.rects[0]);
+			if (a) await recolor(a, c);
 		} catch (e) {
 			reportError(e, "The color couldn't be changed.");
 		}
+	}
+
+	async function recolor(a: Annotation, c: AnnotationColor) {
+		const strokes = a.strokes?.map((s) => ({ ...s, color: c }));
+		const change = strokes
+			? { id: a.id, before: { strokes: a.strokes }, after: { strokes } }
+			: { id: a.id, before: { color: a.color }, after: { color: c } };
+		await commit({ notes: [change] }, a.page, a.rects[0]);
 	}
 
 	/* -------------------------------------------------------------------------- */

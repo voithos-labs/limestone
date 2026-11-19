@@ -6,7 +6,7 @@
 	 * copying a citation or a link. The whole card drags into a note as a citation.
 	 */
 
-	import type { Annotation } from '#lib/pdf/annotation.js';
+	import type { Annotation, AnnotationColor } from '#lib/pdf/annotation.js';
 
 	/** What a note's card asks of the viewer. */
 	export interface NoteActions {
@@ -16,6 +16,7 @@
 		onSave: (a: Annotation, comment: string) => void;
 		onCite: (a: Annotation) => void;
 		onLink: (a: Annotation) => void;
+		onColor: (a: Annotation, color: AnnotationColor) => void;
 		linkOf: (a: Annotation) => string;
 		onMore: (a: Annotation, anchor: HTMLElement) => void;
 	}
@@ -28,7 +29,8 @@
 	import { untrack } from 'svelte';
 	import { ArrowUpRight, Ellipsis, Link, Pencil, Quote } from '@lucide/svelte';
 	import { dragCitation, type Citing } from '#lib/pdf/citation.js';
-	import { annotationRgb } from './colors.js';
+	import { ANNOTATION_COLORS } from '#lib/pdf/annotation.js';
+	import { ANNOTATION_RGB, annotationRgb } from './colors.js';
 	import Comment from './Comment.svelte';
 
 	let {
@@ -49,20 +51,30 @@
 	} = $props();
 
 	let draft = $state('');
+	let coloring = $state(false);
 	// where a click started the edit, so the caret lands where the reader pointed
 	let startAt: { x: number; y: number } | null = $state(null);
 
 	// Whatever ends the edit (Escape, a click away, the viewer picking something else) keeps what
 	// was typed.
+	let kept: string | null = null;
+
+	function keep() {
+		const text = draft.trim();
+		if (text === kept || text === untrack(() => a.comment)) return;
+		kept = text;
+		actions.onSave(
+			untrack(() => a),
+			draft
+		);
+	}
+
 	$effect(() => {
 		if (!editing) return;
 		draft = untrack(() => a.comment);
+		kept = null;
 		return () => {
-			if (draft.trim() !== untrack(() => a.comment))
-				actions.onSave(
-					untrack(() => a),
-					draft
-				);
+			keep();
 			// an edit started from the menu or the keyboard puts the caret at the end
 			startAt = null;
 		};
@@ -70,12 +82,19 @@
 
 	function finish() {
 		if (!editing) return;
+		keep();
 		actions.onEdit(null);
 		onDone?.();
 	}
 </script>
 
-<div class="note" class:active={active || editing} style:--ann={annotationRgb(a)}>
+<div
+	class="note"
+	role="presentation"
+	class:active={active || editing}
+	style:--ann={annotationRgb(a)}
+	onpointerleave={() => (coloring = false)}
+>
 	<!-- dropped into a note, the card is its citation; while editing, a drag selects text -->
 	<div
 		class="card"
@@ -137,23 +156,41 @@
 	</div>
 	{#if !editing}
 		<div class="tools">
-			<button
-				type="button"
-				title="Copy citation, or drag the card into a note"
-				onclick={() => actions.onCite(a)}
-			>
-				<Quote size={13} strokeWidth={1.75} />
-			</button>
-			<button type="button" title="Copy link" onclick={() => actions.onLink(a)}>
-				<Link size={13} strokeWidth={1.75} />
-			</button>
-			<button
-				type="button"
-				title="More"
-				onclick={(e) => actions.onMore(a, e.currentTarget as HTMLElement)}
-			>
-				<Ellipsis size={13} strokeWidth={1.75} />
-			</button>
+			{#if coloring}
+				{#each ANNOTATION_COLORS as c (c)}
+					<button
+						type="button"
+						title={c}
+						onclick={() => {
+							coloring = false;
+							actions.onColor(a, c);
+						}}
+					>
+						<span class="dot" class:accent={c === 'accent'} style:--ann={ANNOTATION_RGB[c]}></span>
+					</button>
+				{/each}
+			{:else}
+				<button type="button" title="Change color" onclick={() => (coloring = true)}>
+					<span class="dot"></span>
+				</button>
+				<button
+					type="button"
+					title="Copy citation, or drag the card into a note"
+					onclick={() => actions.onCite(a)}
+				>
+					<Quote size={13} strokeWidth={1.75} />
+				</button>
+				<button type="button" title="Copy link" onclick={() => actions.onLink(a)}>
+					<Link size={13} strokeWidth={1.75} />
+				</button>
+				<button
+					type="button"
+					title="More"
+					onclick={(e) => actions.onMore(a, e.currentTarget as HTMLElement)}
+				>
+					<Ellipsis size={13} strokeWidth={1.75} />
+				</button>
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -298,6 +335,26 @@
 		background: transparent;
 		color: inherit;
 		cursor: pointer;
+	}
+
+	.dot {
+		position: relative;
+		width: 11px;
+		height: 11px;
+		border-radius: 999px;
+		background: rgb(var(--ann));
+	}
+
+	.dot.accent::after {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 3px;
+		height: 3px;
+		border-radius: 50%;
+		background: var(--color-bg);
+		translate: -50% -50%;
 	}
 
 	.tools button:hover {

@@ -42,7 +42,7 @@
 		plugins?: readonly EditorPluginEntry[];
 		/** Each change while editing, as the comment's whole text. */
 		onInput?: (text: string) => void;
-		/** Escape, Ctrl+Enter or a click outside the comment ends the edit. */
+		/** Escape, Enter or a click outside the comment ends the edit. */
 		onDone?: () => void;
 	} = $props();
 
@@ -104,11 +104,19 @@
 	function onKeydown(e: KeyboardEvent) {
 		// the editor's own uses of these keys, closing its menus, come first
 		if (!editing || e.defaultPrevented) return;
-		if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+		if (e.key === 'Escape') {
 			e.preventDefault();
 			e.stopPropagation();
 			onDone?.();
 		}
+	}
+
+	function onEnter(e: KeyboardEvent) {
+		if (!editing || e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+		if ((e.target as Element).closest('[aria-expanded="true"]')) return;
+		e.preventDefault();
+		e.stopPropagation();
+		onDone?.();
 	}
 
 	function onWindowPointer(e: PointerEvent) {
@@ -118,7 +126,13 @@
 
 <svelte:window onpointerdowncapture={onWindowPointer} />
 
-<div class="comment" bind:this={el} role="presentation" onkeydown={onKeydown}>
+<div
+	class="comment"
+	bind:this={el}
+	role="presentation"
+	onkeydown={onKeydown}
+	onkeydowncapture={onEnter}
+>
 	{#if editing || near}
 		<Editor
 			bind:this={instance}
