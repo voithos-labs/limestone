@@ -1,7 +1,7 @@
 /**
  * citations: how a note points back at a passage in a pdf.
  *
- * A citation is just an ordinary embed of the annotation's note, like `![[X, p3 - words]]`, so
+ * A citation is just an ordinary embed of the annotation's note, like `![[p3 - words]]`, so
  * it's plain markdown that still makes sense outside Limestone. This file makes one (copy or
  * drag), follows one (opens the pdf at that annotation), and finds the notes that cite an
  * annotation.

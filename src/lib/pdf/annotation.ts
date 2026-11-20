@@ -2,14 +2,14 @@
  * what an annotation looks like on disk.
  *
  * So, each annotation is its own markdown note, in a folder named after its pdf
- * and kept beside it (`papers/X.pdf` gets `papers/X/X, p3 - words.md`). The note's body is just
+ * and kept beside it (`papers/X.pdf` gets `papers/X/p3 - words.md`). The note's body is just
  * its comment. The annotation itself sits in the note's frontmatter, under one "annotation" key.
  *
  * This file describe the frontmatter format, it covers 3 main things:
  *
  * 1. what an annotation holds (the pdf's id, its page, its kind (highlight, region or ink), etc.)
  * 2. reading and writing it
- * 3. naming the note (i.e. <pdf title>, p<page> - <first words>) (which is also its file name and its
+ * 3. naming the note (i.e. p<page> - <first words>) (which is also its file name and its
  * link text)
  */
 
@@ -221,8 +221,8 @@ const TITLE_SHAPE = /^p(\d+) - (.+)$/;
 
 /**
  * The note's title, which is also its file name and its link text:
- * `Hale & Ortiz 2023, p3 - The rate tracked particulate deposition`. The PDF's name keeps a bare
- * `[[…]]` link unique across PDFs, and the opening words make it readable outside Limestone.
+ * `p3 - The rate tracked particulate deposition`. The opening words make it readable outside
+ * Limestone.
  */
 export function annotationTitle(page: number, label: string): string {
 	return linkSafe(`p${page} - ${label}`);

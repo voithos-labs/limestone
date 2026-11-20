@@ -42,7 +42,6 @@ import type { Placement } from './migrate.js';
  */
 export default class PdfAnnotations {
 	items: Annotation[] = $state([]);
-	/** Whether this PDF's folder stores metadata, which annotations need. */
 	/** Whether the list has been read at least once, so an empty one means there are none. */
 	loaded = $state(false);
 	/** The edition on screen, which new annotations are made on and preserve. */

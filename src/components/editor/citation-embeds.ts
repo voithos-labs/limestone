@@ -1,5 +1,5 @@
 /**
- * the editor plugin that turns a citation, `![[X, p3 - words]]`, into a card.
+ * the editor plugin that turns a citation, `![[p3 - words]]`, into a card.
  *
  * It runs while the markdown is parsed, with no index to ask, so it only claims embeds whose target
  * is shaped like an annotation note's title. Every other `![[note]]` is left alone.

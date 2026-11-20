@@ -21,7 +21,7 @@
 		/** Where the menu's top-left sits, in the viewer's own coordinates. */
 		x: number;
 		y: number;
-		/** False where annotations can't be saved; only copying the text is offered. */
+		/** False on an earlier edition, where only copying the text is offered. */
 		writable?: boolean;
 		onHighlight: () => void;
 		onComment: () => void;
@@ -69,7 +69,7 @@
 			<span class="label">Copy as citation</span>
 		</button>
 	{:else}
-		<p class="reason">This folder doesn't store metadata, so annotations can't be saved here.</p>
+		<p class="reason">This is an earlier edition of the PDF, so annotations can't be added here.</p>
 	{/if}
 	<button class="row" type="button" onclick={onCopyText}>
 		<span class="icon"><Link size={13} strokeWidth={1.75} /></span>

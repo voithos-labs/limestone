@@ -7,6 +7,7 @@ const TITLE_POOL = 200;
 const FTS_MIN_CHARS = 5;
 const FTS_CANDIDATE_POOL = 25;
 const PDF_PAGE_POOL = 100;
+const SEARCH_PDF_TEXT = false;
 const BM25_SATURATION = 5.0;
 const BODY_QUALITY_CAP = 0.9;
 const PHRASE_BONUS = 0.15;
@@ -202,11 +203,7 @@ function ftsPhraseQuery(query: string): string | null {
 	return /\s$/.test(query) ? out : out + '*';
 }
 
-async function ftsPass(
-	t: FtsTable,
-	match: string | null,
-	scope?: SearchScope
-): Promise<FtsRow[]> {
+async function ftsPass(t: FtsTable, match: string | null, scope?: SearchScope): Promise<FtsRow[]> {
 	if (!match) return [];
 	const s = scoped(scope);
 	try {
@@ -253,7 +250,12 @@ async function hybrid(
 	const runFts = trimmed.length >= FTS_MIN_CHARS;
 	const fts = async (match: string | null) =>
 		runFts
-			? (await Promise.all([ftsPass(NOTES, match, scope), ftsPass(PDF_PAGES, match, scope)])).flat()
+			? (
+					await Promise.all([
+						ftsPass(NOTES, match, scope),
+						SEARCH_PDF_TEXT ? ftsPass(PDF_PAGES, match, scope) : []
+					])
+				).flat()
 			: [];
 	const [titleRows, matchRows, phraseRows] = await Promise.all([
 		titleMatches(trimmed, scope),

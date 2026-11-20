@@ -95,6 +95,8 @@ const KNOWN_KEYS: &[&str] = &[
     "created_at",
     "updated_at",
     "accessed_at",
+    "ink",
+    "marks",
 ];
 // "tag" is for obsid compat
 

@@ -60,7 +60,7 @@
 			const found: Entry[] = [];
 			let hit: MemberRow | null = null;
 			for (const view of views) {
-				if (view.unit === 'tag:todo' || view.unit === ANNOTATION) continue; // the hero's todo card draws these
+				if (view.unit === 'tag:todo' || view.unit === ANNOTATION) continue; // the hero's todo card and the note's passage card draw these
 				const own =
 					view.unit && isBuiltinUnit(view.unit)
 						? view.fields.filter((f) => f.unit === view.unit)

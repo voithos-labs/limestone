@@ -1143,7 +1143,9 @@
 	/*                              Pages or digest                               */
 	/* -------------------------------------------------------------------------- */
 
-	let mode = $state<'pages' | 'digest'>('pages');
+	let mode = $state<'pages' | 'digest'>(
+		untrack(() => tab.state.mode) === 'digest' ? 'digest' : 'pages'
+	);
 	let digestEl: PdfDigest | undefined = $state();
 	// the digest's passages read in the editor's own face, as a note's text does
 	const editorFont = $derived(editor?.session?.settings.get<string>('editor.font') ?? 'sans-serif');
@@ -2328,7 +2330,7 @@
 			onClose={() => (menu = null)}
 		/>
 	{/if}
-	{#if barred && handle}
+	{#if handle && !flow && !notice}
 		<div class="top-bar" bind:clientHeight={barHeight}>
 			<SidebarHeader
 				{handle}
