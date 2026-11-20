@@ -35,7 +35,6 @@
 	import MoveDialog from '../dialogs/MoveDialog.svelte';
 	import TagMenu from '../views/editors/TagMenu.svelte';
 	import Menu from '../ui/Menu.svelte';
-	import PdfIcon from '../ui/PdfIcon.svelte';
 
 	let {
 		handle,
@@ -47,7 +46,8 @@
 		onOpenFolder,
 		extra,
 		sections,
-		digest
+		digest,
+		jumps
 	}: {
 		handle: PdfHandle;
 		onDelete?: () => void;
@@ -59,6 +59,7 @@
 		extra?: Snippet;
 		sections?: { on: boolean; toggle: () => void };
 		digest?: { on: boolean; toggle: () => void };
+		jumps?: { back?: Jumps; forward?: Jumps };
 	} = $props();
 
 	let title = $state(untrack(() => handle.title));
@@ -230,6 +231,50 @@
 		}
 	}
 
+	interface Jumps {
+		label: string;
+		places: { page: number; section?: string }[];
+		go: (steps?: number) => void;
+	}
+
+	const HOLD_MS = 400;
+	const HOVER_MS = 700;
+	let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+	let jumpsOpen = $state(false);
+	let jumpsDir: 'back' | 'forward' = $state('back');
+	let jumpsAnchor: HTMLElement | null = $state(null);
+	let holdTimer: ReturnType<typeof setTimeout> | undefined;
+	let held = false;
+
+	const jumpItems: MenuEntry[] = $derived(
+		(jumps?.[jumpsDir]?.places ?? []).map((p, i) => ({
+			value: String(i + 1),
+			label: `Page ${p.page}`,
+			hint: p.section
+		}))
+	);
+
+	function openJumps(dir: 'back' | 'forward', anchor: HTMLElement) {
+		jumpsDir = dir;
+		jumpsAnchor = anchor;
+		jumpsOpen = true;
+	}
+
+	function holdJumps(dir: 'back' | 'forward', anchor: HTMLElement) {
+		held = false;
+		clearTimeout(hoverTimer);
+		clearTimeout(holdTimer);
+		holdTimer = setTimeout(() => {
+			held = true;
+			openJumps(dir, anchor);
+		}, HOLD_MS);
+	}
+
+	function clickJump(dir: 'back' | 'forward') {
+		if (held) held = false;
+		else jumps?.[dir]?.go();
+	}
+
 	let menuOpen = $state(false);
 	let menuAnchor: HTMLElement | null = $state(null);
 	let confirmingDelete = $state(false);
@@ -321,7 +366,38 @@
 				{/if}
 			</div>
 		{/if}
-		<span class="doc-icon"><PdfIcon size={15} /></span>
+		{#if jumps}
+			{#each ['back', 'forward'] as const as dir (dir)}
+				<button
+					class="kebab jump"
+					type="button"
+					title={jumps[dir]?.label}
+					disabled={!jumps[dir]}
+					onclick={() => clickJump(dir)}
+					onpointerdown={(e) => e.button === 0 && holdJumps(dir, e.currentTarget)}
+					onpointerup={() => clearTimeout(holdTimer)}
+					onpointerenter={(e) => {
+						const anchor = e.currentTarget;
+						hoverTimer = setTimeout(() => openJumps(dir, anchor), HOVER_MS);
+					}}
+					onpointerleave={() => {
+						clearTimeout(holdTimer);
+						clearTimeout(hoverTimer);
+					}}
+					oncontextmenu={(e) => {
+						e.preventDefault();
+						openJumps(dir, e.currentTarget);
+					}}
+				>
+					{#if dir === 'back'}
+						<ArrowLeft size={14} strokeWidth={1.75} />
+					{:else}
+						<ArrowRight size={14} strokeWidth={1.75} />
+					{/if}
+				</button>
+			{/each}
+			<span class="sep tall"></span>
+		{/if}
 		<span class="title-field">
 			<span class="title-ghost">{title || ' '}</span>
 			<input
@@ -428,6 +504,16 @@
 	onSelect={onMenuSelect}
 	minWidth={140}
 />
+<Menu
+	bind:open={jumpsOpen}
+	anchor={jumpsAnchor}
+	items={jumpItems}
+	onSelect={(value) => {
+		jumpsOpen = false;
+		jumps?.[jumpsDir]?.go(Number(value));
+	}}
+	minWidth={160}
+/>
 <MoveDialog bind:open={folderOpen} value={currentFolderId} name={title} onMove={onPickFolder} />
 <TagMenu
 	bind:open={tagMenuOpen}
@@ -465,12 +551,6 @@
 		height: 16px;
 		margin: 0 6px;
 		background: var(--color-border);
-	}
-
-	.doc-icon {
-		display: flex;
-		flex-shrink: 0;
-		color: var(--color-ui-muted);
 	}
 
 	.title-field {
@@ -530,6 +610,30 @@
 		transition:
 			background-color 120ms ease,
 			color 120ms ease;
+	}
+
+	.kebab.jump:first-child {
+		margin-left: -14px;
+	}
+
+	.kebab:last-child {
+		margin-right: -14px;
+	}
+
+	.kebab.jump + .kebab.jump {
+		margin-left: -4px;
+	}
+
+	.sep.tall {
+		align-self: stretch;
+		height: auto;
+		margin: -9px 4px;
+		background: var(--color-bg);
+	}
+
+	.kebab:disabled {
+		opacity: 0.35;
+		pointer-events: none;
 	}
 
 	.kebab:hover,

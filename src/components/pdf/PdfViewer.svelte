@@ -674,7 +674,9 @@
 			const box = (await doc.getPage(to.page)).getViewport({ scale: 1 });
 			offset = Math.min(1, Math.max(0, box.convertToViewportPoint(0, y)[1] / box.height));
 		}
-		if (pdf === doc) goToPlace({ page: to.page, offset });
+		if (pdf !== doc) return;
+		jump();
+		goToPlace({ page: to.page, offset });
 	}
 
 	/* -------------------- Scrolling and the reader's place -------------------- */
@@ -836,13 +838,69 @@
 		});
 	}
 
-	function notePlace() {
-		if (flow || !pdfIsFile || landing) return;
+	function placeNow(): Place | null {
+		if (flow || landing) return null;
 		const i = pageIndexAt(layout.tops, Math.max(viewTop, 0));
 		const height = layout.heights[i];
-		if (!height) return;
-		const offset = Math.min(1, Math.max(0, (viewTop - layout.tops[i]) / height));
-		readingAt = { page: i + 1, offset };
+		if (!height) return null;
+		return { page: i + 1, offset: Math.min(1, Math.max(0, (viewTop - layout.tops[i]) / height)) };
+	}
+
+	const MAX_JUMPS = 30;
+	const SAME_PLACE = 0.05;
+	const savedJumps = untrack(() => tab.state.jumps) as
+		{ back?: Place[]; forward?: Place[] } | undefined;
+	let jumps = $state({
+		back: Array.isArray(savedJumps?.back) ? savedJumps.back : [],
+		forward: Array.isArray(savedJumps?.forward) ? savedJumps.forward : []
+	});
+
+	function jump() {
+		const at = placeNow();
+		const last = jumps.back.at(-1);
+		if (!at) return;
+		if (last?.page !== at.page || Math.abs(last.offset - at.offset) > SAME_PLACE) {
+			jumps.back = [...jumps.back, at].slice(-MAX_JUMPS);
+		}
+		jumps.forward = [];
+		tab.state.jumps = $state.snapshot(jumps);
+	}
+
+	function stepJump(from: 'back' | 'forward', steps = 1) {
+		const taken = jumps[from].slice(-steps);
+		const at = placeNow();
+		if (!taken.length) return;
+		const other = from === 'back' ? 'forward' : 'back';
+		const passed = [...(at ? [at] : []), ...taken.slice(1).reverse()];
+		jumps[from] = jumps[from].slice(0, -taken.length);
+		jumps[other] = [...jumps[other], ...passed].slice(-MAX_JUMPS);
+		tab.state.jumps = $state.snapshot(jumps);
+		goToPlace(taken[0]);
+	}
+
+	function jumpsOf(from: 'back' | 'forward', word: string) {
+		const places = jumps[from].toReversed();
+		if (!places.length) return undefined;
+		return {
+			label: `${word} to page ${places[0].page}`,
+			places: places.map((p) => ({
+				page: p.page,
+				section: sections.length > 1 ? sections[sectionOf(p.page)]?.title : undefined
+			})),
+			go: (steps = 1) => stepJump(from, steps)
+		};
+	}
+
+	const jumpNav = $derived({
+		back: jumpsOf('back', 'Back'),
+		forward: jumpsOf('forward', 'Forward')
+	});
+
+	function notePlace() {
+		if (!pdfIsFile) return;
+		const at = placeNow();
+		if (!at) return;
+		readingAt = at;
 		clearTimeout(placeTimer);
 		placeTimer = setTimeout(savePlace, PLACE_SETTLE_MS);
 	}
@@ -1912,6 +1970,7 @@
 
 	function onSectionSelect(value: string) {
 		sectionsOpen = false;
+		jump();
 		goToPage(sections[Number(value)].first + 1);
 	}
 	let searchOpen = $state(false);
@@ -1949,6 +2008,7 @@
 		const m = find.step(dir, currentPage);
 		if (!m) return;
 		const at = await find.yOf(m);
+		if (m.page !== currentPage) jump();
 		reach(m.page, () => {
 			const v = view();
 			if (!v) return;
@@ -2276,6 +2336,7 @@
 				sections={sections.length > 1
 					? { on: sectioned, toggle: () => setSectioned(!sectioned) }
 					: undefined}
+				jumps={jumpNav}
 				digest={here.length
 					? { on: mode === 'digest', toggle: () => setMode(mode === 'digest' ? 'pages' : 'digest') }
 					: undefined}
@@ -2301,7 +2362,10 @@
 			disabled={!canAnnotate}
 			zoomSteps={ZOOM_MENU}
 			onZoom={setZoom}
-			onGoToPage={goToPage}
+			onGoToPage={(n) => {
+				jump();
+				goToPage(n);
+			}}
 			{dark}
 			{color}
 			onColor={pickColor}
@@ -2331,8 +2395,12 @@
 			doc={pdf}
 			{dark}
 			{themed}
-			onGoToPage={goToPage}
+			onGoToPage={(n) => {
+				jump();
+				goToPage(n);
+			}}
 			onGoTo={(a) => {
+				jump();
 				activeId = a.id;
 				scrollToAnnotation(a);
 			}}
@@ -2451,7 +2519,7 @@
 	.top-bar :global(.side-head) {
 		width: calc(100% - 48px);
 		margin: 0 auto;
-		padding: 12px 0;
+		padding: 9px 0;
 		border-radius: 0;
 		background: transparent;
 	}
