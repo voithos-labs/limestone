@@ -6,7 +6,7 @@
 	 * the text, which is all it offers when annotations can't be saved.
 	 */
 
-	import { Highlighter, Link, MessageSquare, Quote, SquareDashed } from '@lucide/svelte';
+	import { Copy, Highlighter, MessageSquare, Quote, SquareDashed } from '@lucide/svelte';
 
 	let {
 		x,
@@ -81,8 +81,8 @@
 	{/if}
 	{#if !region}
 		<button class="row" type="button" onclick={onCopyText}>
-			<span class="icon"><Link size={13} strokeWidth={1.75} /></span>
-			<span class="label">Copy text</span>
+			<span class="icon"><Copy size={13} strokeWidth={1.75} /></span>
+			<span class="label">Copy</span>
 		</button>
 	{/if}
 </div>
