@@ -826,6 +826,7 @@
 	interface Place {
 		page: number;
 		offset: number;
+		shown?: number;
 	}
 
 	const PLACE_SETTLE_MS = 500;
@@ -852,7 +853,7 @@
 	let openedAt: Place | null = null;
 
 	function placeBefore(): Place | null {
-		const at = openedAt ?? placeNow();
+		const at = openedAt ?? shownNow();
 		openedAt = null;
 		return at;
 	}
@@ -874,7 +875,12 @@
 		forward: Array.isArray(savedJumps?.forward) ? savedJumps.forward : []
 	});
 
-	function jump(at = placeNow()) {
+	function shownNow(): Place | null {
+		const at = placeNow();
+		return at && { ...at, shown: currentPage };
+	}
+
+	function jump(at = shownNow()) {
 		const last = jumps.back.at(-1);
 		if (!at) return;
 		if (last?.page !== at.page || Math.abs(last.offset - at.offset) > SAME_PLACE) {
@@ -886,7 +892,7 @@
 
 	function stepJump(from: 'back' | 'forward', steps = 1) {
 		const taken = jumps[from].slice(-steps);
-		const at = placeNow();
+		const at = shownNow();
 		if (!taken.length) return;
 		const other = from === 'back' ? 'forward' : 'back';
 		const passed = [...(at ? [at] : []), ...taken.slice(1).reverse()];
@@ -900,10 +906,10 @@
 		const places = jumps[from].toReversed();
 		if (!places.length) return undefined;
 		return {
-			label: `${word} to page ${places[0].page}`,
+			label: `${word} to page ${places[0].shown ?? places[0].page}`,
 			places: places.map((p) => ({
-				page: p.page,
-				section: sections.length > 1 ? sections[sectionOf(p.page)]?.title : undefined
+				page: p.shown ?? p.page,
+				section: sections.length > 1 ? sections[sectionOf(p.shown ?? p.page)]?.title : undefined
 			})),
 			go: (steps = 1) => stepJump(from, steps)
 		};
@@ -1181,6 +1187,15 @@
 	});
 
 	function setMode(next: 'pages' | 'digest') {
+		if (next === 'digest' && mode === 'pages') {
+			savePlace();
+			void tick().then(() => scrollEl && (scrollEl.scrollTop = 0));
+		} else if (next === 'pages' && mode === 'digest') {
+			const at = pdf && placeOf(tab.state.place, pdf.numPages);
+			const elsewhere =
+				OPEN_AT_PAGE in tab.state || OPEN_AT_PLACE in tab.state || OPEN_AT_ANNOTATION in tab.state;
+			if (at && !elsewhere) landing = () => goToPlace(at);
+		}
 		mode = next;
 		tab.state.mode = next;
 		menu = null;
@@ -1926,6 +1941,7 @@
 			return;
 		}
 		// a drag let go of with Escape changes nothing
+		if (e.key === 'Escape' && menu) return;
 		if (e.key === 'Escape' && gesture) {
 			gesture = erasing = null;
 			return;

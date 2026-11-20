@@ -154,6 +154,8 @@ export default abstract class Doc {
 	// such that subclass can still write
 	protected updateLocation(source: Source, relPath: string, title: string): void {
 		this._source = source;
+		const was = untrack(() => Doc.places.get(this.id));
+		if (was?.sourceId === source.id && was.relPath === relPath && was.title === title) return;
 		Doc.places.set(this.id, { sourceId: source.id, relPath, title });
 	}
 

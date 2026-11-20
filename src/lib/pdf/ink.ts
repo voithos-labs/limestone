@@ -60,8 +60,10 @@ export function strokePath(points: number[], aspect: number): string {
 	const tangent = (i: number): [number, number] => {
 		const a = Math.max(i - 1, 0);
 		const b = Math.min(i + 1, n - 1);
-		const dx = x(b) - x(a);
-		const dy = y(b) - y(a);
+		const before = Math.hypot(x(i) - x(a), y(i) - y(a)) || 1;
+		const after = Math.hypot(x(b) - x(i), y(b) - y(i)) || 1;
+		const dx = ((x(i) - x(a)) / before) * after + ((x(b) - x(i)) / after) * before;
+		const dy = ((y(i) - y(a)) / before) * after + ((y(b) - y(i)) / after) * before;
 		const len = Math.hypot(dx, dy) || 1;
 		return [dx / len, dy / len];
 	};
