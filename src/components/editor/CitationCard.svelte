@@ -244,18 +244,7 @@
 				</span>
 			{/if}
 		</span>
-		{#if fields?.kind === 'highlight'}
-			<span
-				class="text"
-				role="presentation"
-				onpointerdown={(e) => e.stopPropagation()}
-				onmousedown={(e) => e.stopPropagation()}
-			>
-				<AnnotationPassage annotation={fields} />
-			</span>
-		{:else if fields}
-			<AnnotationPassage annotation={fields} />
-		{/if}
+		{#if fields}<AnnotationPassage annotation={fields} />{/if}
 		{#if found?.comment}
 			<span class="rule"></span>
 			<!-- read only: the whole card is one link to the passage -->
@@ -289,12 +278,6 @@
 
 	:global([data-inline-widget]):has(> .card)::after {
 		border-radius: 8px;
-	}
-
-	.text {
-		cursor: text;
-		user-select: text;
-		-webkit-user-select: text;
 	}
 
 	/* -------------------------------- Its head -------------------------------- */

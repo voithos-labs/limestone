@@ -31,7 +31,6 @@
 		ChevronDown,
 		Link,
 		ListTree,
-		Pencil,
 		Quote,
 		SquareArrowOutUpRight,
 		Trash
@@ -39,7 +38,7 @@
 
 	// app-wide models and services
 	import type EditorState from '#lib/models/EditorState.svelte.js';
-	import type { TabState } from '#lib/models/EditorState.svelte.js';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import MarkdownHandle, { readErrorKind, type ReadErrorKind } from '#lib/models/MarkdownHandle.js';
 	import type PdfHandle from '#lib/models/PdfHandle.js';
 	import { sourceName } from '#lib/models/Source.js';
@@ -1319,7 +1318,6 @@
 	let moreOpen = $state(false);
 
 	const moreItems = $derived.by((): MenuEntry[] => [
-		{ value: 'edit', label: moreFor?.comment ? 'Edit annotation' : 'Add annotation', icon: Pencil },
 		...(moreFor?.relPath
 			? [{ value: 'open', label: 'Open as note', icon: SquareArrowOutUpRight }]
 			: []),
@@ -1390,7 +1388,6 @@
 		else if (value === 'open') openNote(a.id);
 		else if (value === 'cite') void cite(a);
 		else if (value === 'link') void link(a);
-		else if (value === 'edit') activeId = editingId = a.id;
 	}
 
 	/* -------------------------------------------------------------------------- */
@@ -1403,14 +1400,17 @@
 	);
 	const noteActions: NoteActions = {
 		onOpenNote: openNote,
+		onOpenBeside: (a) => {
+			MarkdownHandle.fromID(a.id)
+				.then((doc) => editor?.beside().openDetail(TabState.docContent(doc), handle?.title ?? ''))
+				.catch((e) => reportError(e, "The note couldn't be opened."));
+		},
 		onActivate: (a) => (activeId = a.id),
 		onEdit: (a) => {
 			editingId = a?.id ?? null;
 			if (a) activeId = a.id;
 		},
 		onSave: saveComment,
-		onCite: cite,
-		onLink: link,
 		onColor: (a, c) => recolor(a, c).catch((e) => reportError(e, "The color couldn't be changed.")),
 		linkOf: (a) => annotations.linkOf(a),
 		onMore: (a, anchor) => {

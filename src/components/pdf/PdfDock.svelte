@@ -27,7 +27,7 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Moon, PanelRight } from '@lucide/svelte';
+	import { Moon, PanelRightOpen } from '@lucide/svelte';
 	import { ANNOTATION_COLORS, type AnnotationColor } from '#lib/pdf/annotation.js';
 	import { ANNOTATION_RGB } from './colors.js';
 
@@ -213,7 +213,7 @@
 			title={sidenotes ? 'Hide annotations sidebar' : 'Show annotations sidebar'}
 			onclick={onToggleSidenotes}
 		>
-			<PanelRight size={14} strokeWidth={1.75} />
+			<PanelRightOpen size={14} strokeWidth={1.75} />
 		</button>
 	</div>
 </div>

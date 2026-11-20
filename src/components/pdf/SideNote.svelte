@@ -3,7 +3,7 @@
 	 * one annotation's card in the margin.
 	 *
 	 * It shows the color, the comment (edited in place) and the notes that cite it, with tools for
-	 * copying a citation or a link. The whole card drags into a note as a citation.
+	 * recoloring it and a menu of the rest. The whole card drags into a note as a citation.
 	 */
 
 	import type { Annotation, AnnotationColor } from '#lib/pdf/annotation.js';
@@ -11,11 +11,10 @@
 	/** What a note's card asks of the viewer. */
 	export interface NoteActions {
 		onOpenNote: (id: string) => void;
+		onOpenBeside: (a: Annotation) => void;
 		onActivate: (a: Annotation) => void;
 		onEdit: (a: Annotation | null) => void;
 		onSave: (a: Annotation, comment: string) => void;
-		onCite: (a: Annotation) => void;
-		onLink: (a: Annotation) => void;
 		onColor: (a: Annotation, color: AnnotationColor) => void;
 		linkOf: (a: Annotation) => string;
 		onMore: (a: Annotation, anchor: HTMLElement) => void;
@@ -27,7 +26,7 @@
 
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { ArrowUpRight, Ellipsis, Link, Pencil, Quote } from '@lucide/svelte';
+	import { ArrowUpRight, Ellipsis, PanelRight, Pencil } from '@lucide/svelte';
 	import { dragCitation, type Citing } from '#lib/pdf/citation.js';
 	import { ANNOTATION_COLORS } from '#lib/pdf/annotation.js';
 	import { ANNOTATION_RGB, annotationRgb } from './colors.js';
@@ -184,16 +183,11 @@
 					<span class="dot"></span>
 				</button>
 			</span>
-			<button
-				type="button"
-				title="Copy citation, or drag the card into a note"
-				onclick={() => actions.onCite(a)}
-			>
-				<Quote size={13} strokeWidth={1.75} />
-			</button>
-			<button type="button" title="Copy link" onclick={() => actions.onLink(a)}>
-				<Link size={13} strokeWidth={1.75} />
-			</button>
+			{#if a.relPath}
+				<button type="button" title="Open to the side" onclick={() => actions.onOpenBeside(a)}>
+					<PanelRight size={13} strokeWidth={1.75} />
+				</button>
+			{/if}
 			<button
 				type="button"
 				title="More"

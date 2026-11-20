@@ -399,7 +399,7 @@
 					{/if}
 				</button>
 			{/each}
-			<span class="sep tall"></span>
+			<span class="sep"></span>
 		{/if}
 		<span class="title-field">
 			<span class="title-ghost">{title || ' '}</span>
@@ -635,13 +635,6 @@
 
 	.kebab.jump + .kebab.jump {
 		margin-left: -4px;
-	}
-
-	.sep.tall {
-		align-self: stretch;
-		height: auto;
-		margin: -9px 4px;
-		background: var(--color-bg);
 	}
 
 	.kebab:disabled {
