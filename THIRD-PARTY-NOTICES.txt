@@ -10,10 +10,10 @@ license for a component is the one on its own License line.
 
 This file is generated. To refresh it, run: npm run notices
 
-Rust crates:   581
+Rust crates:   620
 npm packages:  162
 Vendored:      1
-License texts: 95
+License texts: 94
 
 ==============================================================================
 RUST CRATES
@@ -25,7 +25,7 @@ adler2 2.0.1
   Copyright (C) Jonas Schievink <jonasschievink@gmail.com>
   Full text: [L-7a6d7180] [L-f200dbe3] [L-d64f3bb4]
 
-aho-corasick 1.1.4
+aho-corasick 1.1.5
   License: Unlicense OR MIT
   Source:  https://github.com/BurntSushi/aho-corasick
   Copyright (c) 2015 Andrew Gallant
@@ -48,8 +48,8 @@ allocator-api2 0.2.21
   Source:  https://github.com/zakarumych/allocator-api2
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-android_system_properties 0.1.5
-  License: MIT/Apache-2.0
+android_system_properties 0.1.6
+  License: MIT OR Apache-2.0
   Source:  https://github.com/nical/android_system_properties
   Copyright 2016 Nicolas Silva
   Copyright (c) 2013 Nicolas Silva
@@ -59,12 +59,6 @@ anyhow 1.0.104
   License: MIT OR Apache-2.0
   Source:  https://github.com/dtolnay/anyhow
   Full text: [L-05bf2c00] [L-d64f3bb4]
-
-arbitrary 1.4.2
-  License: MIT OR Apache-2.0
-  Source:  https://github.com/rust-fuzz/arbitrary/
-  Copyright (c) 2019 Manish Goregaokar
-  Full text: [L-b8ceb1ed] [L-750260c3]
 
 arrayvec 0.7.8
   License: MIT OR Apache-2.0
@@ -84,7 +78,7 @@ async-channel 2.5.0
   Source:  https://github.com/smol-rs/async-channel
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-async-executor 1.14.0
+async-executor 1.14.1
   License: Apache-2.0 OR MIT
   Source:  https://github.com/smol-rs/async-executor
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
@@ -94,7 +88,7 @@ async-io 2.6.0
   Source:  https://github.com/smol-rs/async-io
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-async-lock 3.4.2
+async-lock 3.5.0
   License: Apache-2.0 OR MIT
   Source:  https://github.com/smol-rs/async-lock
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
@@ -104,7 +98,7 @@ async-process 2.5.0
   Source:  https://github.com/smol-rs/async-process
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-async-recursion 1.1.1
+async-recursion 1.2.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/dcchut/async-recursion
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
@@ -119,7 +113,7 @@ async-task 4.7.1
   Source:  https://github.com/smol-rs/async-task
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-async-trait 0.1.91
+async-trait 0.1.92
   License: MIT OR Apache-2.0
   Source:  https://github.com/dtolnay/async-trait
   Full text: [L-05bf2c00] [L-d64f3bb4]
@@ -177,9 +171,21 @@ base64 0.23.1
   Copyright (c) 2025 Alice Maz, Marshall Pierce
   Full text: [L-b8ceb1ed] [L-fb278496]
 
+bit-set 0.11.1
+  License: Apache-2.0 OR MIT
+  Source:  https://github.com/contain-rs/bit-vec
+  Copyright (c) 2023 The Rust Project Developers
+  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+
 bit-set 0.8.0
   License: Apache-2.0 OR MIT
   Source:  https://github.com/contain-rs/bit-set
+  Copyright (c) 2023 The Rust Project Developers
+  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+
+bit-vec 0.10.2
+  License: Apache-2.0 OR MIT
+  Source:  https://github.com/contain-rs/bit-vec
   Copyright (c) 2023 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
@@ -195,7 +201,7 @@ bitflags 1.3.2
   Copyright (c) 2014 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-bitflags 2.13.1
+bitflags 2.13.2
   License: MIT OR Apache-2.0
   Source:  https://github.com/bitflags/bitflags
   Copyright (c) 2014 The Rust Project Developers
@@ -225,19 +231,19 @@ block2 0.6.2
   Copyright (c) Mads Marquart <mads@marquart.dk>
   Full text: [L-750260c3]
 
-blocking 1.6.2
+blocking 1.7.0
   License: Apache-2.0 OR MIT
   Source:  https://github.com/smol-rs/blocking
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-brotli 9.0.0
+brotli 9.1.3
   License: BSD-3-Clause AND MIT
   Source:  https://github.com/dropbox/rust-brotli
   Copyright (c) 2016 Dropbox, Inc.
   Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors.
   Full text: [L-5213c96a] [L-d64f3bb4]
 
-brotli-decompressor 6.0.1
+brotli-decompressor 6.3.2
   License: BSD-3-Clause/MIT
   Source:  https://github.com/dropbox/rust-brotli-decompressor
   Copyright (c) 2016 Dropbox, Inc.
@@ -249,13 +255,13 @@ bs58 0.5.1
   Copyright (c) 2016 The roaring-rs developers.
   Full text: [L-b8ceb1ed] [L-750260c3]
 
-bstr 1.13.0
+bstr 1.14.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/BurntSushi/bstr
   Copyright (c) 2018-2019 Andrew Gallant
   Full text: [L-5bec30af] [L-b8ceb1ed] [L-fb278496]
 
-bumpalo 3.20.3
+bumpalo 3.20.4
   License: MIT OR Apache-2.0
   Source:  https://github.com/fitzgen/bumpalo
   Copyright (c) 2019 Nick Fitzgerald
@@ -279,7 +285,7 @@ byteorder-lite 0.1.0
   Copyright (c) 2015 Andrew Gallant
   Full text: [L-fb278496] [L-e758eec4]
 
-bytes 1.12.1
+bytes 1.12.2
   License: MIT
   Source:  https://github.com/tokio-rs/bytes
   Copyright (c) 2018 Carl Lerche
@@ -295,7 +301,7 @@ cairo-sys-rs 0.18.2
   Source:  https://github.com/gtk-rs/gtk-rs-core
   Full text: [L-d64f3bb4]
 
-camino 1.2.4
+camino 1.2.6
   License: MIT OR Apache-2.0
   Source:  https://github.com/camino-rs/camino
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
@@ -316,7 +322,7 @@ cargo-platform 0.1.9
   Source:  https://github.com/rust-lang/cargo
   Full text: [L-f200dbe3] [L-d64f3bb4]
 
-cc 1.4.0
+cc 1.11.2
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/cc-rs
   Copyright (c) 2014 Alex Crichton
@@ -334,19 +340,25 @@ cfb 0.14.0
   Copyright (c) 2017 Matthew D. Steele
   Full text: [L-750260c3]
 
+cfg_aliases 0.2.2
+  License: MIT
+  Source:  https://github.com/katharostech/cfg_aliases
+  Copyright (c) 2020 Katharos Technology
+  Full text: [L-750260c3] [L-7b901cf0]
+
 cfg-expr 0.15.8
   License: MIT OR Apache-2.0
   Source:  https://github.com/EmbarkStudios/cfg-expr
   Copyright (c) 2019 Embark Studios
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-cfg-if 1.0.4
+cfg-if 1.0.5
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/cfg-if
   Copyright (c) 2014 Alex Crichton
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-chacha20 0.10.1
+chacha20 0.10.2
   License: MIT OR Apache-2.0
   Source:  https://github.com/RustCrypto/stream-ciphers
   Copyright (c) 2019-2026 The RustCrypto Project Developers
@@ -370,7 +382,7 @@ color_quant 1.1.0
   Copyright (c) 2016 PistonDevelopers
   Full text: [L-fb278496]
 
-combine 4.6.7
+combine 4.6.9
   License: MIT
   Source:  https://github.com/Marwes/combine
   Copyright (c) 2015 Markus Westerlind
@@ -381,12 +393,23 @@ concurrent-queue 2.5.0
   Source:  https://github.com/smol-rs/concurrent-queue
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
+const-oid 0.10.3
+  License: Apache-2.0 OR MIT
+  Source:  https://github.com/RustCrypto/formats
+  Copyright (c) 2020-2026 The RustCrypto Project Developers
+  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+
 constant_time_eq 0.4.2
   License: CC0-1.0 OR MIT-0 OR Apache-2.0
   Source:  https://github.com/cesarb/constant_time_eq
   Full text: [L-05bf2c00] [L-f5b7dd1f] [L-1e34e7ae]
 
-cookie 0.18.1
+constant_time_eq 0.6.1
+  License: CC0-1.0 OR MIT-0 OR Apache-2.0
+  Source:  https://codeberg.org/cesarb/constant_time_eq
+  Full text: [L-05bf2c00] [L-f5b7dd1f] [L-1e34e7ae]
+
+cookie 0.18.2
   License: MIT OR Apache-2.0
   Source:  https://github.com/SergioBenitez/cookie-rs
   Copyright 2017 Sergio Benitez
@@ -431,10 +454,10 @@ cpufeatures 0.2.17
   Copyright (c) 2020-2025 The RustCrypto Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-cpufeatures 0.3.0
+cpufeatures 0.3.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/RustCrypto/utils
-  Copyright (c) 2020-2025 The RustCrypto Project Developers
+  Copyright (c) 2020-2026 The RustCrypto Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
 crc 3.4.0
@@ -449,51 +472,51 @@ crc-catalog 2.5.0
   Copyright (c) Akhil Velagapudi <akhilvelagapudi@gmail.com>
   Full text: [L-750260c3]
 
-crc32fast 1.5.0
+crc32fast 1.5.5
   License: MIT OR Apache-2.0
   Source:  https://github.com/srijs/rust-crc32fast
   Copyright (c) 2018 Sam Rijs, Alex Crichton and contributors
   Full text: [L-ee9409fe] [L-750260c3]
 
-crossbeam 0.8.4
+crossbeam 0.8.5
   License: MIT OR Apache-2.0
   Source:  https://github.com/crossbeam-rs/crossbeam
   Copyright 2019 The Crossbeam Project Developers
   Copyright (c) 2019 The Crossbeam Project Developers
   Full text: [L-a0df7821] [L-fb278496]
 
-crossbeam-channel 0.5.16
+crossbeam-channel 0.5.17
   License: MIT OR Apache-2.0
   Source:  https://github.com/crossbeam-rs/crossbeam
   Copyright (c) 2019 The Crossbeam Project Developers
   Copyright (c) 2009 The Go Authors. All rights reserved.
   Full text: [L-b8ceb1ed] [L-fb278496] [L-66e0f3fe]
 
-crossbeam-deque 0.8.7
+crossbeam-deque 0.8.8
   License: MIT OR Apache-2.0
   Source:  https://github.com/crossbeam-rs/crossbeam
   Copyright (c) 2019 The Crossbeam Project Developers
   Full text: [L-b8ceb1ed] [L-fb278496]
 
-crossbeam-epoch 0.9.20
+crossbeam-epoch 0.9.21
   License: MIT OR Apache-2.0
   Source:  https://github.com/crossbeam-rs/crossbeam
   Copyright (c) 2019 The Crossbeam Project Developers
   Full text: [L-b8ceb1ed] [L-fb278496]
 
-crossbeam-queue 0.3.13
+crossbeam-queue 0.3.14
   License: MIT OR Apache-2.0
   Source:  https://github.com/crossbeam-rs/crossbeam
   Copyright (c) 2019 The Crossbeam Project Developers
   Full text: [L-b8ceb1ed] [L-fb278496]
 
-crossbeam-utils 0.8.22
+crossbeam-utils 0.8.23
   License: MIT OR Apache-2.0
   Source:  https://github.com/crossbeam-rs/crossbeam
   Copyright (c) 2019 The Crossbeam Project Developers
   Full text: [L-b8ceb1ed] [L-fb278496]
 
-crypto-common 0.1.7
+crypto-common 0.1.6
   License: MIT OR Apache-2.0
   Source:  https://github.com/RustCrypto/traits
   Copyright (c) 2021 RustCrypto Developers
@@ -510,35 +533,40 @@ cssparser 0.37.0
   Source:  https://github.com/servo/rust-cssparser
   Full text: [L-a0184dbd]
 
+cssparser 0.38.0
+  License: MPL-2.0
+  Source:  https://github.com/servo/rust-cssparser
+  Full text: [L-a0184dbd]
+
 cssparser-macros 0.7.1
   License: MPL-2.0
   Source:  https://github.com/servo/rust-cssparser
   Full text: [L-a0184dbd]
 
-ctor 1.0.13
+ctor 1.0.14
   License: Apache-2.0 OR MIT
   Source:  https://github.com/mmastrac/linktime
   Full text: [L-ee9409fe] [L-d64f3bb4]
 
-ctutils 0.4.2
+ctutils 0.4.8
   License: Apache-2.0 OR MIT
   Source:  https://github.com/RustCrypto/utils
   Copyright (c) 2025-2026 The RustCrypto Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-darling 0.23.0
+darling 0.24.1
   License: MIT
   Source:  https://github.com/TedDriggs/darling
   Copyright (c) 2017 Ted Driggs
   Full text: [L-750260c3]
 
-darling_core 0.23.0
+darling_core 0.24.1
   License: MIT
   Source:  https://github.com/TedDriggs/darling
   Copyright (c) 2017 Ted Driggs
   Full text: [L-750260c3]
 
-darling_macro 0.23.0
+darling_macro 0.24.1
   License: MIT
   Source:  https://github.com/TedDriggs/darling
   Copyright (c) 2017 Ted Driggs
@@ -551,18 +579,12 @@ dbus 0.9.12
   Copyright (c) 2014-2018 David Henningsson <diwic@ubuntu.com> and other contributors
   Full text: [L-5eda687a] [L-d64f3bb4]
 
-deranged 0.5.8
+deranged 0.5.9
   License: MIT OR Apache-2.0
   Source:  https://github.com/jhpratt/deranged
   Copyright 2024 Jacob Pratt et al.
   Copyright (c) 2024 Jacob Pratt et al.
   Full text: [L-a0df7821] [L-d64f3bb4]
-
-derive_arbitrary 1.4.2
-  License: MIT OR Apache-2.0
-  Source:  https://github.com/rust-fuzz/arbitrary
-  Copyright (c) 2019 Manish Goregaokar
-  Full text: [L-b8ceb1ed] [L-750260c3]
 
 derive_more 2.1.1
   License: MIT
@@ -607,7 +629,7 @@ dispatch2 0.3.1
   Copyright (c) Mads Marquart <mads@marquart.dk>, Mary <mary@mary.zone>
   Full text: [L-750260c3]
 
-displaydoc 0.2.6
+displaydoc 0.2.7
   License: MIT OR Apache-2.0
   Source:  https://github.com/yaahc/displaydoc
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
@@ -625,6 +647,12 @@ dlopen2_derive 0.4.3
   Full text: [L-750260c3]
 
 dom_query 0.28.0
+  License: MIT
+  Source:  https://github.com/niklak/dom_query
+  Copyright (c) 2023 Mykola Humanov
+  Full text: [L-8bc5b987]
+
+dom_query 0.29.0
   License: MIT
   Source:  https://github.com/niklak/dom_query
   Copyright (c) 2023 Mykola Humanov
@@ -669,7 +697,7 @@ dyn-clone 1.0.20
   Source:  https://github.com/dtolnay/dyn-clone
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-either 1.17.0
+either 1.19.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/rayon-rs/either
   Copyright (c) 2015
@@ -681,7 +709,7 @@ embed_plist 1.2.2
   Copyright (c) 2020 Nikolai Vazquez
   Full text: [L-b8ceb1ed] [L-750260c3]
 
-embed-resource 3.0.11
+embed-resource 3.0.12
   License: MIT
   Source:  https://github.com/nabijaczleweli/rust-embed-resource
   Copyright (c) 2017 nabijaczleweli
@@ -706,18 +734,18 @@ enumflags2_derive 0.7.12
   Copyright (c) 2017 Maik Klein
   Full text: [L-48475ef7] [L-d64f3bb4]
 
-equivalent 1.0.2
+equivalent 1.0.3
   License: Apache-2.0 OR MIT
   Source:  https://github.com/indexmap-rs/equivalent
   Copyright (c) 2016--2023
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-erased-serde 0.4.10
+erased-serde 0.4.11
   License: MIT OR Apache-2.0
   Source:  https://github.com/dtolnay/erased-serde
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-errno 0.3.14
+errno 0.3.15
   License: MIT OR Apache-2.0
   Source:  https://github.com/lambda-fairy/rust-errno
   Copyright (c) 2014 Chris Wong
@@ -728,7 +756,7 @@ etcetera 0.11.0
   Source:  https://github.com/lunacookies/etcetera
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-event-listener 5.4.1
+event-listener 5.4.2
   License: Apache-2.0 OR MIT
   Source:  https://github.com/smol-rs/event-listener
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
@@ -754,19 +782,26 @@ field-offset 0.3.6
   Copyright (c) 2016-2021 Diggory Blake, and other contributors.
   Full text: [L-05bf2c00] [L-750260c3]
 
-filetime 0.2.29
+file-id 0.2.3
+  License: MIT OR Apache-2.0
+  Source:  https://github.com/notify-rs/notify
+  Copyright 2023 Notify Contributors
+  Copyright (c) 2023 Notify Contributors
+  Full text: [L-a0df7821] [L-d64f3bb4]
+
+filetime 0.2.30
   License: MIT/Apache-2.0
   Source:  https://github.com/alexcrichton/filetime
   Copyright (c) 2014 Alex Crichton
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-find-msvc-tools 0.1.9
+find-msvc-tools 0.1.15
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/cc-rs
   Copyright (c) 2014 Alex Crichton
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-flate2 1.1.9
+flate2 1.1.11
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/flate2-rs
   Copyright (c) 2014-2026 Alex Crichton
@@ -813,27 +848,21 @@ form_urlencoded 1.2.2
   Copyright (c) 2013-2016 The rust-url developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-fsevent-sys 4.1.0
-  License: MIT
-  Source:  https://github.com/octplane/fsevent-rust/tree/master/fsevent-sys
-  Copyright (c) 2015 Pierre Baillet
-  Full text: [L-fb278496]
-
-futures-channel 0.3.33
+futures-channel 0.3.34
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/futures-rs
   Copyright (c) 2016 Alex Crichton
   Copyright (c) 2017 The Tokio Authors
   Full text: [L-a0df7821] [L-d64f3bb4]
 
-futures-core 0.3.33
+futures-core 0.3.34
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/futures-rs
   Copyright (c) 2016 Alex Crichton
   Copyright (c) 2017 The Tokio Authors
   Full text: [L-a0df7821] [L-d64f3bb4]
 
-futures-executor 0.3.33
+futures-executor 0.3.34
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/futures-rs
   Copyright (c) 2016 Alex Crichton
@@ -846,7 +875,7 @@ futures-intrusive 0.5.0
   Copyright (c) 2019 Matthias Einwag
   Full text: [L-a0df7821] [L-d64f3bb4]
 
-futures-io 0.3.33
+futures-io 0.3.34
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/futures-rs
   Copyright (c) 2016 Alex Crichton
@@ -860,28 +889,28 @@ futures-lite 2.6.1
   Copyright (c) 2017 The Tokio Authors
   Full text: [L-b8ceb1ed] [L-d64f3bb4] [L-10e688fd]
 
-futures-macro 0.3.33
+futures-macro 0.3.34
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/futures-rs
   Copyright (c) 2016 Alex Crichton
   Copyright (c) 2017 The Tokio Authors
   Full text: [L-a0df7821] [L-d64f3bb4]
 
-futures-sink 0.3.33
+futures-sink 0.3.34
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/futures-rs
   Copyright (c) 2016 Alex Crichton
   Copyright (c) 2017 The Tokio Authors
   Full text: [L-a0df7821] [L-d64f3bb4]
 
-futures-task 0.3.33
+futures-task 0.3.34
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/futures-rs
   Copyright (c) 2016 Alex Crichton
   Copyright (c) 2017 The Tokio Authors
   Full text: [L-a0df7821] [L-d64f3bb4]
 
-futures-util 0.3.33
+futures-util 0.3.34
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/futures-rs
   Copyright (c) 2016 Alex Crichton
@@ -923,7 +952,7 @@ gdkx11-sys 0.18.2
   Source:  https://github.com/gtk-rs/gtk3-rs
   Full text: [L-d64f3bb4]
 
-generic-array 0.14.7
+generic-array 0.14.9
   License: MIT
   Source:  https://github.com/fizyk20/generic-array
   Copyright (c) 2015 Bartłomiej Kamiński
@@ -987,7 +1016,7 @@ glob 0.3.4
   Copyright (c) 2014 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-globset 0.4.20
+globset 0.4.21
   License: Unlicense OR MIT
   Source:  https://github.com/BurntSushi/ripgrep/tree/master/crates/globset
   Copyright (c) 2015 Andrew Gallant
@@ -1048,7 +1077,7 @@ heck 0.5.0
   Copyright (c) 2015 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-hermit-abi 0.5.2
+hermit-abi 0.5.3
   License: MIT OR Apache-2.0
   Source:  https://github.com/hermit-os/hermit-rs
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
@@ -1079,7 +1108,13 @@ html5ever 0.39.0
   Copyright (c) 2014 The html5ever Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-http 1.4.2
+html5ever 0.40.1
+  License: MIT OR Apache-2.0
+  Source:  https://github.com/servo/html5ever
+  Copyright (c) 2014 The html5ever Project Developers
+  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+
+http 1.5.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/hyperium/http
   Copyright 2017 http-rs authors
@@ -1092,13 +1127,13 @@ http-body 1.1.0
   Copyright (c) 2019-2026 Sean McArthur & Hyper Contributors
   Full text: [L-d64f3bb4]
 
-http-body-util 0.1.4
+http-body-util 0.1.5
   License: MIT
   Source:  https://github.com/hyperium/http-body
   Copyright (c) 2019-2026 Sean McArthur & Hyper Contributors
   Full text: [L-d64f3bb4]
 
-http-range 0.1.5
+http-range 0.1.6
   License: MIT
   Source:  https://github.com/bancek/rust-http-range
   Copyright (c) 2016 Luka Zakrajšek
@@ -1110,26 +1145,26 @@ httparse 1.10.1
   Copyright (c) 2015-2025 Sean McArthur
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-hybrid-array 0.4.13
+hybrid-array 0.4.15
   License: MIT OR Apache-2.0
   Source:  https://github.com/RustCrypto/hybrid-array
   Copyright (c) 2022-2026 The RustCrypto Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-hyper 1.11.0
+hyper 1.12.0
   License: MIT
   Source:  https://github.com/hyperium/hyper
   Copyright (c) 2014-2026 Sean McArthur
   Full text: [L-d64f3bb4]
 
-hyper-rustls 0.27.9
+hyper-rustls 0.27.10
   License: Apache-2.0 OR ISC OR MIT
   Source:  https://github.com/rustls/hyper-rustls
   Copyright (c) 2016, Joseph Birr-Pixton <jpixton@gmail.com>
   Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
   Full text: [L-b8ceb1ed] [L-19eaa475] [L-d64f3bb4]
 
-hyper-util 0.1.20
+hyper-util 0.1.21
   License: MIT
   Source:  https://github.com/hyperium/hyper-util
   Copyright (c) 2023-2025 Sean McArthur
@@ -1149,49 +1184,49 @@ iana-time-zone-haiku 0.1.2
   Copyright (c) 2020 Andrew D. Straw
   Full text: [L-a0df7821] [L-d64f3bb4]
 
-ico 0.5.0
+ico 0.6.0
   License: MIT
   Source:  https://github.com/mdsteele/rust-ico
   Copyright (c) 2018 Matthew D. Steele
   Full text: [L-750260c3]
 
-icu_collections 2.2.0
+icu_collections 2.4.0
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-icu_locale_core 2.2.0
+icu_locale_core 2.4.0
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-icu_normalizer 2.2.0
+icu_normalizer 2.4.0
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-icu_normalizer_data 2.2.0
+icu_normalizer_data 2.4.0
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-icu_properties 2.2.0
+icu_properties 2.4.0
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-icu_properties_data 2.2.0
+icu_properties_data 2.4.0
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-icu_provider 2.2.0
+icu_provider 2.4.0
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
@@ -1230,7 +1265,7 @@ indexmap 1.9.3
   Copyright (c) 2016--2017
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-indexmap 2.14.0
+indexmap 2.14.2
   License: Apache-2.0 OR MIT
   Source:  https://github.com/indexmap-rs/indexmap
   Copyright (c) 2016--2017
@@ -1242,7 +1277,7 @@ infer 0.22.0
   Copyright (c) 2019 Bojan
   Full text: [L-750260c3]
 
-inotify 0.11.4
+inotify 0.11.5
   License: ISC
   Source:  https://github.com/hannobraun/inotify-rs
   Copyright (c) Hanno Braun and contributors
@@ -1254,7 +1289,7 @@ inotify-sys 0.1.8
   Copyright (c) Hanno Braun and contributors
   Full text: [L-d168f986]
 
-ipnet 2.12.0
+ipnet 2.12.2
   License: MIT OR Apache-2.0
   Source:  https://github.com/krisprice/ipnet
   Copyright 2017 Juniper Networks, Inc.
@@ -1272,7 +1307,7 @@ is-wsl 0.4.0
   Copyright (c) 2023 Sean Larkin
   Full text: [L-750260c3]
 
-itoa 1.0.18
+itoa 1.0.19
   License: MIT OR Apache-2.0
   Source:  https://github.com/dtolnay/itoa
   Full text: [L-05bf2c00] [L-d64f3bb4]
@@ -1289,6 +1324,66 @@ javascriptcore-rs-sys 1.1.1
   Source:  https://github.com/tauri-apps/javascriptcore-rs
   Copyright (c) 2013-2017, The Gtk-rs Project Developers.
   Full text: [L-fb278496]
+
+jiff 0.2.46
+  License: Unlicense OR MIT
+  Source:  https://github.com/BurntSushi/jiff
+  Copyright (c) 2015 Andrew Gallant
+  Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
+
+jiff 1.0.1
+  License: Unlicense OR MIT
+  Source:  https://github.com/BurntSushi/jiff
+  Copyright (c) 2015 Andrew Gallant
+  Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
+
+jiff-core 0.1.8
+  License: Unlicense OR MIT
+  Source:  https://github.com/BurntSushi/jiff
+  Copyright (c) 2015 Andrew Gallant
+  Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
+
+jiff-core 1.0.1
+  License: Unlicense OR MIT
+  Source:  https://github.com/BurntSushi/jiff
+  Copyright (c) 2015 Andrew Gallant
+  Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
+
+jiff-static 0.2.46
+  License: Unlicense OR MIT
+  Source:  https://github.com/BurntSushi/jiff
+  Copyright (c) 2015 Andrew Gallant
+  Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
+
+jiff-static 1.0.1
+  License: Unlicense OR MIT
+  Source:  https://github.com/BurntSushi/jiff
+  Copyright (c) 2015 Andrew Gallant
+  Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
+
+jiff-tzdb 0.1.10
+  License: Unlicense OR MIT
+  Source:  https://github.com/BurntSushi/jiff
+  Copyright (c) 2015 Andrew Gallant
+  Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
+
+jiff-tzdb 1.0.0
+  License: Unlicense OR MIT
+  Source:  https://github.com/BurntSushi/jiff
+  Copyright (c) 2015 Andrew Gallant
+  Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
+
+jiff-tzdb-platform 0.1.3
+  License: Unlicense OR MIT
+  Source:  https://github.com/BurntSushi/jiff
+  Copyright (c) 2015 Andrew Gallant
+  Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
+
+jiff-tzdb-platform 1.0.0
+  License: Unlicense OR MIT
+  Source:  https://github.com/BurntSushi/jiff
+  Copyright (c) 2015 Andrew Gallant
+  Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
 
 jni 0.21.1
   License: MIT/Apache-2.0
@@ -1325,7 +1420,7 @@ jni-sys-macros 0.4.1
   Copyright (c) Robert Bragg <robert@sixbynine.org>
   Full text: [L-750260c3]
 
-js-sys 0.3.103
+js-sys 0.3.107
   License: MIT OR Apache-2.0
   Source:  https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys
   Copyright (c) 2014 Alex Crichton
@@ -1378,7 +1473,7 @@ libappindicator-sys 0.9.0
   License: Apache-2.0 OR MIT
   Full text: [L-750260c3]
 
-libc 0.2.189
+libc 0.2.191
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/libc
   Copyright (c) The Rust Project Developers
@@ -1397,17 +1492,22 @@ libloading 0.7.4
   Copyright © 2015, Simonas Kazlauskas
   Full text: [L-d168f986]
 
-libredox 0.1.18
+libredox 0.1.25
   License: MIT
   Source:  https://gitlab.redox-os.org/redox-os/libredox
   Copyright (c) 2023 4lDO2
   Full text: [L-750260c3]
 
-libsqlite3-sys 0.30.1
+libsqlite3-sys 0.40.0
   License: MIT
   Source:  https://github.com/rusqlite/rusqlite
-  Copyright (c) 2014-2021 The rusqlite developers
+  Copyright (c) 2014 The rusqlite developers
   Full text: [L-d64f3bb4]
+
+link-section 0.19.4
+  License: Apache-2.0 OR MIT
+  Source:  https://github.com/mmastrac/linktime
+  Full text: [L-ee9409fe] [L-d64f3bb4]
 
 linux-raw-sys 0.12.1
   License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
@@ -1419,7 +1519,7 @@ linux-raw-sys 0.4.15
   Source:  https://github.com/sunfishcode/linux-raw-sys
   Full text: [L-b8ceb1ed] [L-a92604bf] [L-d64f3bb4]
 
-litemap 0.8.2
+litemap 0.8.3
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
@@ -1431,13 +1531,19 @@ lock_api 0.4.14
   Copyright (c) 2016 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-log 0.4.33
+log 0.4.35
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/log
   Copyright (c) 2014 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
 markup5ever 0.39.0
+  License: MIT OR Apache-2.0
+  Source:  https://github.com/servo/html5ever
+  Copyright (c) 2014 The html5ever Project Developers
+  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+
+markup5ever 0.40.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/servo/html5ever
   Copyright (c) 2014 The html5ever Project Developers
@@ -1464,7 +1570,7 @@ memoffset 0.9.1
   Copyright (c) 2017 Gilad Naaman
   Full text: [L-d64f3bb4]
 
-mime 0.3.17
+mime 0.3.18
   License: MIT OR Apache-2.0
   Source:  https://github.com/hyperium/mime
   Copyright (c) 2014 Sean McArthur
@@ -1488,7 +1594,17 @@ miniz_oxide 0.8.9
   Copyright (c) 2020 Frommi
   Full text: [L-750260c3] [L-05bf2c00] [L-750260c3] [L-63f312c7]
 
-mio 1.2.2
+miniz_oxide 0.9.1
+  License: MIT OR Zlib OR Apache-2.0
+  Source:  https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
+  Copyright 2013-2014 RAD Game Tools and Valve Software
+  Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+  Copyright (c) 2017 Frommi
+  Copyright (c) 2017-2024 oyvindln
+  Copyright (c) 2020 Frommi
+  Full text: [L-750260c3] [L-05bf2c00] [L-750260c3] [L-63f312c7]
+
+mio 1.2.5
   License: MIT
   Source:  https://github.com/tokio-rs/mio
   Copyright (c) 2014 Carl Lerche and other MIO contributors
@@ -1531,19 +1647,25 @@ new_debug_unreachable 1.0.6
   Copyright (c) 2015 Jonathan Reem
   Full text: [L-d64f3bb4]
 
-notify 8.2.0
+nix 0.32.0
+  License: MIT
+  Source:  https://github.com/nix-rust/nix
+  Copyright (c) 2015 Carl Lerche + nix-rust Authors
+  Full text: [L-fb278496]
+
+notify 8.2.2
   License: CC0-1.0
   Source:  https://github.com/notify-rs/notify
   Full text: [L-1dde7297]
 
-notify-debouncer-mini 0.7.0
+notify-debouncer-full 0.7.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/notify-rs/notify
   Copyright 2023 Notify Contributors
   Copyright (c) 2023 Notify Contributors
   Full text: [L-a0df7821] [L-d64f3bb4]
 
-notify-types 2.1.0
+notify-types 2.3.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/notify-rs/notify
   Copyright 2023 Notify Contributors
@@ -1581,7 +1703,7 @@ num-traits 0.2.19
   Copyright (c) 2014 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-objc2 0.6.4
+objc2 0.6.5
   License: MIT
   Source:  https://github.com/madsmtm/objc2
   Copyright (c) Mads Marquart <mads@marquart.dk>
@@ -1618,6 +1740,11 @@ objc2-core-image 0.3.2
   Full text: [L-750260c3]
 
 objc2-core-location 0.3.2
+  License: Zlib OR Apache-2.0 OR MIT
+  Source:  https://github.com/madsmtm/objc2
+  Full text: [L-750260c3]
+
+objc2-core-services 0.3.2
   License: Zlib OR Apache-2.0 OR MIT
   Source:  https://github.com/madsmtm/objc2
   Full text: [L-750260c3]
@@ -1659,6 +1786,11 @@ objc2-quartz-core 0.3.2
   Source:  https://github.com/madsmtm/objc2
   Full text: [L-750260c3]
 
+objc2-system-configuration 0.3.2
+  License: Zlib OR Apache-2.0 OR MIT
+  Source:  https://github.com/madsmtm/objc2
+  Full text: [L-750260c3]
+
 objc2-ui-kit 0.3.2
   License: Zlib OR Apache-2.0 OR MIT
   Source:  https://github.com/madsmtm/objc2
@@ -1679,13 +1811,13 @@ once_cell 1.21.4
   Source:  https://github.com/matklad/once_cell
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-open 5.4.0
+open 5.4.5
   License: MIT
   Source:  https://github.com/Byron/open-rs
   Copyright © `2015` `Sebastian Thiel`
   Full text: [L-fd0199c1]
 
-openssl-probe 0.2.1
+openssl-probe 0.2.2
   License: MIT OR Apache-2.0
   Source:  https://github.com/rustls/openssl-probe
   Copyright (c) 2014 Alex Crichton
@@ -1747,7 +1879,19 @@ phf 0.13.1
   Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
   Full text: [L-fb278496]
 
+phf 0.14.0
+  License: MIT
+  Source:  https://github.com/rust-phf/rust-phf
+  Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
+  Full text: [L-fb278496]
+
 phf_codegen 0.13.1
+  License: MIT
+  Source:  https://github.com/rust-phf/rust-phf
+  Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
+  Full text: [L-fb278496]
+
+phf_codegen 0.14.0
   License: MIT
   Source:  https://github.com/rust-phf/rust-phf
   Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
@@ -1759,7 +1903,19 @@ phf_generator 0.13.1
   Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
   Full text: [L-fb278496]
 
+phf_generator 0.14.0
+  License: MIT
+  Source:  https://github.com/rust-phf/rust-phf
+  Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
+  Full text: [L-fb278496]
+
 phf_macros 0.13.1
+  License: MIT
+  Source:  https://github.com/rust-phf/rust-phf
+  Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
+  Full text: [L-fb278496]
+
+phf_macros 0.14.0
   License: MIT
   Source:  https://github.com/rust-phf/rust-phf
   Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
@@ -1771,7 +1927,13 @@ phf_shared 0.13.1
   Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
   Full text: [L-fb278496]
 
-pin-project-lite 0.2.17
+phf_shared 0.14.0
+  License: MIT
+  Source:  https://github.com/rust-phf/rust-phf
+  Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
+  Full text: [L-fb278496]
+
+pin-project-lite 0.2.18
   License: Apache-2.0 OR MIT
   Source:  https://github.com/taiki-e/pin-project-lite
   Full text: [L-05bf2c00] [L-d64f3bb4]
@@ -1781,23 +1943,17 @@ piper 0.2.5
   Source:  https://github.com/smol-rs/piper
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-pkg-config 0.3.33
+pkg-config 0.3.34
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/pkg-config-rs
   Copyright (c) 2014 Alex Crichton
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-plist 1.10.0
+plist 1.10.4
   License: MIT
   Source:  https://github.com/ebarnard/rust-plist/
   Copyright (c) 2015 Edward Barnard
   Full text: [L-d64f3bb4]
-
-png 0.17.16
-  License: MIT OR Apache-2.0
-  Source:  https://github.com/image-rs/image-png
-  Copyright (c) 2015 nwin
-  Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
 png 0.18.1
   License: MIT OR Apache-2.0
@@ -1810,13 +1966,23 @@ polling 3.11.0
   Source:  https://github.com/smol-rs/polling
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-potential_utf 0.1.5
+portable-atomic 1.15.0
+  License: Apache-2.0 OR MIT
+  Source:  https://github.com/taiki-e/portable-atomic
+  Full text: [L-05bf2c00] [L-d64f3bb4]
+
+portable-atomic-util 0.2.8
+  License: Apache-2.0 OR MIT
+  Source:  https://github.com/taiki-e/portable-atomic-util
+  Full text: [L-05bf2c00] [L-d64f3bb4]
+
+potential_utf 0.1.6
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-powerfmt 0.2.0
+powerfmt 0.2.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/jhpratt/powerfmt
   Copyright 2023 Jacob Pratt et al.
@@ -1876,7 +2042,7 @@ quick-error 2.0.1
   Copyright (c) 2015 The quick-error Developers
   Full text: [L-ee9409fe] [L-d64f3bb4]
 
-quick-xml 0.41.0
+quick-xml 0.42.0
   License: MIT
   Source:  https://github.com/tafia/quick-xml
   Copyright (c) 2016 Johann Tuffe
@@ -1897,7 +2063,7 @@ r-efi 6.0.0
   Source:  https://github.com/r-efi/r-efi
   Full text: [L-750260c3]
 
-rand 0.10.2
+rand 0.10.4
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-random/rand
   Copyright 2018 Developers of the Rand project
@@ -1935,48 +2101,48 @@ redox_syscall 0.5.18
   Copyright (c) 2017 Redox OS Developers
   Full text: [L-750260c3]
 
-redox_users 0.5.2
+redox_users 0.5.3
   License: MIT
   Source:  https://gitlab.redox-os.org/redox-os/users
   Copyright (c) 2017 Jose Narvaez
   Full text: [L-fb278496]
 
-ref-cast 1.0.26
+ref-cast 1.0.27
   License: MIT OR Apache-2.0
   Source:  https://github.com/dtolnay/ref-cast
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-ref-cast-impl 1.0.26
+ref-cast-impl 1.0.27
   License: MIT OR Apache-2.0
   Source:  https://github.com/dtolnay/ref-cast
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-regex 1.13.1
+regex 1.13.2
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/regex
   Copyright (c) 2014 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-regex-automata 0.4.18
+regex-automata 0.4.19
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/regex
   Copyright (c) 2014 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-regex-syntax 0.8.11
+regex-syntax 0.8.12
   License: MIT OR Apache-2.0
   Source:  https://github.com/rust-lang/regex
   Copyright (c) 2014 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-reqwest 0.13.4
+reqwest 0.13.5
   License: MIT OR Apache-2.0
   Source:  https://github.com/seanmonstar/reqwest
   Copyright 2016 Sean McArthur
   Copyright (c) 2016-2026 Sean McArthur
   Full text: [L-a0df7821] [L-d64f3bb4]
 
-rfd 0.16.0
+rfd 0.17.2
   License: MIT
   Source:  https://github.com/PolyMeilex/rfd
   Copyright (c) 2022 Bartłomiej Maryńczak
@@ -2006,7 +2172,7 @@ rustix 0.38.44
   Source:  https://github.com/bytecodealliance/rustix
   Full text: [L-b8ceb1ed] [L-a92604bf] [L-d64f3bb4]
 
-rustix 1.1.4
+rustix 1.1.6
   License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
   Source:  https://github.com/bytecodealliance/rustix
   Full text: [L-b8ceb1ed] [L-a92604bf] [L-d64f3bb4]
@@ -2018,32 +2184,32 @@ rustls 0.23.46
   Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
   Full text: [L-b8ceb1ed] [L-19eaa475] [L-d64f3bb4]
 
-rustls-native-certs 0.8.4
+rustls-native-certs 0.8.5
   License: Apache-2.0 OR ISC OR MIT
   Source:  https://github.com/rustls/rustls-native-certs
   Copyright (c) 2016, Joseph Birr-Pixton <jpixton@gmail.com>
   Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
   Full text: [L-a58f52bc] [L-b8ceb1ed] [L-19eaa475] [L-d64f3bb4]
 
-rustls-pki-types 1.15.1
+rustls-pki-types 1.16.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/rustls/pki-types
   Copyright 2023 Dirkjan Ochtman
   Copyright (c) 2023 Dirkjan Ochtman <dirkjan@ochtman.nl>
   Full text: [L-a0df7821] [L-d64f3bb4]
 
-rustls-platform-verifier 0.7.0
+rustls-platform-verifier 0.7.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/rustls/rustls-platform-verifier
   Copyright (c) 2022 1Password
   Full text: [L-b8ceb1ed] [L-750260c3]
 
-rustls-platform-verifier-android 0.1.1
+rustls-platform-verifier-android 0.2.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/rustls/rustls-platform-verifier
   Full text: [L-750260c3]
 
-rustls-webpki 0.103.15
+rustls-webpki 0.103.17
   License: ISC
   Source:  https://github.com/rustls/webpki
   Copyright 2015 Brian Smith.
@@ -2060,7 +2226,7 @@ same-file 1.0.6
   Copyright (c) 2017 Andrew Gallant
   Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
 
-schannel 0.1.29
+schannel 0.1.30
   License: MIT
   Source:  https://github.com/steffengy/schannel-rs
   Copyright (c) 2015 steffengy
@@ -2078,7 +2244,7 @@ schemars 0.9.0
   Copyright (c) 2019 Graham Esau
   Full text: [L-750260c3]
 
-schemars 1.2.1
+schemars 1.2.3
   License: MIT
   Source:  https://github.com/GREsau/schemars
   Copyright (c) 2019 Graham Esau
@@ -2109,6 +2275,12 @@ security-framework-sys 2.17.0
   Full text: [L-b8ceb1ed] [L-fb278496]
 
 selectors 0.38.0
+  License: MPL-2.0
+  Source:  https://github.com/servo/stylo
+  Copyright (c) The Servo Project Developers
+  Full text: [L-a0184dbd]
+
+selectors 0.41.0
   License: MPL-2.0
   Source:  https://github.com/servo/stylo
   Copyright (c) The Servo Project Developers
@@ -2155,19 +2327,19 @@ serde_spanned 0.6.9
   Copyright (c) Individual contributors
   Full text: [L-ee9409fe] [L-d64f3bb4]
 
-serde_spanned 1.1.1
+serde_spanned 1.1.3
   License: MIT OR Apache-2.0
   Source:  https://github.com/toml-rs/toml
   Copyright (c) Individual contributors
-  Full text: [L-ee9409fe] [L-d64f3bb4]
+  Full text: [L-38298b7f] [L-d64f3bb4]
 
-serde_with 3.21.0
+serde_with 3.25.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/jonasbb/serde_with/
   Copyright (c) 2015
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-serde_with_macros 3.21.0
+serde_with_macros 3.25.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/jonasbb/serde_with/
   Copyright (c) 2015
@@ -2200,6 +2372,11 @@ servo_arc 0.4.3
   Source:  https://github.com/servo/stylo
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
+servo_arc 0.5.0
+  License: MIT OR Apache-2.0
+  Source:  https://github.com/servo/stylo
+  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+
 sha1 0.11.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/RustCrypto/hashes
@@ -2209,6 +2386,14 @@ sha1 0.11.0
   Copyright (c) 2006-2009 Graydon Hoare
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
+sha1_smol 1.0.1
+  License: BSD-3-Clause
+  Source:  https://github.com/mitsuhiko/sha1-smol
+  Copyright (c) 2018, the respective contributors, as shown by the AUTHORS file.
+  Copyright (c) 2006-2009 Graydon Hoare
+  Copyright (c) 2009-2013 Mozilla Foundation
+  Full text: [L-60b5c32c]
+
 sha2 0.10.9
   License: MIT OR Apache-2.0
   Source:  https://github.com/RustCrypto/hashes
@@ -2217,7 +2402,7 @@ sha2 0.10.9
   Copyright (c) 2016 Artyom Pavlov
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-sha2 0.11.0
+sha2 0.11.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/RustCrypto/hashes
   Copyright (c) 2016-2026 The RustCrypto Project Developers
@@ -2255,12 +2440,12 @@ simdutf8 0.1.5
   Source:  https://github.com/rusticstuff/simdutf8
   Full text: [L-05bf2c00] [L-750260c3]
 
-siphasher 1.0.3
-  License: MIT/Apache-2.0
+siphasher 1.0.4
+  License: MIT OR Apache-2.0
   Source:  https://github.com/jedisct1/rust-siphash
   Copyright 2012-2016 The Rust Project Developers.
   Copyright 2016-2026 Frank Denis.
-  Full text: [L-a80138dd]
+  Full text: [L-a80138dd] [L-b8ceb1ed] [L-d64f3bb4]
 
 slab 0.4.12
   License: MIT
@@ -2268,9 +2453,9 @@ slab 0.4.12
   Copyright (c) 2019 Carl Lerche
   Full text: [L-d64f3bb4]
 
-smallvec 1.15.2
+smallvec 1.16.6
   License: MIT OR Apache-2.0
-  Source:  https://github.com/servo/rust-smallvec
+  Source:  https://github.com/smallvec/smallvec
   Copyright (c) 2018 The Servo Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
@@ -2304,41 +2489,47 @@ spin 0.9.9
   Copyright (c) 2014 Mathijs van de Nes
   Full text: [L-fb278496]
 
-sqlx 0.9.0
+sqlx 0.9.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/launchbadge/sqlx
   Copyright (C) SQLx Contributors
   Full text: [L-ae01aa5c] [L-7026a856]
 
-sqlx-core 0.9.0
+sqlx-core 0.9.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/launchbadge/sqlx
-  Full text: [L-256016f3] [L-45883183]
+  Copyright (C) SQLx Contributors
+  Full text: [L-ae01aa5c] [L-7026a856]
 
-sqlx-macros 0.9.0
+sqlx-macros 0.9.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/launchbadge/sqlx
-  Full text: [L-256016f3] [L-45883183]
+  Copyright (C) SQLx Contributors
+  Full text: [L-ae01aa5c] [L-7026a856]
 
-sqlx-macros-core 0.9.0
+sqlx-macros-core 0.9.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/launchbadge/sqlx
-  Full text: [L-256016f3] [L-45883183]
+  Copyright (C) SQLx Contributors
+  Full text: [L-ae01aa5c] [L-7026a856]
 
-sqlx-mysql 0.9.0
+sqlx-mysql 0.9.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/launchbadge/sqlx
-  Full text: [L-256016f3] [L-45883183]
+  Copyright (C) SQLx Contributors
+  Full text: [L-ae01aa5c] [L-7026a856]
 
-sqlx-postgres 0.9.0
+sqlx-postgres 0.9.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/launchbadge/sqlx
-  Full text: [L-256016f3] [L-45883183]
+  Copyright (C) SQLx Contributors
+  Full text: [L-ae01aa5c] [L-7026a856]
 
-sqlx-sqlite 0.9.0
+sqlx-sqlite 0.9.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/launchbadge/sqlx
-  Full text: [L-256016f3] [L-45883183]
+  Copyright (C) SQLx Contributors
+  Full text: [L-ae01aa5c] [L-7026a856]
 
 stable_deref_trait 1.2.1
   License: MIT OR Apache-2.0
@@ -2352,7 +2543,19 @@ static_vcruntime 3.0.0
   Copyright (c) 2021 Chris Denton.
   Full text: [L-fd2dc0a6] [L-b8ceb1ed] [L-2c474750] [L-63f312c7]
 
+string_cache 0.11.0
+  License: MIT OR Apache-2.0
+  Source:  https://github.com/servo/string-cache
+  Copyright (c) 2012-2013 Mozilla Foundation
+  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+
 string_cache 0.9.0
+  License: MIT OR Apache-2.0
+  Source:  https://github.com/servo/string-cache
+  Copyright (c) 2012-2013 Mozilla Foundation
+  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+
+string_cache_codegen 0.11.2
   License: MIT OR Apache-2.0
   Source:  https://github.com/servo/string-cache
   Copyright (c) 2012-2013 Mozilla Foundation
@@ -2402,7 +2605,7 @@ syn 2.0.119
   Source:  https://github.com/dtolnay/syn
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-syn 3.0.3
+syn 3.0.10
   License: MIT OR Apache-2.0
   Source:  https://github.com/dtolnay/syn
   Full text: [L-05bf2c00] [L-d64f3bb4]
@@ -2412,7 +2615,7 @@ sync_wrapper 1.0.2
   Source:  https://github.com/Actyx/sync_wrapper
   Full text: [L-05bf2c00]
 
-synstructure 0.13.2
+synstructure 0.14.0
   License: MIT
   Source:  https://github.com/mystor/synstructure
   Copyright 2016 Nika Layzell
@@ -2435,7 +2638,7 @@ system-deps 6.2.2
   Source:  https://github.com/gdesmott/system-deps
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-tao 0.37.1
+tao 0.37.3
   License: Apache-2.0
   Source:  https://github.com/tauri-apps/tao
   Full text: [L-ee9409fe] [L-1527351a]
@@ -2457,37 +2660,37 @@ target-lexicon 0.12.16
   Source:  https://github.com/bytecodealliance/target-lexicon
   Full text: [L-a92604bf]
 
-tauri 2.12.4
+tauri 2.12.7
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/tauri
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3]
 
-tauri-build 2.7.3
+tauri-build 2.7.6
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/tauri
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3]
 
-tauri-codegen 2.7.3
+tauri-codegen 2.7.6
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/tauri
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3]
 
-tauri-macros 2.7.3
+tauri-macros 2.7.6
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/tauri
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3]
 
-tauri-plugin 2.7.2
+tauri-plugin 2.7.4
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/tauri
   Copyright (c) Tauri Programme within The Commons Conservancy
   Full text: [L-750260c3]
 
-tauri-plugin-dialog 2.8.3
+tauri-plugin-dialog 2.8.4
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/plugins-workspace
   Copyright (c) 2017 - Present Tauri Apps Contributors
@@ -2499,7 +2702,7 @@ tauri-plugin-fs 2.7.1
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3] [L-94632640]
 
-tauri-plugin-opener 2.7.2
+tauri-plugin-opener 2.7.3
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/plugins-workspace
   Copyright (c) 2017 - Present Tauri Apps Contributors
@@ -2511,37 +2714,43 @@ tauri-plugin-process 2.4.0
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3] [L-94632640]
 
-tauri-plugin-store 2.5.0
+tauri-plugin-store 2.5.1
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/plugins-workspace
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3] [L-94632640]
 
-tauri-plugin-updater 2.14.0
+tauri-plugin-updater 2.14.1
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/plugins-workspace
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3] [L-94632640]
 
-tauri-runtime 2.12.2
+tauri-plugin-window-state 2.5.0
+  License: Apache-2.0 OR MIT
+  Source:  https://github.com/tauri-apps/plugins-workspace
+  Copyright (c) 2017 - Present Tauri Apps Contributors
+  Full text: [L-05bf2c00] [L-750260c3] [L-94632640]
+
+tauri-runtime 2.12.4
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/tauri
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3]
 
-tauri-runtime-wry 2.12.2
+tauri-runtime-wry 2.12.5
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/tauri
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3]
 
-tauri-utils 2.10.2
+tauri-utils 2.10.4
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/tauri
   Copyright (c) 2017 - Present Tauri Apps Contributors
   Full text: [L-05bf2c00] [L-750260c3]
 
-tauri-winres 0.3.6
+tauri-winres 0.3.7
   License: MIT
   Source:  https://github.com/tauri-apps/winres
   Copyright (c) 2023 - Present Tauri Apps Contributors
@@ -2565,7 +2774,7 @@ thiserror 1.0.69
   Source:  https://github.com/dtolnay/thiserror
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-thiserror 2.0.19
+thiserror 2.0.21
   License: MIT OR Apache-2.0
   Source:  https://github.com/dtolnay/thiserror
   Full text: [L-05bf2c00] [L-d64f3bb4]
@@ -2575,12 +2784,12 @@ thiserror-impl 1.0.69
   Source:  https://github.com/dtolnay/thiserror
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-thiserror-impl 2.0.19
+thiserror-impl 2.0.21
   License: MIT OR Apache-2.0
   Source:  https://github.com/dtolnay/thiserror
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-time 0.3.54
+time 0.3.55
   License: MIT OR Apache-2.0
   Source:  https://github.com/time-rs/time
   Copyright (c) Jacob Pratt et al.
@@ -2598,40 +2807,32 @@ time-macros 0.2.32
   Copyright (c) Jacob Pratt et al.
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-tinystr 0.8.3
+tinystr 0.8.5
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-tinyvec 1.12.0
+tinyvec 1.13.3
   License: Zlib OR Apache-2.0 OR MIT
   Source:  https://github.com/Lokathor/tinyvec
   Copyright (c) 2019 Daniel "Lokathor" Gee.
   Full text: [L-b8ceb1ed] [L-d64f3bb4] [L-63f312c7]
 
-tinyvec_macros 0.1.1
-  License: MIT OR Apache-2.0 OR Zlib
-  Source:  https://github.com/Soveu/tinyvec_macros
-  Copyright 2020 Tomasz "Soveu" Marx
-  Copyright (c) 2020 Soveu
-  (C) 2020 Tomasz "Soveu" Marx
-  Full text: [L-a0df7821] [L-750260c3] [L-4e03e31b]
-
-tokio 1.53.1
+tokio 1.54.1
   License: MIT
   Source:  https://github.com/tokio-rs/tokio
   Copyright (c) Tokio Contributors
   Full text: [L-750260c3]
 
-tokio-macros 2.7.1
+tokio-macros 2.7.2
   License: MIT
   Source:  https://github.com/tokio-rs/tokio
   Copyright (c) 2019 Yoshua Wuyts
   Copyright (c) Tokio Contributors
   Full text: [L-750260c3]
 
-tokio-rustls 0.26.4
+tokio-rustls 0.26.6
   License: MIT OR Apache-2.0
   Source:  https://github.com/rustls/tokio-rustls
   Copyright 2017 quininer kel
@@ -2644,7 +2845,7 @@ tokio-stream 0.1.19
   Copyright (c) Tokio Contributors
   Full text: [L-750260c3]
 
-tokio-util 0.7.19
+tokio-util 0.7.20
   License: MIT
   Source:  https://github.com/tokio-rs/tokio
   Copyright (c) Tokio Contributors
@@ -2656,11 +2857,11 @@ toml 0.8.2
   Copyright (c) Individual contributors
   Full text: [L-ee9409fe] [L-d64f3bb4]
 
-toml 1.1.3+spec-1.1.0
+toml 1.2.1+spec-1.1.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/toml-rs/toml
   Copyright (c) Individual contributors
-  Full text: [L-ee9409fe] [L-d64f3bb4]
+  Full text: [L-38298b7f] [L-d64f3bb4]
 
 toml_datetime 0.6.3
   License: MIT OR Apache-2.0
@@ -2668,11 +2869,11 @@ toml_datetime 0.6.3
   Copyright (c) 2014 Alex Crichton
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-toml_datetime 1.1.1+spec-1.1.0
+toml_datetime 1.1.3+spec-1.1.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/toml-rs/toml
   Copyright (c) Individual contributors
-  Full text: [L-ee9409fe] [L-d64f3bb4]
+  Full text: [L-38298b7f] [L-d64f3bb4]
 
 toml_edit 0.19.15
   License: MIT OR Apache-2.0
@@ -2686,23 +2887,23 @@ toml_edit 0.20.2
   Copyright (c) Individual contributors
   Full text: [L-ee9409fe] [L-d64f3bb4]
 
-toml_edit 0.25.13+spec-1.1.0
+toml_edit 0.25.19+spec-1.1.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/toml-rs/toml
   Copyright (c) Individual contributors
-  Full text: [L-ee9409fe] [L-d64f3bb4]
+  Full text: [L-38298b7f] [L-d64f3bb4]
 
-toml_parser 1.1.2+spec-1.1.0
+toml_parser 1.1.5+spec-1.1.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/toml-rs/toml
   Copyright (c) Individual contributors
-  Full text: [L-ee9409fe] [L-d64f3bb4]
+  Full text: [L-38298b7f] [L-d64f3bb4]
 
-toml_writer 1.1.2+spec-1.1.0
+toml_writer 1.2.0+spec-1.1.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/toml-rs/toml
   Copyright (c) Individual contributors
-  Full text: [L-ee9409fe] [L-d64f3bb4]
+  Full text: [L-38298b7f] [L-d64f3bb4]
 
 tower 0.5.3
   License: MIT
@@ -2746,7 +2947,7 @@ tracing-core 0.1.36
   Copyright (c) 2019 Tokio Contributors
   Full text: [L-d64f3bb4]
 
-trash 5.2.9
+trash 5.4.0
   License: MIT
   Source:  https://github.com/ArturKovacs/trash
   Copyright 2019 Artúr Barnabás Kovács
@@ -2764,6 +2965,11 @@ try-lock 0.2.5
   Copyright (c) 2018-2023 Sean McArthur
   Copyright (c) 2016 Alex Crichton
   Full text: [L-d64f3bb4]
+
+typed-path 0.13.0
+  License: MIT OR Apache-2.0
+  Source:  https://github.com/chipsenkbeil/typed-path
+  Full text: [L-05bf2c00] [L-d64f3bb4]
 
 typeid 1.0.3
   License: MIT OR Apache-2.0
@@ -2789,23 +2995,25 @@ unicode-bidi 0.3.18
   Copyright (c) 2015 The Rust Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-unicode-ident 1.0.24
+unicode-ident 1.0.27
   License: (MIT OR Apache-2.0) AND Unicode-3.0
   Source:  https://github.com/dtolnay/unicode-ident
   Copyright © 1991-2023 Unicode, Inc.
   Full text: [L-05bf2c00] [L-d64f3bb4] [L-8e84d2a6]
 
-unicode-normalization 0.1.25
-  License: MIT OR Apache-2.0
+unicode-normalization 0.1.26
+  License: (MIT OR Apache-2.0) AND Unicode-3.0
   Source:  https://github.com/unicode-rs/unicode-normalization
   Copyright (c) 2015 The Rust Project Developers
-  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+  Copyright © 1991-2023 Unicode, Inc.
+  Full text: [L-b8ceb1ed] [L-d64f3bb4] [L-8e84d2a6]
 
-unicode-properties 0.1.4
-  License: MIT/Apache-2.0
+unicode-properties 0.1.5
+  License: (MIT OR Apache-2.0) AND Unicode-3.0
   Source:  https://github.com/unicode-rs/unicode-properties
   Copyright (c) 2015 The Rust Project Developers
-  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+  Copyright © 1991-2026 Unicode, Inc.
+  Full text: [L-b8ceb1ed] [L-d64f3bb4] [L-8e84d2a6]
 
 unicode-segmentation 1.13.3
   License: MIT OR Apache-2.0
@@ -2837,12 +3045,17 @@ urlpattern 0.6.0
   Copyright (c) 2021 the Deno authors
   Full text: [L-750260c3]
 
-utf8_iter 1.0.4
+utf_types 1.0.0
+  License: Apache-2.0 OR MIT
+  Source:  https://github.com/hsivonen/utf_types
+  Full text: [L-b8ceb1ed] [L-4a086c3d]
+
+utf8_iter 1.1.0
   License: Apache-2.0 OR MIT
   Source:  https://github.com/hsivonen/utf8_iter
   Full text: [L-b8ceb1ed] [L-4a086c3d]
 
-uuid 1.28.0
+uuid 1.29.3
   License: Apache-2.0 OR MIT
   Source:  https://github.com/uuid-rs/uuid
   Copyright (c) 2014 The Rust Project Developers
@@ -2885,7 +3098,7 @@ walkdir 2.5.0
   Copyright (c) 2015 Andrew Gallant
   Full text: [L-c624b393] [L-fb278496] [L-e758eec4]
 
-want 0.3.1
+want 0.3.2
   License: MIT
   Source:  https://github.com/seanmonstar/want
   Copyright (c) 2018-2019 Sean McArthur
@@ -2901,31 +3114,31 @@ wasip2 1.0.4+wasi-0.2.12
   Source:  https://github.com/bytecodealliance/wasi-rs
   Full text: [L-b8ceb1ed] [L-a92604bf] [L-d64f3bb4]
 
-wasm-bindgen 0.2.126
+wasm-bindgen 0.2.130
   License: MIT OR Apache-2.0
   Source:  https://github.com/wasm-bindgen/wasm-bindgen
   Copyright (c) 2014 Alex Crichton
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-wasm-bindgen-futures 0.4.76
+wasm-bindgen-futures 0.4.80
   License: MIT OR Apache-2.0
   Source:  https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures
   Copyright (c) 2014 Alex Crichton
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-wasm-bindgen-macro 0.2.126
+wasm-bindgen-macro 0.2.130
   License: MIT OR Apache-2.0
   Source:  https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro
   Copyright (c) 2014 Alex Crichton
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-wasm-bindgen-macro-support 0.2.126
+wasm-bindgen-macro-support 0.2.130
   License: MIT OR Apache-2.0
-  Source:  https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support
+  Source:  https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support
   Copyright (c) 2014 Alex Crichton
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-wasm-bindgen-shared 0.2.126
+wasm-bindgen-shared 0.2.130
   License: MIT OR Apache-2.0
   Source:  https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared
   Copyright (c) 2014 Alex Crichton
@@ -2936,13 +3149,19 @@ wasm-streams 0.5.0
   Source:  https://github.com/MattiasBuelens/wasm-streams/
   Full text: [L-05bf2c00] [L-d64f3bb4]
 
-web_atoms 0.2.5
+web_atoms 0.2.6
   License: MIT OR Apache-2.0
   Source:  https://github.com/servo/html5ever
   Copyright (c) 2014 The html5ever Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-web-sys 0.3.103
+web_atoms 0.3.0
+  License: MIT OR Apache-2.0
+  Source:  https://github.com/servo/html5ever
+  Copyright (c) 2014 The html5ever Project Developers
+  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+
+web-sys 0.3.107
   License: MIT OR Apache-2.0
   Source:  https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys
   Copyright (c) 2014 Alex Crichton
@@ -2969,7 +3188,7 @@ webkit2gtk-sys 2.0.2
   Copyright (c) 2016 Boucher, Antoni <bouanto@zoho.com>
   Full text: [L-d64f3bb4]
 
-webpki-root-certs 1.0.9
+webpki-root-certs 1.0.12
   License: CDLA-Permissive-2.0
   Source:  https://github.com/rustls/webpki-roots
   Full text: [L-8725e7ef]
@@ -2995,7 +3214,7 @@ weezl 0.1.12
   Copyright (c) HeroicKatora 2020
   Full text: [L-b8ceb1ed] [L-fb278496]
 
-whoami 2.1.2
+whoami 2.1.3
   License: Apache-2.0 OR BSL-1.0 OR MIT
   Source:  https://github.com/ardaku/whoami
   Full text: [L-05bf2c00] [L-db41cb84] [L-750260c3]
@@ -3299,12 +3518,12 @@ winnow 0.5.40
   Source:  https://github.com/winnow-rs/winnow
   Full text: [L-d64f3bb4]
 
-winnow 1.0.4
+winnow 1.0.5
   License: MIT
   Source:  https://github.com/winnow-rs/winnow
   Full text: [L-d64f3bb4]
 
-winreg 0.55.0
+winreg 0.56.0
   License: MIT
   Source:  https://github.com/gentoo90/winreg-rs
   Copyright (c) 2015 Igor Shaula
@@ -3315,13 +3534,13 @@ wit-bindgen 0.57.1
   Source:  https://github.com/bytecodealliance/wit-bindgen
   Full text: [L-b8ceb1ed] [L-a92604bf] [L-d64f3bb4]
 
-writeable 0.6.3
+writeable 0.6.4
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-wry 0.57.0
+wry 0.57.3
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/wry
   Copyright (c) 2020-2023 Ngo Iok Ui & Tauri Programme within The Commons Conservancy
@@ -3337,40 +3556,46 @@ x11-dl 2.21.0
   Source:  https://github.com/AltF02/x11-rs
   Full text: [L-d64f3bb4]
 
-xattr 1.6.1
+xattr 1.7.0
   License: MIT OR Apache-2.0
   Source:  https://github.com/Stebalien/xattr
   Copyright (c) 2015 Steven Allen
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-yoke 0.8.3
+yoke 0.8.4
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-yoke-derive 0.8.2
+yoke-derive 0.8.4
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-zbus 5.18.0
+zbus 5.19.0
   License: MIT
   Source:  https://github.com/z-galaxy/zbus/
   Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
   Full text: [L-d64f3bb4]
 
-zbus_macros 5.18.0
+zbus_macros 5.19.0
   License: MIT
   Source:  https://github.com/z-galaxy/zbus/
   Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
   Full text: [L-d64f3bb4]
 
-zbus_names 4.3.4
+zbus_names 4.3.5
   License: MIT
   Source:  https://github.com/z-galaxy/zbus/
   Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
+  Full text: [L-d64f3bb4]
+
+zcheapstr 1.3.0
+  License: MIT
+  Source:  https://github.com/z-galaxy/zcheapstr/
+  Copyright (c) 2026 Zeeshan Ali Khan & zcheapstr contributors
   Full text: [L-d64f3bb4]
 
 zerofrom 0.1.8
@@ -3379,41 +3604,53 @@ zerofrom 0.1.8
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-zerofrom-derive 0.1.7
+zerofrom-derive 0.1.8
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-zeroize 1.9.0
+zeroize 1.9.2
   License: Apache-2.0 OR MIT
   Source:  https://github.com/RustCrypto/utils
   Copyright (c) 2018-2026 The RustCrypto Project Developers
   Full text: [L-b8ceb1ed] [L-d64f3bb4]
 
-zerotrie 0.2.4
+zeroize_derive 1.5.0
+  License: Apache-2.0 OR MIT
+  Source:  https://github.com/RustCrypto/utils
+  Copyright (c) 2019-2026 The RustCrypto Project Developers
+  Full text: [L-b8ceb1ed] [L-d64f3bb4]
+
+zerotrie 0.2.5
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-zerovec 0.11.6
+zerovec 0.11.9
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-zerovec-derive 0.11.3
+zerovec-derive 0.11.7
   License: Unicode-3.0
   Source:  https://github.com/unicode-org/icu4x
   Copyright © 2020-2024 Unicode, Inc.
   Full text: [L-2a83df72]
 
-zip 4.6.1
+zip 9.8.0
   License: MIT
   Source:  https://github.com/zip-rs/zip2
   Copyright (c) 2014 Mathijs van de Nes
-  Full text: [L-1acd4cd4]
+  Full text: [L-fb278496]
+
+zlib-rs 0.6.8
+  License: Zlib
+  Source:  https://github.com/trifectatechfoundation/zlib-rs
+  (C) 2024 Trifecta Tech Foundation
+  Full text: [L-63f312c7]
 
 zmij 1.0.23
   License: MIT
@@ -3432,19 +3669,19 @@ zune-jpeg 0.5.15
   Copyright (c) zune-image developers
   Full text: [L-b8ceb1ed] [L-750260c3] [L-5669b774]
 
-zvariant 5.13.1
+zvariant 5.15.1
   License: MIT
   Source:  https://github.com/z-galaxy/zbus/
   Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
   Full text: [L-d64f3bb4]
 
-zvariant_derive 5.13.1
+zvariant_derive 5.15.1
   License: MIT
   Source:  https://github.com/z-galaxy/zbus/
   Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
   Full text: [L-d64f3bb4]
 
-zvariant_utils 3.5.0
+zvariant_utils 4.2.0
   License: MIT
   Source:  https://github.com/z-galaxy/zbus/
   Full text: [L-d64f3bb4]
@@ -3488,7 +3725,7 @@ NPM PACKAGES
   Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono) JetBrainsMono-Italic[wght].ttf: Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
   Full text: [L-38fae1db]
 
-@iconify-json/material-symbols 1.2.95
+@iconify-json/material-symbols 1.2.101
   License: Apache-2.0
   Source:  https://icon-sets.iconify.design/material-symbols/
   Full text: [L-f200dbe3]
@@ -3517,7 +3754,7 @@ NPM PACKAGES
   Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
   Full text: [L-d64f3bb4]
 
-@jridgewell/resolve-uri 3.1.2
+@jridgewell/resolve-uri 3.1.3
   License: MIT
   Source:  https://github.com/jridgewell/resolve-uri
   Copyright 2019 Justin Ridgewell <jridgewell@google.com>
@@ -3535,7 +3772,7 @@ NPM PACKAGES
   Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
   Full text: [L-d64f3bb4]
 
-@lucide/svelte 1.59.0
+@lucide/svelte 1.76.0
   License: ISC
   Source:  https://github.com/lucide-icons/lucide
   Copyright (c) 2026 Lucide Icons and Contributors
@@ -3548,64 +3785,64 @@ NPM PACKAGES
   Copyright (c) 2023 Yokozuna59
   Full text: [L-fb278496]
 
-@napi-rs/canvas 1.0.13
+@napi-rs/canvas 1.1.1
   License: MIT
   Source:  https://github.com/Brooooooklyn/canvas
   Copyright (c) 2020 lynweklm@gmail.com
   Copyright 2015 The Chromium Authors
   Full text: [L-31fbc21b]
 
-@napi-rs/canvas-android-arm64 1.0.13
+@napi-rs/canvas-android-arm64 1.1.1
   License: MIT
-  Source:  https://registry.npmjs.org/@napi-rs/canvas-android-arm64/-/canvas-android-arm64-1.0.13.tgz
+  Source:  https://registry.npmjs.org/@napi-rs/canvas-android-arm64/-/canvas-android-arm64-1.1.1.tgz
   Full text: [L-750260c3]
 
-@napi-rs/canvas-darwin-arm64 1.0.13
+@napi-rs/canvas-darwin-arm64 1.1.1
   License: MIT
-  Source:  https://registry.npmjs.org/@napi-rs/canvas-darwin-arm64/-/canvas-darwin-arm64-1.0.13.tgz
+  Source:  https://registry.npmjs.org/@napi-rs/canvas-darwin-arm64/-/canvas-darwin-arm64-1.1.1.tgz
   Full text: [L-750260c3]
 
-@napi-rs/canvas-darwin-x64 1.0.13
+@napi-rs/canvas-darwin-x64 1.1.1
   License: MIT
-  Source:  https://registry.npmjs.org/@napi-rs/canvas-darwin-x64/-/canvas-darwin-x64-1.0.13.tgz
+  Source:  https://registry.npmjs.org/@napi-rs/canvas-darwin-x64/-/canvas-darwin-x64-1.1.1.tgz
   Full text: [L-750260c3]
 
-@napi-rs/canvas-linux-arm-gnueabihf 1.0.13
+@napi-rs/canvas-linux-arm-gnueabihf 1.1.1
   License: MIT
-  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-arm-gnueabihf/-/canvas-linux-arm-gnueabihf-1.0.13.tgz
+  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-arm-gnueabihf/-/canvas-linux-arm-gnueabihf-1.1.1.tgz
   Full text: [L-750260c3]
 
-@napi-rs/canvas-linux-arm64-gnu 1.0.13
+@napi-rs/canvas-linux-arm64-gnu 1.1.1
   License: MIT
-  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-arm64-gnu/-/canvas-linux-arm64-gnu-1.0.13.tgz
+  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-arm64-gnu/-/canvas-linux-arm64-gnu-1.1.1.tgz
   Full text: [L-750260c3]
 
-@napi-rs/canvas-linux-arm64-musl 1.0.13
+@napi-rs/canvas-linux-arm64-musl 1.1.1
   License: MIT
-  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-arm64-musl/-/canvas-linux-arm64-musl-1.0.13.tgz
+  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-arm64-musl/-/canvas-linux-arm64-musl-1.1.1.tgz
   Full text: [L-750260c3]
 
-@napi-rs/canvas-linux-riscv64-gnu 1.0.13
+@napi-rs/canvas-linux-riscv64-gnu 1.1.1
   License: MIT
-  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-riscv64-gnu/-/canvas-linux-riscv64-gnu-1.0.13.tgz
+  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-riscv64-gnu/-/canvas-linux-riscv64-gnu-1.1.1.tgz
   Full text: [L-750260c3]
 
-@napi-rs/canvas-linux-x64-gnu 1.0.13
+@napi-rs/canvas-linux-x64-gnu 1.1.1
   License: MIT
-  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-x64-gnu/-/canvas-linux-x64-gnu-1.0.13.tgz
+  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-x64-gnu/-/canvas-linux-x64-gnu-1.1.1.tgz
   Full text: [L-750260c3]
 
-@napi-rs/canvas-linux-x64-musl 1.0.13
+@napi-rs/canvas-linux-x64-musl 1.1.1
   License: MIT
-  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-x64-musl/-/canvas-linux-x64-musl-1.0.13.tgz
+  Source:  https://registry.npmjs.org/@napi-rs/canvas-linux-x64-musl/-/canvas-linux-x64-musl-1.1.1.tgz
   Full text: [L-750260c3]
 
-@napi-rs/canvas-win32-arm64-msvc 1.0.13
+@napi-rs/canvas-win32-arm64-msvc 1.1.1
   License: MIT
-  Source:  https://registry.npmjs.org/@napi-rs/canvas-win32-arm64-msvc/-/canvas-win32-arm64-msvc-1.0.13.tgz
+  Source:  https://registry.npmjs.org/@napi-rs/canvas-win32-arm64-msvc/-/canvas-win32-arm64-msvc-1.1.1.tgz
   Full text: [L-750260c3]
 
-@napi-rs/canvas-win32-x64-msvc 1.0.13
+@napi-rs/canvas-win32-x64-msvc 1.1.1
   License: MIT
   Source:  https://github.com/Brooooooklyn/canvas
   Full text: [L-750260c3]
@@ -3617,13 +3854,13 @@ NPM PACKAGES
   Copyright (c) 2025 The Svelte Team
   Full text: [L-750260c3]
 
-@tauri-apps/api 2.12.4
+@tauri-apps/api 2.12.5
   License: Apache-2.0 OR MIT
   Source:  https://github.com/tauri-apps/tauri
   Copyright (c) 2017 - Present Tauri Apps Contributors
-  Full text: [L-05bf2c00] [L-750260c3] [L-2ca26645]
+  Full text: [L-05bf2c00] [L-750260c3]
 
-@tauri-apps/plugin-dialog 2.8.3
+@tauri-apps/plugin-dialog 2.8.4
   License: MIT OR Apache-2.0
   Source:  https://github.com/tauri-apps/plugins-workspace
   Full text: [L-94632640]
@@ -3633,7 +3870,7 @@ NPM PACKAGES
   Source:  https://github.com/tauri-apps/plugins-workspace
   Full text: [L-94632640]
 
-@tauri-apps/plugin-opener 2.7.2
+@tauri-apps/plugin-opener 2.7.3
   License: MIT OR Apache-2.0
   Source:  https://github.com/tauri-apps/plugins-workspace
   Full text: [L-94632640]
@@ -3643,12 +3880,12 @@ NPM PACKAGES
   Source:  https://github.com/tauri-apps/plugins-workspace
   Full text: [L-94632640]
 
-@tauri-apps/plugin-store 2.5.0
+@tauri-apps/plugin-store 2.5.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/tauri-apps/plugins-workspace
   Full text: [L-94632640]
 
-@tauri-apps/plugin-updater 2.14.0
+@tauri-apps/plugin-updater 2.14.1
   License: MIT OR Apache-2.0
   Source:  https://github.com/tauri-apps/plugins-workspace
   Full text: [L-94632640]
@@ -3797,13 +4034,13 @@ NPM PACKAGES
   Copyright (c) Microsoft Corporation.
   Full text: [L-ae102cdd]
 
-@types/d3-selection 3.0.11
+@types/d3-selection 3.0.12
   License: MIT
   Source:  https://github.com/DefinitelyTyped/DefinitelyTyped
   Copyright (c) Microsoft Corporation.
   Full text: [L-ae102cdd]
 
-@types/d3-shape 3.1.8
+@types/d3-shape 3.2.0
   License: MIT
   Source:  https://github.com/DefinitelyTyped/DefinitelyTyped
   Copyright (c) Microsoft Corporation.
@@ -3833,13 +4070,13 @@ NPM PACKAGES
   Copyright (c) Microsoft Corporation.
   Full text: [L-ae102cdd]
 
-@types/d3-zoom 3.0.8
+@types/d3-zoom 3.0.9
   License: MIT
   Source:  https://github.com/DefinitelyTyped/DefinitelyTyped
   Copyright (c) Microsoft Corporation.
   Full text: [L-ae102cdd]
 
-@types/estree 1.0.9
+@types/estree 1.0.10
   License: MIT
   Source:  https://github.com/DefinitelyTyped/DefinitelyTyped
   Copyright (c) Microsoft Corporation.
@@ -3869,17 +4106,16 @@ NPM PACKAGES
   Source:  https://github.com/voithos-labs/aragonite
   Full text: [L-d7a325d1]
 
-acorn 8.18.0
+acorn 8.19.0
   License: MIT
   Source:  https://github.com/acornjs/acorn
   Copyright (C) 2012-2022 by various contributors (see AUTHORS)
   Full text: [L-750260c3]
 
-argparse 2.0.1
-  License: Python-2.0
+argparse 3.0.4
+  License: PSF-2.0
   Source:  nodeca/argparse
-  Copyright (c) 1991 - 1995, Stichting Mathematisch Centrum Amsterdam,
-  Full text: [L-13dbf750]
+  Full text: [L-bddfbce5]
 
 aria-query 5.3.1
   License: Apache-2.0
@@ -3899,7 +4135,7 @@ clsx 2.1.1
   Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
   Full text: [L-750260c3]
 
-commander 15.0.0
+commander 15.1.0
   License: MIT
   Source:  https://github.com/tj/commander.js
   Copyright (c) 2011 TJ Holowaychuk <tj@vision-media.ca>
@@ -3923,7 +4159,7 @@ cose-base 2.2.0
   Copyright (c) 2019 - present, iVis@Bilkent.
   Full text: [L-750260c3]
 
-cytoscape 3.34.0
+cytoscape 3.35.0
   License: MIT
   Source:  https://github.com/cytoscape/cytoscape.js
   Copyright (c) 2016-2026, The Cytoscape Consortium.
@@ -3941,10 +4177,10 @@ cytoscape-fcose 2.2.0
   Copyright (c) 2018 - present, iVis-at-Bilkent.
   Full text: [L-9a83cace]
 
-d3 7.9.0
+d3 7.9.2
   License: ISC
   Source:  https://github.com/d3/d3
-  Copyright 2010-2023 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
 d3-array 2.12.1
@@ -3953,109 +4189,109 @@ d3-array 2.12.1
   Copyright 2010-2020 Mike Bostock
   Full text: [L-960be71b]
 
-d3-array 3.2.4
+d3-array 3.2.5
   License: ISC
   Source:  https://github.com/d3/d3-array
-  Copyright 2010-2023 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-axis 3.0.0
+d3-axis 3.0.1
   License: ISC
   Source:  https://github.com/d3/d3-axis
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-brush 3.0.0
+d3-brush 3.0.1
   License: ISC
   Source:  https://github.com/d3/d3-brush
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-chord 3.0.1
+d3-chord 3.0.2
   License: ISC
   Source:  https://github.com/d3/d3-chord
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-color 3.1.0
+d3-color 3.1.1
   License: ISC
   Source:  https://github.com/d3/d3-color
-  Copyright 2010-2022 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-contour 4.0.2
+d3-contour 4.0.3
   License: ISC
   Source:  https://github.com/d3/d3-contour
-  Copyright 2012-2023 Mike Bostock
+  Copyright 2012-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-delaunay 6.0.4
+d3-delaunay 6.0.6
   License: ISC
   Source:  https://github.com/d3/d3-delaunay
-  Copyright 2018-2021 Observable, Inc.
+  Copyright 2018-2026 Observable, Inc.
   Copyright 2021 Mapbox
   Full text: [L-d168f986]
 
-d3-dispatch 3.0.1
+d3-dispatch 3.0.2
   License: ISC
   Source:  https://github.com/d3/d3-dispatch
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-drag 3.0.0
+d3-drag 3.0.1
   License: ISC
   Source:  https://github.com/d3/d3-drag
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-dsv 3.0.1
+d3-dsv 3.0.2
   License: ISC
   Source:  https://github.com/d3/d3-dsv
-  Copyright 2013-2021 Mike Bostock
+  Copyright 2013-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-ease 3.0.1
+d3-ease 3.0.2
   License: BSD-3-Clause
   Source:  https://github.com/d3/d3-ease
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Copyright 2001 Robert Penner
   Full text: [L-960be71b]
 
-d3-fetch 3.0.1
+d3-fetch 3.0.2
   License: ISC
   Source:  https://github.com/d3/d3-fetch
-  Copyright 2016-2021 Mike Bostock
+  Copyright 2016-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-force 3.0.0
+d3-force 3.0.1
   License: ISC
   Source:  https://github.com/d3/d3-force
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-format 3.1.2
+d3-format 3.1.3
   License: ISC
   Source:  https://github.com/d3/d3-format
   Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-geo 3.1.1
+d3-geo 3.1.2
   License: ISC
   Source:  https://github.com/d3/d3-geo
-  Copyright 2010-2024 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Copyright 2008-2012 Charles Karney
   Full text: [L-b358b8e7]
 
-d3-hierarchy 3.1.2
+d3-hierarchy 3.1.3
   License: ISC
   Source:  https://github.com/d3/d3-hierarchy
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-interpolate 3.0.1
+d3-interpolate 3.0.2
   License: ISC
   Source:  https://github.com/d3/d3-interpolate
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
 d3-path 1.0.9
@@ -4064,28 +4300,28 @@ d3-path 1.0.9
   Copyright 2015-2016 Mike Bostock
   Full text: [L-960be71b]
 
-d3-path 3.1.0
+d3-path 3.1.1
   License: ISC
   Source:  https://github.com/d3/d3-path
-  Copyright 2015-2022 Mike Bostock
+  Copyright 2015-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-polygon 3.0.1
+d3-polygon 3.0.2
   License: ISC
   Source:  https://github.com/d3/d3-polygon
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-quadtree 3.0.1
+d3-quadtree 3.0.2
   License: ISC
   Source:  https://github.com/d3/d3-quadtree
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-random 3.0.1
+d3-random 3.0.2
   License: ISC
   Source:  https://github.com/d3/d3-random
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
 d3-sankey 0.12.3
@@ -4094,23 +4330,23 @@ d3-sankey 0.12.3
   Copyright 2015, Mike Bostock
   Full text: [L-960be71b]
 
-d3-scale 4.0.2
+d3-scale 4.0.3
   License: ISC
   Source:  https://github.com/d3/d3-scale
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-scale-chromatic 3.1.0
+d3-scale-chromatic 3.1.1
   License: ISC
   Source:  https://github.com/d3/d3-scale-chromatic
-  Copyright 2010-2024 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Copyright 2002 Cynthia Brewer, Mark Harrower, and The Pennsylvania State University
   Full text: [L-06947804]
 
-d3-selection 3.0.0
+d3-selection 3.0.1
   License: ISC
   Source:  https://github.com/d3/d3-selection
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
 d3-shape 1.3.7
@@ -4119,40 +4355,40 @@ d3-shape 1.3.7
   Copyright 2010-2015 Mike Bostock
   Full text: [L-960be71b]
 
-d3-shape 3.2.0
+d3-shape 3.2.1
   License: ISC
   Source:  https://github.com/d3/d3-shape
-  Copyright 2010-2022 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-time 3.1.0
+d3-time 3.1.1
   License: ISC
   Source:  https://github.com/d3/d3-time
-  Copyright 2010-2022 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-time-format 4.1.0
+d3-time-format 4.1.1
   License: ISC
   Source:  https://github.com/d3/d3-time-format
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-timer 3.0.1
+d3-timer 3.0.2
   License: ISC
   Source:  https://github.com/d3/d3-timer
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-transition 3.0.1
+d3-transition 3.0.2
   License: ISC
   Source:  https://github.com/d3/d3-transition
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
-d3-zoom 3.0.0
+d3-zoom 3.0.1
   License: ISC
   Source:  https://github.com/d3/d3-zoom
-  Copyright 2010-2021 Mike Bostock
+  Copyright 2010-2026 Mike Bostock
   Full text: [L-d168f986]
 
 dagre-d3-es 7.0.14
@@ -4161,7 +4397,7 @@ dagre-d3-es 7.0.14
   Copyright (c) 2022-2024 Thibaut Lassalle, David Newell, Alois Klink, Sidharth Vinod and dagre-es contributors
   Full text: [L-bc2eca7c]
 
-dayjs 1.11.21
+dayjs 1.11.23
   License: MIT
   Source:  https://github.com/iamkun/dayjs
   Copyright (c) 2018-present, iamkun
@@ -4179,16 +4415,16 @@ devalue 5.9.4
   Copyright (c) 2018-19 [these people](https://github.com/rich-harris/devalue/graphs/contributors)
   Full text: [L-d64f3bb4]
 
-dompurify 3.4.17
+dompurify 3.4.18
   License: (MPL-2.0 OR Apache-2.0)
   Source:  git://github.com/cure53/DOMPurify
   Full text: [L-b8ceb1ed] [L-a0184dbd]
 
-es-toolkit 1.50.0
+es-toolkit 1.53.2
   License: MIT
   Source:  https://github.com/toss/es-toolkit
   Copyright (c) 2024 Viva Republica, Inc.
-  Full text: [L-750260c3]
+  Full text: [L-750260c3] [L-565caea5]
 
 esm-env 1.2.2
   License: MIT
@@ -4196,7 +4432,7 @@ esm-env 1.2.2
   Copyright 2022 Benjamin McCann
   Full text: [L-9a83cace]
 
-esrap 2.4.0
+esrap 2.4.2
   License: MIT
   Source:  https://github.com/sveltejs/esrap
   Copyright (c) 2023-2025 [these people](https://github.com/sveltejs/esrap/graphs/contributors)
@@ -4250,13 +4486,13 @@ is-reference 3.0.3
   Copyright (c) Rich Harris
   Full text: [L-750260c3]
 
-js-yaml 5.4.2
+js-yaml 5.5.0
   License: MIT
   Source:  nodeca/js-yaml
   Copyright (C) 2011-2015 by Vitaly Puzrin
   Full text: [L-99845ada]
 
-katex 0.19.0
+katex 0.19.1
   License: MIT
   Source:  https://github.com/KaTeX/KaTeX
   Copyright (c) 2013-2020 Khan Academy and other contributors
@@ -4310,7 +4546,7 @@ mermaid 11.17.2
   Copyright (c) 2014 - 2022 Knut Sveidqvist
   Full text: [L-fb278496]
 
-package-manager-detector 1.8.0
+package-manager-detector 1.9.0
   License: MIT
   Source:  https://github.com/antfu-collective/package-manager-detector
   Copyright (c) 2020-PRESENT Anthony Fu <https://github.com/antfu>
@@ -4322,7 +4558,7 @@ path-data-parser 0.1.0
   Copyright (c) 2020 Preet Shihn
   Full text: [L-750260c3]
 
-pdfjs-dist 6.4.299
+pdfjs-dist 6.5.438
   License: Apache-2.0
   Source:  https://github.com/mozilla/pdf.js
   Full text: [L-05bf2c00]
@@ -4374,7 +4610,7 @@ stylis 4.4.0
   Copyright (c) 2016-present Sultan Tarimo
   Full text: [L-750260c3]
 
-svelte 5.57.2
+svelte 5.58.0
   License: MIT
   Source:  https://github.com/sveltejs/svelte
   Copyright (c) 2016-2025 [Svelte Contributors](https://github.com/sveltejs/svelte/graphs/contributors)
@@ -4398,13 +4634,13 @@ unicode-emoji-json 0.9.0
   Copyright (c) 2019 Mu-An Chiou
   Full text: [L-fb278496]
 
-uuid 14.0.2
+uuid 14.0.3
   License: MIT
   Source:  https://github.com/uuidjs/uuid
   Copyright (c) 2010-2020 Robert Kieffer and other contributors
   Full text: [L-fb278496]
 
-zimmerframe 1.1.4
+zimmerframe 1.1.5
   License: MIT
   Source:  https://github.com/sveltejs/zimmerframe
   Copyright (c) 2023 [these people](https://github.com/Rich-Harris/zimmerframe/graphs/contributors)
@@ -4792,260 +5028,6 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[L-13dbf750]  Python-2.0
-------------------------------------------------------------------------------
-
-A. HISTORY OF THE SOFTWARE
-==========================
-
-Python was created in the early 1990s by Guido van Rossum at Stichting
-Mathematisch Centrum (CWI, see http://www.cwi.nl) in the Netherlands
-as a successor of a language called ABC.  Guido remains Python's
-principal author, although it includes many contributions from others.
-
-In 1995, Guido continued his work on Python at the Corporation for
-National Research Initiatives (CNRI, see http://www.cnri.reston.va.us)
-in Reston, Virginia where he released several versions of the
-software.
-
-In May 2000, Guido and the Python core development team moved to
-BeOpen.com to form the BeOpen PythonLabs team.  In October of the same
-year, the PythonLabs team moved to Digital Creations, which became
-Zope Corporation.  In 2001, the Python Software Foundation (PSF, see
-https://www.python.org/psf/) was formed, a non-profit organization
-created specifically to own Python-related Intellectual Property.
-Zope Corporation was a sponsoring member of the PSF.
-
-All Python releases are Open Source (see http://www.opensource.org for
-the Open Source Definition).  Historically, most, but not all, Python
-releases have also been GPL-compatible; the table below summarizes
-the various releases.
-
-    Release         Derived     Year        Owner       GPL-
-                    from                                compatible? (1)
-
-    0.9.0 thru 1.2              1991-1995   CWI         yes
-    1.3 thru 1.5.2  1.2         1995-1999   CNRI        yes
-    1.6             1.5.2       2000        CNRI        no
-    2.0             1.6         2000        BeOpen.com  no
-    1.6.1           1.6         2001        CNRI        yes (2)
-    2.1             2.0+1.6.1   2001        PSF         no
-    2.0.1           2.0+1.6.1   2001        PSF         yes
-    2.1.1           2.1+2.0.1   2001        PSF         yes
-    2.1.2           2.1.1       2002        PSF         yes
-    2.1.3           2.1.2       2002        PSF         yes
-    2.2 and above   2.1.1       2001-now    PSF         yes
-
-Footnotes:
-
-(1) GPL-compatible doesn't mean that we're distributing Python under
-    the GPL.  All Python licenses, unlike the GPL, let you distribute
-    a modified version without making your changes open source.  The
-    GPL-compatible licenses make it possible to combine Python with
-    other software that is released under the GPL; the others don't.
-
-(2) According to Richard Stallman, 1.6.1 is not GPL-compatible,
-    because its license has a choice of law clause.  According to
-    CNRI, however, Stallman's lawyer has told CNRI's lawyer that 1.6.1
-    is "not incompatible" with the GPL.
-
-Thanks to the many outside volunteers who have worked under Guido's
-direction to make these releases possible.
-
-B. TERMS AND CONDITIONS FOR ACCESSING OR OTHERWISE USING PYTHON
-===============================================================
-
-PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2
---------------------------------------------
-
-1. This LICENSE AGREEMENT is between the Python Software Foundation
-("PSF"), and the Individual or Organization ("Licensee") accessing and
-otherwise using this software ("Python") in source or binary form and
-its associated documentation.
-
-2. Subject to the terms and conditions of this License Agreement, PSF hereby
-grants Licensee a nonexclusive, royalty-free, world-wide license to reproduce,
-analyze, test, perform and/or display publicly, prepare derivative works,
-distribute, and otherwise use Python alone or in any derivative version,
-provided, however, that PSF's License Agreement and PSF's notice of copyright,
-i.e., "Copyright (c) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
-2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Python Software Foundation;
-All Rights Reserved" are retained in Python alone or in any derivative version
-prepared by Licensee.
-
-3. In the event Licensee prepares a derivative work that is based on
-or incorporates Python or any part thereof, and wants to make
-the derivative work available to others as provided herein, then
-Licensee hereby agrees to include in any such work a brief summary of
-the changes made to Python.
-
-4. PSF is making Python available to Licensee on an "AS IS"
-basis.  PSF MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR
-IMPLIED.  BY WAY OF EXAMPLE, BUT NOT LIMITATION, PSF MAKES NO AND
-DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS
-FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON WILL NOT
-INFRINGE ANY THIRD PARTY RIGHTS.
-
-5. PSF SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON
-FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS
-A RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON,
-OR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
-
-6. This License Agreement will automatically terminate upon a material
-breach of its terms and conditions.
-
-7. Nothing in this License Agreement shall be deemed to create any
-relationship of agency, partnership, or joint venture between PSF and
-Licensee.  This License Agreement does not grant permission to use PSF
-trademarks or trade name in a trademark sense to endorse or promote
-products or services of Licensee, or any third party.
-
-8. By copying, installing or otherwise using Python, Licensee
-agrees to be bound by the terms and conditions of this License
-Agreement.
-
-BEOPEN.COM LICENSE AGREEMENT FOR PYTHON 2.0
--------------------------------------------
-
-BEOPEN PYTHON OPEN SOURCE LICENSE AGREEMENT VERSION 1
-
-1. This LICENSE AGREEMENT is between BeOpen.com ("BeOpen"), having an
-office at 160 Saratoga Avenue, Santa Clara, CA 95051, and the
-Individual or Organization ("Licensee") accessing and otherwise using
-this software in source or binary form and its associated
-documentation ("the Software").
-
-2. Subject to the terms and conditions of this BeOpen Python License
-Agreement, BeOpen hereby grants Licensee a non-exclusive,
-royalty-free, world-wide license to reproduce, analyze, test, perform
-and/or display publicly, prepare derivative works, distribute, and
-otherwise use the Software alone or in any derivative version,
-provided, however, that the BeOpen Python License is retained in the
-Software, alone or in any derivative version prepared by Licensee.
-
-3. BeOpen is making the Software available to Licensee on an "AS IS"
-basis.  BEOPEN MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR
-IMPLIED.  BY WAY OF EXAMPLE, BUT NOT LIMITATION, BEOPEN MAKES NO AND
-DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS
-FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF THE SOFTWARE WILL NOT
-INFRINGE ANY THIRD PARTY RIGHTS.
-
-4. BEOPEN SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF THE
-SOFTWARE FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS
-AS A RESULT OF USING, MODIFYING OR DISTRIBUTING THE SOFTWARE, OR ANY
-DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
-
-5. This License Agreement will automatically terminate upon a material
-breach of its terms and conditions.
-
-6. This License Agreement shall be governed by and interpreted in all
-respects by the law of the State of California, excluding conflict of
-law provisions.  Nothing in this License Agreement shall be deemed to
-create any relationship of agency, partnership, or joint venture
-between BeOpen and Licensee.  This License Agreement does not grant
-permission to use BeOpen trademarks or trade names in a trademark
-sense to endorse or promote products or services of Licensee, or any
-third party.  As an exception, the "BeOpen Python" logos available at
-http://www.pythonlabs.com/logos.html may be used according to the
-permissions granted on that web page.
-
-7. By copying, installing or otherwise using the software, Licensee
-agrees to be bound by the terms and conditions of this License
-Agreement.
-
-CNRI LICENSE AGREEMENT FOR PYTHON 1.6.1
----------------------------------------
-
-1. This LICENSE AGREEMENT is between the Corporation for National
-Research Initiatives, having an office at 1895 Preston White Drive,
-Reston, VA 20191 ("CNRI"), and the Individual or Organization
-("Licensee") accessing and otherwise using Python 1.6.1 software in
-source or binary form and its associated documentation.
-
-2. Subject to the terms and conditions of this License Agreement, CNRI
-hereby grants Licensee a nonexclusive, royalty-free, world-wide
-license to reproduce, analyze, test, perform and/or display publicly,
-prepare derivative works, distribute, and otherwise use Python 1.6.1
-alone or in any derivative version, provided, however, that CNRI's
-License Agreement and CNRI's notice of copyright, i.e., "Copyright (c)
-1995-2001 Corporation for National Research Initiatives; All Rights
-Reserved" are retained in Python 1.6.1 alone or in any derivative
-version prepared by Licensee.  Alternately, in lieu of CNRI's License
-Agreement, Licensee may substitute the following text (omitting the
-quotes): "Python 1.6.1 is made available subject to the terms and
-conditions in CNRI's License Agreement.  This Agreement together with
-Python 1.6.1 may be located on the Internet using the following
-unique, persistent identifier (known as a handle): 1895.22/1013.  This
-Agreement may also be obtained from a proxy server on the Internet
-using the following URL: http://hdl.handle.net/1895.22/1013".
-
-3. In the event Licensee prepares a derivative work that is based on
-or incorporates Python 1.6.1 or any part thereof, and wants to make
-the derivative work available to others as provided herein, then
-Licensee hereby agrees to include in any such work a brief summary of
-the changes made to Python 1.6.1.
-
-4. CNRI is making Python 1.6.1 available to Licensee on an "AS IS"
-basis.  CNRI MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR
-IMPLIED.  BY WAY OF EXAMPLE, BUT NOT LIMITATION, CNRI MAKES NO AND
-DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS
-FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON 1.6.1 WILL NOT
-INFRINGE ANY THIRD PARTY RIGHTS.
-
-5. CNRI SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON
-1.6.1 FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS
-A RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON 1.6.1,
-OR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
-
-6. This License Agreement will automatically terminate upon a material
-breach of its terms and conditions.
-
-7. This License Agreement shall be governed by the federal
-intellectual property law of the United States, including without
-limitation the federal copyright law, and, to the extent such
-U.S. federal law does not apply, by the law of the Commonwealth of
-Virginia, excluding Virginia's conflict of law provisions.
-Notwithstanding the foregoing, with regard to derivative works based
-on Python 1.6.1 that incorporate non-separable material that was
-previously distributed under the GNU General Public License (GPL), the
-law of the Commonwealth of Virginia shall govern this License
-Agreement only as to issues arising under or with respect to
-Paragraphs 4, 5, and 7 of this License Agreement.  Nothing in this
-License Agreement shall be deemed to create any relationship of
-agency, partnership, or joint venture between CNRI and Licensee.  This
-License Agreement does not grant permission to use CNRI trademarks or
-trade name in a trademark sense to endorse or promote products or
-services of Licensee, or any third party.
-
-8. By clicking on the "ACCEPT" button where indicated, or by copying,
-installing or otherwise using Python 1.6.1, Licensee agrees to be
-bound by the terms and conditions of this License Agreement.
-
-        ACCEPT
-
-CWI LICENSE AGREEMENT FOR PYTHON 0.9.0 THROUGH 1.2
---------------------------------------------------
-
-The Netherlands.  All rights reserved.
-
-Permission to use, copy, modify, and distribute this software and its
-documentation for any purpose and without fee is hereby granted,
-provided that the above copyright notice appear in all copies and that
-both that copyright notice and this permission notice appear in
-supporting documentation, and that the name of Stichting Mathematisch
-Centrum or CWI not be used in advertising or publicity pertaining to
-distribution of the software without specific, written prior
-permission.
-
-STICHTING MATHEMATISCH CENTRUM DISCLAIMS ALL WARRANTIES WITH REGARD TO
-THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS, IN NO EVENT SHALL STICHTING MATHEMATISCH CENTRUM BE LIABLE
-FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
-OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-------------------------------------------------------------------------------
 [L-1527351a]  Apache-2.0
 ------------------------------------------------------------------------------
 
@@ -5303,33 +5285,6 @@ DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
 PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS
 ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
-
-------------------------------------------------------------------------------
-[L-1acd4cd4]  MIT
-------------------------------------------------------------------------------
-
-The MIT License (MIT)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-Some files in the "tests/data" subdirectory of this repository are under other
-licences; see files named LICENSE.*.txt for details.
 
 ------------------------------------------------------------------------------
 [L-1dde7297]  CC0-1.0
@@ -5602,12 +5557,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[L-256016f3]  MIT
-------------------------------------------------------------------------------
-
-../LICENSE-APACHE
-
-------------------------------------------------------------------------------
 [L-29f1c2fc]  MIT
 ------------------------------------------------------------------------------
 
@@ -5700,31 +5649,6 @@ The above copyright notice and this permission notice (including the next paragr
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[L-2ca26645]  MIT
-------------------------------------------------------------------------------
-
-SPDXVersion: SPDX-2.1
-DataLicense: CC0-1.0
-PackageName: tauri
-DataFormat: SPDXRef-1
-PackageSupplier: Organization: The Tauri Programme in the Commons Conservancy
-PackageHomePage: https://tauri.app
-PackageLicenseDeclared: Apache-2.0
-PackageLicenseDeclared: MIT
-PackageCopyrightText: 2019-2025, The Tauri Programme in the Commons Conservancy
-PackageSummary: <text>Tauri is a rust project that enables developers to make secure
-and small desktop applications using a web frontend.
-                </text>
-PackageComment: <text>The package includes the following libraries; see
-Relationship information.
-                </text>
-Created: 2019-05-20T09:00:00Z
-PackageDownloadLocation: git://github.com/tauri-apps/tauri
-PackageDownloadLocation: git+https://github.com/tauri-apps/tauri.git
-PackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git
-Creator: Person: Daniel Thompson-Yvetot
-
-------------------------------------------------------------------------------
 [L-31fbc21b]  MIT
 ------------------------------------------------------------------------------
 
@@ -5779,6 +5703,212 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+------------------------------------------------------------------------------
+[L-38298b7f]  Apache-2.0
+------------------------------------------------------------------------------
+
+Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "{}"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright Individual contributors
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
 
 ------------------------------------------------------------------------------
 [L-38fae1db]  OFL-1.1
@@ -5965,12 +6095,6 @@ IN THE SOFTWARE.
 """
 
 ------------------------------------------------------------------------------
-[L-45883183]  MIT
-------------------------------------------------------------------------------
-
-../LICENSE-MIT
-
-------------------------------------------------------------------------------
 [L-461eb4f0]  MIT
 ------------------------------------------------------------------------------
 
@@ -6115,28 +6239,6 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[L-4e03e31b]  Zlib
-------------------------------------------------------------------------------
-
-zlib License
-
-This software is provided 'as-is', without any express or implied
-warranty.  In no event will the authors be held liable for any damages
-arising from the use of this software.
-
-Permission is granted to anyone to use this software for any purpose,
-including commercial applications, and to alter it and redistribute it
-freely, subject to the following restrictions:
-
-1. The origin of this software must not be misrepresented; you must not
-   claim that you wrote the original software. If you use this software
-   in a product, an acknowledgment in the product documentation would be
-   appreciated but is not required.
-2. Altered source versions must be plainly marked as such, and must not be
-   misrepresented as being the original software.
-3. This notice may not be removed or altered from any source distribution.
-
-------------------------------------------------------------------------------
 [L-50136223]  ISC
 ------------------------------------------------------------------------------
 
@@ -6169,6 +6271,50 @@ Redistribution and use in source and binary forms, with or without modification,
 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+------------------------------------------------------------------------------
+[L-565caea5]  MIT
+------------------------------------------------------------------------------
+
+es-toolkit
+
+Parts of the test suite and compatibility layer in es-toolkit/compat are
+derived from Lodash (https://github.com/lodash/lodash).
+
+Lodash copyright notice and MIT permission notice:
+
+Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
+
+Based on Underscore.js, copyright Jeremy Ashkenas,
+DocumentCloud and Investigative Reporters & Editors <http://underscorejs.org/>
+
+This software consists of voluntary contributions made by many
+individuals. For exact contribution history, see the revision history
+available at https://github.com/lodash/lodash
+
+The following license applies to all parts of this software except as
+documented below:
+
+====
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
 [L-5669b774]  Zlib
@@ -6613,6 +6759,67 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
    defend, and hold each Contributor harmless for any liability
    incurred by, or claims asserted against, such Contributor by reason
    of your accepting any such warranty or additional liability.
+
+------------------------------------------------------------------------------
+[L-60b5c32c]  MIT
+------------------------------------------------------------------------------
+
+BSD 3-Clause License
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+-----
+
+src/simd.rs is licensed under the MIT license:
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
 [L-636f7b10]  Apache-2.0
@@ -7465,29 +7672,23 @@ DEALINGS IN THE SOFTWARE.
 
 MIT License
 
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ------------------------------------------------------------------------------
 [L-789b6456]  ISC
@@ -7517,6 +7718,37 @@ ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
 WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
 AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
 OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+------------------------------------------------------------------------------
+[L-7b901cf0]  MIT
+------------------------------------------------------------------------------
+
+# 3rd Party Notices
+
+The `cfg_aliases!` macro uses a lot of the code from [`tectonic_cfg_support::target_cfg!`] macro which is under the following license:
+
+[`tectonic_cfg_support::target_cfg!`]: https://github.com/tectonic-typesetting/tectonic/blob/f2439b936470ad27bdf92882064bc4702ee01899/cfg_support/src/lib.rs#L166
+
+    tectonic_cfg_support is licensed under the MIT License.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the “Software”), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+---
 
 ------------------------------------------------------------------------------
 [L-7bcd8829]  MIT
@@ -10247,6 +10479,58 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+------------------------------------------------------------------------------
+[L-bddfbce5]  PSF-2.0
+------------------------------------------------------------------------------
+
+PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2
+
+1. This LICENSE AGREEMENT is between the Python Software Foundation
+("PSF"), and the Individual or Organization ("Licensee") accessing and
+otherwise using this software ("Python") in source or binary form and
+its associated documentation.
+
+2. Subject to the terms and conditions of this License Agreement, PSF hereby
+grants Licensee a nonexclusive, royalty-free, world-wide license to reproduce,
+analyze, test, perform and/or display publicly, prepare derivative works,
+distribute, and otherwise use Python alone or in any derivative version,
+provided, however, that PSF's License Agreement and PSF's notice of copyright,
+i.e., "Copyright (c) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
+2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019 Python Software Foundation;
+All Rights Reserved" are retained in Python alone or in any derivative version
+prepared by Licensee.
+
+3. In the event Licensee prepares a derivative work that is based on
+or incorporates Python or any part thereof, and wants to make
+the derivative work available to others as provided herein, then
+Licensee hereby agrees to include in any such work a brief summary of
+the changes made to Python.
+
+4. PSF is making Python available to Licensee on an "AS IS"
+basis.  PSF MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR
+IMPLIED.  BY WAY OF EXAMPLE, BUT NOT LIMITATION, PSF MAKES NO AND
+DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS
+FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON WILL NOT
+INFRINGE ANY THIRD PARTY RIGHTS.
+
+5. PSF SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON
+FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS
+A RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON,
+OR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
+
+6. This License Agreement will automatically terminate upon a material
+breach of its terms and conditions.
+
+7. Nothing in this License Agreement shall be deemed to create any
+relationship of agency, partnership, or joint venture between PSF and
+Licensee.  This License Agreement does not grant permission to use PSF
+trademarks or trade name in a trademark sense to endorse or promote
+products or services of Licensee, or any third party.
+
+8. By copying, installing or otherwise using Python, Licensee
+agrees to be bound by the terms and conditions of this License
+Agreement.
 
 ------------------------------------------------------------------------------
 [L-c49caa11]  Apache-2.0
