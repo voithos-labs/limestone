@@ -1,10 +1,10 @@
 /**
  * the colors annotations and ink are drawn in, as `r g b` values for css.
  *
- * Plus how thick each ink width draws, and which color a given annotation wears.
+ * Plus which color a given annotation wears.
  */
 
-import type { Annotation, AnnotationColor, InkColor, InkWidth } from '#lib/pdf/annotation.js';
+import type { Annotation, AnnotationColor, InkColor } from '#lib/pdf/annotation.js';
 
 /** Each color as an `r g b` triplet, set as `--ann` so a fill, ring or bar can take its own alpha. */
 export const ANNOTATION_RGB: Record<AnnotationColor, string> = {
@@ -22,13 +22,6 @@ export const INK_RGB: Record<InkColor, string> = {
 	pink: '208 57 107',
 	blue: '48 141 207',
 	green: '70 164 102'
-};
-
-/** Stroke width as a fraction of the page's width, so ink keeps its weight at any zoom. */
-export const INK_STROKE: Record<InkWidth, number> = {
-	fine: 0.0028,
-	medium: 0.005,
-	marker: 0.011
 };
 
 /** The color an annotation's note and marks wear: its pen for ink, its highlight otherwise. */

@@ -70,7 +70,6 @@
 		type AnnotationColor,
 		type AnnotationFields,
 		type InkStroke,
-		type InkWidth,
 		type PageRect
 	} from '#lib/pdf/annotation.js';
 	import {
@@ -126,7 +125,13 @@
 	// pdf components (dock, page, ink menu, margin, digest, scroll track, header chips and switch)
 	import PdfDock, { toolForKey, type PdfTool } from './PdfDock.svelte';
 	import UndoHint from '../overlays/UndoHint.svelte';
-	import InkTray, { modeForKey, type InkMode } from './InkTray.svelte';
+	import InkTray, {
+		inkSize,
+		INK_SIZE_UNIT,
+		modeForKey,
+		type InkMode,
+		type InkTool
+	} from './InkTray.svelte';
 	import PageMarks from './PageMarks.svelte';
 	import InkMenu from './InkMenu.svelte';
 	import SelectionMenu from './SelectionMenu.svelte';
@@ -1185,7 +1190,13 @@
 	/*                             Tools and picking                              */
 	/* -------------------------------------------------------------------------- */
 
-	let tool: PdfTool = $state('select');
+	const savedTool = untrack(() => tab.state.tool);
+	let tool: PdfTool = $state(
+		(['highlight', 'region', 'ink'] as const).find((t) => t === savedTool) ?? 'select'
+	);
+	$effect(() => {
+		tab.state.tool = tool;
+	});
 	let color: AnnotationColor = $state(
 		ANNOTATION_COLORS.find((c) => c === untrack(() => tab.state.color)) ?? 'accent'
 	);
@@ -1226,7 +1237,7 @@
 			const id = e.buttons === 0 ? (markAt(e)?.id ?? null) : null;
 			if (id !== hoverMarkId) hoverMarkId = id;
 		}
-		if (gesture) inkAt(e);
+		if (gesture) for (const at of e.getCoalescedEvents?.() ?? [e]) inkAt(at);
 		if (!draft) return;
 		const page = pagesEl?.querySelector<HTMLElement>(`.page[data-page="${draft.page}"]`);
 		if (page) draft.rect = boxTarget(draft.from, { x: e.clientX, y: e.clientY }, page);
@@ -1331,6 +1342,7 @@
 	let menuPointEl: HTMLElement | null = $state(null);
 
 	async function onPagesContextMenu(e: MouseEvent) {
+		if (gesture || draft) return e.preventDefault();
 		const hit = markAt(e as PointerEvent);
 		if (!hit) return;
 		e.preventDefault();
@@ -1484,9 +1496,23 @@
 	/*                                    Ink                                     */
 	/* -------------------------------------------------------------------------- */
 
-	let inkWidth: InkWidth = $state('fine');
+	const savedInk = untrack(() => tab.state.ink) as
+		{ tool?: InkTool; sizes?: Partial<Record<InkTool, number>> } | undefined;
+	let inkTool: InkTool = $state(savedInk?.tool === 'highlighter' ? 'highlighter' : 'pen');
+	let inkSizes = $state({
+		pen: inkSize('pen', savedInk?.sizes?.pen || 3),
+		highlighter: inkSize('highlighter', savedInk?.sizes?.highlighter || 16)
+	});
+	$effect(() => {
+		tab.state.ink = { tool: inkTool, sizes: $state.snapshot(inkSizes) };
+	});
+	const pen = $derived({
+		color,
+		width: inkSizes[inkTool] * INK_SIZE_UNIT,
+		...(inkTool === 'highlighter' ? { highlighter: true } : {})
+	});
 	let inkMode: InkMode = $state('pen');
-	let gesture: { page: number; points: number[] } | null = $state(null);
+	let gesture: { page: number; points: number[]; tip?: [number, number] } | null = $state(null);
 	// what an eraser drag has touched, dimmed until the drag ends and its erasure is made
 	let erasing: Erasing | null = $state.raw(null);
 
@@ -1510,6 +1536,9 @@
 
 	/* -------------------------------- Drawing --------------------------------- */
 
+	const INK_SLACK = 0.0025;
+	const INK_STEP = 0.0004;
+
 	function inkAt(e: PointerEvent) {
 		const g = gesture;
 		const page = g && pageEl(g.page);
@@ -1522,8 +1551,13 @@
 			return;
 		}
 		const n = g.points.length;
-		if (n && Math.hypot(x - g.points[n - 2], y - g.points[n - 1]) < 0.0015) return;
-		g.points.push(x, y);
+		if (!n) return void g.points.push(x, y);
+		const [lx, ly] = [g.points[n - 2], g.points[n - 1]];
+		const away = Math.hypot(x - lx, (y - ly) * aspectOf(g.page));
+		g.tip = [x, y];
+		if (away - INK_SLACK < INK_STEP) return;
+		const pull = (away - INK_SLACK) / away;
+		g.points.push(lx + (x - lx) * pull, ly + (y - ly) * pull);
 	}
 
 	async function endInk() {
@@ -1533,9 +1567,9 @@
 		if (inkMode === 'eraser') return erase(g.page);
 		if (inkMode === 'pen') {
 			if (g.points.length >= 2) {
-				const points = simplify(g.points, aspectOf(g.page));
+				const points = simplify([...g.points, ...(g.tip ?? [])], aspectOf(g.page));
 				const edition = annotations.edition ?? undefined;
-				const stroke = { page: g.page, color, width: inkWidth, points, edition };
+				const stroke = { page: g.page, ...pen, points, edition };
 				await commit({ added: [stroke] }, stroke.page, strokesBox([stroke]));
 			}
 			return;
@@ -1562,26 +1596,6 @@
 	}
 
 	/* ------------------------ Grouping and recoloring ------------------------- */
-
-	/** Makes loose strokes from one page into an ink annotation, putting them back if it can't. */
-	async function groupInk(taken: LooseStroke[]): Promise<Annotation> {
-		const strokes = taken.map(({ page: _page, edition: _edition, ...stroke }) => stroke);
-		const page = taken[0].page;
-		const box = strokesBox(strokes);
-		try {
-			const ink: Omit<AnnotationFields, 'pdf'> = {
-				page,
-				kind: 'ink',
-				color,
-				rects: [box],
-				strokes
-			};
-			return await annotations.create(ink, '', coveredText(page, box));
-		} catch (e) {
-			looseInk.add(...taken);
-			throw e;
-		}
-	}
 
 	async function recolorInk(a: Annotation) {
 		const before = a.strokes ?? [];
@@ -1641,25 +1655,7 @@
 		if (tool !== 'ink' || inkMode !== 'lasso') selection = [];
 	});
 
-	/** Makes the selected strokes one ink annotation, which a comment or a citation needs. */
-	async function groupSelection(): Promise<Annotation | null> {
-		const taken = looseInk.take((s) => selected.includes(s));
-		selection = [];
-		if (taken.length === 0) return null;
-		try {
-			const a = await groupInk(taken);
-			record({ removed: taken, notes: [{ id: a.id, before: null, after: a }] }, a.page, a.rects[0]);
-			activeId = a.id;
-			return a;
-		} catch (e) {
-			reportError(e, "The ink couldn't be grouped.");
-			return null;
-		}
-	}
-
 	const selectionActions = {
-		comment: () => groupSelection().then((a) => a && (editingId = a.id)),
-		cite: () => groupSelection().then((a) => a && cite(a)),
 		recolor: async () => {
 			const after = recolored(selected);
 			await commit({ removed: selected, added: after }, after[0].page, strokesBox(after));
@@ -2151,7 +2147,7 @@
 {/snippet}
 
 {#snippet inkTray()}
-	<InkTray bind:width={inkWidth} bind:mode={inkMode} />
+	<InkTray bind:tool={inkTool} bind:sizes={inkSizes} bind:mode={inkMode} {color} />
 {/snippet}
 
 {#snippet placeHint()}
@@ -2252,6 +2248,10 @@
 						onpointerdown={onPagesPointerDown}
 						onpointermove={onPagesPointerMove}
 						onpointerup={onPagesPointerUp}
+						onpointercancel={() => {
+							draft = null;
+							if (gesture) void endInk();
+						}}
 						onpointerleave={() => (hoverMarkId = null)}
 						onmousedown={onPagesMouseDown}
 						oncontextmenu={onPagesContextMenu}
@@ -2285,7 +2285,7 @@
 											: null}
 									loose={looseByPage.get(n)}
 									drawing={gesture?.page === n && inkMode === 'pen'
-										? { color, width: inkWidth, points: gesture.points }
+										? { ...pen, points: gesture.points }
 										: null}
 									lasso={gesture?.page === n && inkMode === 'lasso' ? gesture.points : null}
 								/>
@@ -2300,8 +2300,6 @@
 							rect={activeInk.rects[0]}
 							pen={activeInk.strokes?.[0]?.color}
 							actions={{
-								comment: () => (editingId = activeInk.id),
-								cite: () => cite(activeInk),
 								recolor: () => recolorInk(activeInk),
 								remove: () => removeAnnotation(activeInk)
 							}}
@@ -2716,6 +2714,10 @@
 	/* Only the pages near the view exist, each placed at its computed top. */
 	.pages {
 		position: relative;
+	}
+
+	.drawing .pages {
+		touch-action: none;
 	}
 
 	/* --------------------------------- Margin --------------------------------- */

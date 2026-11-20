@@ -11,7 +11,13 @@
 	/* -------------------------------------------------------------------------- */
 
 	import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
-	import { rectsOn, type AnnotationFields, type PageRect } from '#lib/pdf/annotation.js';
+	import {
+		rectsOn,
+		type AnnotationFields,
+		type InkStroke,
+		type PageRect
+	} from '#lib/pdf/annotation.js';
+	import { inkOf } from '#lib/pdf/LooseInk.svelte.js';
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import { importGlobalAssetBytes } from '#lib/services/assets.js';
 	import { renderCrop, unionRect } from '#lib/pdf/crop.js';
@@ -59,6 +65,28 @@
 	const THUMB_WIDTH = 1200;
 	const THUMB_MAX_HEIGHT = 1800;
 
+	let loose: InkStroke[] = $state.raw([]);
+	$effect(() => {
+		const { pdf, page } = annotation;
+		if (!pdf) return;
+		let live = true;
+		inkOf(pdf)
+			.then((all) => {
+				if (live) loose = all.filter((s) => s.page === page);
+			})
+			.catch(() => {});
+		return () => {
+			live = false;
+		};
+	});
+	const strokes = $derived([...(annotation.strokes ?? []), ...loose]);
+
+	let aspect = $state(0);
+
+	function shaped(w: number, h: number) {
+		if (rect && w > 0) aspect = ((h / w) * rect[2]) / rect[3];
+	}
+
 	const key = $derived(
 		rect &&
 			`pdf-thumb:${annotation.pdf}:${annotation.edition ?? ''}:${annotation.page}:${[rect[0], rect[1], rect[2], rect[3]].map((n) => Math.round(n * 10000))}`
@@ -103,6 +131,7 @@
 				})
 					.then(() => {
 						canvas.style.width = canvas.style.height = '';
+						shaped(canvas.width, canvas.height);
 						return keep(canvas, k);
 					})
 					.catch(() => {
@@ -129,14 +158,27 @@
 						alt=""
 						loading="lazy"
 						onerror={() => (failed = key)}
+						onload={(e) => {
+							const img = e.currentTarget as HTMLImageElement;
+							shaped(img.naturalWidth, img.naturalHeight);
+						}}
 					/>
 				{:else}
 					<canvas width="1" height="1" {@attach draw}></canvas>
 				{/if}
-				{#if annotation.strokes?.length}
-					<svg viewBox={rect.join(' ')} preserveAspectRatio="none" aria-hidden="true">
-						{#each annotation.strokes as s, i (i)}
-							<path d={strokePath(s.points, 1)} style:stroke="rgb({INK_RGB[s.color]})" />
+				{#if strokes.length && aspect}
+					<svg
+						viewBox="{rect[0]} {rect[1] * aspect} {rect[2]} {rect[3] * aspect}"
+						preserveAspectRatio="none"
+						aria-hidden="true"
+					>
+						{#each strokes as s, i (i)}
+							<path
+								d={strokePath(s.points, aspect)}
+								style:stroke="rgb({INK_RGB[s.color]})"
+								stroke-width={s.width}
+								stroke-opacity={s.highlighter ? 0.4 : 1}
+							/>
 						{/each}
 					</svg>
 				{/if}
@@ -184,12 +226,7 @@
 		width: 100%;
 		height: 100%;
 		fill: none;
-		stroke-width: 2;
 		stroke-linecap: round;
 		stroke-linejoin: round;
-	}
-
-	path {
-		vector-effect: non-scaling-stroke;
 	}
 </style>

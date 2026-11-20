@@ -30,7 +30,9 @@ export type PageRect = [x: number, y: number, w: number, h: number, page?: numbe
 /** One ink stroke: page fractions as a flat `[x0, y0, x1, y1, …]` list, plus its pen. */
 export interface InkStroke {
 	color: InkColor;
-	width: InkWidth;
+	/** A fraction of the page's width. */
+	width: number;
+	highlighter?: boolean;
 	points: number[];
 }
 
@@ -74,9 +76,6 @@ export const INK_COLORS = [
 	'green'
 ] as const;
 export type InkColor = (typeof INK_COLORS)[number];
-
-export const INK_WIDTHS = ['fine', 'medium', 'marker'] as const;
-export type InkWidth = (typeof INK_WIDTHS)[number];
 
 /** The pages an annotation marks: its own, then any its highlight runs on to. */
 export function pagesOf(a: Pick<AnnotationFields, 'page' | 'rects'>): number[] {
@@ -134,7 +133,8 @@ export function isStroke(v: unknown): v is InkStroke {
 	const s = v as Record<string, unknown>;
 	return (
 		INK_COLORS.includes(s.color as InkColor) &&
-		INK_WIDTHS.includes(s.width as InkWidth) &&
+		typeof s.width === 'number' &&
+		s.width > 0 &&
 		Array.isArray(s.points) &&
 		s.points.length >= 2 &&
 		s.points.every((n) => Number.isFinite(n))

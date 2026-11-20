@@ -21,7 +21,7 @@ export interface LooseStroke extends InkStroke {
 }
 
 /** Drops the points a stroke doesn't need (Douglas–Peucker), rounded for storage. */
-export function simplify(points: number[], aspect: number, tolerance = 0.0012): number[] {
+export function simplify(points: number[], aspect: number, tolerance = 0.0004): number[] {
 	const n = points.length / 2;
 	if (n <= 2) return points.map(round);
 	const keep = new Uint8Array(n);
@@ -48,17 +48,36 @@ export function simplify(points: number[], aspect: number, tolerance = 0.0012): 
 	return out;
 }
 
-/** An SVG path through the points, in a viewBox `1` wide and `aspect` tall, smoothed by midpoints. */
+/**
+ * An SVG path through the points, in a viewBox `1` wide and `aspect` tall. The curve passes through
+ * every point, so thinning a stroke's points barely moves it.
+ */
 export function strokePath(points: number[], aspect: number): string {
 	const x = (i: number) => points[2 * i];
 	const y = (i: number) => points[2 * i + 1] * aspect;
 	const n = points.length / 2;
 	if (n === 1) return `M${x(0)} ${y(0)}l0 0`;
-	let d = `M${x(0)} ${y(0)}`;
-	for (let i = 1; i < n - 1; i++) {
-		d += `Q${x(i)} ${y(i)} ${(x(i) + x(i + 1)) / 2} ${(y(i) + y(i + 1)) / 2}`;
+	const tangent = (i: number): [number, number] => {
+		const a = Math.max(i - 1, 0);
+		const b = Math.min(i + 1, n - 1);
+		const dx = x(b) - x(a);
+		const dy = y(b) - y(a);
+		const len = Math.hypot(dx, dy) || 1;
+		return [dx / len, dy / len];
+	};
+	let d = `M${fixed(x(0))} ${fixed(y(0))}`;
+	let [tx, ty] = tangent(0);
+	for (let i = 0; i < n - 1; i++) {
+		const [ux, uy] = tangent(i + 1);
+		const k = Math.hypot(x(i + 1) - x(i), y(i + 1) - y(i)) / 3;
+		d += `C${fixed(x(i) + tx * k)} ${fixed(y(i) + ty * k)} ${fixed(x(i + 1) - ux * k)} ${fixed(y(i + 1) - uy * k)} ${fixed(x(i + 1))} ${fixed(y(i + 1))}`;
+		[tx, ty] = [ux, uy];
 	}
-	return `${d}L${x(n - 1)} ${y(n - 1)}`;
+	return d;
+}
+
+function fixed(n: number): number {
+	return Math.round(n * 100000) / 100000;
 }
 
 function segmentDistance(p: number[], i: number, a: number, b: number, aspect: number): number {

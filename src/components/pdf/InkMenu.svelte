@@ -3,10 +3,10 @@
 	 * the little menu under picked ink.
 	 *
 	 * It shows for an ink annotation, or for the loose strokes a lasso is holding, and lets you
-	 * comment on the ink, cite it, recolor it or delete it.
+	 * recolor it or delete it.
 	 */
 
-	import { MessageSquare, Quote, Trash } from '@lucide/svelte';
+	import { Trash } from '@lucide/svelte';
 	import type { InkColor, PageRect } from '#lib/pdf/annotation.js';
 	import type { PageLayout } from '#lib/pdf/layout.js';
 	import { INK_RGB } from './colors.js';
@@ -25,7 +25,7 @@
 		rect: PageRect;
 		/** The pen the ink was drawn with, whose color the swatch shows. */
 		pen: InkColor | undefined;
-		actions: { comment(): unknown; cite(): unknown; recolor(): unknown; remove(): unknown };
+		actions: { recolor(): unknown; remove(): unknown };
 		/** The width pages are drawn at, and where each sits, which put the menu under the box. */
 		width: number;
 		layout: PageLayout;
@@ -39,13 +39,6 @@
 		(rect[1] + rect[3]) * (layout.heights[page - 1] ?? 0) +
 		14}px"
 >
-	<button class="on" type="button" onclick={actions.comment}>
-		<MessageSquare size={12} strokeWidth={1.75} />Annotate
-	</button>
-	<button type="button" onclick={actions.cite}>
-		<Quote size={12} strokeWidth={1.75} />Copy citation
-	</button>
-	<span class="sep"></span>
 	<button class="square" type="button" title="Change the ink's color" onclick={actions.recolor}>
 		<span class="dot" style:--ink={INK_RGB[pen ?? 'graphite']}></span>
 	</button>
@@ -87,7 +80,6 @@
 		cursor: pointer;
 	}
 
-	.ink-menu button.on,
 	.ink-menu button:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
@@ -101,13 +93,6 @@
 
 	.ink-menu button.muted {
 		color: var(--color-ui-muted);
-	}
-
-	.ink-menu .sep {
-		width: 1px;
-		height: 14px;
-		margin: 0 3px;
-		background: var(--color-border);
 	}
 
 	.ink-menu .dot {

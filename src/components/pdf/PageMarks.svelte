@@ -9,7 +9,7 @@
 	import { rectsOn, type Annotation, type InkStroke, type PageRect } from '#lib/pdf/annotation.js';
 	import type { Erasing } from '#lib/pdf/eraser.js';
 	import { strokePath, type LooseStroke } from '#lib/pdf/ink.js';
-	import { ANNOTATION_RGB, INK_RGB, INK_STROKE } from './colors.js';
+	import { ANNOTATION_RGB, INK_RGB } from './colors.js';
 
 	let {
 		page,
@@ -52,8 +52,8 @@
 		class:erased
 		d={strokePath(s.points, aspect)}
 		style:stroke="rgb({INK_RGB[s.color]})"
-		stroke-width={INK_STROKE[s.width]}
-		stroke-opacity={s.width === 'marker' ? 0.5 : 0.9}
+		stroke-width={s.width}
+		stroke-opacity={s.highlighter ? 0.4 : 1}
 	/>
 {/snippet}
 

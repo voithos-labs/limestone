@@ -9,8 +9,33 @@
 import { invoke } from '@tauri-apps/api/core';
 import type PdfHandle from '#lib/models/PdfHandle.js';
 import { reportError } from '#lib/overlays.svelte.js';
+import { select } from '#lib/services/db.js';
 import { isStroke } from './annotation.js';
 import type { LooseStroke } from './ink.js';
+
+const shared = new Map<string, Promise<LooseStroke[]>>();
+
+function strokesIn(raw: unknown[]): LooseStroke[] {
+	return raw.filter(
+		(s): s is LooseStroke => isStroke(s) && Number.isInteger((s as LooseStroke).page)
+	);
+}
+
+export function inkOf(pdfId: string): Promise<LooseStroke[]> {
+	let reading = shared.get(pdfId);
+	if (!reading) {
+		reading = select<{ source_id: string }>('SELECT source_id FROM documents WHERE id = ?1', [
+			pdfId
+		]).then(async ([row]) =>
+			row
+				? strokesIn(await invoke<unknown[]>('read_pdf_ink', { sourceId: row.source_id, id: pdfId }))
+				: []
+		);
+		shared.set(pdfId, reading);
+		reading.catch(() => shared.delete(pdfId));
+	}
+	return reading;
+}
 
 /** A PDF's loose ink: strokes drawn but not yet lassoed, kept in the PDF's meta.json. */
 export default class LooseInk {
@@ -27,9 +52,7 @@ export default class LooseInk {
 	async load(): Promise<void> {
 		const pdf = this.pdf();
 		const raw = await invoke<unknown[]>('read_pdf_ink', { sourceId: pdf.source.id, id: pdf.id });
-		this.strokes = raw.filter(
-			(s): s is LooseStroke => isStroke(s) && Number.isInteger((s as LooseStroke).page)
-		);
+		this.strokes = strokesIn(raw);
 		this.loaded = true;
 	}
 
@@ -67,5 +90,6 @@ export default class LooseInk {
 			relPath: pdf.relPath,
 			ink: $state.snapshot(this.strokes)
 		}).catch((e) => reportError(e, "The ink couldn't be saved."));
+		shared.delete(pdf.id);
 	}
 }

@@ -343,23 +343,14 @@
 	}
 
 	.dot {
-		position: relative;
 		width: 11px;
 		height: 11px;
 		border-radius: 999px;
 		background: rgb(var(--ann));
 	}
 
-	.dot.accent::after {
-		content: '';
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		width: 3px;
-		height: 3px;
-		border-radius: 50%;
-		background: var(--color-bg);
-		translate: -50% -50%;
+	.dot.accent {
+		background: radial-gradient(circle, var(--color-bg) 0 1.5px, rgb(var(--ann)) 2px);
 	}
 
 	.pop-slot {
