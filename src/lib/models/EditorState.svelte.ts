@@ -197,7 +197,9 @@ export class TabState {
 	private static readonly MAX_REMEMBERED = 200;
 
 	static recall(content: TabContent): Record<string, any> {
-		return content.type === 'pdf' ? $state.snapshot(TabState.remembered[content.handle.id] ?? {}) : {};
+		return content.type === 'pdf'
+			? $state.snapshot(TabState.remembered[content.handle.id] ?? {})
+			: {};
 	}
 
 	static remember(content: TabContent, state: Record<string, any>) {

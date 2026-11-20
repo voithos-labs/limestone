@@ -160,10 +160,7 @@ export default class PdfAnnotations {
 	private async unnote(a: Annotation): Promise<void> {
 		const doc = await MarkdownHandle.fromID(a.id);
 		if (await doc.delete()) await invoke('purge_document', { id: a.id });
-		this.labels.set(
-			a.id,
-			parseAnnotationTitle(a.title)?.label ?? annotationLabel(a.kind, a.quote)
-		);
+		this.labels.set(a.id, parseAnnotationTitle(a.title)?.label ?? annotationLabel(a.kind, a.quote));
 		this.links.delete(a.id);
 		this.items = this.items.map((x) => (x.id === a.id ? { ...x, title: '', relPath: '' } : x));
 		await this.saveMarks();
