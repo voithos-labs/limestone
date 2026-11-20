@@ -792,21 +792,24 @@
 					type="button"
 					aria-label="Jump to date"
 					onclick={(e) => openPicker(e.currentTarget)}
-					>{headerDate.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</button
 				>
+					{headerDate.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+				</button>
 				{#if !atPresent}
 					<span class="nav-sep">·</span>
-					<button class="return-present" type="button" onclick={returnToPresent}
-						>Back to today</button
-					>
+					<button class="return-present" type="button" onclick={returnToPresent}>
+						Back to today
+					</button>
 				{/if}
 			</span>
 			{#if monthMarker}
 				<span
 					class="month-marker"
 					class:pinned={!atPresent}
-					style="left: {monthMarker.x}px; --fade: {monthMarker.fade}">{monthMarker.label}</span
+					style="left: {monthMarker.x}px; --fade: {monthMarker.fade}"
 				>
+					{monthMarker.label}
+				</span>
 			{/if}
 		</div>
 

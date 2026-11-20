@@ -223,8 +223,10 @@
 										tabindex="-1"
 										title={e.name}
 										onmouseenter={() => (activeIndex = row.start + j)}
-										onclick={() => pick(e.emoji)}>{e.emoji}</button
+										onclick={() => pick(e.emoji)}
 									>
+										{e.emoji}
+									</button>
 								{/each}
 							</div>
 						{/if}

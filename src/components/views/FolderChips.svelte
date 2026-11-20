@@ -335,8 +335,10 @@
 			{:else}
 				<span class="name">
 					{f.slug}{#if f.count}<span class="count">{f.count}</span>{/if}{#if where}<span
-							class="where">{where}</span
-						>{/if}
+							class="where"
+						>
+							{where}
+						</span>{/if}
 				</span>
 			{/if}
 			{#if !root}

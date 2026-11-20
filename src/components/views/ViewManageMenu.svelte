@@ -299,8 +299,10 @@
 								onclick={(e) => {
 									e.stopPropagation();
 									startEdit(field);
-								}}>{fieldLabel(field)}</button
+								}}
 							>
+								{fieldLabel(field)}
+							</button>
 						{:else}
 							<span class="name-text">{fieldLabel(field)}</span>
 						{/if}

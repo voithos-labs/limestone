@@ -1122,9 +1122,9 @@
 														/>{/if}
 												</span>
 												<span class="new-field">
-													<span class="new-ghost"
-														>{newTitle || (makesTodo ? 'New todo' : 'New note')}</span
-													>
+													<span class="new-ghost">
+														{newTitle || (makesTodo ? 'New todo' : 'New note')}
+													</span>
 													<input
 														class="new-input"
 														class:taken={titleTaken}
@@ -1140,9 +1140,9 @@
 													/>
 												</span>
 												{#if newTitle.trim() && !titleTaken}
-													<span class="new-hint"
-														><CornerDownLeft size={12} strokeWidth={1.75} /></span
-													>
+													<span class="new-hint">
+														<CornerDownLeft size={12} strokeWidth={1.75} />
+													</span>
 												{/if}
 											</label>
 										{:else}

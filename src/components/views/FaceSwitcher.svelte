@@ -468,9 +468,9 @@
 						>
 							<ArrowLeft size={14} strokeWidth={2} />
 						</button>
-						<button class="confirm-btn" type="button" onclick={() => deleteFace(f.id)}
-							>Confirm</button
-						>
+						<button class="confirm-btn" type="button" onclick={() => deleteFace(f.id)}>
+							Confirm
+						</button>
 					{:else}
 						<button
 							class="icon-btn"

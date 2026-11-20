@@ -52,8 +52,10 @@
 		<span class="pills">
 			{#each tags as t (t)}{@const TagIcon = tagIcon(t)}<span
 					class="tag"
-					class:builtin={isBuiltinUnit(`tag:${t}`)}><TagIcon size={11} />{t}</span
-				>{/each}
+					class:builtin={isBuiltinUnit(`tag:${t}`)}
+				>
+					<TagIcon size={11} />{t}
+				</span>{/each}
 		</span>
 	{:else}<span class="muted">—</span>{/if}
 {:else if field.type === 'folder'}

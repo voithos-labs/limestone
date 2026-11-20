@@ -119,9 +119,9 @@
 		<span class="bar"></span>
 		<div class="body">
 			{#if a.kind === 'ink'}
-				<span class="kind"
-					><Pencil size={11} strokeWidth={2} />Ink{editing && !a.comment ? ' · new' : ''}</span
-				>
+				<span class="kind">
+					<Pencil size={11} strokeWidth={2} />Ink{editing && !a.comment ? ' · new' : ''}
+				</span>
 			{/if}
 			{#if editing || a.comment}
 				<Comment

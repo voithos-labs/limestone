@@ -408,8 +408,10 @@
 				class="title-input title-root"
 				type="button"
 				onclick={() => (view.state.folder = undefined)}
-				use:ctxMenu={crumbMenu(view.unit ?? '', view.slug)}>{view.slug}</button
+				use:ctxMenu={crumbMenu(view.unit ?? '', view.slug)}
 			>
+				{view.slug}
+			</button>
 		</span>
 		<span class="crumbs">
 			{#each crumbs as c, i (c.id)}
@@ -421,8 +423,10 @@
 						class="crumb"
 						type="button"
 						onclick={() => (view.state.folder = c.id)}
-						use:ctxMenu={crumbMenu(c.id, c.slug)}>{c.slug}</button
+						use:ctxMenu={crumbMenu(c.id, c.slug)}
 					>
+						{c.slug}
+					</button>
 				{/if}
 			{/each}
 		</span>

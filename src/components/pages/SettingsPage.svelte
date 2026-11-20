@@ -880,9 +880,9 @@
 
 				<div class="foot">
 					{#if confirmingReset}
-						<span class="foot-text"
-							>Restore every setting to its default? Sources and themes stay.</span
-						>
+						<span class="foot-text">
+							Restore every setting to its default? Sources and themes stay.
+						</span>
 						<button class="chip-btn quiet" type="button" onclick={() => (confirmingReset = false)}>
 							Cancel
 						</button>
@@ -920,9 +920,9 @@
 											{/if}
 										</span>
 									{:else if live}
-										<span class="row-desc"
-											>Press the keys you want. Enter saves, Escape cancels.</span
-										>
+										<span class="row-desc">
+											Press the keys you want. Enter saves, Escape cancels.
+										</span>
 									{/if}
 								</div>
 								<div class="row-control keys">
@@ -939,9 +939,9 @@
 												Remove
 											</button>
 										{/if}
-										<button class="chip-btn quiet" type="button" onclick={stopCapture}
-											>Cancel</button
-										>
+										<button class="chip-btn quiet" type="button" onclick={stopCapture}>
+											Cancel
+										</button>
 										<button
 											class="chip-btn primary"
 											type="button"

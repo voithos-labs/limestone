@@ -1092,8 +1092,9 @@
 								<span
 									class="check inert"
 									title={member ? "This folder doesn't store metadata in its files" : 'Not a todo'}
-									><span class="box"></span></span
 								>
+									<span class="box"></span>
+								</span>
 							{/if}
 							{#if renamingId === row.id}
 								<span

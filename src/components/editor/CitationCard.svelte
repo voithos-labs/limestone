@@ -221,8 +221,10 @@
 	<span
 		bind:this={el}
 		class="unresolved"
-		title={excerpt ? "This PDF wasn't found" : 'No annotation note has this title'}>{source}</span
+		title={excerpt ? "This PDF wasn't found" : 'No annotation note has this title'}
 	>
+		{source}
+	</span>
 {:else}
 	<span
 		bind:this={el}

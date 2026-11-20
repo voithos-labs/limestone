@@ -348,9 +348,9 @@
 						>
 							<ArrowLeft size={14} strokeWidth={2} />
 						</button>
-						<button class="confirm-btn" type="button" onclick={() => confirmDelete(t)}
-							>{untagLabel(t)}</button
-						>
+						<button class="confirm-btn" type="button" onclick={() => confirmDelete(t)}>
+							{untagLabel(t)}
+						</button>
 					{:else if renamingId === t.id}
 						<span class="name">
 							<TagIcon size={13} strokeWidth={1.75} />
