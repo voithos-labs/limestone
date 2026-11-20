@@ -112,6 +112,7 @@ class MarkdownHandle extends Doc {
 	private static unopened = new Set<string>();
 
 	frontmatterError: string | null = null;
+	private bodyIsFile = false;
 	private fileDates = { created: false, updated: false };
 
 	constructor(row: DocumentRow, source: Source) {
@@ -341,6 +342,7 @@ class MarkdownHandle extends Doc {
 		this.hasFile = true;
 		const { frontmatter, body, error } = MarkdownHandle.deserialize(raw);
 		this.frontmatterError = error;
+		this.bodyIsFile = !!error;
 
 		await this.adoptFrontmatter(frontmatter, !!error);
 
@@ -434,17 +436,22 @@ class MarkdownHandle extends Doc {
 		}
 		this.updatedAt = new Date();
 		const rebuild = !!opts.rebuildFrontmatter || !!opts.dropUnit;
+		const whole = this.bodyIsFile && !rebuild;
+		const patch = whole
+			? null
+			: await this.patchFor(rebuild, body, opts.unit && { views: this.properties.views });
 		const mtime = await invoke<number>('write_document', {
 			sourceId: this.source.id,
 			relPath: this._relPath,
 			body,
-			patch: await this.patchFor(rebuild, body, opts.unit && { views: this.properties.views }),
-			rebuild,
+			patch,
+			rebuild: rebuild || whole,
 			updatedAt: this.updatedAt.getTime(),
 			create: !this.hasFile
 		});
 		noteSelfWrite(this.source.id, this._relPath, mtime);
 		this.hasFile = true;
+		if (rebuild && patch) this.bodyIsFile = false;
 		this.recordHistory(body);
 	}
 
