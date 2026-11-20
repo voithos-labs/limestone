@@ -11,6 +11,7 @@
 		FolderOpen,
 		Rows2,
 		SlidersHorizontal,
+		TextQuote,
 		Plus,
 		Trash2,
 		X
@@ -45,7 +46,8 @@
 		forward,
 		onOpenFolder,
 		extra,
-		sections
+		sections,
+		digest
 	}: {
 		handle: PdfHandle;
 		onDelete?: () => void;
@@ -56,6 +58,7 @@
 		onOpenFolder?: (unitId: string, name: string, newTab?: boolean) => void;
 		extra?: Snippet;
 		sections?: { on: boolean; toggle: () => void };
+		digest?: { on: boolean; toggle: () => void };
 	} = $props();
 
 	let title = $state(untrack(() => handle.title));
@@ -395,6 +398,17 @@
 		{#if extra}
 			<div class="extra">{@render extra()}</div>
 		{/if}
+		{#if digest}
+			<button
+				class="kebab"
+				class:on={digest.on}
+				type="button"
+				title={digest.on ? 'Back to pages' : 'Annotations digest'}
+				onclick={digest.toggle}
+			>
+				<TextQuote size={15} strokeWidth={1.75} />
+			</button>
+		{/if}
 		<button
 			class="kebab"
 			bind:this={menuAnchor}
@@ -518,7 +532,8 @@
 			color 120ms ease;
 	}
 
-	.kebab:hover {
+	.kebab:hover,
+	.kebab.on {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}

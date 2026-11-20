@@ -82,7 +82,7 @@
 
 	.selection-menu {
 		position: absolute;
-		z-index: 6;
+		z-index: 4;
 		width: 204px;
 		padding: 4px;
 		box-sizing: border-box;

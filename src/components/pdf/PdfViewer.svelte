@@ -769,7 +769,10 @@
 		const el = flow ? hostScroller : scrollEl;
 		if (!flow && !el) return;
 		const target: HTMLElement | Window = el ?? window;
-		const onScroll = () => updateWindow();
+		const onScroll = () => {
+			updateWindow();
+			if (menu) menuScroll = scrollOf();
+		};
 		target.addEventListener('scroll', onScroll, { passive: true });
 		const ro = new ResizeObserver(onScroll);
 		ro.observe(el ?? document.documentElement);
@@ -1082,6 +1085,7 @@
 	/* -------------------------------------------------------------------------- */
 
 	let mode = $state<'pages' | 'digest'>('pages');
+	let digestEl: PdfDigest | undefined = $state();
 	// the digest's passages read in the editor's own face, as a note's text does
 	const editorFont = $derived(editor?.session?.settings.get<string>('editor.font') ?? 'sans-serif');
 
@@ -1198,9 +1202,10 @@
 		const end = range.getClientRects();
 		const last = end[end.length - 1];
 		const box = rootEl!.getBoundingClientRect();
+		menuScroll = scrollOf();
 		menu = {
-			x: Math.min(last.left - box.left, box.width - 212),
-			y: last.bottom - box.top + 8,
+			x: Math.min(last.left - box.left, box.width - 212) + menuScroll.x,
+			y: last.bottom - box.top + 8 + menuScroll.y,
 			page: pageNumber(page),
 			target
 		};
@@ -1226,6 +1231,8 @@
 	/* --------------------------------- Menus ---------------------------------- */
 
 	let menu: { x: number; y: number; page: number; target: TextTarget } | null = $state(null);
+	let menuScroll = $state.raw({ x: 0, y: 0 });
+	const scrollOf = () => ({ x: scrollEl?.scrollLeft ?? 0, y: scrollEl?.scrollTop ?? 0 });
 	let moreFor: Annotation | null = $state(null);
 	let moreAnchor: HTMLElement | null = $state(null);
 	let moreOpen = $state(false);
@@ -1796,15 +1803,17 @@
 	// Keys arrive through the window, which every pane shares, so only the pane being worked in
 	// takes them, and never while text is being typed.
 	const paneActive = $derived(!editor?.session || editor.session.active === editor);
-	const docked = $derived(!!pdf && !flow && !notice && mode === 'pages');
+	const barred = $derived(!!pdf && !flow && !notice);
+	const docked = $derived(barred && mode === 'pages');
 	let barHeight = $state(0);
-	const heroOnTop = $derived(flow || !!notice || mode === 'digest');
+	const heroOnTop = $derived(flow || !!notice);
 
 	function onWindowKey(e: KeyboardEvent) {
 		if (!paneActive || !rootEl?.isConnected) return;
-		if (docked && (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f') {
+		if (barred && (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'f') {
 			e.preventDefault();
-			void openSearch();
+			if (docked) void openSearch();
+			else digestEl?.focusSearch();
 			return;
 		}
 		if (typingIn(e.target)) return;
@@ -2056,7 +2065,7 @@
 	>
 		<div
 			class="column"
-			style:padding-top={docked ? `${(barHeight || 52) + 16}px` : null}
+			style:padding-top={barred ? `${(barHeight || 52) + 16}px` : null}
 			style:width="{mode === 'digest' ? fitWidth : width}px"
 			style:left="{rail ? -(RAIL_GAP + RAIL_WIDTH) / 2 : 0}px"
 		>
@@ -2078,6 +2087,8 @@
 			{:else if mode === 'digest'}
 				<div class="digest" style:--font-editor={editorFont}>
 					<PdfDigest
+						bind:this={digestEl}
+						sections={sections.length > 1 ? sections : []}
 						annotations={here}
 						{citedBy}
 						doc={pdf}
@@ -2225,8 +2236,8 @@
 	</div>
 	{#if menu}
 		<SelectionMenu
-			x={menu.x}
-			y={menu.y}
+			x={menu.x - menuScroll.x}
+			y={menu.y - menuScroll.y}
 			writable={canAnnotate}
 			onHighlight={() => fromMenu(() => {})}
 			onComment={() =>
@@ -2242,7 +2253,7 @@
 			onClose={() => (menu = null)}
 		/>
 	{/if}
-	{#if docked && handle}
+	{#if barred && handle}
 		<div class="top-bar" bind:clientHeight={barHeight}>
 			<SidebarHeader
 				{handle}
@@ -2254,6 +2265,9 @@
 				extra={viewing || elsewhere.length || inkLeft.length ? headExtra : undefined}
 				sections={sections.length > 1
 					? { on: sectioned, toggle: () => setSectioned(!sectioned) }
+					: undefined}
+				digest={here.length
+					? { on: mode === 'digest', toggle: () => setMode(mode === 'digest' ? 'pages' : 'digest') }
 					: undefined}
 			/>
 		</div>

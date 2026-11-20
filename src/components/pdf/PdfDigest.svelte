@@ -10,7 +10,7 @@
 	/*                                  Imports                                   */
 	/* -------------------------------------------------------------------------- */
 
-	import { ArrowUpRight, Link, TextAlignStart } from '@lucide/svelte';
+	import { ArrowUpRight, Link, Search, TextAlignStart, X } from '@lucide/svelte';
 	import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import { leadIn, runOn, type Annotation } from '#lib/pdf/annotation.js';
 	import { dragCitation, type Citing } from '#lib/pdf/citation.js';
@@ -27,6 +27,7 @@
 		annotations,
 		citedBy,
 		doc = null,
+		sections = [],
 		onGoTo,
 		onOpenNote
 	}: {
@@ -36,6 +37,7 @@
 		citedBy: Map<string, Citing[]>;
 		/** The open PDF these annotations were made on, for drawing their crops. */
 		doc?: PDFDocumentProxy | null;
+		sections?: { title: string; first: number; last: number }[];
 		onGoTo: (a: Annotation) => void;
 		onOpenNote: (id: string) => void;
 	} = $props();
@@ -46,12 +48,37 @@
 
 	const CROP_MAX_HEIGHT = 240;
 
-	const pages = $derived.by(() => {
-		const out: { page: number; items: Annotation[] }[] = [];
+	let query = $state('');
+	let input: HTMLInputElement | undefined = $state();
+
+	export function focusSearch() {
+		input?.focus();
+		input?.select();
+	}
+
+	const sectionOf = (a: Annotation) =>
+		sections.find((s) => a.page - 1 >= s.first && a.page - 1 <= s.last);
+
+	const texts = $derived(
+		new Map(
+			annotations.map((a) => [
+				a.id,
+				`${a.quote ?? ''}\n${a.comment}\n${sectionOf(a)?.title ?? ''}\np. ${a.page}`.toLowerCase()
+			])
+		)
+	);
+
+	const groups = $derived.by(() => {
+		const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+		const out: { key: string; label: string; items: Annotation[] }[] = [];
 		for (const a of annotations) {
+			const text = texts.get(a.id) ?? '';
+			if (!words.every((w) => text.includes(w))) continue;
+			const s = sectionOf(a);
+			const key = s ? `s${s.first}` : `p${a.page}`;
 			const last = out.at(-1);
-			if (last?.page === a.page) last.items.push(a);
-			else out.push({ page: a.page, items: [a] });
+			if (last?.key === key) last.items.push(a);
+			else out.push({ key, label: s?.title ?? `Page ${a.page}`, items: [a] });
 		}
 		return out;
 	});
@@ -115,8 +142,30 @@
 <svelte:window onpointerdown={onWindowPointer} onkeydown={onWindowKey} />
 
 <div class="digest">
-	{#each pages as group (group.page)}
-		<div class="page-head"><span>Page {group.page}</span><span class="line"></span></div>
+	{#if annotations.length}
+		<div class="search">
+			<Search size={13} strokeWidth={1.75} />
+			<input
+				bind:this={input}
+				bind:value={query}
+				placeholder="Search annotations"
+				spellcheck="false"
+				onkeydown={(e) => {
+					if (e.key !== 'Escape') return;
+					e.stopPropagation();
+					if (query) query = '';
+					else input?.blur();
+				}}
+			/>
+			{#if query}
+				<button type="button" title="Clear" onclick={() => ((query = ''), input?.focus())}>
+					<X size={13} strokeWidth={1.75} />
+				</button>
+			{/if}
+		</div>
+	{/if}
+	{#each groups as group (group.key)}
+		<div class="page-head"><span>{group.label}</span><span class="line"></span></div>
 		{#each group.items as a (a.id)}
 			{@const cites = citedBy.get(a.id) ?? []}
 			<div
@@ -131,6 +180,7 @@
 				onclick={(e) => onRowClick(e, a)}
 				onkeydown={(e) => onRowKey(e, a)}
 			>
+				<span class="page-no">p. {a.page}</span>
 				{#if a.kind === 'highlight' && a.quote}
 					{@const before = a.prefix ? leadIn(a.prefix) : ''}
 					{@const after = a.suffix ? runOn(a.suffix) : ''}
@@ -190,7 +240,11 @@
 			</div>
 		{/each}
 	{:else}
-		<p class="empty">Nothing marked yet. Highlights, regions and ink show up here.</p>
+		<p class="empty">
+			{annotations.length
+				? 'No annotations match.'
+				: 'Nothing marked yet. Highlights, regions and ink show up here.'}
+		</p>
 	{/each}
 </div>
 
@@ -205,6 +259,63 @@
 		margin: 0 auto;
 		padding: 22px 12px 40px;
 		font-family: var(--font-ui);
+	}
+
+	.search {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 34px;
+		padding: 0 6px 0 12px;
+		border-radius: 8px;
+		background: var(--chip-bg);
+		color: var(--color-ui-muted);
+		font-size: 13px;
+	}
+
+	.search :global(svg) {
+		flex-shrink: 0;
+	}
+
+	.search input {
+		flex: 1;
+		min-width: 0;
+		padding: 0;
+		border: 0;
+		outline: none;
+		background: transparent;
+		color: var(--color-text-primary);
+		font: inherit;
+	}
+
+	.search input::placeholder {
+		color: var(--color-ui-dulled);
+	}
+
+	.search button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		border: 0;
+		border-radius: 5px;
+		background: transparent;
+		color: inherit;
+		cursor: pointer;
+	}
+
+	.search button:hover {
+		background: var(--chip-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.page-no {
+		margin-bottom: -4px;
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+		color: var(--color-ui-muted);
 	}
 
 	.page-head {
