@@ -69,7 +69,7 @@ fn strip_bom(s: &str) -> &str {
 }
 
 fn split_raw(content: &str) -> (Option<(&str, &str)>, &str) {
-    let trimmed = strip_bom(content).trim_start();
+    let trimmed = strip_bom(content);
     if let Some(after_open) = trimmed.strip_prefix("---") {
         if let Some(close) = find_closing_fence(after_open) {
             let block = strip_newline(&after_open[..close]);
@@ -206,7 +206,7 @@ fn emit_entry(out: &mut String, key: &str, value: &Value, nl: &str) {
 
 /// The file without its frontmatter
 pub fn head(content: &str) -> (Head, &str) {
-    let trimmed = strip_bom(content).trim_start();
+    let trimmed = strip_bom(content);
     let Some(after_open) = trimmed.strip_prefix("---") else {
         return (Head::Absent, content);
     };
@@ -466,6 +466,18 @@ mod tests {
             "new"
         );
         assert_eq!(compose(None, "new", None, &[], false).unwrap(), "new");
+    }
+
+    #[test]
+    fn rules_after_a_leading_blank_line_are_body() {
+        let raw = "\n\n---\n\ntext\n\n---\n\n";
+        assert!(matches!(head(raw), (Head::Absent, body) if body == raw));
+        assert_eq!(split_content(raw), (None, raw));
+        assert_eq!(
+            compose(Some(raw), "first\n\n---\n\ntext\n\n---\n", None, &[], false).unwrap(),
+            "first\n\n---\n\ntext\n\n---\n"
+        );
+        assert_eq!(compose(Some(raw), raw, None, &[], false).unwrap(), raw);
     }
 
     #[test]

@@ -70,7 +70,7 @@ fn read_head(path: &Path, buffer_size: usize) -> Head {
             Ok(s) => s,
             Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).unwrap_or(""),
         };
-        let trimmed = content.trim_start_matches('\u{feff}').trim_start();
+        let trimmed = content.trim_start_matches('\u{feff}');
         let Some(after_open) = trimmed.strip_prefix("---") else {
             return Head::Absent;
         };
