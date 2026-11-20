@@ -180,8 +180,10 @@
 							onclick={() => {
 								popOpen = null;
 								onZoom(z);
-							}}>{Math.round(z * 100)}%</button
+							}}
 						>
+							{Math.round(z * 100)}%
+						</button>
 					{/each}
 				</div>
 			{/if}

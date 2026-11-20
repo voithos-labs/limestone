@@ -331,9 +331,9 @@
 	{:else if rowsLoaded && !activeDocId}
 		<div class="doc-empty">
 			<p>{labels.empty ?? 'No document here'}</p>
-			<button class="create-doc" type="button" disabled={creating} onclick={() => createDoc()}
-				>{labels.create ?? 'Create document'}</button
-			>
+			<button class="create-doc" type="button" disabled={creating} onclick={() => createDoc()}>
+				{labels.create ?? 'Create document'}
+			</button>
 		</div>
 	{/if}
 </div>

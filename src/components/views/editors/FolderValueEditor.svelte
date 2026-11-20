@@ -986,11 +986,11 @@
 					onmouseenter={() => (activeIndex = 0)}
 				>
 					<FolderInput size={13} strokeWidth={1.75} />
-					<span class="name-label"
-						>{movingId
+					<span class="name-label">
+						{movingId
 							? rootCrumbLabel
-							: (rootLabel ?? ((sourceId && sourceNames.get(sourceId)) || 'No folder'))}</span
-					>
+							: (rootLabel ?? ((sourceId && sourceNames.get(sourceId)) || 'No folder'))}
+					</span>
 				</button>
 				<button
 					class="row-select"
@@ -1000,9 +1000,9 @@
 					title={movingId ? (rootBlock ?? '') : ''}
 					onclick={() => pick('')}
 				>
-					{#if movingId}Place here{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span
-							>Move here</span
-						>{:else}Select this source{/if}
+					{#if movingId}Place here{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span>
+							Move here
+						</span>{:else}Select this source{/if}
 				</button>
 			</div>
 			<div class="root-divider"></div>
@@ -1044,9 +1044,9 @@
 							title={movingId ? (blockReason ?? '') : ''}
 							onclick={() => pick(folder.id)}
 						>
-							{#if movingId}Place{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span
-									>Move</span
-								>{:else}Select{/if}
+							{#if movingId}Place{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span>
+									Move
+								</span>{:else}Select{/if}
 						</button>
 					</div>
 				{/each}
@@ -1063,13 +1063,13 @@
 							<FolderPlus size={13} strokeWidth={1.75} />
 							<span class="name-label">Create folder</span>
 							<span class="create-name">{query.trim()}</span>
-							<span class="create-hint"
-								>{focusFolder
+							<span class="create-hint">
+								{focusFolder
 									? `in ${focusFolder.slug}`
 									: createSourceName
 										? `in ${createSourceName}`
-										: 'at root'}</span
-							>
+										: 'at root'}
+							</span>
 						</button>
 					</div>
 				{:else if searchMatches.length === 0}
@@ -1099,8 +1099,10 @@
 								type="button"
 								disabled={!focusId}
 								data-drop=""
-								onclick={() => jumpTo(null)}>{rootCrumbLabel}</button
+								onclick={() => jumpTo(null)}
 							>
+								{rootCrumbLabel}
+							</button>
 						{/if}
 						{#if focusChain.length > 1}
 							{@const first = focusChain[0]}
@@ -1110,8 +1112,10 @@
 								class:drop-hot={dropKey === first.id && dropOk}
 								type="button"
 								data-drop={first.id}
-								onclick={() => jumpTo(first.id)}>{first.slug}</button
+								onclick={() => jumpTo(first.id)}
 							>
+								{first.slug}
+							</button>
 						{/if}
 						{#if focusChain.length > 3}
 							<span class="crumb-sep"><ChevronRight size={9} strokeWidth={2.25} /></span>
@@ -1125,8 +1129,10 @@
 								class:drop-hot={dropKey === parent.id && dropOk}
 								type="button"
 								data-drop={parent.id}
-								onclick={() => jumpTo(parent.id)}>{parent.slug}</button
+								onclick={() => jumpTo(parent.id)}
 							>
+								{parent.slug}
+							</button>
 						{/if}
 						{#if focusFolder}
 							{@const focusValue = nodeValue(focusFolder.id)}
@@ -1232,9 +1238,10 @@
 										title={movingId ? (blockReason ?? '') : ''}
 										onclick={() => pick(folder.id)}
 									>
-										{#if movingId}Place{:else if moves}<ArrowRight size={11} strokeWidth={2} /><span
-												>Move</span
-											>{:else}Select{/if}
+										{#if movingId}Place{:else if moves}<ArrowRight
+												size={11}
+												strokeWidth={2}
+											/><span>Move</span>{:else}Select{/if}
 									</button>
 								{/if}
 							</div>

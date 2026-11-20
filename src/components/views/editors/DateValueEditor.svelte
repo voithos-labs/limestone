@@ -604,8 +604,10 @@
 					class:today={k === todayKey}
 					class:selected={isSel}
 					class:cursor={isCur}
-					onclick={() => pickDay(c)}>{c.d}</button
+					onclick={() => pickDay(c)}
 				>
+					{c.d}
+				</button>
 			{/each}
 		</div>
 

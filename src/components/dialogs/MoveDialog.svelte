@@ -299,8 +299,10 @@
 							onclick={() => go(c.id)}
 							ondragover={(e) => onCrumbDragOver(e, c.id)}
 							ondragleave={() => overCrumb === c.id && (overCrumb = null)}
-							ondrop={(e) => onCrumbDrop(e, c.id)}>{c.slug}</button
+							ondrop={(e) => onCrumbDrop(e, c.id)}
 						>
+							{c.slug}
+						</button>
 					{/each}
 				</nav>
 				{#if at !== null && !hideFolders}
@@ -371,13 +373,9 @@
 			<div class="foot">
 				<button class="btn ghost" type="button" onclick={() => (open = false)}>Cancel</button>
 				<button class="btn primary" type="button" disabled={!canMove} onclick={confirm}>
-					<span class="btn-label"
-						>{target === value
-							? 'Already here'
-							: selected
-								? `Move to ${targetName}`
-								: 'Move here'}</span
-					>
+					<span class="btn-label">
+						{target === value ? 'Already here' : selected ? `Move to ${targetName}` : 'Move here'}
+					</span>
 				</button>
 			</div>
 		</div>

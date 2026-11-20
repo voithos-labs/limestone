@@ -194,9 +194,9 @@
 						onclick={chooseFolder}
 					>
 						<Folder size={14} />
-						<span class="folder-text" class:placeholder={!folderPath}
-							>{folderPath || 'Choose folder…'}</span
-						>
+						<span class="folder-text" class:placeholder={!folderPath}>
+							{folderPath || 'Choose folder…'}
+						</span>
 					</button>
 				{:else}
 					<div class="folder-static" title={folderPath}>{folderPath}</div>

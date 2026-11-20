@@ -20,11 +20,11 @@
 {#if annotation.kind !== 'highlight'}
 	<AnnotationCrop {annotation} maxHeight={CROP_MAX_HEIGHT} />
 {:else if annotation.quote}
-	<span class="quote" class:lead style:--ann={annotationRgb(annotation)}
-		>{lead && annotation.prefix ? leadIn(annotation.prefix) : ''}<span class="mark"
-			>{annotation.quote}</span
-		>{annotation.suffix ? runOn(annotation.suffix) : ''}</span
-	>
+	<span class="quote" class:lead style:--ann={annotationRgb(annotation)}>
+		{lead && annotation.prefix ? leadIn(annotation.prefix) : ''}<span class="mark">
+			{annotation.quote}
+		</span>{annotation.suffix ? runOn(annotation.suffix) : ''}
+	</span>
 {/if}
 
 <style>

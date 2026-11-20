@@ -765,10 +765,10 @@
 		<div class="fm-error-head">
 			<span class="fm-error-title">Frontmatter couldn't be parsed</span>
 			<span class="fm-error-msg">{frontmatterError}</span>
-			<span class="fm-error-msg"
-				>Fix it in place, keep it as text under new frontmatter, or rebuild from what the app has
-				(tags and properties in the block are not recovered).</span
-			>
+			<span class="fm-error-msg">
+				Fix it in place, keep it as text under new frontmatter, or rebuild from what the app has
+				(tags and properties in the block are not recovered).
+			</span>
 		</div>
 	{/snippet}
 </Menu>

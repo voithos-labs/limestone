@@ -17,9 +17,9 @@
 {#each toastParts(text) as part, i (i)}
 	{#if part.kind}
 		{@const Icon = part.kind === 'tag' ? tagIcon(part.text) : ICONS[part.kind]}
-		<span class="chip"
-			><Icon size={11} strokeWidth={2} /><span class="chip-text">{part.text}</span></span
-		>
+		<span class="chip">
+			<Icon size={11} strokeWidth={2} /><span class="chip-text">{part.text}</span>
+		</span>
 	{:else}
 		{part.text}
 	{/if}
