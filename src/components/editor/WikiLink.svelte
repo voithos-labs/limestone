@@ -1,4 +1,13 @@
 <script lang="ts">
+	/**
+	 * what aragonite draws for a [[wikilink]] in a note.
+	 *
+	 * It shows the link's alias, or the note and heading it points to, with a dashed underline when
+	 * no note has that name and a dotted one when the note was deleted. Clicking it opens the note,
+	 * shift-click beside and ctrl-click in a new tab, by sending ACTIVATE_EVENT up the page for
+	 * follow-link.ts to catch.
+	 */
+
 	import { type InlineWidgetComponentProps } from '@voithos-labs/aragonite/plugin';
 	import { parseWikiTarget } from '#lib/services/links.svelte.js';
 	import { linkIndex, resolveWikiLink } from '#lib/services/links.svelte.js';

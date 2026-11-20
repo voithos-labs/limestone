@@ -23,8 +23,7 @@ import {
 	Pin,
 	NotebookText,
 	Box,
-	FolderInput,
-	FileLock
+	FolderInput
 } from '@lucide/svelte';
 import { isSourceRoot } from '#lib/models/Folder.js';
 import View, {
@@ -105,8 +104,7 @@ export const FIELD_TYPE_ICONS: Record<ViewFieldType, Component> = {
 	tags: Tag,
 	folder: Folder,
 	created_at: CalendarPlus2,
-	updated_at: CalendarClock,
-	metadata: FileLock
+	updated_at: CalendarClock
 };
 
 export const FALLBACK_FIELD_ICON: Component = Filter;
@@ -145,9 +143,7 @@ export const OP_LABELS: Record<string, string> = {
 	has_none: 'none',
 	any_of: 'is any of',
 	in: 'in',
-	not_in: 'not in',
-	writable: 'can be stored',
-	read_only: "can't be stored"
+	not_in: 'not in'
 };
 
 export function getOpLabel(op: string): string {

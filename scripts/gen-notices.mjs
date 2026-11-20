@@ -60,6 +60,18 @@ const PREFERENCE = [
 	'CDLA-Permissive-2.0'
 ];
 
+const VENDORED = [
+	{
+		name: 'bootstrap-icons',
+		version: 'filetype-pdf',
+		expression: 'MIT',
+		chosen: 'MIT',
+		holders: '2019-2024 The Bootstrap Authors',
+		url: 'https://github.com/twbs/icons',
+		files: []
+	}
+];
+
 const bodies = new Map();
 const bodyLicenses = new Map();
 
@@ -267,12 +279,14 @@ function toJson(item, ecosystem) {
 function main() {
 	const rust = collectRust();
 	const npm = collectNpm();
-	for (const item of [...rust, ...npm]) {
+	const vendored = [...VENDORED].sort((a, b) => a.name.localeCompare(b.name));
+	for (const item of [...rust, ...npm, ...vendored]) {
 		item.refs = resolveTexts(item);
 		item.copyrights = [...new Set(item.refs.flatMap((r) => r.copyrights))];
 	}
 	const rustRendered = rust.map(renderItem);
 	const npmRendered = npm.map(renderItem);
+	const vendoredRendered = vendored.map(renderItem);
 
 	const ids = [...bodies.keys()].sort();
 	const out = [
@@ -290,6 +304,7 @@ function main() {
 		'',
 		`Rust crates:   ${rust.length}`,
 		`npm packages:  ${npm.length}`,
+		`Vendored:      ${vendored.length}`,
 		`License texts: ${ids.length}`,
 		'',
 		'='.repeat(78),
@@ -303,6 +318,12 @@ function main() {
 		'='.repeat(78),
 		'',
 		npmRendered.join('\n\n'),
+		'',
+		'='.repeat(78),
+		'VENDORED ASSETS',
+		'='.repeat(78),
+		'',
+		vendoredRendered.join('\n\n'),
 		'',
 		'='.repeat(78),
 		'APPENDIX: FULL LICENSE TEXTS',
@@ -326,8 +347,12 @@ function main() {
 	writeFileSync(
 		OUT_JSON,
 		JSON.stringify({
-			counts: { rust: rust.length, npm: npm.length, texts: ids.length },
-			components: [...rust.map((i) => toJson(i, 'rust')), ...npm.map((i) => toJson(i, 'npm'))],
+			counts: { rust: rust.length, npm: npm.length, vendored: vendored.length, texts: ids.length },
+			components: [
+				...rust.map((i) => toJson(i, 'rust')),
+				...npm.map((i) => toJson(i, 'npm')),
+				...vendored.map((i) => toJson(i, 'vendored'))
+			],
 			texts
 		}),
 		'utf8'
@@ -337,8 +362,9 @@ function main() {
 	console.log(`wrote ${OUT_JSON}`);
 	console.log(`  rust crates:   ${rust.length}`);
 	console.log(`  npm packages:  ${npm.length}`);
+	console.log(`  vendored:      ${vendored.length}`);
 	console.log(`  license texts: ${ids.length}`);
-	const bare = [...rust, ...npm].filter((i) => !i.refs.length);
+	const bare = [...rust, ...npm, ...vendored].filter((i) => !i.refs.length);
 	console.log(
 		bare.length
 			? `  NO LICENSE TEXT (${bare.length}): ${bare.map((i) => i.name).join(', ')}`

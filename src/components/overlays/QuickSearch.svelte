@@ -9,7 +9,8 @@
 		sourceName,
 		type Source
 	} from '#lib/models/Source.js';
-	import DocHandle from '#lib/models/DocHandle.js';
+	import Doc from '#lib/models/Doc.js';
+	import { OPEN_AT_PAGE } from '#lib/pdf/citation.js';
 	import Tag from '#lib/models/Tag.js';
 	import Folder, { folderId, folderIdSource } from '#lib/models/Folder.js';
 	import { foldersHidden } from '#lib/models/Settings.svelte.js';
@@ -57,8 +58,7 @@
 		if (tab) {
 			editor.replaceTab(tab.id, next);
 		} else {
-			editor.openTab(next);
-			editor.focusTab({ kind: 'tab', id: next.id });
+			editor.focusTab({ kind: 'tab', id: editor.openTab(next).id });
 		}
 	}
 
@@ -179,11 +179,13 @@
 		}
 		const existing = editor.tabs.find((d) => d.id === result.id);
 		if (existing) {
+			if (result.page) existing.state[OPEN_AT_PAGE] = result.page;
 			editor.focusTab({ kind: 'tab', id: existing.id });
 			return;
 		}
-		const doc = await DocHandle.fromID(result.id);
-		openInTab(TabState.forDoc(doc));
+		const next = TabState.forDoc(await Doc.load(result.id));
+		if (result.page) next.state[OPEN_AT_PAGE] = result.page;
+		openInTab(next);
 	}
 
 	function onKeydown(e: KeyboardEvent) {

@@ -69,24 +69,16 @@ export async function removeSource(id: string): Promise<void> {
 export async function createSource(
 	path: string,
 	title: string,
-	config: SourceConfig,
-	useFrontmatter: boolean | null
+	config: SourceConfig
 ): Promise<Source> {
 	const source = await invoke<Source>('create_source', {
 		path,
 		title,
 		noteLocation: config.note_location,
-		assetLocation: config.asset_location,
-		useFrontmatter
+		assetLocation: config.asset_location
 	});
 	await syncWatchers();
 	return source;
-}
-
-export const GIT_FRONTMATTER_OFF = 'sources.git_frontmatter_off';
-
-export async function containsGitRepo(path: string): Promise<boolean> {
-	return await invoke<boolean>('contains_git_repo', { path });
 }
 
 export async function isEmptyDir(path: string): Promise<boolean> {
@@ -158,8 +150,18 @@ const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 const selfWrites = new Map<string, number>();
 
+const selfWriteListeners = new Set<(sourceId: string, relPath: string) => void>();
+
 export function noteSelfWrite(sourceId: string, relPath: string, mtime: number): void {
 	selfWrites.set(`${sourceId}/${relPath}`, mtime);
+	for (const cb of selfWriteListeners) cb(sourceId, relPath);
+}
+
+/** calls back when the app itself writes a file, which `onFsChanged` skips. citation cards use
+ * it to reread their annotation note */
+export function onSelfWrite(cb: (sourceId: string, relPath: string) => void): () => void {
+	selfWriteListeners.add(cb);
+	return () => selfWriteListeners.delete(cb);
 }
 
 function isSelfWrite(e: FsChanged): boolean {

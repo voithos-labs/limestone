@@ -50,7 +50,6 @@ create table if not exists folders (
     slug text not null, -- leaf name
     parent_id text references folders(id) on delete cascade,
     repo integer not null default 0,
-    writes_meta integer not null default 1,
     view integer not null default 0,
     created_at integer not null default (unixepoch() * 1000),
     updated_at integer not null default (unixepoch() * 1000),
@@ -72,6 +71,7 @@ create table if not exists asset_refs (
 
 -- FTS --
 create virtual table if not exists documents_fts using fts5(doc_id unindexed, body);
+create virtual table if not exists pdf_text_fts using fts5(doc_id unindexed, page unindexed, body);
 
 -- ── Indexes ──────────────────────────────────────────────────────────────────────────
 

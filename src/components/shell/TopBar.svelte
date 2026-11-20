@@ -7,6 +7,7 @@
 	import type Session from '#lib/models/Session.svelte.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import WindowControls from './WindowControls.svelte';
+	import PdfIcon from '../ui/PdfIcon.svelte';
 	import { hostWindowStyle, resolveWindowStyle } from '#lib/services/platform.js';
 
 	import {
@@ -25,7 +26,8 @@
 		PinOff,
 		CircleX,
 		Scale,
-		Columns2
+		Columns2,
+		Copy
 	} from '@lucide/svelte';
 	import { ctxMenu, contextMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import { listSources, sourceName, type Source } from '#lib/models/Source.js';
@@ -152,13 +154,14 @@
 		return [...root.querySelectorAll(selector)].map((el) => el.getBoundingClientRect());
 	}
 
-	function onPointerDown(e: PointerEvent, from: EditorState, index: number) {
+	function onPointerDown(e: PointerEvent, from: EditorState, index: number, target: FocusTarget) {
 		if ((e.target as HTMLElement).closest('.close-btn')) return;
 		if (e.button !== 0 || !navEl) return;
 
 		e.preventDefault();
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 		session.activate(from, true);
+		from.focusTab(target);
 
 		dragFrom = from;
 		dragTab = from.tabs[index];
@@ -312,6 +315,9 @@
 				action: () => session.moveTab(tab, from, session.beside(from)),
 				disabled: !split && from.tabs.length < 2
 			},
+			...(tab.content.type === 'pdf'
+				? [{ label: 'Duplicate', icon: Copy, action: () => from.duplicateTab(tab) }]
+				: []),
 			{ divider: true },
 			{ label: 'Close', icon: X, action: () => from.closeTab(tab.id) },
 			{
@@ -360,6 +366,8 @@
 		<House size={13} />
 	{:else if d.origin.type === 'licenses'}
 		<Scale size={13} />
+	{:else if d.origin.type === 'pdf'}
+		<PdfIcon size={13} />
 	{:else if !compactTabs || collapsed}
 		<TextAlignStart class="doc-icon" size={13} />
 	{/if}
@@ -412,6 +420,8 @@
 							<House size={14} />
 						{:else if ed.preview?.origin.type === 'markdown'}
 							<TextAlignStart size={14} />
+						{:else if ed.preview?.origin.type === 'pdf'}
+							<PdfIcon size={14} />
 						{:else}
 							<Bookmark size={16} />
 						{/if}
@@ -442,10 +452,7 @@
 						style:transform={tabTransform(ed, i)}
 						title={collapsed ? d.title : null}
 						use:ctxMenu={() => tabMenu(ed, d)}
-						onclick={() => {
-							if (ed.tabs.includes(d)) ed.focusTab(target);
-						}}
-						onpointerdown={(e) => onPointerDown(e, ed, i)}
+						onpointerdown={(e) => onPointerDown(e, ed, i, target)}
 						onpointermove={onPointerMove}
 						onpointerup={onPointerUp}
 						onpointercancel={onPointerUp}

@@ -10,7 +10,7 @@ import { load, type Store } from '@tauri-apps/plugin-store';
 import { SvelteSet } from 'svelte/reactivity';
 
 // internal
-import EditorState, { type EditorJSON, type TabState } from '#lib/models/EditorState.svelte.js';
+import EditorState, { type EditorJSON, TabState } from '#lib/models/EditorState.svelte.js';
 import { SettingsState, getSetting, registerSettings } from '#lib/models/Settings.svelte.js';
 import { loadStatuses } from '#lib/models/View.svelte.js';
 import type { Source } from '#lib/models/Source.js';
@@ -40,6 +40,7 @@ export interface AppState {
 	themeLight: string;
 	editors: EditorJSON[];
 	viewTabs?: ViewTab[];
+	remembered?: Record<string, Record<string, any>>;
 }
 
 const DEFAULTS: AppState = {
@@ -76,7 +77,8 @@ async function loadAppState(): Promise<AppState> {
 		themeDark: (await s.get<string>('themeDark')) ?? DEFAULTS.themeDark,
 		themeLight: (await s.get<string>('themeLight')) ?? DEFAULTS.themeLight,
 		editors: (await s.get<EditorJSON[]>('editors')) ?? DEFAULTS.editors,
-		viewTabs: (await s.get<ViewTab[]>('viewTabs')) ?? []
+		viewTabs: (await s.get<ViewTab[]>('viewTabs')) ?? [],
+		remembered: (await s.get<Record<string, Record<string, any>>>('remembered')) ?? {}
 	};
 	const legacy = await s.get<string>('activeTheme');
 	if (legacy) {
@@ -154,6 +156,7 @@ class Session {
 			}
 		}
 
+		TabState.remembered = state.remembered ?? {};
 		let editors: EditorState[] = [];
 		for (const editorJSON of state.editors) {
 			editors.push(await EditorState.loadFromJSON(editorJSON));
@@ -261,7 +264,8 @@ class Session {
 			editors: this.editors.map((e) => e.toJSON()),
 			themeDark: this.themeDark,
 			themeLight: this.themeLight,
-			viewTabs: [...this.viewTabs.values()]
+			viewTabs: [...this.viewTabs.values()],
+			remembered: TabState.remembered
 		};
 	}
 

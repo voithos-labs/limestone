@@ -9,7 +9,6 @@
 	import Session from '#lib/models/Session.svelte.js';
 	import Pane from '../components/shell/Pane.svelte';
 	import Palette from '../components/overlays/Palette.svelte';
-	import MetadataDialog from '../components/dialogs/MetadataDialog.svelte';
 	import MoveConflictDialog from '../components/dialogs/MoveConflictDialog.svelte';
 	import WelcomeDialog from '../components/dialogs/WelcomeDialog.svelte';
 	import { addSourceRequest } from '#lib/overlays.svelte.js';
@@ -19,7 +18,7 @@
 	import { runStartupUpdateCheck, notePostUpdate } from '#lib/services/updater.svelte.js';
 	import { toasts } from '#lib/overlays.svelte.js';
 	import { startWatching, onSourceReconciled } from '#lib/models/Source.js';
-	import DocHandle from '#lib/models/DocHandle.js';
+	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 
 	let session = $state<Session>();
 
@@ -33,7 +32,7 @@
 		if (addSourceRequest.pending) untrack(() => session?.editors[0].focusTab({ kind: 'settings' }));
 	});
 
-	$effect(() => onSourceReconciled((id) => void DocHandle.syncSource(id)));
+	$effect(() => onSourceReconciled((id) => void MarkdownHandle.syncSource(id)));
 
 	// watching for external changes
 	let unlistenWatch: Promise<UnlistenFn> | undefined;
@@ -179,7 +178,7 @@
 	const SCROLL_STEP = 48;
 	// `.editor` is aragonite's own class, not a promised API, but it earns its place: focus can
 	// rest on the editor root, which is neither a form field nor contenteditable, and without it
-	// arrow keys would scroll the page while the reader is only moving the caret. `#lib/editor-chords`
+	// arrow keys would scroll the page while the reader is only moving the caret. `#lib/shortcuts`
 	// depends on it too.
 	const EDITABLE =
 		'input, textarea, select, [contenteditable=""], [contenteditable="true"], .editor';
@@ -292,7 +291,6 @@
 	</div>
 	<ContextMenu />
 	<Palette {session} onAddSource={addSource} />
-	<MetadataDialog />
 	<MoveConflictDialog {session} />
 	<WelcomeDialog {session} />
 {/if}

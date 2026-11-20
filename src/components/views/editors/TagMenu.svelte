@@ -15,7 +15,7 @@
 	} from '@lucide/svelte';
 	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
 	import Tag, { tagId } from '#lib/models/Tag.js';
-	import { isBuiltinUnit } from '#lib/models/View.svelte.js';
+	import { isAssignedUnit, isBuiltinUnit } from '#lib/models/View.svelte.js';
 	import { tagIcon } from '#lib/views/filterDisplay.js';
 	import { nameGuard } from '#lib/util/paths.js';
 
@@ -73,6 +73,7 @@
 		const rank = new Map(browseOrder.map((id, i) => [id, i]));
 		return tags
 			.filter((t) => !(builtinAddOnly && isBuiltinUnit(t.id) && selectedIds.includes(t.id)))
+			.filter((t) => !isAssignedUnit(t.id) || selectedIds.includes(t.id))
 			.sort(
 				(a, b) => (rank.get(a.id) ?? browseOrder.length) - (rank.get(b.id) ?? browseOrder.length)
 			);

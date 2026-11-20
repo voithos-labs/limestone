@@ -298,6 +298,10 @@ function hexMix(hex: string, other: string, weight: number): string {
 
 function setAccentTints(root: HTMLElement, accent: string, contrast: string) {
 	if (!HEX_RE.test(accent)) return;
+	root.style.setProperty(
+		'--color-accent-rgb',
+		hexAlpha(accent, 1).slice(5, -3).replaceAll(',', '')
+	);
 	root.style.setProperty('--accent-a9', hexAlpha(accent, 0.09));
 	root.style.setProperty('--accent-a14', hexAlpha(accent, 0.14));
 	root.style.setProperty('--accent-a22', hexAlpha(accent, 0.22));

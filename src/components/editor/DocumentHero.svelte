@@ -2,10 +2,11 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { reportError, type ReportError } from '#lib/overlays.svelte.js';
 	import { moveNote } from '#lib/views/move.svelte.js';
-	import DocHandle from '#lib/models/DocHandle.js';
-	import { sourceName, listSources, onSourceReconciled, type Source } from '#lib/models/Source.js';
+	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import type { AnyDoc } from '#lib/models/Doc.js';
+	import { sourceName, listSources, type Source } from '#lib/models/Source.js';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
-	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import { isAssignedUnit, listSavedViewJSON } from '#lib/models/View.svelte.js';
 	import { foldersHidden } from '#lib/models/Settings.svelte.js';
 	import type Tag from '#lib/models/Tag.js';
 	import { tagId } from '#lib/models/Tag.js';
@@ -35,13 +36,11 @@
 		ArrowLeft,
 		ArrowRight,
 		X,
-		GitBranch,
-		FileLock,
 		ArrowUpRight,
 		Bookmark
 	} from '@lucide/svelte';
 	import { tagIcon } from '#lib/views/filterDisplay.js';
-	import { onMount, untrack, type Component } from 'svelte';
+	import { onMount, untrack, type Component, type Snippet } from 'svelte';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { flushAll } from '#lib/services/platform.js';
 
@@ -60,16 +59,17 @@
 		forward,
 		onOpenFolder,
 		showOpenFolder = true,
-		onFolderMeta,
 		textTags = [],
 		onTextTag,
 		onRemoveTextTag,
+		onUntag,
 		onEnter,
-		onError = reportError
+		onError = reportError,
+		extra
 	}: {
-		handle: DocHandle;
+		handle: AnyDoc;
 		onDelete?: () => void;
-		onDuplicated?: (copy: DocHandle) => void;
+		onDuplicated?: (copy: MarkdownHandle) => void;
 		loaded?: boolean;
 		frontmatterError?: string | null;
 		onFrontmatterFix?: (mode: 'keep' | 'rebuild') => void;
@@ -80,14 +80,18 @@
 		forward?: Place;
 		onOpenFolder?: (unitId: string, name: string, newTab?: boolean) => void;
 		showOpenFolder?: boolean;
-		onFolderMeta?: (unitId: string, name: string) => void; // the folder, and its metadata setting
 		// tags written in the note's text; shown read-only, and a click finds them in the text
 		textTags?: { slug: string; places: unknown[] }[];
 		onTextTag?: (slug: string) => void;
 		onRemoveTextTag?: (slug: string) => Promise<void>;
+		onUntag?: (tag: Tag) => unknown;
 		onEnter?: () => void;
 		onError?: ReportError;
+		/** extra items for the end of the meta row, like a pdf's edition chip */
+		extra?: Snippet;
 	} = $props();
+
+	const isNote = $derived(handle instanceof MarkdownHandle);
 
 	let fmMenuOpen = $state(false);
 	let fmAnchor: HTMLElement | null = $state(null);
@@ -118,8 +122,6 @@
 	const draftTitle = untrack(() => handle.title);
 	const relPath = $derived(handle.relPath);
 	let source = $state<Source>(untrack(() => handle.source));
-	let meta = $state(untrack(() => ({ writes: handle.writesMeta, repo: handle.inRepo })));
-	const syncMeta = () => (meta = { writes: handle.writesMeta, repo: handle.inRepo });
 	let folderList: Folder[] = $state([]);
 	let sources: Source[] = $state([]);
 	let tagList: Tag[] = $state(untrack(() => (loaded ? handle.tags : [])));
@@ -146,7 +148,15 @@
 		}
 	}
 
+	let confirmingId: string | null = $state(null);
+
+	function askToggle(tag: Tag) {
+		if (isAssignedUnit(tag.id) && tagList.some((t) => t.id === tag.id)) confirmingId = tag.id;
+		else void toggleTag(tag);
+	}
+
 	async function toggleTag(tag: Tag) {
+		confirmingId = null;
 		const inText = textTagPlaces.has(tag.id);
 		const has = tagList.some((t) => t.id === tag.id);
 		if (inText) {
@@ -163,6 +173,7 @@
 			await handle.setTags(next.map((t) => t.slug));
 			tagList = handle.tags;
 			tagsSaved++;
+			if (has) await onUntag?.(tag);
 		} catch (e) {
 			tagList = handle.tags;
 			onError(e, "Tags couldn't be saved.", () => toggleTag(tag));
@@ -193,14 +204,6 @@
 			console.error('refresh tags failed', e);
 		}
 	}
-
-	$effect(() =>
-		onSourceReconciled(async (sourceId) => {
-			if (sourceId !== source.id) return;
-			await handle.refreshMeta();
-			syncMeta();
-		})
-	);
 
 	const ext = $derived(relPath.match(/\.[^.]+$/)?.[0] ?? '.md');
 	const srcName = $derived(sourceName(source));
@@ -270,7 +273,7 @@
 			titleTaken = false;
 			return;
 		}
-		DocHandle.pathTaken(source, titleCandidate(next))
+		MarkdownHandle.pathTaken(source, titleCandidate(next))
 			.then((taken) => {
 				if (token === titleCheckToken) titleTaken = taken;
 			})
@@ -285,7 +288,7 @@
 		}
 		try {
 			const caseOnly = titleCandidate(next).toLowerCase() === relPath.toLowerCase();
-			if (!caseOnly && (await DocHandle.pathTaken(source, titleCandidate(next)))) {
+			if (!caseOnly && (await MarkdownHandle.pathTaken(source, titleCandidate(next)))) {
 				title = handle.title;
 				return;
 			}
@@ -323,7 +326,6 @@
 		try {
 			if (!(await moveNote(handle, target, newRel))) return;
 			source = target;
-			syncMeta();
 			folderList = await Folder.list();
 		} catch (e) {
 			onError(e, "This note couldn't be moved.", () => onPickFolder(groupId, path));
@@ -418,17 +420,21 @@
 	$effect(() => {
 		if (actionsMeasured > 0) actionsWidth = actionsMeasured;
 	});
-	const showProps = $derived(propCount > 0 && !(meta.writes && frontmatterError));
+	const showProps = $derived(propCount > 0 && !frontmatterError);
 	const actionsInMenu = $derived(lineWidth > 0 && titleWidth + 12 + actionsWidth > lineWidth - 30);
 
 	const menuItems: MenuEntry[] = $derived([
 		...(actionsInMenu
 			? ([
-					{
-						value: 'history',
-						label: historyOpen ? 'Hide history' : 'Show history',
-						icon: History
-					},
+					...(isNote
+						? [
+								{
+									value: 'history',
+									label: historyOpen ? 'Hide history' : 'Show history',
+									icon: History
+								}
+							]
+						: []),
 					...(showProps
 						? [
 								{
@@ -444,7 +450,9 @@
 		...(onOpenFolder
 			? [{ value: 'parent', label: `Go to ${locPlace.kind}`, icon: FolderOpen } as MenuEntry]
 			: []),
-		{ value: 'duplicate', label: 'Duplicate document', icon: Copy },
+		...(isNote
+			? [{ value: 'duplicate', label: 'Duplicate document', icon: Copy } as MenuEntry]
+			: []),
 		{ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink },
 		confirmingDelete
 			? { value: 'confirm-delete', label: 'Confirm delete', icon: Trash2, danger: true }
@@ -455,11 +463,11 @@
 		try {
 			await flushAll();
 			const raw = await invoke<string>('read_document', { sourceId: source.id, relPath });
-			const { body } = DocHandle.deserialize(raw);
+			const { body } = MarkdownHandle.deserialize(raw);
 			const dir = folderDir(relPath);
-			const newRel = await DocHandle.uniqueRelPath(source, dir, `${handle.title} copy`);
+			const newRel = await MarkdownHandle.uniqueRelPath(source, dir, `${handle.title} copy`);
 			const newTitle = newRel.split('/').pop()!.replace(/\.md$/i, '');
-			const copy = await DocHandle.create(
+			const copy = await MarkdownHandle.create(
 				source,
 				newTitle,
 				newRel,
@@ -580,15 +588,22 @@
 				<div class="top-actions">
 					{#if !actionsInMenu}
 						<span class="collapsible" bind:offsetWidth={actionsMeasured}>
-							<button
-								class="props-chip history-chip"
-								class:open={historyOpen}
-								title={historyOpen ? 'Hide history' : 'Show history'}
-								onclick={() => (historyOpen = !historyOpen)}
-							>
-								<History size={12} strokeWidth={1.75} />
-								<span>Updated {formatDateFriendly(handle.updatedAt)}</span>
-							</button>
+							{#if isNote}
+								<button
+									class="props-chip history-chip"
+									class:open={historyOpen}
+									title={historyOpen ? 'Hide history' : 'Show history'}
+									onclick={() => (historyOpen = !historyOpen)}
+								>
+									<History size={12} strokeWidth={1.75} />
+									<span>Updated {formatDateFriendly(handle.updatedAt)}</span>
+								</button>
+							{:else}
+								<span class="props-chip history-chip meta-off">
+									<History size={12} strokeWidth={1.75} />
+									<span>Updated {formatDateFriendly(handle.updatedAt)}</span>
+								</span>
+							{/if}
 							{#if showProps}
 								<button
 									class="props-chip"
@@ -602,7 +617,7 @@
 							{/if}
 						</span>
 					{/if}
-					{#if meta.writes && frontmatterError}
+					{#if frontmatterError}
 						<button
 							class="props-chip fm-error"
 							class:open={fmMenuOpen}
@@ -656,39 +671,38 @@
 						</button>
 					{/if}
 				</span>
-				{#if !meta.writes}
-					<button
-						class="props-chip meta-off"
-						class:linked={!!onFolderMeta}
-						type="button"
-						disabled={!onFolderMeta}
-						title={meta.repo
-							? "Inside a Git repo: metadata isn't written to this file. Click to change it for the folder"
-							: "This folder doesn't store metadata in its files. Click to change it for the folder"}
-						onclick={() => onFolderMeta?.(currentFolderId, dirParts.at(-1) ?? srcName)}
-					>
-						{#if meta.repo}<GitBranch size={12} strokeWidth={1.75} />{:else}<FileLock
-								size={12}
-								strokeWidth={1.75}
-							/>{/if}
-					</button>
-					{#each tagList as t (t.id)}
+				<span
+					class="tags-chip"
+					class:has-tags={chipTags.length > 0}
+					class:editing={tagMenuOpen}
+					bind:this={tagAnchor}
+					role="button"
+					tabindex="-1"
+					title={tagMenuOpen ? '' : 'Edit tags'}
+					onclick={() => (tagMenuOpen = !tagMenuOpen)}
+				>
+					{#each chipTags as t (t.id)}
 						{@const TagIcon = tagIcon(t.id)}
-						<span class="tag"><TagIcon size={11} />{t.slug}</span>
-					{/each}
-				{:else}
-					<span
-						class="tags-chip"
-						class:has-tags={chipTags.length > 0}
-						class:editing={tagMenuOpen}
-						bind:this={tagAnchor}
-						role="button"
-						tabindex="-1"
-						title={tagMenuOpen ? '' : 'Edit tags'}
-						onclick={() => (tagMenuOpen = !tagMenuOpen)}
-					>
-						{#each chipTags as t (t.id)}
-							{@const TagIcon = tagIcon(t.id)}
+						{#if confirmingId === t.id}
+							<span
+								class="tag confirm"
+								role="presentation"
+								onclick={(e) => e.stopPropagation()}
+								onpointerleave={() => (confirmingId = null)}
+							>
+								<TagIcon size={11} />{t.slug}
+								<button class="tag-yes" type="button" onclick={() => toggleTag(t)}>Confirm</button>
+								<button
+									class="tag-x"
+									type="button"
+									tabindex="-1"
+									aria-label="Keep {t.slug}"
+									onclick={() => (confirmingId = null)}
+								>
+									<X size={9} strokeWidth={2.5} />
+								</button>
+							</span>
+						{:else}
 							<span class="tag">
 								<TagIcon size={11} />{t.slug}
 								<button
@@ -698,18 +712,18 @@
 									aria-label="Remove {t.slug}"
 									onclick={(e) => {
 										e.stopPropagation();
-										void toggleTag(t);
+										askToggle(t);
 									}}
 								>
 									<X size={9} strokeWidth={2.5} />
 								</button>
 							</span>
-						{/each}
-						{#if !chipTags.length}
-							<span class="add-tags"><Plus size={11} />tag</span>
 						{/if}
-					</span>
-				{/if}
+					{/each}
+					{#if !chipTags.length}
+						<span class="add-tags"><Plus size={11} />tag</span>
+					{/if}
+				</span>
 				{#each textOnlyTags as t (t.slug)}
 					{@const TagIcon = tagIcon(t.slug)}
 					<button
@@ -721,19 +735,18 @@
 						<TagIcon size={11} />{t.slug}
 					</button>
 				{/each}
-				{#if meta.writes && isTodo}
+				{#if isTodo}
 					<span class="meta-sep" data-sep></span>
 					<TodoCard {handle} version={tagsSaved} onRemove={removeTodo} />
 				{/if}
-				{#if meta.writes}
-					<DocProperties
-						{handle}
-						open={propsOpen}
-						inline
-						onCount={(n) => (propCount = n)}
-						{onError}
-					/>
-				{/if}
+				<DocProperties
+					{handle}
+					open={propsOpen}
+					inline
+					onCount={(n) => (propCount = n)}
+					{onError}
+				/>
+				{@render extra?.()}
 			</div>
 		</div>
 	</div>
@@ -770,7 +783,7 @@
 	anchor={tagAnchor}
 	selectedIds={[...tagList.map((t) => t.id), ...textTagPlaces.keys()]}
 	inText={textTagPlaces}
-	onToggle={toggleTag}
+	onToggle={askToggle}
 	onCreate={createTag}
 	onMutated={tagsMutated}
 	builtinAddOnly
@@ -1091,13 +1104,9 @@
 		cursor: default;
 	}
 
-	.props-chip.meta-off:hover:not(.linked) {
+	.props-chip.meta-off:hover {
 		background: transparent;
 		color: var(--color-ui-muted);
-	}
-
-	.props-chip.meta-off.linked {
-		cursor: pointer;
 	}
 
 	.props-chip.fm-error {
@@ -1223,6 +1232,27 @@
 		color: inherit;
 		opacity: 0.55;
 		cursor: pointer;
+	}
+
+	.tag.confirm {
+		gap: 5px;
+		color: var(--color-text-primary);
+	}
+
+	.tag-yes {
+		height: 18px;
+		padding: 0 7px;
+		border: none;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--error-fg);
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.tag-yes:hover {
+		background: rgba(127, 127, 127, 0.2);
 	}
 
 	.tag-x:hover {

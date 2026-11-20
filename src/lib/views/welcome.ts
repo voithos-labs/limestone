@@ -1,4 +1,4 @@
-import DocHandle from '#lib/models/DocHandle.js';
+import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import Folder from '#lib/models/Folder.js';
 import View from '#lib/models/View.svelte.js';
 import type { Source } from '#lib/models/Source.js';
@@ -118,7 +118,7 @@ export async function seedWelcomeProject(source: Source): Promise<View> {
 		todo('Delete the Welcome project', { due: dayFromNow(7) })
 	];
 	for (const n of notes) {
-		await DocHandle.createFromTitle(source, { ...n, dir: NAME });
+		await MarkdownHandle.createFromTitle(source, { ...n, dir: NAME });
 	}
 	return view;
 }

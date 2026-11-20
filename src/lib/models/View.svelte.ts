@@ -23,7 +23,7 @@
  * Orphaned data you say when you move a doc out of a group or delete a view etc.? Yep, harmless
  * (it's scoped!) orphaned data that we can safely clean (easy to check view membership)
  *
- * In DocHandle, it's clear where this lives
+ * In MarkdownHandle, it's clear where this lives
  * In an actual .md document file it lives in the frontmatter -- this does mean you can't use
  * certain view features without yaml frontmatter enabled though )-(
  *
@@ -46,8 +46,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import type { Component } from 'svelte';
-import { CircleCheckBig } from '@lucide/svelte';
-import type DocHandle from '#lib/models/DocHandle.js';
+import { CircleCheckBig, Highlighter } from '@lucide/svelte';
+import type MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import type Tag from '#lib/models/Tag.js';
 import Folder, {
 	folderId,
@@ -202,7 +202,6 @@ export type ViewFieldType =
 	| 'boolean'
 	| 'select'
 	| 'multiselect' // might prune
-	| 'metadata'
 	| (typeof BUILTIN_FIELD_TYPES)[number];
 
 // user-creatable stateful field types (e.g. due-date, etc.)
@@ -217,15 +216,8 @@ export const CREATABLE_FIELD_TYPES = [
 
 // does this add a prop to documents? If not it is derived (mapped)
 export function isDerived(type: ViewFieldType): boolean {
-	return (BUILTIN_FIELD_TYPES as readonly string[]).includes(type) || type === 'metadata';
+	return (BUILTIN_FIELD_TYPES as readonly string[]).includes(type);
 }
-
-export const METADATA_FIELD: ViewField = {
-	id: 'synthetic:metadata',
-	name: 'metadata',
-	type: 'metadata',
-	config: {}
-};
 
 // ── Built-in units ───────────────────────────────────────────────────────────────────
 
@@ -239,11 +231,27 @@ export interface BuiltinUnit {
 	icon: Component;
 	fields: ViewField[];
 	display: string[];
+	assigned?: boolean;
 }
 
-function builtinField(unit: string, name: string, type: ViewFieldType): ViewField {
-	return { id: `${unit}/${name}`, name, type, config: {}, unit };
+function builtinField(
+	unit: string,
+	name: string,
+	type: ViewFieldType,
+	config: Record<string, any> = {}
+): ViewField {
+	return { id: `${unit}/${name}`, name, type, config, unit };
 }
+
+export function isReadOnlyField(field: Pick<ViewField, 'config'>): boolean {
+	return !!field.config?.readonly;
+}
+
+export function isAssignedUnit(unitId: string): boolean {
+	return !!BUILTIN_UNITS[unitId]?.assigned;
+}
+
+export const ANNOTATION = 'tag:annotation';
 
 const TODO = 'tag:todo';
 export const TODO_DONE = `${TODO}/done`;
@@ -293,6 +301,26 @@ export const BUILTIN_UNITS: Record<string, BuiltinUnit> = {
 			builtinField(TODO, 'scheduled', 'date')
 		],
 		display: [`${TODO}/done`, `${TODO}/due`, `${TODO}/scheduled`]
+	},
+	[ANNOTATION]: {
+		unit: ANNOTATION,
+		icon: Highlighter,
+		assigned: true,
+		fields: [
+			builtinField(ANNOTATION, 'quote', 'text', { readonly: true }),
+			builtinField(ANNOTATION, 'page', 'number', { readonly: true }),
+			builtinField(ANNOTATION, 'color', 'select', {
+				options: [
+					{ value: 'accent', color: 0 },
+					{ value: 'amber', color: 4 },
+					{ value: 'sage', color: 7 },
+					{ value: 'sky', color: 10 },
+					{ value: 'rose', color: 15 },
+					{ value: 'violet', color: 13 }
+				]
+			})
+		],
+		display: [`${ANNOTATION}/quote`, `${ANNOTATION}/color`, `${ANNOTATION}/page`]
 	}
 };
 
@@ -440,7 +468,6 @@ export const VIEW_FIELD_OPS: Record<ViewFieldType, string[]> = {
 	boolean: ['eq'],
 	select: ['eq', 'neq', 'any_of', 'is_empty', 'is_not_empty'],
 	multiselect: ['contains', 'not_contains', 'has_all', 'is_empty', 'is_not_empty'], // might prune multiselect
-	metadata: ['writable', 'read_only'],
 	// BUILT-INS
 	title: ['eq', 'neq', 'contains', 'not_contains', 'starts_with', 'is_empty', 'is_not_empty'],
 	tags: ['has_any', 'has_all', 'has_none'],
@@ -770,12 +797,7 @@ function compileDateOnlyLeaf(
 	}
 }
 
-const WRITES_META_SQL = `COALESCE((SELECT f.writes_meta FROM folders f WHERE f.id = d.folder_id), 1)`;
-
 function compileLeafSql(field: ViewField, op: string, value: unknown): CompiledFilter {
-	if (field.type === 'metadata') {
-		return { sql: `${WRITES_META_SQL} = ${op === 'read_only' ? 0 : 1}`, params: [] };
-	}
 	if (field.type === 'folder') return compileFolderLeaf(op, value);
 	if (field.type === 'tags') return compileTagsLeaf(op, value);
 
@@ -882,7 +904,7 @@ function compileLeafSql(field: ViewField, op: string, value: unknown): CompiledF
 }
 
 export function opTakesValue(op: string): boolean {
-	return !['is_empty', 'is_not_empty', 'writable', 'read_only'].includes(op);
+	return !['is_empty', 'is_not_empty'].includes(op);
 }
 
 // a pred leaf only constrains results once it has not null val
@@ -921,7 +943,7 @@ function pruneFieldFromFilter(node: FilterCompound, fieldId: string): void {
 
 function compileFilter(filter: FilterNode | null, fields: ViewField[]): CompiledFilter {
 	if (!filter) return { sql: '', params: [] };
-	const fieldsById = new Map([...fields, METADATA_FIELD].map((f) => [f.id, f]));
+	const fieldsById = new Map(fields.map((f) => [f.id, f]));
 	return compileNode(filter, fieldsById);
 }
 
@@ -961,7 +983,7 @@ export interface MemberRow {
 	deleted_at: number | null;
 	properties: string;
 	source_id: string;
-	writes_meta: number;
+	document_type: string;
 }
 
 interface ViewJSON {
@@ -1081,15 +1103,7 @@ async function loadViews(): Promise<Map<string, ViewJSON>> {
 		if (ok && moved) ok = await renameViewKey(sourceId, row.id, folderPropKey(hintPath), newKey);
 		if (ok && moved) {
 			const copied = await select<{ id: string }>(`SELECT id FROM folders WHERE id = ?1`, [hint]);
-			if (copied.length === 0) {
-				remapAll(hint!, row.id);
-				if (folderIdSource(hint!) === sourceId)
-					await invoke('rekey_folder_frontmatter', {
-						id: sourceId,
-						oldDir: hintPath,
-						newDir: newPath
-					}).catch(() => {});
-			}
+			if (copied.length === 0) remapAll(hint!, row.id);
 		}
 		const live = all.get(json.id)!;
 		all.set(json.id, { ...live, unit: row.id, accessed_at: new Date(row.accessed_at) });
@@ -1298,6 +1312,18 @@ class View {
 				(t) => view.fields.find((f) => f.type === t)!.id
 			);
 			view.faces = [ViewFace.create('list', ids)];
+		} else if (unitId === ANNOTATION) {
+			const id = (type: ViewFieldType) => view.fields.find((f) => f.type === type)!.id;
+			const [quote, color, page] = builtin.display;
+			view.faces = [
+				ViewFace.create(
+					'list',
+					[id('title'), quote, color, id('folder'), page],
+					undefined,
+					[{ field_id: id('updated_at'), direction: 'desc', nulls: 'last' }],
+					{ right: [id('folder'), page] }
+				)
+			];
 		} else if (builtin) {
 			const title = view.fields.find((f) => f.type === 'title')!.id;
 			const [done, ...rest] = builtin.display;
@@ -1565,7 +1591,7 @@ class View {
 		const orderBy = sort.length ? compileSort(sort, this.fields) : '';
 
 		let sql = `SELECT d.id, d.title, d.rel_path, d.created_at, d.updated_at, d.deleted_at, d.properties, d.source_id,
-				${WRITES_META_SQL} AS writes_meta
+				d.document_type
 			FROM documents d
 			WHERE ${this.liveClause()}${compiled.sql ? ` AND ${compiled.sql}` : ''}${idsClause}`;
 

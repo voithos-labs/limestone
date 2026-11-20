@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { reportError, type ReportError } from '#lib/overlays.svelte.js';
-	import type DocHandle from '#lib/models/DocHandle.js';
+	import type Doc from '#lib/models/Doc.js';
 	import View from '#lib/models/View.svelte.js';
 	import type { ViewField, MemberRow } from '#lib/models/View.svelte.js';
 	import {
+		ANNOTATION,
 		BUILTIN_UNITS,
 		isBuiltinUnit,
+		isReadOnlyField,
 		isDerived,
 		describeBulkFailure
 	} from '#lib/models/View.svelte.js';
@@ -27,7 +29,7 @@
 		onCount,
 		onError = reportError
 	}: {
-		handle: DocHandle;
+		handle: Doc;
 		open?: boolean;
 		inline?: boolean;
 		onCount?: (n: number) => void;
@@ -58,8 +60,11 @@
 			const found: Entry[] = [];
 			let hit: MemberRow | null = null;
 			for (const view of views) {
-				if (view.unit === 'tag:todo') continue; // the hero's todo card draws these
-				const own = view.unit && isBuiltinUnit(view.unit) ? view.fields : view.ownFields;
+				if (view.unit === 'tag:todo' || view.unit === ANNOTATION) continue; // the hero's todo card and the note's passage card draw these
+				const own =
+					view.unit && isBuiltinUnit(view.unit)
+						? view.fields.filter((f) => f.unit === view.unit)
+						: view.ownFields;
 				const fields = own.filter((f) => !isDerived(f.type));
 				if (fields.length === 0) continue;
 				const members = (await view.getMembers({ ids_in: [handle.id] })) as MemberRow[];
@@ -126,7 +131,7 @@
 	}
 
 	function onCellClick(e: MouseEvent, view: View, field: ViewField) {
-		if (!row) return;
+		if (!row || isReadOnlyField(field)) return;
 		if (field.type === 'boolean') {
 			const cur = rawStatefulValue(row, field);
 			writeCell(view, field, cur === true ? false : true);

@@ -1,7 +1,19 @@
+<script module lang="ts">
+	/** where the thumb's track starts, in px from the scroller's top (a caller can pass its own) */
+	export const TRACK_START = 34;
+	const TRACK_END_INSET = 8;
+
+	/** how long the thumb's track is, 0 when there's nothing to scroll. the annotation ticks use
+	 * it to line up with the thumb */
+	export function trackLength(view: number, content: number, start = TRACK_START): number {
+		return content > view ? Math.max(0, view - start - TRACK_END_INSET) : 0;
+	}
+</script>
+
 <script lang="ts">
 	let {
 		scroller,
-		top = 34,
+		top = TRACK_START,
 		axis = 'y'
 	}: { scroller: HTMLElement | null | undefined; top?: number; axis?: 'x' | 'y' } = $props();
 
@@ -13,7 +25,6 @@
 
 	const THUMB_MAX_FRACTION = 1 / 5;
 	const THUMB_MIN_PX = 24;
-	const THUMB_INSET_PX = 8;
 
 	let thumbTop = $state(0);
 	let thumbHeight = $state(0);
@@ -27,8 +38,8 @@
 		const viewH = viewOf(el);
 		const contentH = contentOf(el);
 		const maxScroll = contentH - viewH;
-		const trackH = viewH - top - THUMB_INSET_PX;
-		if (maxScroll <= 0 || trackH <= 0) {
+		const trackH = trackLength(viewH, contentH, top);
+		if (trackH <= 0) {
 			show = false;
 			return;
 		}
@@ -70,9 +81,10 @@
 		const startY = vertical ? e.clientY : e.clientX;
 		const startScroll = posOf(el);
 		const viewH = viewOf(el);
-		const maxScroll = contentOf(el) - viewH;
-		const trackRange = viewH - top - THUMB_INSET_PX - thumbHeight;
-		if (trackRange <= 0 || maxScroll <= 0) return;
+		const contentH = contentOf(el);
+		const maxScroll = contentH - viewH;
+		const trackRange = trackLength(viewH, contentH, top) - thumbHeight;
+		if (trackRange <= 0) return;
 		const ratio = maxScroll / trackRange;
 
 		const onMove = (ev: PointerEvent) => {

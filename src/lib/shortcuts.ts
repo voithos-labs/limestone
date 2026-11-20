@@ -1,7 +1,7 @@
 import Session from '#lib/models/Session.svelte.js';
 import { palette } from '#lib/overlays.svelte.js';
 import type { SettingsState } from '#lib/models/Settings.svelte.js';
-import DocHandle from '#lib/models/DocHandle.js';
+import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import type { EditorInstance } from '@voithos-labs/aragonite';
 
 export interface Action {
@@ -185,7 +185,7 @@ export const actions: Action[] = [
 		category: 'documents',
 		defaultKeys: ['mod+n'],
 		run: async (session) => {
-			const doc = await DocHandle.createDraft();
+			const doc = await MarkdownHandle.createDraft();
 			if (doc) session.active.openDoc(doc);
 		}
 	},
@@ -231,8 +231,8 @@ export const actions: Action[] = [
 		id: 'nav.settings',
 		title: 'Open settings',
 		category: 'navigation',
-		// Not Mod+I: the editor uses it for italic, and a key the editor takes never reaches this
-		// handler while a document has focus. Any replacement has to be one the editor leaves alone.
+		// not Mod+I: the editor uses it for italic, and a key the editor takes never reaches this
+		// handler while a document has focus. any other key has to be one the editor leaves alone
 		defaultKeys: ['mod+,'],
 		run: (session) => {
 			session.activate(session.editors[0], true);
@@ -258,16 +258,17 @@ function activeSearchInput(): HTMLInputElement | null {
 }
 
 /**
- * Which keystrokes a focused document takes, so the app's window-level handler can leave them
- * alone. That handler captures and swallows what it takes, so without this the app quietly wins
- * every clash (Mod+I opened settings instead of italicizing).
+ * which keys a focused document takes, so the app's window-level handler can leave them alone.
+ * that handler captures and swallows what it takes, so without this the app quietly wins every
+ * clash (Mod+I opened settings instead of italicizing)
  */
 
 // ── The editors on screen ────────────────────────────────────────────────────
 
 const mounted = new Set<EditorInstance>();
 
-/** DocumentEditor registers its editor while it is on screen; the result unregisters it. */
+/** registers an editor while it's on screen, so editorTakesKey can ask it. DocumentEditor and
+ * pdf comments call it, and the result unregisters it */
 export function registerDocumentEditor(instance: EditorInstance): () => void {
 	mounted.add(instance);
 	return () => {
@@ -293,8 +294,8 @@ export function appEditorShortcut(e: KeyboardEvent): AppEditorShortcut | null {
 // ── The answer ───────────────────────────────────────────────────────────────
 
 /**
- * Whether a focused document takes this keystroke. The editor is asked about its own shortcuts
- * rather than the app keeping a copy of them, so the answer moves when the editor does.
+ * whether a focused document takes this keystroke. it asks the editor about its own shortcuts
+ * instead of keeping a copy of them, so the answer moves when the editor does
  */
 export function editorTakesKey(e: KeyboardEvent): boolean {
 	if (!inEditorContent(e)) return false;
@@ -308,17 +309,17 @@ export function editorTakesKey(e: KeyboardEvent): boolean {
 // ── Where the editor takes them ──────────────────────────────────────────────
 
 /**
- * Two of aragonite's own class names. Neither is promised API, but focus has to be tested against
- * something. `.editor` is depended on a second time, by the `EDITABLE` selector in `+page.svelte`.
+ * two of aragonite's own class names. neither is promised API, but focus has to be tested against
+ * something. `.editor` is also used by the `EDITABLE` selector in `+page.svelte`
  */
 const EDITOR_ROOT = '.editor';
 const EDITOR_HEADER = '.editor-header';
 
 /**
- * Whether focus is somewhere the editor handles shortcuts: inside its root but outside the header
- * the app draws there, so renaming a document in the title field keeps the app's shortcuts.
- * Narrower than `inEditable` on purpose: standing down in every text field would take these keys
- * from quick search, the settings pane and the view editors.
+ * whether focus is where the editor handles shortcuts: inside its root but outside the header the
+ * app draws there, so renaming a document in the title field keeps the app's shortcuts. narrower
+ * than `inEditable` on purpose: standing down in every text field would take these keys from
+ * quick search, the settings pane and the view editors
  */
 function inEditorContent(e: KeyboardEvent): boolean {
 	const target = e.target instanceof Element ? e.target : null;

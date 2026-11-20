@@ -1,6 +1,6 @@
 <script
 	lang="ts"
-	generics="F extends { id: string; slug: string; parentId?: string; repo?: boolean; writesMeta?: boolean; count?: number }"
+	generics="F extends { id: string; slug: string; parentId?: string; repo?: boolean; count?: number }"
 >
 	import {
 		Folder as FolderIcon,
@@ -11,8 +11,6 @@
 		ChevronRight,
 		Pencil,
 		ExternalLink,
-		FilePen,
-		FileLock,
 		Trash2,
 		SquareArrowOutUpRight
 	} from '@lucide/svelte';
@@ -21,7 +19,6 @@
 	import View, { listSavedViewJSON, saveViewJSON, type CoverArt } from '#lib/models/View.svelte.js';
 	import { history } from '#lib/views/FaceRows.svelte.js';
 	import { contextMenu, ctxMenu, type CtxEntry } from '#lib/overlays.svelte.js';
-	import { metaDialog } from '#lib/overlays.svelte.js';
 	import { folderNameProblem, nameGuard } from '#lib/util/paths.js';
 	import { mark } from '#lib/overlays.svelte.js';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
@@ -231,11 +228,6 @@
 			{ divider: true },
 			{ label: 'Rename', icon: Pencil, action: () => startRename(f) },
 			{ label: 'Reveal in file manager', icon: ExternalLink, action: () => reveal(f) },
-			{
-				label: 'Metadata…',
-				icon: f.writesMeta === false ? FileLock : FilePen,
-				action: () => metaDialog.show(f.id)
-			},
 			{ divider: true },
 			{
 				label: isProject ? 'Stop being a project' : 'Turn into project',

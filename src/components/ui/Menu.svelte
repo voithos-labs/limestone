@@ -14,6 +14,7 @@
 		onSelect,
 		onCreate,
 		minWidth = 160,
+		maxWidth,
 		searchable = false,
 		placeholder = 'Search…',
 		placement = 'bottom',
@@ -28,6 +29,7 @@
 		onSelect: (value: string) => void;
 		onCreate?: (query: string) => void;
 		minWidth?: number;
+		maxWidth?: number;
 		searchable?: boolean;
 		placeholder?: string;
 		placement?: 'bottom' | 'right';
@@ -191,6 +193,7 @@
 		style:top="{pos.top}px"
 		style:left="{pos.left}px"
 		style:min-width="{minWidth}px"
+		style:max-width={maxWidth ? `${maxWidth}px` : null}
 		role="menu"
 		tabindex="-1"
 	>

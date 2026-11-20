@@ -1,22 +1,20 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ChevronDown, Eye, EyeOff, Folder, GitBranch, LayoutPanelTop } from '@lucide/svelte';
+	import { ChevronDown, Eye, EyeOff, Folder, LayoutPanelTop } from '@lucide/svelte';
 	import { slide } from 'svelte/transition';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
 	import { documentDir, join } from '@tauri-apps/api/path';
 	import type Session from '#lib/models/Session.svelte.js';
 	import type { ThemeEntry } from '#lib/models/Session.svelte.js';
 	import {
-		containsGitRepo,
 		createSource,
 		isEmptyDir,
-		GIT_FRONTMATTER_OFF,
 		listDirs,
 		listSources,
 		makeDir,
 		setDefaultSource
 	} from '#lib/models/Source.js';
-	import { getSetting, SETTINGS_REGISTRY } from '#lib/models/Settings.svelte.js';
+	import { SETTINGS_REGISTRY } from '#lib/models/Settings.svelte.js';
 	import { describeError, type MenuEntry, type MenuItem } from '#lib/overlays.svelte.js';
 	import { seedWelcomeProject } from '#lib/views/welcome.js';
 	import Menu from '../ui/Menu.svelte';
@@ -33,9 +31,6 @@
 	let folderPath = $state('');
 	let noteLocation = $state('');
 	let assetLocation = $state('assets');
-	let useFrontmatter = $state(true);
-	let gitOff = $state(false);
-	let hasRepo = $state(false);
 	let moreOpen = $state(false);
 	let noteMenuOpen = $state(false);
 	let noteMenuAnchor: HTMLElement | null = $state(null);
@@ -73,7 +68,6 @@
 		const sources = await listSources().catch(() => null);
 		if (sources === null || sources.length > 0) return;
 		themes = await session.listThemes();
-		gitOff = (await getSetting<boolean>(GIT_FRONTMATTER_OFF).catch(() => null)) ?? true;
 		setFolder(await join(await documentDir(), 'notes').catch(() => ''));
 		open = true;
 	});
@@ -82,13 +76,7 @@
 		folderPath = path;
 		noteLocation = '';
 		assetLocation = 'assets';
-		hasRepo = false;
 		if (!path) return;
-		containsGitRepo(path)
-			.then((found) => {
-				if (folderPath === path) hasRepo = found;
-			})
-			.catch(() => {});
 		isEmptyDir(path)
 			.then((empty) => {
 				if (folderPath === path) sample = empty;
@@ -128,15 +116,10 @@
 		busy = true;
 		try {
 			const title = folderPath.split(/[\\/]/).filter(Boolean).pop() || 'Notes';
-			const source = await createSource(
-				folderPath,
-				title,
-				{
-					note_location: noteLocation.trim(),
-					asset_location: assetLocation.trim() || 'assets'
-				},
-				useFrontmatter ? null : false
-			);
+			const source = await createSource(folderPath, title, {
+				note_location: noteLocation.trim(),
+				asset_location: assetLocation.trim() || 'assets'
+			});
 			await setDefaultSource(source.id);
 			if (sample) session.active.openView(await seedWelcomeProject(source));
 			open = false;
@@ -180,30 +163,6 @@
 					<Folder size={14} />
 					<span class="folder-text">{folderPath || 'Choose folder…'}</span>
 				</button>
-			</div>
-
-			{#if useFrontmatter && gitOff && hasRepo}
-				<div class="card info" transition:slide={{ duration: 160 }}>
-					<GitBranch size={15} strokeWidth={1.75} />
-					<div class="card-text">
-						<span class="card-title">Git repo detected</span>
-						<span class="card-desc">
-							Based on your settings, files inside Git repos won't have metadata written to them.
-						</span>
-					</div>
-				</div>
-			{/if}
-
-			<div class="card">
-				<div class="card-text">
-					<span class="card-title">Store metadata in YAML frontmatter</span>
-					<span class="card-desc">
-						{useFrontmatter
-							? 'Only what you set is written: tags, fields and dates.'
-							: 'Files stay as they are. Text #tags work, properties need it on.'}
-					</span>
-				</div>
-				<Toggle bind:checked={useFrontmatter} />
 			</div>
 
 			{#if moreOpen}
@@ -479,18 +438,6 @@
 		padding: 10px 12px;
 		border-radius: 8px;
 		background: var(--chip-bg);
-	}
-
-	.card.info {
-		align-items: flex-start;
-		justify-content: flex-start;
-		gap: 10px;
-		color: var(--color-ui-muted);
-	}
-
-	.card.info > :global(svg) {
-		flex-shrink: 0;
-		margin-top: 2px;
 	}
 
 	.card-text {

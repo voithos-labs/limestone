@@ -5,7 +5,7 @@ import {
 	type Checkpoint,
 	type StateDelta
 } from '#lib/services/history.js';
-import type DocHandle from './DocHandle.js';
+import type MarkdownHandle from './MarkdownHandle.js';
 
 export interface HistoryVersion {
 	text: string;
@@ -13,7 +13,7 @@ export interface HistoryVersion {
 }
 
 export default class DocHistory {
-	readonly doc: DocHandle;
+	readonly doc: MarkdownHandle;
 	checkpoints = $state<Checkpoint[]>([]);
 	index = $state(0);
 	version = $state<HistoryVersion | null>(null);
@@ -21,7 +21,7 @@ export default class DocHistory {
 	private seq = 0;
 	private cache = new Map<string, HistoryVersion>();
 
-	constructor(doc: DocHandle) {
+	constructor(doc: MarkdownHandle) {
 		this.doc = doc;
 	}
 

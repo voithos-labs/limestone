@@ -1,3 +1,12 @@
+/**
+ * the #tags written in a note's text, and the # menu for typing them.
+ *
+ * wikilinks.ts teaches aragonite to draw each #tag as a widget. This file finds those same tags in
+ * the markdown, so the tag row at the top of a note can show them and a click can jump to where one
+ * is written. It also has the # menu, an aragonite inline menu (an `InlineMenuSource`) that the
+ * note editor adds, offering tags already in use as you type.
+ */
+
 import {
 	getContentRange,
 	isProseKind,
@@ -12,6 +21,8 @@ import { tagSlug } from '#lib/models/Tag.js';
 import { BODY_TAG_KIND, isTagOpening, isTagQuery } from './wikilinks';
 import { select } from '#lib/services/db.js';
 
+/* ------------------------- Tags written in a note ------------------------- */
+
 /**
  * The #tags written in a note's text, found the way the editor draws them: each is one of the
  * tag widgets recognizeTag opens, so a # in code, mid-word or in a link's address isn't one.
@@ -22,6 +33,8 @@ export interface BodyTag {
 	/** Every place it's written, in reading order: the block and the offset just after the tag. */
 	places: { path: number[]; end: number }[];
 }
+
+export type TagPlace = BodyTag['places'][number];
 
 export function bodyTags(markdown: string): BodyTag[] {
 	const bySlug = new Map<string, BodyTag>();
@@ -40,9 +53,14 @@ export function bodyTags(markdown: string): BodyTag[] {
 	return [...bySlug.values()];
 }
 
-export type TagPlace = BodyTag['places'][number];
+function tagNodes(nodes: InlineNode[]): InlineNode[] {
+	return nodes.flatMap((n) =>
+		n.kind === BODY_TAG_KIND ? [n] : n.children ? tagNodes(n.children) : []
+	);
+}
 
-// Each call for the same tag gives its next place in reading order, wrapping; another tag starts over
+// steps through where a tag is written, for clicks on the tag row: each call for the same tag
+// gives its next place in reading order, wrapping round, and another tag starts over
 export function createTagStepper(): (tags: BodyTag[], slug: string) => TagPlace | null {
 	let last = { slug: '', index: -1 };
 	return (tags, slug) => {
@@ -54,11 +72,7 @@ export function createTagStepper(): (tags: BodyTag[], slug: string) => TagPlace 
 	};
 }
 
-function tagNodes(nodes: InlineNode[]): InlineNode[] {
-	return nodes.flatMap((n) =>
-		n.kind === BODY_TAG_KIND ? [n] : n.children ? tagNodes(n.children) : []
-	);
-}
+/* ------------------------------- The # menu ------------------------------- */
 
 /**
  * The # menu: tags already used somewhere in the library, filtered as you type. A # opens it only

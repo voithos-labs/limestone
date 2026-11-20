@@ -7,10 +7,9 @@
 		isSourceRoot
 	} from '#lib/models/Folder.js';
 	import Tag, { tagId } from '#lib/models/Tag.js';
-	import { DELETED, isBuiltinUnit } from '#lib/models/View.svelte.js';
+	import { DELETED, isAssignedUnit, isBuiltinUnit } from '#lib/models/View.svelte.js';
 	import NewFolderDialog from '../dialogs/NewFolderDialog.svelte';
 	import { openProjectSetup } from '#lib/views/project.svelte.js';
-	import { metaDialog } from '#lib/overlays.svelte.js';
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { mark } from '#lib/overlays.svelte.js';
 	import { addSourceRequest } from '#lib/overlays.svelte.js';
@@ -21,7 +20,7 @@
 	import type { ViewFace, FilterLeaf, FilterNode } from '#lib/models/View.svelte.js';
 	import { listSavedViewJSON, unitDisplayName } from '#lib/models/View.svelte.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
-	import type { TabState } from '#lib/models/EditorState.svelte.js';
+	import { TabState } from '#lib/models/EditorState.svelte.js';
 	import { foldersHidden, type SettingsState } from '#lib/models/Settings.svelte.js';
 	import {
 		listSources,
@@ -34,7 +33,7 @@
 	import type { GoneAction } from './GoneActions.svelte';
 	import catBox from '#assets/art/cat-box.txt?raw';
 	import SourceDialog from '../dialogs/SourceDialog.svelte';
-	import DocHandle from '#lib/models/DocHandle.js';
+	import Doc from '#lib/models/Doc.js';
 	import ViewHeader from '../views/ViewHeader.svelte';
 	import JournalFace from '../views/faces/JournalFace.svelte';
 	import ListFace from '../views/faces/ListFace.svelte';
@@ -64,8 +63,6 @@
 		Pencil,
 		ExternalLink,
 		Bookmark,
-		FileLock,
-		FilePen,
 		Settings,
 		SquareCheck,
 		Eye,
@@ -537,21 +534,12 @@
 		history.clear();
 	});
 
-	// the folder under a folder project, for its per-folder metadata switch (the folder page's
-	// own menu carries the same one); re-read whenever the menu opens so it's never stale
-	let unitFolder: Folder | null = $state(null);
-	$effect(() => {
-		if (!moreOpen || unitKind !== 'folder' || !view.unit) return;
-		Folder.fromID(view.unit)
-			.then((f) => (unitFolder = f))
-			.catch(() => (unitFolder = null));
-	});
-
 	let newFolderOpen = $state(false);
 	let fabEl: HTMLButtonElement | null = $state(null);
 
 	const fabItems = $derived.by(() => {
 		const todo = { value: 'new-todo', label: 'New todo', icon: SquareCheck };
+		if (view.unit && isAssignedUnit(view.unit)) return [];
 		if (view.unit && isBuiltinUnit(view.unit)) return [todo];
 		const items = [{ value: 'new-note', label: 'New note', icon: FilePlus }, todo];
 		if (unitKind === 'folder' && !foldersHidden())
@@ -602,13 +590,6 @@
 			}
 			if (unitKind === 'folder') {
 				items.push({ value: 'reveal', label: 'Reveal in file manager', icon: ExternalLink });
-				if (unitFolder)
-					items.push({
-						value: 'meta',
-						label: 'Metadata…',
-						icon: unitFolder.writesMeta ? FilePen : FileLock,
-						hint: unitFolder.writesMeta ? 'On' : 'Off'
-					});
 			}
 			items.push({ kind: 'divider' });
 			items.push(...cover);
@@ -759,7 +740,6 @@
 		if (value === 'rename') header?.focusTitle();
 		if (value === 'configure') configureSource();
 		if (value === 'reveal') revealUnit();
-		if (value === 'meta' && view.unit) metaDialog.show(view.unit);
 		if (value === 'project' && view.unit)
 			openProjectSetup(editor, { id: view.unit, name: view.slug }, tab);
 		if (value === 'unproject') unproject();
@@ -784,9 +764,9 @@
 	}
 
 	function onOpenRow(rowId: string, newTab: boolean | 'side' = false) {
-		DocHandle.fromID(rowId)
+		Doc.load(rowId)
 			.then((d) => {
-				const content = { type: 'markdown', handle: d } as const;
+				const content = TabState.docContent(d);
 				if (newTab === 'side') editor.beside().openDetail(content, view.slug);
 				else if (newTab || !tab) editor.openDoc(d);
 				else if (editor.peer) editor.peer.openDetail(content, view.slug);
@@ -935,7 +915,7 @@
 
 		<ScrollThumb scroller={bodyEl} top={20} />
 
-		{#if showNewFab && !docked}
+		{#if showNewFab && !docked && fabItems.length}
 			<NewFab items={fabItems} onSelect={onFabSelect} bind:el={fabEl} />
 		{/if}
 	{/if}

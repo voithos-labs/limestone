@@ -1,0 +1,356 @@
+<script lang="ts">
+	/**
+	 * a citation, drawn as a card inside a note.
+	 *
+	 * It finds the annotation note the citation names and shows its passage (a quote or a crop) and
+	 * its comment, kept current as that note changes. Clicking it opens the pdf at the annotation.
+	 * A citation naming no annotation note shows as plain text.
+	 */
+
+	/* -------------------------------------------------------------------------- */
+	/*                                  Imports                                   */
+	/* -------------------------------------------------------------------------- */
+
+	import { invoke } from '@tauri-apps/api/core';
+	import { Pin } from '@lucide/svelte';
+	import { imeOwnsKey, type InlineWidgetComponentProps } from '@voithos-labs/aragonite/plugin';
+	import { select } from '#lib/services/db.js';
+	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
+	import { onSelfWrite, onSourceReconciled } from '#lib/models/Source.js';
+	import { linkIndex, resolveAmong, targetStem } from '#lib/services/links.svelte.js';
+	import {
+		ANNOTATION_PATH,
+		annotationComment,
+		parseAnnotationTitle,
+		readAnnotation,
+		type AnnotationFields
+	} from '#lib/pdf/annotation.js';
+	import { parseExcerpt, type Excerpt } from '#lib/pdf/citation.js';
+	import { editionDate } from '#lib/pdf/edition.js';
+	import { annotationRgb } from '../pdf/colors';
+	import AnnotationPassage from '../pdf/AnnotationPassage.svelte';
+	import Comment from '../pdf/Comment.svelte';
+	import { IN_CARD_PLUGINS } from './editor-plugins';
+	import PdfIcon from '../ui/PdfIcon.svelte';
+	import { OPEN_ANNOTATION_EVENT, type OpenAnnotationDetail } from './citation-embeds';
+
+	/* -------------------------------------------------------------------------- */
+	/*                                   Props                                    */
+	/* -------------------------------------------------------------------------- */
+
+	/** A citation of a PDF annotation, drawn as its quote or region with the shared comment. */
+	let { source, isActivationClick, getPresentationMode }: InlineWidgetComponentProps = $props();
+
+	/* -------------------------------------------------------------------------- */
+	/*                        Finding the annotation note                         */
+	/* -------------------------------------------------------------------------- */
+
+	interface Found {
+		id: string;
+		sourceId: string;
+		relPath: string;
+		fields: AnnotationFields;
+		comment: string;
+		pdfTitle: string | null;
+		editionDay: string | null;
+	}
+
+	// Read once: the widget remounts on any source change.
+	// svelte-ignore state_referenced_locally
+	const target = source.slice(3, -2).split('|')[0].trim();
+	// svelte-ignore state_referenced_locally
+	const excerpt = parseExcerpt(source.slice(3, -2));
+
+	let el: HTMLElement | null = $state(null);
+	let found = $state.raw<Found | null>(excerpt?.quote ? excerptAs(excerpt) : null);
+	let missing = $state(false);
+	let reread = $state(0);
+
+	$effect(() => {
+		void linkIndex.version;
+		void reread;
+		const node = el;
+		if (!node) return;
+		const here = node.closest('[data-source-id]')?.getAttribute('data-source-id') ?? '';
+		let live = true;
+		resolve(here)
+			.then((hit) => {
+				if (!live) return;
+				found = hit;
+				missing = hit === null;
+			})
+			.catch(() => {
+				// a read caught mid-write keeps what was shown
+				if (live && !found) missing = true;
+			});
+		return () => {
+			live = false;
+		};
+	});
+
+	$effect(() => {
+		const offReconciled = onSourceReconciled(() => reread++);
+		const offWrite = onSelfWrite((sourceId, relPath) => {
+			const was = found;
+			if (was ? sourceId === was.sourceId && relPath === was.relPath : namesTarget(relPath)) {
+				reread++;
+			}
+		});
+		return () => {
+			offReconciled();
+			offWrite();
+		};
+	});
+
+	async function resolveExcerpt(e: Excerpt, here: string): Promise<Found | null> {
+		const rows = await select<{ id: string; source_id: string; rel_path: string; title: string }>(
+			`SELECT id, source_id, rel_path, title FROM documents
+			 WHERE document_type = 'pdf' AND lower(title) = lower(?1) AND deleted_at IS NULL`,
+			[e.pdfTitle]
+		);
+		const row = rows.find((r) => r.source_id === here) ?? rows[0];
+		return row ? excerptAs(e, row) : null;
+	}
+
+	function excerptAs(
+		e: Excerpt,
+		pdf?: { id: string; source_id: string; rel_path: string; title: string }
+	): Found {
+		return {
+			id: '',
+			sourceId: pdf?.source_id ?? '',
+			relPath: pdf?.rel_path ?? '',
+			fields: {
+				pdf: pdf?.id ?? '',
+				page: e.page,
+				kind: e.quote || !e.rect ? 'highlight' : 'region',
+				color: 'accent',
+				rects: e.rect ? [e.rect] : [],
+				quote: e.quote
+			},
+			comment: '',
+			pdfTitle: pdf?.title ?? e.pdfTitle,
+			editionDay: null
+		};
+	}
+
+	async function resolve(here: string): Promise<Found | null> {
+		if (excerpt) return resolveExcerpt(excerpt, here);
+		const rows = await select<{ id: string; source_id: string; rel_path: string }>(
+			`SELECT id, source_id, rel_path FROM documents
+			 WHERE lower(title) = lower(?1) AND deleted_at IS NULL
+			   AND json_extract(properties, '${ANNOTATION_PATH}.pdf') IS NOT NULL`,
+			[targetStem(target)]
+		);
+		const local = rows.filter((r) => r.source_id === here);
+		const hit = resolveAmong(target, local) ?? resolveAmong(target, rows);
+		const row = rows.find((r) => r.id === hit?.id);
+		if (!row) return null;
+		const raw = await invoke<string>('read_document', {
+			sourceId: row.source_id,
+			relPath: row.rel_path
+		});
+		const { frontmatter, body } = MarkdownHandle.deserialize(raw);
+		const read = frontmatter && readAnnotation(frontmatter);
+		if (!read) return null;
+		const [pdf] = await select<{ title: string; source_id: string }>(
+			'SELECT title, source_id FROM documents WHERE id = ?1 AND deleted_at IS NULL',
+			[read.pdf]
+		);
+		return {
+			id: row.id,
+			sourceId: row.source_id,
+			relPath: row.rel_path,
+			fields: read,
+			comment: annotationComment(body),
+			pdfTitle: pdf?.title ?? null,
+			editionDay: pdf && read.edition ? await editionDate(pdf.source_id, read.edition) : null
+		};
+	}
+
+	function namesTarget(relPath: string): boolean {
+		const name = relPath.slice(relPath.lastIndexOf('/') + 1).replace(/\.md$/i, '');
+		return name.toLowerCase() === targetStem(target).toLowerCase();
+	}
+
+	/* -------------------------------------------------------------------------- */
+	/*                            What the card shows                             */
+	/* -------------------------------------------------------------------------- */
+
+	const named = parseAnnotationTitle(target);
+	const fields = $derived(found?.fields);
+	const pdfTitle = $derived(found?.pdfTitle || excerpt?.pdfTitle || named?.pdfTitle || target);
+	const page = $derived(fields?.page ?? excerpt?.page ?? named?.page);
+
+	/* -------------------------------------------------------------------------- */
+	/*                              Opening the PDF                               */
+	/* -------------------------------------------------------------------------- */
+
+	const EXCERPT_LEAD = 0.08;
+	const reading = $derived(getPresentationMode() === 'reading');
+
+	function open(): void {
+		if (!found?.fields.pdf || !el) return;
+		const detail: OpenAnnotationDetail = {
+			pdf: found.fields.pdf,
+			id: found.id,
+			place: excerpt
+				? { page: excerpt.page, offset: Math.max(0, (excerpt.rect?.[1] ?? 0) - EXCERPT_LEAD) }
+				: undefined
+		};
+		el.dispatchEvent(new CustomEvent(OPEN_ANNOTATION_EVENT, { bubbles: true, detail }));
+	}
+
+	function onClick(e: MouseEvent): void {
+		if (!isActivationClick(e) || !(e.target as Element).closest('.head')) return;
+		e.preventDefault();
+		open();
+	}
+
+	function onKeydown(e: KeyboardEvent): void {
+		if (imeOwnsKey(e)) return;
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			e.stopPropagation();
+			open();
+		}
+	}
+</script>
+
+{#if missing}
+	<span
+		bind:this={el}
+		class="unresolved"
+		title={excerpt ? "This PDF wasn't found" : 'No annotation note has this title'}>{source}</span
+	>
+{:else}
+	<span
+		bind:this={el}
+		class="card"
+		class:excerpt
+		role="link"
+		aria-label="{pdfTitle}, page {page}"
+		tabindex={reading ? 0 : undefined}
+		style:--ann={fields ? annotationRgb(fields) : undefined}
+		onclick={onClick}
+		onkeydown={onKeydown}
+	>
+		<span class="head">
+			<PdfIcon size={12} />
+			<span class="pdf">{pdfTitle}</span><span>· p. {page}</span>
+			{#if found?.editionDay}
+				<span class="edition" title="Pinned to the edition added {found.editionDay}">
+					<Pin size={10} strokeWidth={2} />{found.editionDay}
+				</span>
+			{/if}
+		</span>
+		{#if fields}<AnnotationPassage annotation={fields} />{/if}
+		{#if found?.comment}
+			<span class="rule"></span>
+			<!-- read only: the whole card is one link to the passage -->
+			<span class="comment"><Comment text={found.comment} plugins={IN_CARD_PLUGINS} /></span>
+		{/if}
+	</span>
+{/if}
+
+<style>
+	/* -------------------------------- The card -------------------------------- */
+
+	.card {
+		display: inline-flex;
+		flex-direction: column;
+		gap: 10px;
+		box-sizing: border-box;
+		width: 100%;
+		padding: 12px 14px;
+		border-radius: 8px;
+		background: var(--chip-bg);
+		font-family: var(--font-ui);
+		vertical-align: top;
+		cursor: text;
+	}
+
+	:global([data-inline-widget]):has(> .card) {
+		display: inline-block;
+		width: 100%;
+		vertical-align: top;
+	}
+
+	:global([data-inline-widget]):has(> .card)::after {
+		border-radius: 8px;
+	}
+
+	/* -------------------------------- Its head -------------------------------- */
+
+	.head {
+		align-self: flex-start;
+		max-width: 100%;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		font-size: 0.75em;
+		line-height: 1.5;
+		color: var(--color-ui-muted);
+	}
+
+	.head:hover {
+		color: var(--color-text-primary);
+	}
+
+	.head :global(svg) {
+		flex-shrink: 0;
+	}
+
+	.pdf {
+		overflow: hidden;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.edition {
+		display: inline-flex;
+		flex-shrink: 0;
+		align-items: center;
+		gap: 4px;
+		height: 20px;
+		margin-left: auto;
+		padding: 0 7px;
+		border-radius: 999px;
+		background: var(--chip-bg);
+		font-family: var(--font-mono);
+		font-size: 0.875em;
+	}
+
+	/* ------------------------------ The comment ------------------------------- */
+
+	.rule {
+		display: block;
+		height: 1px;
+		background: var(--color-border);
+	}
+
+	.comment {
+		display: block;
+		font-size: 0.84375em;
+		line-height: 1.5;
+		color: var(--color-text-secondary);
+		text-wrap: pretty;
+		pointer-events: none;
+	}
+
+	/* ---------------------- A title naming no annotation ---------------------- */
+
+	.card.excerpt :global(.mark) {
+		background: none;
+	}
+
+	.unresolved {
+		color: var(--color-ui-dulled);
+		font-family: var(--font-mono);
+		font-size: 0.85em;
+	}
+</style>

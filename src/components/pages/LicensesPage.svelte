@@ -6,7 +6,7 @@
 	import { openUrl } from '@tauri-apps/plugin-opener';
 
 	interface NoticeComponent {
-		ecosystem: 'rust' | 'npm';
+		ecosystem: 'rust' | 'npm' | 'vendored';
 		name: string;
 		version: string;
 		license: string | null;
@@ -21,7 +21,7 @@
 	}
 
 	interface Notices {
-		counts: { rust: number; npm: number; texts: number };
+		counts: { rust: number; npm: number; vendored: number; texts: number };
 		components: NoticeComponent[];
 		texts: Record<string, NoticeText>;
 	}
@@ -68,7 +68,8 @@
 	});
 
 	let rustCount = $derived(filtered.filter((c) => c.ecosystem === 'rust').length);
-	let npmCount = $derived(filtered.length - rustCount);
+	let npmCount = $derived(filtered.filter((c) => c.ecosystem === 'npm').length);
+	let vendoredCount = $derived(filtered.length - rustCount - npmCount);
 
 	function toggle(c: NoticeComponent) {
 		const k = key(c);
@@ -114,7 +115,8 @@ P'   MM   `7   MM                               MM                              
 				<h1 class="title">Open source licenses</h1>
 				{#if notices}
 					<span class="counts">
-						{notices.counts.rust} crates · {notices.counts.npm} packages
+						{notices.counts.rust} crates · {notices.counts.npm} packages · {notices.counts.vendored}
+						vendored
 					</span>
 				{/if}
 			</div>
@@ -143,7 +145,7 @@ P'   MM   `7   MM                               MM                              
 						{filtered.length}
 						{filtered.length === 1 ? 'match' : 'matches'}
 						{#if filtered.length}
-							<span class="dim">({rustCount} rust, {npmCount} npm)</span>
+							<span class="dim">({rustCount} rust, {npmCount} npm, {vendoredCount} vendored)</span>
 						{/if}
 					</p>
 				{/if}

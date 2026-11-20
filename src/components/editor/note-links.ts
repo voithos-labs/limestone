@@ -1,3 +1,11 @@
+/**
+ * the [[ menu, for linking to another note or to one of its headings.
+ *
+ * It's an aragonite inline menu (an `InlineMenuSource`) that the note editor adds. Typing [[ in a
+ * note lists the vault's notes by title, [[Note# lists that note's headings, and a bare [[# lists
+ * this note's own. Each pick is written by writeWikiLink, so it reads back as the same wikilink.
+ */
+
 import {
 	getContentRange,
 	parse,
@@ -7,9 +15,13 @@ import {
 import { headingLevel, walkBlocks } from '@voithos-labs/aragonite/plugin';
 import { headingFragment, linkTargets, resolveWikiLink } from '#lib/services/links.svelte.js';
 import { readTextFile } from '@tauri-apps/plugin-fs';
-import DocHandle from '#lib/models/DocHandle.js';
+import MarkdownHandle from '#lib/models/MarkdownHandle.js';
 import { searchTitles } from '#lib/services/search.js';
 import { LINK_OPEN, writeWikiLink } from './wikilinks';
+
+/* -------------------------------------------------------------------------- */
+/*                             A note's headings                              */
+/* -------------------------------------------------------------------------- */
 
 /**
  * A note's headings as link fragments, and which one a fragment names. The [[Note# menu lists
@@ -48,15 +60,9 @@ export function findHeading(markdown: string, fragment: string): NoteHeading | n
 	);
 }
 
-/**
- * The [[ menu: notes in this vault by title, and after [[Note# that note's headings (a bare [[#
- * lists this note's own). A pick writes the link through writeWikiLink, so what lands always
- * reads back as the same wikilink.
- */
-
-export const NOTE_LINK_MENU = 'limestone-note-links';
-
-const MAX_ROWS = 20;
+/* -------------------------------------------------------------------------- */
+/*                                The [[ menu                                 */
+/* -------------------------------------------------------------------------- */
 
 export interface NoteLinkMenuDeps {
 	/** The vault the open note lives in, or null while none is loaded. */
@@ -67,13 +73,17 @@ export interface NoteLinkMenuDeps {
 	currentText(): string;
 }
 
+export const NOTE_LINK_MENU = 'limestone-note-links';
+
+const MAX_ROWS = 20;
+
 export function noteLinkMenu(deps: NoteLinkMenuDeps): InlineMenuSource {
 	return {
 		name: NOTE_LINK_MENU,
 		trigger: LINK_OPEN,
 		// ![[ is an image embed, not a link to a note
 		opensAt: (raw, pos) => raw[pos - 1] !== '!',
-		// ] is the link closed by hand and | starts an alias; [ is a byte no link can hold
+		// closes on ] (the link closed by hand), | (an alias starts) or [ (no link holds one)
 		accepts: (query) => !/[[\]|\n]/.test(query),
 		items: async ({ query, signal }) => {
 			const vault = deps.vault();
@@ -88,7 +98,7 @@ export function noteLinkMenu(deps: NoteLinkMenuDeps): InlineMenuSource {
 	};
 }
 
-// ── Notes ───────────────────────────────────────────────────────────────────────────
+/* ---------------------------- Notes, after [[ ----------------------------- */
 
 async function noteRows(
 	vaultId: string,
@@ -112,7 +122,7 @@ async function noteRows(
 	});
 }
 
-// ── Headings ────────────────────────────────────────────────────────────────────────
+/* ------------------------ Headings, after [[Note# ------------------------- */
 
 async function headingRows(
 	vault: { id: string; path: string },
@@ -143,17 +153,17 @@ async function headingRows(
 	return rows;
 }
 
-// The note the link part names, found the way a click on the finished link would find it
+// the note named before the #, found the same way clicking the finished link would find it
 async function otherNote(
 	vault: { id: string; path: string },
 	note: string
 ): Promise<{ target: string; text: string } | null> {
 	const hit = await resolveWikiLink(vault.id, note);
-	if (!hit) return null;
+	if (!hit || !/\.md$/i.test(hit.rel_path)) return null;
 	try {
 		const raw = await readTextFile(`${vault.path}/${hit.rel_path}`);
 		const target = (await linkTargets(vault.id, [hit])).get(hit.id) ?? note;
-		return { target, text: DocHandle.stripFence(raw) };
+		return { target, text: MarkdownHandle.stripFence(raw) };
 	} catch {
 		return null;
 	}
