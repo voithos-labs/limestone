@@ -71,6 +71,7 @@ export const toasts = new ToastController();
 export interface UndoHint {
 	label: string;
 	run: () => unknown;
+	placed?: boolean;
 }
 
 const UNDO_HINT_MS = 3000;
@@ -80,9 +81,9 @@ class UndoHintController {
 	visible = $state(false);
 	private timer: ReturnType<typeof setTimeout> | null = null;
 
-	show(label: string, run: () => unknown): void {
+	show(label: string, run: () => unknown, placed = false): void {
 		this.hide();
-		this.current = { label, run };
+		this.current = { label, run, placed };
 		this.visible = true;
 		this.timer = setTimeout(() => this.hide(), UNDO_HINT_MS);
 	}

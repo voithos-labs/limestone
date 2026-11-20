@@ -123,6 +123,7 @@
 
 	// pdf components (dock, page, ink menu, margin, digest, scroll track, header chips and switch)
 	import PdfDock, { toolForKey, type PdfTool } from './PdfDock.svelte';
+	import UndoHint from '../overlays/UndoHint.svelte';
 	import InkTray, { modeForKey, type InkMode } from './InkTray.svelte';
 	import PageMarks from './PageMarks.svelte';
 	import InkMenu from './InkMenu.svelte';
@@ -1105,7 +1106,9 @@
 	/* -------------------------------------------------------------------------- */
 
 	let tool: PdfTool = $state('select');
-	let color: AnnotationColor = $state('accent');
+	let color: AnnotationColor = $state(
+		ANNOTATION_COLORS.find((c) => c === untrack(() => tab.state.color)) ?? 'accent'
+	);
 	const canAnnotate = $derived(!viewing);
 	let activeId: string | null = $state(null);
 	let editingId: string | null = $state(null);
@@ -1368,7 +1371,7 @@
 
 	function offerUndo(label: string) {
 		offered = () => walk(false);
-		undoHint.show(label, offered);
+		undoHint.show(label, offered, true);
 	}
 
 	/** Makes a change, then records it. */
@@ -1499,6 +1502,7 @@
 
 	async function pickColor(c: AnnotationColor) {
 		color = c;
+		tab.state.color = c;
 		if (!canAnnotate) return;
 		try {
 			if (selected.length) {
@@ -2008,6 +2012,12 @@
 
 <!-- -------------- Snippets handed to the dock and the hero --------------- -->
 
+{#snippet undoPill()}
+	{#if paneActive && editor?.session}
+		<UndoHint settings={editor.session.settings} inline />
+	{/if}
+{/snippet}
+
 {#snippet inkTray()}
 	<InkTray bind:width={inkWidth} bind:mode={inkMode} />
 {/snippet}
@@ -2302,6 +2312,7 @@
 				tab.state.dark = darkChoice;
 			}}
 			tray={placing ? placeHint : tool === 'ink' ? inkTray : undefined}
+			hint={undoPill}
 		/>
 	{/if}
 	{#if !flow}

@@ -46,7 +46,8 @@
 		onZoom,
 		onGoToPage,
 		onToggleDark,
-		tray
+		tray,
+		hint
 	}: {
 		tool?: PdfTool;
 		/** The page in view, counted from 1. */
@@ -68,6 +69,7 @@
 		onToggleDark: () => void;
 		/** Options for the current tool, stacked above the dock. */
 		tray?: Snippet;
+		hint?: Snippet;
 	} = $props();
 
 	let popOpen: 'color' | 'zoom' | null = $state(null);
@@ -89,6 +91,7 @@
 <svelte:window onpointerdowncapture={onWindowPointer} />
 
 <div class="dock-stack">
+	{@render hint?.()}
 	{@render tray?.()}
 	<div
 		class="dock"

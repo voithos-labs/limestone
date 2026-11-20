@@ -3,10 +3,12 @@
 	import type { SettingsState } from '#lib/models/Settings.svelte.js';
 	import { keyTokens } from '#lib/shortcuts.js';
 
-	let { settings }: { settings: SettingsState } = $props();
+	let { settings, inline = false }: { settings: SettingsState; inline?: boolean } = $props();
 
 	const hint = $derived(
-		settings.get<boolean>('general.action_hints') === false || !undoHint.visible
+		settings.get<boolean>('general.action_hints') === false ||
+			!undoHint.visible ||
+			!!undoHint.current?.placed !== inline
 			? null
 			: undoHint.current
 	);
@@ -14,7 +16,7 @@
 	const keys = /^\W$/.test(tokens[0]) ? tokens.join('') : tokens.join('+');
 
 	function onKeydown(e: KeyboardEvent) {
-		if (!undoHint.current) return;
+		if (inline || !undoHint.current) return;
 		if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'z') return;
 		const a = document.activeElement as HTMLElement | null;
 		if (a && (a.matches('input, textarea, select') || a.isContentEditable || a.closest('.editor')))
@@ -28,7 +30,7 @@
 <svelte:window onkeydowncapture={onKeydown} />
 
 {#if hint}
-	<div class="undo-hint">
+	<div class="undo-hint" class:inline>
 		<span class="undo-label">{hint.label}</span>
 		<button class="undo-btn" type="button" onclick={() => undoHint.fire()}>
 			Undo <kbd>{keys}</kbd>
@@ -53,6 +55,10 @@
 		font-size: 12.5px;
 		box-shadow: var(--menu-shadow);
 		white-space: nowrap;
+	}
+
+	.undo-hint.inline {
+		position: static;
 	}
 
 	.undo-label {

@@ -155,42 +155,52 @@
 		</div>
 	</div>
 	{#if !editing}
-		<div class="tools">
-			{#if coloring}
-				{#each ANNOTATION_COLORS as c (c)}
-					<button
-						type="button"
-						title={c}
-						onclick={() => {
-							coloring = false;
-							actions.onColor(a, c);
-						}}
-					>
-						<span class="dot" class:accent={c === 'accent'} style:--ann={ANNOTATION_RGB[c]}></span>
-					</button>
-				{/each}
-			{:else}
-				<button type="button" title="Change color" onclick={() => (coloring = true)}>
+		<div class="tools" class:open={coloring}>
+			<span class="pop-slot">
+				{#if coloring}
+					<div class="pop">
+						{#each ANNOTATION_COLORS as c (c)}
+							<button
+								class:on={c === (a.strokes?.[0]?.color ?? a.color)}
+								type="button"
+								title={c}
+								onclick={() => {
+									coloring = false;
+									actions.onColor(a, c);
+								}}
+							>
+								<span class="dot" class:accent={c === 'accent'} style:--ann={ANNOTATION_RGB[c]}
+								></span>
+							</button>
+						{/each}
+					</div>
+				{/if}
+				<button
+					class:on={coloring}
+					type="button"
+					title="Color"
+					onclick={() => (coloring = !coloring)}
+				>
 					<span class="dot"></span>
 				</button>
-				<button
-					type="button"
-					title="Copy citation, or drag the card into a note"
-					onclick={() => actions.onCite(a)}
-				>
-					<Quote size={13} strokeWidth={1.75} />
-				</button>
-				<button type="button" title="Copy link" onclick={() => actions.onLink(a)}>
-					<Link size={13} strokeWidth={1.75} />
-				</button>
-				<button
-					type="button"
-					title="More"
-					onclick={(e) => actions.onMore(a, e.currentTarget as HTMLElement)}
-				>
-					<Ellipsis size={13} strokeWidth={1.75} />
-				</button>
-			{/if}
+			</span>
+			<button
+				type="button"
+				title="Copy citation, or drag the card into a note"
+				onclick={() => actions.onCite(a)}
+			>
+				<Quote size={13} strokeWidth={1.75} />
+			</button>
+			<button type="button" title="Copy link" onclick={() => actions.onLink(a)}>
+				<Link size={13} strokeWidth={1.75} />
+			</button>
+			<button
+				type="button"
+				title="More"
+				onclick={(e) => actions.onMore(a, e.currentTarget as HTMLElement)}
+			>
+				<Ellipsis size={13} strokeWidth={1.75} />
+			</button>
 		</div>
 	{/if}
 </div>
@@ -318,7 +328,8 @@
 	}
 
 	.note:hover .tools,
-	.note.active .tools {
+	.note.active .tools,
+	.tools.open {
 		opacity: 1;
 		pointer-events: auto;
 	}
@@ -357,6 +368,28 @@
 		translate: -50% -50%;
 	}
 
+	.pop-slot {
+		position: relative;
+		display: flex;
+	}
+
+	.pop {
+		position: absolute;
+		top: calc(100% + 8px);
+		left: 50%;
+		z-index: 3;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 2px;
+		border: 1px solid var(--color-border);
+		border-radius: 7px;
+		background: var(--color-bg);
+		box-shadow: var(--menu-shadow);
+		translate: -50% 0;
+	}
+
+	.tools button.on,
 	.tools button:hover {
 		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
