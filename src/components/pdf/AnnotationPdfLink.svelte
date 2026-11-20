@@ -5,7 +5,7 @@
 	 * It says which pdf and page the note marks, and clicking it opens the pdf at that annotation.
 	 */
 
-	import { ArrowUpRight } from '@lucide/svelte';
+	import { ArrowUpRight, Pen, SquareDashed } from '@lucide/svelte';
 	import { select } from '#lib/services/db.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import { reportError } from '#lib/overlays.svelte.js';
@@ -47,9 +47,14 @@
 </script>
 
 {#if annotation && pdfTitle}
-	<span class="sep"></span>
 	<button class="source" type="button" title="Open {pdfTitle} at this passage" onclick={open}>
-		<PdfIcon size={12} />
+		{#if annotation.kind === 'ink'}
+			<Pen size={12} strokeWidth={1.75} />
+		{:else if annotation.kind === 'region'}
+			<SquareDashed size={12} strokeWidth={1.75} />
+		{:else}
+			<PdfIcon size={12} />
+		{/if}
 		<span class="name">{pdfTitle}</span>
 		<span class="page">· p. {annotation.page}</span>
 		<ArrowUpRight size={12} />
@@ -57,31 +62,22 @@
 {/if}
 
 <style>
-	.sep {
-		flex-shrink: 0;
-		width: 1px;
-		height: 16px;
-		margin: 0 4px;
-		background: var(--color-border);
-	}
-
 	.source {
 		display: inline-flex;
+		align-self: flex-start;
 		align-items: center;
 		gap: 5px;
 		max-width: 100%;
-		height: 24px;
-		padding: 0 8px;
+		padding: 0;
 		border: 0;
-		border-radius: 6px;
-		background: var(--chip-bg);
-		color: var(--color-text-secondary);
-		font: inherit;
+		background: transparent;
+		color: var(--color-ui-muted);
+		font-family: var(--font-ui);
+		font-size: 12px;
 		cursor: pointer;
 	}
 
 	.source:hover {
-		background: var(--chip-bg-hover);
 		color: var(--color-text-primary);
 	}
 
@@ -92,7 +88,6 @@
 	}
 
 	.page {
-		color: var(--color-ui-muted);
 		flex-shrink: 0;
 	}
 </style>

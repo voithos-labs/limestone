@@ -131,7 +131,6 @@ class MarkdownHandle extends Doc {
 		properties: Record<string, unknown> = {},
 		id = uuidv4()
 	): Promise<MarkdownHandle> {
-
 		// insert new doc stub
 		await execute(
 			`INSERT INTO documents (id, source_id, rel_path, title, properties)
@@ -414,6 +413,7 @@ class MarkdownHandle extends Doc {
 		opts: {
 			rebuildFrontmatter?: boolean;
 			unit?: { key: string; values: Record<string, unknown> };
+			dropUnit?: string;
 		} = {}
 	): Promise<void> {
 		await this.refreshMetaFromDisk(); // this is hmm possibly not needed
@@ -424,8 +424,16 @@ class MarkdownHandle extends Doc {
 				views: { ...views, [opts.unit.key]: opts.unit.values }
 			};
 		}
+		if (opts.dropUnit) {
+			const { [opts.dropUnit]: _dropped, ...views } = (this.properties.views ?? {}) as Record<
+				string,
+				unknown
+			>;
+			const { views: _views, ...rest } = this.properties;
+			this.properties = Object.keys(views).length ? { ...rest, views } : rest;
+		}
 		this.updatedAt = new Date();
-		const rebuild = !!opts.rebuildFrontmatter;
+		const rebuild = !!opts.rebuildFrontmatter || !!opts.dropUnit;
 		const mtime = await invoke<number>('write_document', {
 			sourceId: this.source.id,
 			relPath: this._relPath,

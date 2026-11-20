@@ -6,12 +6,12 @@
 	 * crop. Citation cards use it, and so does an annotation note, above its comment.
 	 */
 
-	import { runOn, type AnnotationFields } from '#lib/pdf/annotation.js';
+	import { leadIn, runOn, type AnnotationFields } from '#lib/pdf/annotation.js';
 	import { annotationRgb } from './colors.js';
 	import AnnotationCrop from './AnnotationCrop.svelte';
 
 	/** What an annotation marks: a highlight's quote running on into its text, or a box's crop. */
-	let { annotation }: { annotation: AnnotationFields } = $props();
+	let { annotation, lead = false }: { annotation: AnnotationFields; lead?: boolean } = $props();
 
 	// a tall box narrows until it fits, so a crop never outgrows the text around it
 	const CROP_MAX_HEIGHT = 320;
@@ -20,10 +20,10 @@
 {#if annotation.kind !== 'highlight'}
 	<AnnotationCrop {annotation} maxHeight={CROP_MAX_HEIGHT} />
 {:else if annotation.quote}
-	<span class="quote" style:--ann={annotationRgb(annotation)}
-		><span class="mark">{annotation.quote}</span>{annotation.suffix
-			? runOn(annotation.suffix)
-			: ''}</span
+	<span class="quote" class:lead style:--ann={annotationRgb(annotation)}
+		>{lead && annotation.prefix ? leadIn(annotation.prefix) : ''}<span class="mark"
+			>{annotation.quote}</span
+		>{annotation.suffix ? runOn(annotation.suffix) : ''}</span
 	>
 {/if}
 
@@ -37,7 +37,12 @@
 		text-wrap: pretty;
 	}
 
+	.quote.lead {
+		color: var(--color-ui-dulled);
+	}
+
 	.mark {
+		color: var(--color-text-primary);
 		padding: 1px 0;
 		border-radius: 2px;
 		background: rgb(var(--ann) / 0.28);

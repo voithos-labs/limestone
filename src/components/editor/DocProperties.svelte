@@ -4,6 +4,7 @@
 	import View from '#lib/models/View.svelte.js';
 	import type { ViewField, MemberRow } from '#lib/models/View.svelte.js';
 	import {
+		ANNOTATION,
 		BUILTIN_UNITS,
 		isBuiltinUnit,
 		isReadOnlyField,
@@ -59,7 +60,7 @@
 			const found: Entry[] = [];
 			let hit: MemberRow | null = null;
 			for (const view of views) {
-				if (view.unit === 'tag:todo') continue; // the hero's todo card draws these
+				if (view.unit === 'tag:todo' || view.unit === ANNOTATION) continue; // the hero's todo card draws these
 				const own =
 					view.unit && isBuiltinUnit(view.unit)
 						? view.fields.filter((f) => f.unit === view.unit)

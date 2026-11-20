@@ -6,7 +6,7 @@
 	import type { AnyDoc } from '#lib/models/Doc.js';
 	import { sourceName, listSources, type Source } from '#lib/models/Source.js';
 	import Folder, { folderId, folderIdPath, folderIdSource } from '#lib/models/Folder.js';
-	import { listSavedViewJSON } from '#lib/models/View.svelte.js';
+	import { isAssignedUnit, listSavedViewJSON } from '#lib/models/View.svelte.js';
 	import { foldersHidden } from '#lib/models/Settings.svelte.js';
 	import type Tag from '#lib/models/Tag.js';
 	import { tagId } from '#lib/models/Tag.js';
@@ -62,6 +62,7 @@
 		textTags = [],
 		onTextTag,
 		onRemoveTextTag,
+		onUntag,
 		onEnter,
 		onError = reportError,
 		extra
@@ -83,6 +84,7 @@
 		textTags?: { slug: string; places: unknown[] }[];
 		onTextTag?: (slug: string) => void;
 		onRemoveTextTag?: (slug: string) => Promise<void>;
+		onUntag?: (tag: Tag) => unknown;
 		onEnter?: () => void;
 		onError?: ReportError;
 		/** extra items for the end of the meta row, like a pdf's edition chip */
@@ -146,7 +148,15 @@
 		}
 	}
 
+	let confirmingId: string | null = $state(null);
+
+	function askToggle(tag: Tag) {
+		if (isAssignedUnit(tag.id) && tagList.some((t) => t.id === tag.id)) confirmingId = tag.id;
+		else void toggleTag(tag);
+	}
+
 	async function toggleTag(tag: Tag) {
+		confirmingId = null;
 		const inText = textTagPlaces.has(tag.id);
 		const has = tagList.some((t) => t.id === tag.id);
 		if (inText) {
@@ -163,6 +173,7 @@
 			await handle.setTags(next.map((t) => t.slug));
 			tagList = handle.tags;
 			tagsSaved++;
+			if (has) await onUntag?.(tag);
 		} catch (e) {
 			tagList = handle.tags;
 			onError(e, "Tags couldn't be saved.", () => toggleTag(tag));
@@ -672,21 +683,42 @@
 				>
 					{#each chipTags as t (t.id)}
 						{@const TagIcon = tagIcon(t.id)}
-						<span class="tag">
-							<TagIcon size={11} />{t.slug}
-							<button
-								class="tag-x"
-								type="button"
-								tabindex="-1"
-								aria-label="Remove {t.slug}"
-								onclick={(e) => {
-									e.stopPropagation();
-									void toggleTag(t);
-								}}
+						{#if confirmingId === t.id}
+							<span
+								class="tag confirm"
+								role="presentation"
+								onclick={(e) => e.stopPropagation()}
+								onpointerleave={() => (confirmingId = null)}
 							>
-								<X size={9} strokeWidth={2.5} />
-							</button>
-						</span>
+								<TagIcon size={11} />{t.slug}
+								<button class="tag-yes" type="button" onclick={() => toggleTag(t)}>Confirm</button>
+								<button
+									class="tag-x"
+									type="button"
+									tabindex="-1"
+									aria-label="Keep {t.slug}"
+									onclick={() => (confirmingId = null)}
+								>
+									<X size={9} strokeWidth={2.5} />
+								</button>
+							</span>
+						{:else}
+							<span class="tag">
+								<TagIcon size={11} />{t.slug}
+								<button
+									class="tag-x"
+									type="button"
+									tabindex="-1"
+									aria-label="Remove {t.slug}"
+									onclick={(e) => {
+										e.stopPropagation();
+										askToggle(t);
+									}}
+								>
+									<X size={9} strokeWidth={2.5} />
+								</button>
+							</span>
+						{/if}
 					{/each}
 					{#if !chipTags.length}
 						<span class="add-tags"><Plus size={11} />tag</span>
@@ -751,7 +783,7 @@
 	anchor={tagAnchor}
 	selectedIds={[...tagList.map((t) => t.id), ...textTagPlaces.keys()]}
 	inText={textTagPlaces}
-	onToggle={toggleTag}
+	onToggle={askToggle}
 	onCreate={createTag}
 	onMutated={tagsMutated}
 	builtinAddOnly
@@ -1200,6 +1232,27 @@
 		color: inherit;
 		opacity: 0.55;
 		cursor: pointer;
+	}
+
+	.tag.confirm {
+		gap: 5px;
+		color: var(--color-text-primary);
+	}
+
+	.tag-yes {
+		height: 18px;
+		padding: 0 7px;
+		border: none;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--error-fg);
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.tag-yes:hover {
+		background: rgba(127, 127, 127, 0.2);
 	}
 
 	.tag-x:hover {

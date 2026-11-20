@@ -57,7 +57,8 @@
 	import { joinRel } from '#lib/services/links.svelte.js';
 	import { registerFlush } from '#lib/services/platform.js';
 	import { currentThemeType } from '#lib/services/theme.svelte.js';
-	import { readAnnotation } from '#lib/pdf/annotation.js';
+	import { ANNOTATION_KEY, readAnnotation } from '#lib/pdf/annotation.js';
+	import { ANNOTATION } from '#lib/models/View.svelte.js';
 	import { appEditorShortcut, registerDocumentEditor } from '#lib/shortcuts.js';
 	import { portal } from '#lib/util/dom.js';
 
@@ -77,6 +78,7 @@
 	import GonePage from '../pages/GonePage.svelte';
 	import AnnotationPdfLink from '../pdf/AnnotationPdfLink.svelte';
 	import AnnotationPassage from '../pdf/AnnotationPassage.svelte';
+	import { annotationRgb } from '../pdf/colors.js';
 	import { type GoneAction } from '../pages/GoneActions.svelte';
 	import DocumentHero from './DocumentHero.svelte';
 	import DocNotices from './DocNotices.svelte';
@@ -429,7 +431,9 @@
 
 	const unregisterFlush = registerFlush(() => flushSave());
 
-	function flushSave(opts: { body?: string; rebuildFrontmatter?: boolean } = {}) {
+	function flushSave(
+		opts: { body?: string; rebuildFrontmatter?: boolean; dropUnit?: string } = {}
+	) {
 		if (saveTimer) {
 			clearTimeout(saveTimer);
 			saveTimer = null;
@@ -442,7 +446,12 @@
 		pendingEditor = null;
 		// A frontmatter rebuild writes even an unchanged body: the repair is in the part of the file
 		// the editor never holds.
-		if (!handle || body === null || (body === savedBody && !opts.rebuildFrontmatter)) return;
+		if (
+			!handle ||
+			body === null ||
+			(body === savedBody && !opts.rebuildFrontmatter && !opts.dropUnit)
+		)
+			return;
 		// savedBody moves only once the write lands: setting it earlier would mark a failed save as
 		// saved, and the next attempt would be skipped as a no-op
 		const write: Promise<void> = handle
@@ -523,6 +532,14 @@
 	 * or drop it. either way a fresh frontmatter is written, then the file is read back so the
 	 * warning clears on what's really on disk
 	 */
+	let annotationDropped = $state(false);
+
+	async function dropAnnotation(tag: { id: string }) {
+		if (tag.id !== ANNOTATION || !handle || !readAnnotation(handle.properties)) return;
+		await flushSave({ dropUnit: ANNOTATION_KEY });
+		annotationDropped = true;
+	}
+
 	async function fixFrontmatter(mode: 'keep' | 'rebuild') {
 		const h = handle;
 		if (!h || !instance) return;
@@ -1156,15 +1173,19 @@
 
 <!-- ------------------ Snippets that make up the header ------------------- -->
 
-{#snippet annotationSource()}
-	{#if handle}<AnnotationPdfLink noteId={handle.id} properties={handle.properties} {editor} />{/if}
-{/snippet}
-
 <!-- an annotation note's body is just its comment, so the passage it marks shows above it -->
 {#snippet annotationPassage()}
-	{@const annotation = handle && readAnnotation(handle.properties)}
+	{@const annotation = handle && !annotationDropped && readAnnotation(handle.properties)}
 	{#if annotation}
-		<div class="annotation-passage"><div class="card"><AnnotationPassage {annotation} /></div></div>
+		<div class="annotation-passage">
+			<div class="card" style:--ann={annotationRgb(annotation)}>
+				<span class="bar"></span>
+				<div class="marked">
+					<AnnotationPdfLink noteId={handle.id} properties={handle.properties} {editor} />
+					<AnnotationPassage {annotation} lead />
+				</div>
+			</div>
+		</div>
 	{/if}
 {/snippet}
 
@@ -1186,9 +1207,9 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onUntag={dropAnnotation}
 			onEnter={focusStart}
 			onError={reportProblem}
-			extra={annotationSource}
 		/>
 		{@render docNotices()}
 		{@render annotationPassage()}
@@ -1232,9 +1253,9 @@
 			{textTags}
 			onTextTag={findTextTag}
 			onRemoveTextTag={removeTextTag}
+			onUntag={dropAnnotation}
 			onEnter={focusStart}
 			onError={reportProblem}
-			extra={annotationSource}
 		/>
 		{@render docNotices()}
 		{@render annotationPassage()}
@@ -1292,9 +1313,26 @@
 	}
 
 	.annotation-passage .card {
-		padding: 12px 14px;
+		display: flex;
+		gap: 12px;
+		padding: 12px 14px 12px 12px;
 		border-radius: 8px;
 		background: var(--chip-bg);
+	}
+
+	.annotation-passage .bar {
+		flex-shrink: 0;
+		width: 3px;
+		border-radius: 2px;
+		background: rgb(var(--ann));
+	}
+
+	.annotation-passage .marked {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		gap: 6px;
+		min-width: 0;
 	}
 
 	/* ---------------------- When the note can't be read ----------------------- */
