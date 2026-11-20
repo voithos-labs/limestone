@@ -12,6 +12,8 @@
 
 	import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 	import { rectsOn, type AnnotationFields, type PageRect } from '#lib/pdf/annotation.js';
+	import { convertFileSrc } from '@tauri-apps/api/core';
+	import { importGlobalAssetBytes } from '#lib/services/assets.js';
 	import { renderCrop, unionRect } from '#lib/pdf/crop.js';
 	import { strokePath } from '#lib/pdf/ink.js';
 	import { scrollParent } from '#lib/util/dom.js';
@@ -54,70 +56,83 @@
 
 	// how far outside the scroller's view a crop starts drawing, so it's there when it scrolls in
 	const NEAR = '600px 0px';
+	const THUMB_WIDTH = 1200;
+	const THUMB_MAX_HEIGHT = 1800;
 
-	// The full-width box is what's measured; the canvas inside can come out narrower when
-	// maxHeight bites, and the frame hugging it keeps the ink overlay on the drawing. Nothing is
-	// drawn until the box nears the view, and a drawing it leaves unfinished is dropped.
-	function draw(box: HTMLElement) {
-		const canvas = box.querySelector('canvas')!;
-		const shared = doc;
-		let controller: AbortController | null = null;
-		let drawing = false;
-		let drawnWidth = 0;
-		let near = false;
-		const redraw = () => {
-			const r = rect;
-			const width = Math.floor(box.clientWidth);
-			if (!near || !r || width <= 0 || width === drawnWidth) return;
-			drawnWidth = width;
-			controller?.abort();
-			const signal = (controller = new AbortController()).signal;
-			drawing = true;
-			renderCrop(canvas, {
-				pdf: annotation.pdf,
-				edition: annotation.edition,
-				page: annotation.page,
-				rect: r,
-				width,
-				maxHeight,
-				signal,
-				doc: shared
-			})
-				.catch(() => {
-					if (!signal.aborted) drawnWidth = 0;
-				})
-				.finally(() => {
-					if (!signal.aborted) drawing = false;
-				});
-		};
-		const ro = new ResizeObserver(redraw);
-		ro.observe(box);
+	const key = $derived(
+		rect &&
+			`pdf-thumb:${annotation.pdf}:${annotation.edition ?? ''}:${annotation.page}:${[rect[0], rect[1], rect[2], rect[3]].map((n) => Math.round(n * 10000))}`
+	);
+	let failed: string | null = $state(null);
+	const thumb = $derived(key && key !== failed ? stored(key) : null);
+
+	function stored(k: string): string | null {
+		try {
+			return localStorage.getItem(k);
+		} catch {
+			return null;
+		}
+	}
+
+	async function keep(canvas: HTMLCanvasElement, k: string) {
+		const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, 'image/png'));
+		if (!blob) return;
+		const name = await importGlobalAssetBytes(await blob.arrayBuffer(), 'png');
+		localStorage.setItem(k, name);
+	}
+
+	function draw(canvas: HTMLCanvasElement) {
+		const r = rect;
+		const k = key;
+		if (!r || !k) return;
+		const controller = new AbortController();
+		let started = false;
 		const io = new IntersectionObserver(
 			([entry]) => {
-				near = entry.isIntersecting;
-				if (near) redraw();
-				else if (drawing) {
-					controller?.abort();
-					drawing = false;
-					drawnWidth = 0;
-				}
+				if (!entry.isIntersecting || started) return;
+				started = true;
+				renderCrop(canvas, {
+					pdf: annotation.pdf,
+					edition: annotation.edition,
+					page: annotation.page,
+					rect: r,
+					width: THUMB_WIDTH,
+					maxHeight: THUMB_MAX_HEIGHT,
+					signal: controller.signal,
+					doc
+				})
+					.then(() => {
+						canvas.style.width = canvas.style.height = '';
+						return keep(canvas, k);
+					})
+					.catch(() => {
+						if (!controller.signal.aborted) started = false;
+					});
 			},
-			{ root: scrollParent(box), rootMargin: NEAR }
+			{ root: scrollParent(canvas), rootMargin: NEAR }
 		);
-		io.observe(box);
+		io.observe(canvas);
 		return () => {
-			ro.disconnect();
 			io.disconnect();
-			controller?.abort();
+			controller.abort();
 		};
 	}
 </script>
 
 {#if rect}
 	{#key `${annotation.pdf} ${annotation.page} ${rect.join()}`}
-		<span class="crop" {@attach draw}>
+		<span class="crop" style:--crop-max={maxHeight ? `${maxHeight}px` : 'none'}>
 			<span class="frame">
-				<canvas width="0" height="0"></canvas>
+				{#if thumb}
+					<img
+						src={convertFileSrc(thumb, 'appasset')}
+						alt=""
+						loading="lazy"
+						onerror={() => (failed = key)}
+					/>
+				{:else}
+					<canvas width="1" height="1" {@attach draw}></canvas>
+				{/if}
 				{#if annotation.strokes?.length}
 					<svg viewBox={rect.join(' ')} preserveAspectRatio="none" aria-hidden="true">
 						{#each annotation.strokes as s, i (i)}
@@ -143,9 +158,13 @@
 		vertical-align: top;
 	}
 
-	canvas {
+	canvas,
+	img {
 		display: block;
+		width: auto;
+		height: auto;
 		max-width: 100%;
+		max-height: var(--crop-max);
 		border-radius: var(--crop-radius, 5px);
 	}
 

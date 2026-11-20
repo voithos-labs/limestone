@@ -12,7 +12,7 @@
 	/* -------------------------------------------------------------------------- */
 
 	import { invoke } from '@tauri-apps/api/core';
-	import { Pen, Pin, SquareDashed } from '@lucide/svelte';
+	import { Pin } from '@lucide/svelte';
 	import { imeOwnsKey, type InlineWidgetComponentProps } from '@voithos-labs/aragonite/plugin';
 	import { select } from '#lib/services/db.js';
 	import MarkdownHandle from '#lib/models/MarkdownHandle.js';
@@ -25,6 +25,7 @@
 		readAnnotation,
 		type AnnotationFields
 	} from '#lib/pdf/annotation.js';
+	import { parseExcerpt, type Excerpt } from '#lib/pdf/citation.js';
 	import { editionDate } from '#lib/pdf/edition.js';
 	import { annotationRgb } from '../pdf/colors';
 	import AnnotationPassage from '../pdf/AnnotationPassage.svelte';
@@ -57,9 +58,11 @@
 	// Read once: the widget remounts on any source change.
 	// svelte-ignore state_referenced_locally
 	const target = source.slice(3, -2).split('|')[0].trim();
+	// svelte-ignore state_referenced_locally
+	const excerpt = parseExcerpt(source.slice(3, -2));
 
 	let el: HTMLElement | null = $state(null);
-	let found = $state.raw<Found | null>(null);
+	let found = $state.raw<Found | null>(excerpt?.quote ? excerptAs(excerpt) : null);
 	let missing = $state(false);
 	let reread = $state(0);
 
@@ -99,7 +102,40 @@
 		};
 	});
 
+	async function resolveExcerpt(e: Excerpt, here: string): Promise<Found | null> {
+		const rows = await select<{ id: string; source_id: string; rel_path: string; title: string }>(
+			`SELECT id, source_id, rel_path, title FROM documents
+			 WHERE document_type = 'pdf' AND lower(title) = lower(?1) AND deleted_at IS NULL`,
+			[e.pdfTitle]
+		);
+		const row = rows.find((r) => r.source_id === here) ?? rows[0];
+		return row ? excerptAs(e, row) : null;
+	}
+
+	function excerptAs(
+		e: Excerpt,
+		pdf?: { id: string; source_id: string; rel_path: string; title: string }
+	): Found {
+		return {
+			id: '',
+			sourceId: pdf?.source_id ?? '',
+			relPath: pdf?.rel_path ?? '',
+			fields: {
+				pdf: pdf?.id ?? '',
+				page: e.page,
+				kind: e.quote || !e.rect ? 'highlight' : 'region',
+				color: 'accent',
+				rects: e.rect ? [e.rect] : [],
+				quote: e.quote
+			},
+			comment: '',
+			pdfTitle: pdf?.title ?? e.pdfTitle,
+			editionDay: null
+		};
+	}
+
 	async function resolve(here: string): Promise<Found | null> {
+		if (excerpt) return resolveExcerpt(excerpt, here);
 		const rows = await select<{ id: string; source_id: string; rel_path: string }>(
 			`SELECT id, source_id, rel_path FROM documents
 			 WHERE lower(title) = lower(?1) AND deleted_at IS NULL
@@ -143,23 +179,30 @@
 
 	const named = parseAnnotationTitle(target);
 	const fields = $derived(found?.fields);
-	const pdfTitle = $derived(found?.pdfTitle || named?.pdfTitle || target);
-	const page = $derived(fields?.page ?? named?.page);
+	const pdfTitle = $derived(found?.pdfTitle || excerpt?.pdfTitle || named?.pdfTitle || target);
+	const page = $derived(fields?.page ?? excerpt?.page ?? named?.page);
 
 	/* -------------------------------------------------------------------------- */
 	/*                              Opening the PDF                               */
 	/* -------------------------------------------------------------------------- */
 
+	const EXCERPT_LEAD = 0.08;
 	const reading = $derived(getPresentationMode() === 'reading');
 
 	function open(): void {
-		if (!found || !el) return;
-		const detail: OpenAnnotationDetail = { pdf: found.fields.pdf, id: found.id };
+		if (!found?.fields.pdf || !el) return;
+		const detail: OpenAnnotationDetail = {
+			pdf: found.fields.pdf,
+			id: found.id,
+			place: excerpt
+				? { page: excerpt.page, offset: Math.max(0, (excerpt.rect?.[1] ?? 0) - EXCERPT_LEAD) }
+				: undefined
+		};
 		el.dispatchEvent(new CustomEvent(OPEN_ANNOTATION_EVENT, { bubbles: true, detail }));
 	}
 
 	function onClick(e: MouseEvent): void {
-		if (!isActivationClick(e)) return;
+		if (!isActivationClick(e) || !(e.target as Element).closest('.head')) return;
 		e.preventDefault();
 		open();
 	}
@@ -175,11 +218,16 @@
 </script>
 
 {#if missing}
-	<span bind:this={el} class="unresolved" title="No annotation note has this title">{source}</span>
+	<span
+		bind:this={el}
+		class="unresolved"
+		title={excerpt ? "This PDF wasn't found" : 'No annotation note has this title'}>{source}</span
+	>
 {:else}
 	<span
 		bind:this={el}
 		class="card"
+		class:excerpt
 		role="link"
 		aria-label="{pdfTitle}, page {page}"
 		tabindex={reading ? 0 : undefined}
@@ -188,13 +236,7 @@
 		onkeydown={onKeydown}
 	>
 		<span class="head">
-			{#if fields?.kind === 'ink'}
-				<Pen size={12} strokeWidth={1.75} />
-			{:else if fields?.kind === 'region'}
-				<SquareDashed size={12} strokeWidth={1.75} />
-			{:else}
-				<PdfIcon size={12} />
-			{/if}
+			<PdfIcon size={12} />
 			<span class="pdf">{pdfTitle}</span><span>· p. {page}</span>
 			{#if found?.editionDay}
 				<span class="edition" title="Pinned to the edition added {found.editionDay}">
@@ -202,7 +244,18 @@
 				</span>
 			{/if}
 		</span>
-		{#if fields}<AnnotationPassage annotation={fields} />{/if}
+		{#if fields?.kind === 'highlight'}
+			<span
+				class="text"
+				role="presentation"
+				onpointerdown={(e) => e.stopPropagation()}
+				onmousedown={(e) => e.stopPropagation()}
+			>
+				<AnnotationPassage annotation={fields} />
+			</span>
+		{:else if fields}
+			<AnnotationPassage annotation={fields} />
+		{/if}
 		{#if found?.comment}
 			<span class="rule"></span>
 			<!-- read only: the whole card is one link to the passage -->
@@ -225,16 +278,31 @@
 		background: var(--chip-bg);
 		font-family: var(--font-ui);
 		vertical-align: top;
-		cursor: pointer;
+		cursor: text;
 	}
 
-	.card:hover {
-		background: var(--chip-bg-hover);
+	:global([data-inline-widget]):has(> .card) {
+		display: inline-block;
+		width: 100%;
+		vertical-align: top;
+	}
+
+	:global([data-inline-widget]):has(> .card)::after {
+		border-radius: 8px;
+	}
+
+	.text {
+		cursor: text;
+		user-select: text;
+		-webkit-user-select: text;
 	}
 
 	/* -------------------------------- Its head -------------------------------- */
 
 	.head {
+		align-self: flex-start;
+		max-width: 100%;
+		cursor: pointer;
 		display: flex;
 		align-items: center;
 		gap: 6px;
@@ -242,6 +310,10 @@
 		font-size: 0.75em;
 		line-height: 1.5;
 		color: var(--color-ui-muted);
+	}
+
+	.head:hover {
+		color: var(--color-text-primary);
 	}
 
 	.head :global(svg) {
@@ -288,6 +360,10 @@
 	}
 
 	/* ---------------------- A title naming no annotation ---------------------- */
+
+	.card.excerpt :global(.mark) {
+		background: none;
+	}
 
 	.unresolved {
 		color: var(--color-ui-dulled);

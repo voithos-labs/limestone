@@ -19,6 +19,7 @@ import CitationCard from './CitationCard.svelte';
 import { isImageTarget, OPEN } from './image-embeds';
 import { recognizeWikiLink } from './wikilinks';
 import { parseAnnotationTitle } from '#lib/pdf/annotation.js';
+import { parseExcerpt } from '#lib/pdf/citation.js';
 
 /* ------------------- Recognizing and drawing citations -------------------- */
 
@@ -72,6 +73,10 @@ export function recognizeAnnotationEmbed(
 	if (!link) return null;
 	if (link.end < end && raw[link.end] === '(') return null;
 	const target = link.inner.split('|')[0].trim();
+	const excerpt = parseExcerpt(link.inner);
+	if (excerpt) {
+		return { start: pos, end: link.end, target, pdfTitle: excerpt.pdfTitle, page: excerpt.page };
+	}
 	const title = parseAnnotationTitle(target);
 	if (!title || isImageTarget(target)) return null;
 	return { start: pos, end: link.end, target, ...title };
@@ -83,6 +88,7 @@ export interface OpenAnnotationDetail {
 	pdf: string;
 	/** The annotation note's document id. */
 	id: string;
+	place?: { page: number; offset: number };
 }
 
 /** Asks the document's editor to open a PDF at one of its annotations. */

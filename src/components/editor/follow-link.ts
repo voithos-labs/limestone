@@ -16,7 +16,7 @@ import { TabState } from '#lib/models/EditorState.svelte.js';
 import { resolveWikiLink, targetStem, touchLinkIndex } from '#lib/services/links.svelte.js';
 import type { Source } from '#lib/models/Source.js';
 import { reportError } from '#lib/overlays.svelte.js';
-import { openAtAnnotation } from '#lib/pdf/citation.js';
+import { openAtAnnotation, openAtPlace } from '#lib/pdf/citation.js';
 import { ACTIVATE_EVENT, type ActivateDetail } from './wikilinks';
 import { OPEN_ANNOTATION_EVENT, type OpenAnnotationDetail } from './citation-embeds';
 
@@ -36,9 +36,11 @@ export function followLinks(
 		const openAnnotation = (e: Event) => {
 			const ed = editor();
 			if (!ed) return;
-			openAtAnnotation(ed, (e as CustomEvent<OpenAnnotationDetail>).detail).catch((err) =>
-				reportError(err, "The PDF couldn't be opened.")
-			);
+			const detail = (e as CustomEvent<OpenAnnotationDetail>).detail;
+			const opening = detail.place
+				? openAtPlace(ed, detail.pdf, detail.place)
+				: openAtAnnotation(ed, detail);
+			opening.catch((err) => reportError(err, "The PDF couldn't be opened."));
 		};
 		el.addEventListener(ACTIVATE_EVENT, activate);
 		el.addEventListener(OPEN_ANNOTATION_EVENT, openAnnotation);

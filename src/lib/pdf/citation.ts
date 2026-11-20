@@ -12,6 +12,8 @@ import { select } from '#lib/services/db.js';
 import { stripExt } from '#lib/services/links.svelte.js';
 import Doc from '#lib/models/Doc.js';
 import type EditorState from '#lib/models/EditorState.svelte.js';
+import type { TabState } from '#lib/models/EditorState.svelte.js';
+import type { PageRect } from './annotation.js';
 
 /* ---------------------------- Embeds and links ---------------------------- */
 
@@ -46,6 +48,45 @@ export async function copyLink(title: string): Promise<void> {
 	toasts.push('Link copied', { variant: 'info' });
 }
 
+export interface Excerpt {
+	pdfTitle: string;
+	page: number;
+	rect: PageRect | null;
+	quote: string;
+}
+
+const EXCERPT = /^(.+)\.pdf#page=(\d+)(?:&rect=([\d.]+),([\d.]+),([\d.]+),([\d.]+))?$/i;
+const EXCERPT_QUOTE_MAX = 300;
+
+export function excerptEmbed(e: Excerpt): string {
+	const at = e.rect
+		? `&rect=${[e.rect[0], e.rect[1], e.rect[2], e.rect[3]].map((n) => Math.round(n * 10000) / 10000)}`
+		: '';
+	const quote = e.quote
+		.replace(/[[\]|\s]+/g, ' ')
+		.trim()
+		.slice(0, EXCERPT_QUOTE_MAX);
+	return `![[${e.pdfTitle}.pdf#page=${e.page}${at}${quote ? `|${quote}` : ''}]]`;
+}
+
+export function parseExcerpt(inner: string): Excerpt | null {
+	const [target, ...alias] = inner.split('|');
+	const m = EXCERPT.exec(target.trim());
+	if (!m) return null;
+	const rect = m[3] ? (m.slice(3, 7).map(Number) as unknown as PageRect) : null;
+	return { pdfTitle: m[1], page: Number(m[2]), rect, quote: alias.join('|').trim() };
+}
+
+export async function copyExcerpt(e: Excerpt): Promise<void> {
+	const embed = excerptEmbed(e);
+	await navigator.clipboard.writeText(embed);
+	toasts.push('Citation copied: paste into any note.', {
+		variant: 'info',
+		timeout: 6000,
+		code: embed
+	});
+}
+
 /* ------------------------ Opening at an annotation ------------------------ */
 
 /** Tab state that asks a PDF viewer to land on one annotation once it opens. */
@@ -53,12 +94,36 @@ export const OPEN_AT_ANNOTATION = 'open_at_annotation';
 
 export const OPEN_AT_PAGE = 'open_at_page';
 
+export const OPEN_AT_PLACE = 'open_at_place';
+
+export async function openAtPlace(
+	editor: EditorState,
+	pdf: string,
+	place: { page: number; offset: number }
+): Promise<void> {
+	openPdf(editor, await Doc.load(pdf), { [OPEN_AT_PLACE]: place });
+}
+
+function openPdf(
+	editor: EditorState,
+	doc: Awaited<ReturnType<typeof Doc.load>>,
+	state: Record<string, unknown>
+): void {
+	const holds = (t: { content: TabState['content'] } | undefined) =>
+		t?.content.type === 'pdf' && t.content.handle.id === doc.id;
+	const others = (editor.session?.editors ?? []).filter((e) => e !== editor);
+	const shown = others.map((e) => e.focusedTab).find(holds);
+	if (shown) return void Object.assign(shown.state, state);
+	const beside = editor.tabs.some(holds) ? undefined : others.find((e) => e.tabs.some(holds));
+	(beside ?? editor).openDoc(doc, state);
+}
+
 /** Opens the PDF, or its open tab, at one of its annotations. */
 export async function openAtAnnotation(
 	editor: EditorState,
 	annotation: { pdf: string; id: string }
 ): Promise<void> {
-	editor.openDoc(await Doc.load(annotation.pdf), { [OPEN_AT_ANNOTATION]: annotation.id });
+	openPdf(editor, await Doc.load(annotation.pdf), { [OPEN_AT_ANNOTATION]: annotation.id });
 }
 
 /* --------------------- Notes that cite an annotation ---------------------- */

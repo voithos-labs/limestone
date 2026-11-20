@@ -96,13 +96,16 @@
 	} from '#lib/pdf/layout.js';
 	import { inLasso, moveStrokes, simplify, strokesBox, type LooseStroke } from '#lib/pdf/ink.js';
 	import LooseInk from '#lib/pdf/LooseInk.svelte.js';
+	import { unionRect } from '#lib/pdf/crop.js';
 	import { erasedAny, erasure, nothingErased, touch, type Erasing } from '#lib/pdf/eraser.js';
 	import { applyChange, changeStep, type MarkChange, type Marks } from '#lib/pdf/changes.js';
 	import {
 		OPEN_AT_ANNOTATION,
 		OPEN_AT_PAGE,
+		OPEN_AT_PLACE,
 		citedIn,
 		copyCitation,
+		copyExcerpt,
 		copyLink,
 		type Citing
 	} from '#lib/pdf/citation.js';
@@ -215,8 +218,12 @@
 				lib = mod;
 				const at = placeOf(tab.state.place, doc.numPages);
 				readingAt = null;
-				const elsewhere = OPEN_AT_PAGE in tab.state || OPEN_AT_ANNOTATION in tab.state;
+				const elsewhere =
+					OPEN_AT_PAGE in tab.state ||
+					OPEN_AT_PLACE in tab.state ||
+					OPEN_AT_ANNOTATION in tab.state;
 				if (at && !flow && !elsewhere) landing = () => goToPlace(at);
+				openedAt = elsewhere ? at : null;
 				const first = (await doc.getPage(1)).getViewport({ scale: 1 });
 				if (cancelled) return;
 				if (!old) annotations.edition = edition;
@@ -838,6 +845,14 @@
 		});
 	}
 
+	let openedAt: Place | null = null;
+
+	function placeBefore(): Place | null {
+		const at = openedAt ?? placeNow();
+		openedAt = null;
+		return at;
+	}
+
 	function placeNow(): Place | null {
 		if (flow || landing) return null;
 		const i = pageIndexAt(layout.tops, Math.max(viewTop, 0));
@@ -855,8 +870,7 @@
 		forward: Array.isArray(savedJumps?.forward) ? savedJumps.forward : []
 	});
 
-	function jump() {
-		const at = placeNow();
+	function jump(at = placeNow()) {
 		const last = jumps.back.at(-1);
 		if (!at) return;
 		if (last?.page !== at.page || Math.abs(last.offset - at.offset) > SAME_PLACE) {
@@ -1037,15 +1051,6 @@
 		return saving;
 	}
 
-	async function dropBareRegion(id: string) {
-		await tick();
-		await saving;
-		if (activeId === id || editingId === id) return;
-		const a = annotations.items.find((x) => x.id === id);
-		if (!a || a.kind !== 'region' || a.comment.trim()) return;
-		if (canAnnotate && !citedBy.get(id)?.length) await removeAnnotation(a);
-	}
-
 	/** Deletes an annotation note, which undo brings back. */
 	async function removeAnnotation(a: Annotation) {
 		try {
@@ -1099,11 +1104,27 @@
 		}
 		delete tab.state[OPEN_AT_ANNOTATION];
 		activeId = a.id;
-		requestAnimationFrame(() => scrollToAnnotation(a));
+		const from = placeBefore();
+		requestAnimationFrame(() => {
+			jump(from);
+			scrollToAnnotation(a);
+		});
 	});
+
+	function excerptOf(page: number, rects: PageRect[], quote: string) {
+		return {
+			pdfTitle: handle?.title ?? '',
+			page,
+			rect: unionRect(rectsOn({ page, rects }, page)),
+			quote
+		};
+	}
 
 	async function cite(a: Annotation) {
 		try {
+			if (!a.relPath && !a.comment.trim() && a.kind !== 'ink') {
+				return await copyExcerpt(excerptOf(a.page, a.rects, a.quote ?? ''));
+			}
 			const noted = await annotations.note(a.id);
 			if (noted) await copyCitation(annotations.linkOf(noted));
 		} catch (e) {
@@ -1173,14 +1194,6 @@
 	let activeId: string | null = $state(null);
 	let editingId: string | null = $state(null);
 
-	let held: string | null = null;
-	$effect(() => {
-		const now = editingId ?? activeId;
-		const left = held;
-		held = now;
-		if (left && left !== activeId && left !== editingId) void dropBareRegion(left);
-	});
-
 	/* ------------------------ The pointer on the pages ------------------------ */
 
 	let draft: { page: number; from: { x: number; y: number }; rect: PageRect | null } | null =
@@ -1230,18 +1243,17 @@
 			draft = null;
 			if (!rect) return pickAt(e);
 			if (placing) return void place(placing, { page, rects: [rect] });
-			try {
-				const region: Omit<AnnotationFields, 'pdf'> = {
-					page,
-					kind: 'region',
-					color,
-					rects: [rect]
-				};
-				const a = await annotate(region, '', coveredText(page, rect));
-				activeId = editingId = a.id;
-			} catch (err) {
-				reportError(err, "The region couldn't be saved.");
-			}
+			const el = pageEl(page)?.getBoundingClientRect();
+			const box = rootEl!.getBoundingClientRect();
+			if (!el) return;
+			menuScroll = scrollOf();
+			menu = {
+				x: Math.min(el.left + rect[0] * el.width - box.left, box.width - 212) + menuScroll.x,
+				y: el.top + (rect[1] + rect[3]) * el.height - box.top + 8 + menuScroll.y,
+				page,
+				target: { rects: [rect], quote: '', prefix: '', suffix: '' },
+				region: true
+			};
 			return;
 		}
 		if (e.button !== 0) return;
@@ -1293,7 +1305,13 @@
 
 	/* --------------------------------- Menus ---------------------------------- */
 
-	let menu: { x: number; y: number; page: number; target: TextTarget } | null = $state(null);
+	let menu: {
+		x: number;
+		y: number;
+		page: number;
+		target: TextTarget;
+		region?: boolean;
+	} | null = $state(null);
 	let menuScroll = $state.raw({ x: 0, y: 0 });
 	const scrollOf = () => ({ x: scrollEl?.scrollLeft ?? 0, y: scrollEl?.scrollTop ?? 0 });
 	let moreFor: Annotation | null = $state(null);
@@ -1338,8 +1356,30 @@
 		menu = null;
 		window.getSelection()?.removeAllRanges();
 		if (!m) return;
-		const a = await addHighlight(m.page, m.target);
+		const a = m.region
+			? await addRegion(m.page, m.target.rects[0])
+			: await addHighlight(m.page, m.target);
 		if (a) await run(a);
+	}
+
+	async function addRegion(page: number, rect: PageRect) {
+		try {
+			const region: Omit<AnnotationFields, 'pdf'> = { page, kind: 'region', color, rects: [rect] };
+			return await annotate(region, '', coveredText(page, rect));
+		} catch (err) {
+			reportError(err, "The region couldn't be saved.");
+			return null;
+		}
+	}
+
+	function citeMenu() {
+		const m = menu;
+		menu = null;
+		window.getSelection()?.removeAllRanges();
+		if (!m) return;
+		copyExcerpt(excerptOf(m.page, m.target.rects, m.target.quote)).catch((e) =>
+			reportError(e, "The citation couldn't be copied.")
+		);
 	}
 
 	function onMoreSelect(value: string) {
@@ -1881,6 +1921,14 @@
 			return;
 		}
 		if (typingIn(e.target)) return;
+		if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'c') {
+			const picked = here.find((a) => a.id === activeId && a.kind === 'region');
+			if (!menu?.region && !(picked && window.getSelection()?.isCollapsed)) return;
+			e.preventDefault();
+			if (menu?.region) citeMenu();
+			else if (picked) void cite(picked);
+			return;
+		}
 		// a drag let go of with Escape changes nothing
 		if (e.key === 'Escape' && gesture) {
 			gesture = erasing = null;
@@ -1992,10 +2040,27 @@
 	});
 
 	$effect(() => {
+		const at = pdf && pagesEl && placeOf(tab.state[OPEN_AT_PLACE], pdf.numPages);
+		if (!pdf || !pagesEl) return;
+		delete tab.state[OPEN_AT_PLACE];
+		if (at) {
+			const from = placeBefore();
+			requestAnimationFrame(() => {
+				jump(from);
+				goToPlace(at);
+			});
+		}
+	});
+
+	$effect(() => {
 		const n = tab.state[OPEN_AT_PAGE];
 		if (typeof n !== 'number' || !pdf || !pagesEl) return;
 		delete tab.state[OPEN_AT_PAGE];
-		requestAnimationFrame(() => goToPage(n));
+		const from = placeBefore();
+		requestAnimationFrame(() => {
+			jump(from);
+			goToPage(n);
+		});
 	});
 
 	$effect.pre(() => {
@@ -2213,7 +2278,11 @@
 										: selected[0]?.page === n
 											? selectedBox
 											: null}
-									draft={draft?.page === n ? draft.rect : null}
+									draft={draft?.page === n
+										? draft.rect
+										: menu?.region && menu.page === n
+											? menu.target.rects[0]
+											: null}
 									loose={looseByPage.get(n)}
 									drawing={gesture?.page === n && inkMode === 'pen'
 										? { color, width: inkWidth, points: gesture.points }
@@ -2321,7 +2390,8 @@
 				fromMenu((a) => {
 					activeId = editingId = a.id;
 				})}
-			onCite={() => fromMenu(cite)}
+			region={menu.region}
+			onCite={citeMenu}
 			onCopyText={() => {
 				const quote = menu?.target.quote ?? '';
 				menu = null;

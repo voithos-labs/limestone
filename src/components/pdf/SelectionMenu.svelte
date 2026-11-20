@@ -6,12 +6,13 @@
 	 * the text, which is all it offers when annotations can't be saved.
 	 */
 
-	import { Highlighter, Link, MessageSquare, Quote } from '@lucide/svelte';
+	import { Highlighter, Link, MessageSquare, Quote, SquareDashed } from '@lucide/svelte';
 
 	let {
 		x,
 		y,
 		writable = true,
+		region = false,
 		onHighlight,
 		onComment,
 		onCite,
@@ -23,6 +24,7 @@
 		y: number;
 		/** False on an earlier edition, where only copying the text is offered. */
 		writable?: boolean;
+		region?: boolean;
 		onHighlight: () => void;
 		onComment: () => void;
 		onCite: () => void;
@@ -56,8 +58,14 @@
 <div class="selection-menu" bind:this={el} style:left="{x}px" style:top="{y}px" role="menu">
 	{#if writable}
 		<button class="row" type="button" onclick={onHighlight}>
-			<span class="icon"><Highlighter size={13} strokeWidth={1.75} /></span>
-			<span class="label">Highlight</span>
+			<span class="icon">
+				{#if region}
+					<SquareDashed size={13} strokeWidth={1.75} />
+				{:else}
+					<Highlighter size={13} strokeWidth={1.75} />
+				{/if}
+			</span>
+			<span class="label">{region ? 'Mark region' : 'Highlight'}</span>
 		</button>
 		<button class="row" type="button" onclick={onComment}>
 			<span class="icon"><MessageSquare size={13} strokeWidth={1.75} /></span>
@@ -71,10 +79,12 @@
 	{:else}
 		<p class="reason">This is an earlier edition of the PDF, so annotations can't be added here.</p>
 	{/if}
-	<button class="row" type="button" onclick={onCopyText}>
-		<span class="icon"><Link size={13} strokeWidth={1.75} /></span>
-		<span class="label">Copy text</span>
-	</button>
+	{#if !region}
+		<button class="row" type="button" onclick={onCopyText}>
+			<span class="icon"><Link size={13} strokeWidth={1.75} /></span>
+			<span class="label">Copy text</span>
+		</button>
+	{/if}
 </div>
 
 <style>

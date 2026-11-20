@@ -5,7 +5,7 @@
 	 * It says which pdf and page the note marks, and clicking it opens the pdf at that annotation.
 	 */
 
-	import { ArrowUpRight, Pen, SquareDashed } from '@lucide/svelte';
+	import { ArrowUpRight } from '@lucide/svelte';
 	import { select } from '#lib/services/db.js';
 	import type EditorState from '#lib/models/EditorState.svelte.js';
 	import { reportError } from '#lib/overlays.svelte.js';
@@ -48,13 +48,7 @@
 
 {#if annotation && pdfTitle}
 	<button class="source" type="button" title="Open {pdfTitle} at this passage" onclick={open}>
-		{#if annotation.kind === 'ink'}
-			<Pen size={12} strokeWidth={1.75} />
-		{:else if annotation.kind === 'region'}
-			<SquareDashed size={12} strokeWidth={1.75} />
-		{:else}
-			<PdfIcon size={12} />
-		{/if}
+		<PdfIcon size={12} />
 		<span class="name">{pdfTitle}</span>
 		<span class="page">· p. {annotation.page}</span>
 		<ArrowUpRight size={12} />
