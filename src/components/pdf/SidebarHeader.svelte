@@ -9,9 +9,10 @@
 		ExternalLink,
 		FolderInput,
 		FolderOpen,
+		ListTree,
 		Rows2,
 		SlidersHorizontal,
-		TextQuote,
+		MessageSquareQuote,
 		Plus,
 		Trash2,
 		X
@@ -47,7 +48,8 @@
 		extra,
 		sections,
 		digest,
-		jumps
+		jumps,
+		sectionMenu
 	}: {
 		handle: PdfHandle;
 		onDelete?: () => void;
@@ -60,6 +62,7 @@
 		sections?: { on: boolean; toggle: () => void };
 		digest?: { on: boolean; toggle: () => void };
 		jumps?: { back?: Jumps; forward?: Jumps };
+		sectionMenu?: { title: string; open: (anchor: HTMLElement) => void };
 	} = $props();
 
 	let title = $state(untrack(() => handle.title));
@@ -474,6 +477,16 @@
 		{#if extra}
 			<div class="extra">{@render extra()}</div>
 		{/if}
+		{#if sectionMenu}
+			<button
+				class="kebab"
+				type="button"
+				title="Section: {sectionMenu.title}"
+				onclick={(e) => sectionMenu.open(e.currentTarget)}
+			>
+				<ListTree size={15} strokeWidth={1.75} />
+			</button>
+		{/if}
 		{#if digest}
 			<button
 				class="kebab"
@@ -482,7 +495,7 @@
 				title={digest.on ? 'Back to pages' : 'Annotations digest'}
 				onclick={digest.toggle}
 			>
-				<TextQuote size={15} strokeWidth={1.75} />
+				<MessageSquareQuote size={15} strokeWidth={1.75} />
 			</button>
 		{/if}
 		<button

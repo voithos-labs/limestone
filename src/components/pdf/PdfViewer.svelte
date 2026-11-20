@@ -1962,7 +1962,7 @@
 	let searchBox: PdfSearch | undefined = $state();
 
 	let sectionsOpen = $state(false);
-	let sectionsAnchor: HTMLButtonElement | null = $state(null);
+	let sectionsAnchor: HTMLElement | null = $state(null);
 	const nowSection = $derived(section ?? sections[sectionOf(currentPage)]);
 	const sectionItems: MenuEntry[] = $derived(
 		sections.map((s, i) => ({ value: String(i), label: s.title, hint: String(s.first + 1) }))
@@ -1970,8 +1970,13 @@
 
 	function onSectionSelect(value: string) {
 		sectionsOpen = false;
+		const page = sections[Number(value)].first + 1;
+		if (mode !== 'pages') {
+			tab.state[OPEN_AT_PAGE] = page;
+			return setMode('pages');
+		}
 		jump();
-		goToPage(sections[Number(value)].first + 1);
+		goToPage(page);
 	}
 	let searchOpen = $state(false);
 
@@ -2137,7 +2142,7 @@
 			class="column"
 			style:padding-top={barred ? `${(barHeight || 52) + 16}px` : null}
 			style:width="{mode === 'digest' ? fitWidth : width}px"
-			style:left="{rail ? -(RAIL_GAP + RAIL_WIDTH) / 2 : 0}px"
+			style:left="{rail && mode === 'pages' ? -(RAIL_GAP + RAIL_WIDTH) / 2 : 0}px"
 		>
 			{#if handle && heroOnTop}
 				<DocumentHero
@@ -2337,6 +2342,15 @@
 					? { on: sectioned, toggle: () => setSectioned(!sectioned) }
 					: undefined}
 				jumps={jumpNav}
+				sectionMenu={sections.length > 1 && !(rail && mode === 'pages')
+					? {
+							title: nowSection?.title ?? '',
+							open: (anchor) => {
+								sectionsAnchor = anchor;
+								sectionsOpen = !sectionsOpen;
+							}
+						}
+					: undefined}
 				digest={here.length
 					? { on: mode === 'digest', toggle: () => setMode(mode === 'digest' ? 'pages' : 'digest') }
 					: undefined}
