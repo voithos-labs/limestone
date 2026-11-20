@@ -111,6 +111,18 @@ pub fn run() {
                 .unwrap()
         })
         .setup(move |app| {
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_window_state::StateFlags;
+                app.handle().plugin(
+                    tauri_plugin_window_state::Builder::default()
+                        .with_state_flags(
+                            StateFlags::all() - StateFlags::VISIBLE - StateFlags::DECORATIONS,
+                        )
+                        .build(),
+                )?;
+            }
+
             // Built here rather than from the config so the page can read the clipboard (menu
             // Paste): the config has no switch for it, and Windows prompts and Linux refuses without it.
             let main_config = app
@@ -126,7 +138,7 @@ pub fn run() {
                     .enable_clipboard_access();
             #[cfg(any(windows, target_os = "macos"))]
             let main_builder = main_builder.transparent(true);
-            main_builder.build()?;
+            main_builder.build()?.show()?;
 
             #[cfg(desktop)]
             {
